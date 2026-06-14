@@ -7,6 +7,44 @@
 
 The **Fiatlux Benchmark** is an internal standalone benchmark for evaluating AI and robotics algorithms on energy infrastructure maintenance tasks. Specifically, the benchmark tests a robot's ability to replace light bulbs and climb ladders, facilitating research in complex manipulation, locomotion, and eventual sim-to-real transfer.
 
+## Benchmark Hierarchy & Experimentation Plan
+
+To systematically build up to the full end-to-end task, the benchmark is structured as a hierarchy of increasingly complex tasks:
+
+### Level 1: Core Subtasks (Isolated Evaluation)
+Before attempting the complete routine, algorithms can be developed and validated on isolated subtasks:
+* **Ladder Climbing**: Locomotion and balance control for the bipedal G1 robot to climb industrial ladders.
+* **Light Bulb Removal**: Grasping and unscrewing a faulty bulb from a socket.
+* **Light Bulb Insertion**: Grasping and screwing a new bulb securely into a socket.
+* **Verification & Inspection**: Visual and sensory checks to confirm bulb status and socket placement.
+
+### Level 2: Combined Task (End-to-End Maintenance)
+The ultimate benchmark task integrates all Level 1 capabilities into a single, contiguous trial:
+* **Combined Light Bulb Replacement**: The robot must navigate the environment, locate a faulty lamp, perform visual inspection, climb the ladder to reach the socket, remove the old bulb, insert the new one, and verify successful replacement.
+
+## Evaluation Metrics
+
+Performance is measured quantitatively across the different levels of the benchmark using the following metrics:
+
+### Level 1 Subtask Metrics
+* **Ladder Climbing**:
+  - *Climb Success*: Binary indicator of whether the robot reached the target height.
+  - *Stability Index*: Average deviation of the center of mass (CoM) and peak contact forces on the ladder rungs (to evaluate fall risk).
+  - *Climb Speed*: Vertical velocity ($\text{m/s}$) during the climb.
+* **Light Bulb Removal & Insertion**:
+  - *Success Rate*: Fraction of trials where the bulb is successfully removed (unscrewed/detached) or inserted (screwed/seated).
+  - *Force/Torque Safety Margin*: Maximum contact forces and torques exerted during manipulation (to ensure no bulb/socket breakage).
+  - *Pose Accuracy*: Position/orientation deviation from the target socket seating.
+* **Verification & Inspection**:
+  - *Classification Accuracy*: Precision and recall of detecting bulb types and socket states (empty vs. occupied).
+  - *Inspection Time*: Time taken to complete the visual/sensory check.
+
+### Level 2 Combined Task Metrics
+* **End-to-End Task Success**: Binary indicator of whether the entire replacement routine is completed successfully.
+* **Completion Time**: Total duration (seconds) taken to navigate, climb, remove, insert, and verify.
+* **Locomotion and Manipulation Efficiency**: Integrated control effort (sum of joint torques squared) and trajectory length.
+* **Collision Penalty**: Number of unintended collisions with the ladder, fixture, or environment.
+
 ---
 
 ## Benchmark Guide
