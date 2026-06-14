@@ -31,7 +31,7 @@
 #include "fiatlux_control_interfaces/msg/trajectory_generation_mode.hpp"
 #include "fiatlux_scoring/ScoringTier2.hh"
 #include "fiatlux_scoring/TierScore.hh"
-#include "fiatlux_task_interfaces/action/insert_cable.hpp"
+#include "fiatlux_task_interfaces/action/replace_bulb.hpp"
 #include "controller_manager_msgs/srv/switch_controller.hpp"
 #include "geometry_msgs/msg/wrench_stamped.hpp"
 #include "lifecycle_msgs/msg/state.hpp"
@@ -52,9 +52,9 @@
 namespace fiatlux {
 
 using DeleteEntitySrv = simulation_interfaces::srv::DeleteEntity;
-using InsertCableAction = fiatlux_task_interfaces::action::InsertCable;
-using InsertCableGoalHandle =
-    rclcpp_action::ServerGoalHandle<InsertCableAction>;
+using ReplaceBulbAction = fiatlux_task_interfaces::action::ReplaceBulb;
+using ReplaceBulbGoalHandle =
+    rclcpp_action::ServerGoalHandle<ReplaceBulbAction>;
 using JointMotionUpdateMsg = fiatlux_control_interfaces::msg::JointMotionUpdate;
 using JointTrajectoryPoint = trajectory_msgs::msg::JointTrajectoryPoint;
 using MotionUpdateMsg = fiatlux_control_interfaces::msg::MotionUpdate;
@@ -84,7 +84,7 @@ enum class EngineState : uint8_t {
 // ModelReady: Participant model node is available and conforms to challenge
 // requirements.
 // EndpointsReady: Required nodes are up and running.
-// SimulatorReady: Simulator is ready with the task board and cables spawned.
+// SimulatorReady: Simulator is ready with the task board and bulbs spawned.
 // ScoringReady: Scoring system is ready to track performance.
 // TasksExecuting: Tasks are being executed.
 // AllTasksCompleted: All tasks has been completed successfully or time limit
@@ -350,8 +350,8 @@ class Engine {
   MotionUpdateMsg::ConstSharedPtr last_motion_update_msg_;
 
   // Action clients.
-  rclcpp_action::Client<InsertCableAction>::SharedPtr
-      insert_cable_action_client_;
+  rclcpp_action::Client<ReplaceBulbAction>::SharedPtr
+      replace_bulb_action_client_;
 
   // Service clients.
   rclcpp::Client<SpawnEntitySrv>::SharedPtr spawn_entity_client_;

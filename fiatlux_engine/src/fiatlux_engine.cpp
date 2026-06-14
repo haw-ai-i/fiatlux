@@ -176,41 +176,41 @@ Trial::Trial(const std::string& _id, YAML::Node _config) : id(std::move(_id)) {
     }
   }
 
-  // Validate scene.cables
-  if (!scene["cables"]) {
-    throw std::runtime_error("Config missing required key: 'scene.cables'");
+  // Validate scene.bulbs
+  if (!scene["bulbs"]) {
+    throw std::runtime_error("Config missing required key: 'scene.bulbs'");
   }
-  const auto& cables = scene["cables"];
-  for (const auto& cable_it : cables) {
-    const std::string cable_id = cable_it.first.as<std::string>();
-    const YAML::Node cable = cable_it.second;
-    if (!cable["pose"]) {
-      throw std::runtime_error("Config missing required key: 'scene.cables[" +
-                               cable_id + "].pose'");
+  const auto& bulbs = scene["bulbs"];
+  for (const auto& bulb_it : bulbs) {
+    const std::string bulb_id = bulb_it.first.as<std::string>();
+    const YAML::Node bulb = bulb_it.second;
+    if (!bulb["pose"]) {
+      throw std::runtime_error("Config missing required key: 'scene.bulbs[" +
+                               bulb_id + "].pose'");
     }
-    const auto& cable_pose = cable["pose"];
+    const auto& bulb_pose = bulb["pose"];
     for (const auto& key : {"gripper_offset", "roll", "pitch", "yaw"}) {
-      if (!cable_pose[key]) {
-        throw std::runtime_error("Config missing required key: 'scene.cables[" +
-                                 cable_id + "].pose." + key + "'");
+      if (!bulb_pose[key]) {
+        throw std::runtime_error("Config missing required key: 'scene.bulbs[" +
+                                 bulb_id + "].pose." + key + "'");
       }
     }
-    const auto& cable_pose_offset = cable["pose"]["gripper_offset"];
+    const auto& bulb_pose_offset = bulb["pose"]["gripper_offset"];
     for (const auto& key : {"x", "y", "z"}) {
-      if (!cable_pose_offset[key]) {
+      if (!bulb_pose_offset[key]) {
         throw std::runtime_error(
             std::string("Config missing required key: "
-                        "'scene.cable.pose.gripper_offset.") +
+                        "'scene.bulb.pose.gripper_offset.") +
             key + "'");
       }
     }
-    if (!cable["attach_cable_to_gripper"]) {
-      throw std::runtime_error("Config missing required key: 'scene.cables[" +
-                               cable_id + "].attach_cable_to_gripper'");
+    if (!bulb["attach_bulb_to_gripper"]) {
+      throw std::runtime_error("Config missing required key: 'scene.bulbs[" +
+                               bulb_id + "].attach_bulb_to_gripper'");
     }
-    if (!cable["cable_type"]) {
-      throw std::runtime_error("Config missing required key: 'scene.cables[" +
-                               cable_id + "].cable_type'");
+    if (!bulb["bulb_type"]) {
+      throw std::runtime_error("Config missing required key: 'scene.bulbs[" +
+                               bulb_id + "].bulb_type'");
     }
   }
 
@@ -225,8 +225,8 @@ Trial::Trial(const std::string& _id, YAML::Node _config) : id(std::move(_id)) {
     const std::string task_id = it->first.as<std::string>();
     const YAML::Node task_config = it->second;
     for (const auto& key :
-         {"cable_type", "cable_name", "plug_type", "plug_name", "port_type",
-          "port_name", "target_module_name", "time_limit"}) {
+         {"bulb_type", "bulb_name", "bulb_type", "bulb_name", "socket_type",
+          "socket_name", "target_fixture_name", "time_limit"}) {
       if (!task_config[key]) {
         throw std::runtime_error("Config missing required key: 'tasks[" +
                                  task_id + "]." + key + "'");
@@ -237,14 +237,14 @@ Trial::Trial(const std::string& _id, YAML::Node _config) : id(std::move(_id)) {
     this->tasks.emplace_back(
         fiatlux_task_interfaces::build<fiatlux_task_interfaces::msg::Task>()
             .id(task_id)
-            .cable_type(task_config["cable_type"].as<std::string>())
-            .cable_name(task_config["cable_name"].as<std::string>())
-            .plug_type(task_config["plug_type"].as<std::string>())
-            .plug_name(task_config["plug_name"].as<std::string>())
-            .port_type(task_config["port_type"].as<std::string>())
-            .port_name(task_config["port_name"].as<std::string>())
-            .target_module_name(
-                task_config["target_module_name"].as<std::string>())
+            .bulb_type(task_config["bulb_type"].as<std::string>())
+            .bulb_name(task_config["bulb_name"].as<std::string>())
+            .bulb_type(task_config["bulb_type"].as<std::string>())
+            .bulb_name(task_config["bulb_name"].as<std::string>())
+            .socket_type(task_config["socket_type"].as<std::string>())
+            .socket_name(task_config["socket_name"].as<std::string>())
+            .target_fixture_name(
+                task_config["target_fixture_name"].as<std::string>())
             .time_limit(task_config["time_limit"].as<std::size_t>()));
   }
 
@@ -290,7 +290,7 @@ double Score::calculate_total_score() const {
 //==============================================================================
 Engine::Engine(const rclcpp::NodeOptions& options)
     : node_(std::make_shared<rclcpp::Node>("fiatlux_engine", options)),
-      insert_cable_action_client_(nullptr),
+      replace_bulb_action_client_(nullptr),
       spawn_entity_client_(nullptr),
       is_first_trial_(true),
       engine_state_(EngineState::Uninitialized),
@@ -481,8 +481,8 @@ EngineState Engine::initialize() {
       },
       sub_options_ignore_local);
 
-  insert_cable_action_client_ =
-      rclcpp_action::create_client<InsertCableAction>(node_, "/insert_cable");
+  replace_bulb_action_client_ =
+      rclcpp_action::create_client<ReplaceBulbAction>(node_, "/replace_bulb");
   spawn_entity_client_ =
       node_->create_client<SpawnEntitySrv>("/gz_server/spawn_entity");
   delete_entity_client_ =
@@ -963,34 +963,34 @@ bool Engine::configure_model_node() {
   }
 
   // Check that the model rejects action goals.
-  if (!insert_cable_action_client_->wait_for_action_server(
+  if (!replace_bulb_action_client_->wait_for_action_server(
           std::chrono::seconds(5))) {
     RCLCPP_ERROR(node_->get_logger(),
-                 "Insert cable action server not available after waiting");
+                 "Replace bulb action server not available after waiting");
     return false;
   }
   auto goal_was_rejected = std::make_shared<bool>(false);
-  auto goal_msg = InsertCableAction::Goal();
+  auto goal_msg = ReplaceBulbAction::Goal();
   auto goal_options =
-      rclcpp_action::Client<InsertCableAction>::SendGoalOptions();
+      rclcpp_action::Client<ReplaceBulbAction>::SendGoalOptions();
   goal_options
       .goal_response_callback = [this, goal_was_rejected](
                                     const rclcpp_action::ClientGoalHandle<
-                                        InsertCableAction>::SharedPtr&
+                                        ReplaceBulbAction>::SharedPtr&
                                         goal_handle) {
     if (!goal_handle) {
       RCLCPP_INFO(
           this->node_->get_logger(),
-          "Insert cable action goal was rejected by the server as expected.");
+          "Replace bulb action goal was rejected by the server as expected.");
       *goal_was_rejected = true;
     } else {
       RCLCPP_ERROR(this->node_->get_logger(),
-                   "Insert cable action goal was accepted by the server while "
+                   "Replace bulb action goal was accepted by the server while "
                    "in 'configured' state. This is a rule violation.");
     }
   };
 
-  insert_cable_action_client_->async_send_goal(goal_msg, goal_options);
+  replace_bulb_action_client_->async_send_goal(goal_msg, goal_options);
   node_->get_clock()->sleep_for(rclcpp::Duration(std::chrono::seconds(1)));
 
   if (!*goal_was_rejected) {
@@ -1183,7 +1183,7 @@ bool Engine::ready_simulator(Trial& trial) {
     RCLCPP_ERROR(node_->get_logger(), "Failed to spawn task board.");
   }
 
-  // Tare the force-torque sensor before attaching any cables to compensate for
+  // Tare the force-torque sensor before attaching any bulbs to compensate for
   // the weight of the end-effector.
   const auto tare_req = std::make_shared<TriggerSrv::Request>();
   auto tare_ft_future = tare_ft_client_->async_send_request(tare_req);
@@ -1198,9 +1198,9 @@ bool Engine::ready_simulator(Trial& trial) {
     return false;
   }
 
-  // Spawn the cable.
-  RCLCPP_INFO(node_->get_logger(), "Spawning cable.");
-  // Get the current gripper pose, and set the cable pose accordingly.
+  // Spawn the bulb.
+  RCLCPP_INFO(node_->get_logger(), "Spawning bulb.");
+  // Get the current gripper pose, and set the bulb pose accordingly.
   std::string warning_msg;
   const std::string gripper_frame =
       node_->get_parameter("gripper_frame_name").as_string();
@@ -1211,47 +1211,47 @@ bool Engine::ready_simulator(Trial& trial) {
   }
   geometry_msgs::msg::TransformStamped t =
       tf_buffer_->lookupTransform("world", gripper_frame, tf2::TimePointZero);
-  const auto& cables_config = trial.config["scene"]["cables"];
-  bool cable_attached = false;
-  for (const auto& cable_it : cables_config) {
-    const std::string cable_id = cable_it.first.as<std::string>();
-    const YAML::Node cable_config = cable_it.second;
-    bool attach_to_gripper = cable_config["attach_cable_to_gripper"].as<bool>();
-    if (cable_attached && attach_to_gripper) {
+  const auto& bulbs_config = trial.config["scene"]["bulbs"];
+  bool bulb_attached = false;
+  for (const auto& bulb_it : bulbs_config) {
+    const std::string bulb_id = bulb_it.first.as<std::string>();
+    const YAML::Node bulb_config = bulb_it.second;
+    bool attach_to_gripper = bulb_config["attach_bulb_to_gripper"].as<bool>();
+    if (bulb_attached && attach_to_gripper) {
       RCLCPP_ERROR(node_->get_logger(),
-                   "Attempting to attach multiple cables to the gripper. "
+                   "Attempting to attach multiple bulbs to the gripper. "
                    "Please check the config.");
       return false;
     } else if (attach_to_gripper) {
-      cable_attached = true;
+      bulb_attached = true;
     }
-    RCLCPP_INFO(node_->get_logger(), "Spawning cable '%s'...",
-                cable_id.c_str());
+    RCLCPP_INFO(node_->get_logger(), "Spawning bulb '%s'...",
+                bulb_id.c_str());
     if (this->spawn_entity(
-            trial, cable_id, "/urdf/cable.sdf.xacro",
+            trial, bulb_id, "/urdf/bulb.sdf.xacro",
             t.transform.translation.x +
-                cable_config["pose"]["gripper_offset"]["x"].as<double>(),
+                bulb_config["pose"]["gripper_offset"]["x"].as<double>(),
             t.transform.translation.y +
-                cable_config["pose"]["gripper_offset"]["y"].as<double>(),
+                bulb_config["pose"]["gripper_offset"]["y"].as<double>(),
             t.transform.translation.z +
-                cable_config["pose"]["gripper_offset"]["z"].as<double>(),
-            cable_config["pose"]["roll"].as<double>(),
-            cable_config["pose"]["pitch"].as<double>(),
-            cable_config["pose"]["yaw"].as<double>())) {
-      RCLCPP_INFO(node_->get_logger(), "Cable %s spawned successfully.",
-                  cable_id.c_str());
+                bulb_config["pose"]["gripper_offset"]["z"].as<double>(),
+            bulb_config["pose"]["roll"].as<double>(),
+            bulb_config["pose"]["pitch"].as<double>(),
+            bulb_config["pose"]["yaw"].as<double>())) {
+      RCLCPP_INFO(node_->get_logger(), "Bulb %s spawned successfully.",
+                  bulb_id.c_str());
     } else {
-      RCLCPP_ERROR(node_->get_logger(), "Failed to spawn cable %s.",
-                   cable_id.c_str());
+      RCLCPP_ERROR(node_->get_logger(), "Failed to spawn bulb %s.",
+                   bulb_id.c_str());
       return false;
     }
   }
 
-  // Wait for cable to be spawned. Sleep in sim time to ensure sim has advanced.
+  // Wait for bulb to be spawned. Sleep in sim time to ensure sim has advanced.
   node_->get_clock()->sleep_for(rclcpp::Duration::from_seconds(0.1));
 
   RCLCPP_INFO(node_->get_logger(), "Waiting for robot arm to stabilize.");
-  // The end-effector dips when the cable is first attached.
+  // The end-effector dips when the bulb is first attached.
   // Wait for joints to settle by checking velocities.
   std::condition_variable cv;
   std::mutex mtx;
@@ -1294,11 +1294,11 @@ bool Engine::ready_scoring(const Trial& trial) {
   std::vector<fiatlux_scoring::Connection> connections;
   for (const auto& task : trial.tasks) {
     fiatlux_scoring::Connection connection;
-    connection.cableName = task.cable_name;
+    connection.bulbName = task.bulb_name;
     connection.taskBoardName = "task_board";
-    connection.plugName = task.plug_name;
-    connection.portName = task.port_name;
-    connection.targetModuleName = task.target_module_name;
+    connection.plugName = task.bulb_name;
+    connection.portName = task.socket_name;
+    connection.targetModuleName = task.target_fixture_name;
     connections.push_back(connection);
   }
 
@@ -1357,20 +1357,20 @@ bool Engine::tasks_started(Trial& trial) {
     trial.attempts.emplace_back(std::move(task_attempt));
     auto& current_attempt = trial.attempts.back();
 
-    auto insert_cable_goal = InsertCableAction::Goal();
-    insert_cable_goal.task = task;
+    auto replace_bulb_goal = ReplaceBulbAction::Goal();
+    replace_bulb_goal.task = task;
 
     RCLCPP_INFO(this->node_->get_logger(),
-                "Sending InsertCable goal for task [%s]", task.id.c_str());
+                "Sending ReplaceBulb goal for task [%s]", task.id.c_str());
     auto send_goal_future =
-        insert_cable_action_client_->async_send_goal(insert_cable_goal);
+        replace_bulb_action_client_->async_send_goal(replace_bulb_goal);
     current_attempt.state = TaskState::TaskRequested;
 
     // Handle goal response
     auto goal_handle = send_goal_future.get();
     if (!goal_handle) {
       RCLCPP_ERROR(this->node_->get_logger(),
-                   "InsertCable goal for task [%s] was rejected.",
+                   "ReplaceBulb goal for task [%s] was rejected.",
                    task.id.c_str());
       current_attempt.state = TaskState::TaskRejected;
       return false;
@@ -1387,7 +1387,7 @@ bool Engine::tasks_started(Trial& trial) {
 
     // Handle goal result
     auto result_future =
-        insert_cable_action_client_->async_get_result(goal_handle);
+        replace_bulb_action_client_->async_get_result(goal_handle);
     RCLCPP_INFO(this->node_->get_logger(), "Waiting for result...");
 
     // Cancel goal if time limit exceeded
@@ -1396,7 +1396,7 @@ bool Engine::tasks_started(Trial& trial) {
       RCLCPP_ERROR(this->node_->get_logger(),
                    "Task [%s] timed out after %ld seconds. Cancelling goal.",
                    task.id.c_str(), task.time_limit);
-      insert_cable_action_client_->async_cancel_goal(goal_handle);
+      replace_bulb_action_client_->async_cancel_goal(goal_handle);
       current_attempt.state = TaskState::TimeLimitExceeded;
       return false;
     }
@@ -1775,16 +1775,16 @@ bool Engine::spawn_entity(Trial& trial, std::string entity_name,
   const auto& config = trial.config["scene"][entity_name];
 
   // Append entity-specific parameters
-  if (entity_name.find("cable") != std::string::npos) {
-    const auto& config = trial.config["scene"]["cables"][entity_name];
-    // Add attach cable parameter
-    bool attach_cable_to_gripper = config["attach_cable_to_gripper"].as<bool>();
-    cmd << " attach_cable_to_gripper:="
-        << (attach_cable_to_gripper ? "true" : "false");
+  if (entity_name.find("bulb") != std::string::npos) {
+    const auto& config = trial.config["scene"]["bulbs"][entity_name];
+    // Add attach bulb parameter
+    bool attach_bulb_to_gripper = config["attach_bulb_to_gripper"].as<bool>();
+    cmd << " attach_bulb_to_gripper:="
+        << (attach_bulb_to_gripper ? "true" : "false");
 
-    // Add cable type parameter
-    std::string cable_type = config["cable_type"].as<std::string>();
-    cmd << " cable_type:=" << cable_type;
+    // Add bulb type parameter
+    std::string bulb_type = config["bulb_type"].as<std::string>();
+    cmd << " bulb_type:=" << bulb_type;
   } else if (entity_name == "task_board") {
     const auto& config = trial.config["scene"][entity_name];
     // Read task board limits from config
@@ -1981,7 +1981,7 @@ bool Engine::spawn_entity(Trial& trial, std::string entity_name,
 
   if (response->result.result !=
       simulation_interfaces::msg::Result::RESULT_OK) {
-    RCLCPP_ERROR(node_->get_logger(), "Failed to spawn cable: %s",
+    RCLCPP_ERROR(node_->get_logger(), "Failed to spawn bulb: %s",
                  response->result.error_message.c_str());
     return false;
   }

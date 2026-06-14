@@ -5,15 +5,15 @@ on:
     branches:
       - main
     paths:
-          - 'aic_interfaces/**'
-          - 'aic_utils/**'
+          - 'fiatlux_interfaces/**'
+          - 'fiatlux_utils/**'
           - 'pixi.toml'
           - 'pixi.lock'
           - '!**/*.md'
   pull_request:
     paths:
-          - 'aic_interfaces/**'
-          - 'aic_utils/**'
+          - 'fiatlux_interfaces/**'
+          - 'fiatlux_utils/**'
           - 'pixi.toml'
           - 'pixi.lock'
           - '!**/*.md'
@@ -37,7 +37,7 @@ jobs:
       # only do isort check as black check is already done by other workflows
       - name: style
         run: |
-          isort -c aic_utils/lerobot_robot_aic
+          isort -c fiatlux_utils/fiatlux_teleoperation
       - name: type checks
         run: |
           pyright

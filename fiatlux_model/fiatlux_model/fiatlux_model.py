@@ -29,7 +29,7 @@ from fiatlux_control_interfaces.msg import (
 )
 from fiatlux_control_interfaces.srv import ChangeTargetMode
 from fiatlux_model_interfaces.msg import Observation
-from fiatlux_task_interfaces.action import InsertCable
+from fiatlux_task_interfaces.action import ReplaceBulb
 from fiatlux_task_interfaces.msg import Task
 from geometry_msgs.msg import Point, Pose, Quaternion, Wrench, Vector3
 from rclpy.action import ActionServer, CancelResponse, GoalResponse
@@ -96,12 +96,12 @@ class FiatluxModel(LifecycleNode):
         self._action_thread_result = None
         self.action_server = ActionServer(
             self,
-            InsertCable,
-            "insert_cable",
-            execute_callback=self.insert_cable_execute_callback,
-            goal_callback=self.insert_cable_goal_callback,
-            handle_accepted_callback=self.insert_cable_accepted_goal_callback,
-            cancel_callback=self.insert_cable_cancel_callback,
+            ReplaceBulb,
+            "replace_bulb",
+            execute_callback=self.replace_bulb_execute_callback,
+            goal_callback=self.replace_bulb_goal_callback,
+            handle_accepted_callback=self.replace_bulb_accepted_goal_callback,
+            cancel_callback=self.replace_bulb_cancel_callback,
             callback_group=self._action_callback_group,
         )
         self.motion_update_pub = self.create_lifecycle_publisher(
@@ -162,26 +162,26 @@ class FiatluxModel(LifecycleNode):
     def observation_callback(self, msg):
         self._observation_msg = msg
 
-    def insert_cable_goal_callback(self, goal_request):
+    def replace_bulb_goal_callback(self, goal_request):
         if not self.is_active:
             self.get_logger().error("fiatlux_model lifecycle is not in the active state")
             return GoalResponse.REJECT
 
         if self.goal_handle is not None and self.goal_handle.is_active:
             self.get_logger().error(
-                "A goal is active and must be canceled before a new insert_cable goal can begin"
+                "A goal is active and must be canceled before a new replace_bulb goal can begin"
             )
             return GoalResponse.REJECT
         else:
             self.get_logger().info("Goal accepted")
             return GoalResponse.ACCEPT
 
-    def insert_cable_accepted_goal_callback(self, goal_handle):
+    def replace_bulb_accepted_goal_callback(self, goal_handle):
         self.goal_handle = goal_handle
         self.goal_handle.execute()
 
-    def insert_cable_cancel_callback(self, goal_handle):
-        self.get_logger().info("Received insert_cable cancel request")
+    def replace_bulb_cancel_callback(self, goal_handle):
+        self.get_logger().info("Received replace_bulb cancel request")
         return CancelResponse.ACCEPT
 
     def observation_callable(self):
@@ -229,12 +229,12 @@ class FiatluxModel(LifecycleNode):
             return False
 
     def send_feedback(self, goal_handle, feedback):
-        feedback_msg = InsertCable.Feedback()
+        feedback_msg = ReplaceBulb.Feedback()
         feedback_msg.message = feedback
         goal_handle.publish_feedback(feedback_msg)
 
     def action_thread_func(self, goal_handle: ServerGoalHandle):
-        self._action_thread_result = self._policy.insert_cable(
+        self._action_thread_result = self._policy.replace_bulb(
             task=goal_handle.request.task,
             get_observation=lambda: self.observation_callable(),
             move_robot=lambda motion_update=None, joint_motion_update=None: self.move_robot(
@@ -243,11 +243,11 @@ class FiatluxModel(LifecycleNode):
             send_feedback=lambda feedback: self.send_feedback(goal_handle, feedback),
         )
         if self._action_thread_result is None:
-            self.get_logger().warn("insert_cable() returned None. Assuming False...")
+            self.get_logger().warn("replace_bulb() returned None. Assuming False...")
             self._action_thread_result = False
 
-    async def insert_cable_execute_callback(self, goal_handle: ServerGoalHandle):
-        self.get_logger().info("Entering insert_cable_execute_callback()")
+    async def replace_bulb_execute_callback(self, goal_handle: ServerGoalHandle):
+        self.get_logger().info("Entering replace_bulb_execute_callback()")
         self._action_thread_result = None
         self._action_thread = threading.Thread(
             target=self.action_thread_func,
@@ -258,7 +258,7 @@ class FiatluxModel(LifecycleNode):
         self._action_thread.start()
 
         while rclpy.ok():
-            self.get_logger().info("insert_cable execute loop")
+            self.get_logger().info("replace_bulb execute loop")
 
             # First, wait a bit so this loop doesn't consume much CPU time.
             # This must be an async wait in order for other callbacks to run.
@@ -275,11 +275,11 @@ class FiatluxModel(LifecycleNode):
             # Check if a cancellation request has arrived.
             if goal_handle.is_cancel_requested:
                 goal_handle.canceled()
-                result = InsertCable.Result()
+                result = ReplaceBulb.Result()
                 result.success = False
                 result.message = "Canceled via action client"
                 self.get_logger().info(
-                    "Exiting insert_cable execute loop due to cancellation request."
+                    "Exiting replace_bulb execute loop due to cancellation request."
                 )
                 self.goal_handle = None
                 return result
@@ -287,11 +287,11 @@ class FiatluxModel(LifecycleNode):
             # Check if the goal was aborted via the cancel_task service,
             # or if this fiatlux_model node is deactivating or shutting down.
             if not goal_handle.is_active or not self.is_active:
-                result = InsertCable.Result()
+                result = ReplaceBulb.Result()
                 result.success = False
                 result.message = "Canceled via cancel_task service"
                 self.get_logger().info(
-                    "Exiting insert_cable execute loop due to cancel_task request."
+                    "Exiting replace_bulb execute loop due to cancel_task request."
                 )
                 self.goal_handle = None
                 return result
@@ -299,15 +299,15 @@ class FiatluxModel(LifecycleNode):
             # Check if the task has been completed.
             if not self._action_thread.is_alive():
                 self.get_logger().info(
-                    f"insert_cable() returned {self._action_thread_result}"
+                    f"replace_bulb() returned {self._action_thread_result}"
                 )
                 goal_handle.succeed()
-                result = InsertCable.Result()
+                result = ReplaceBulb.Result()
                 result.success = self._action_thread_result
                 self.goal_handle = None
                 return result
 
-        self.get_logger().info("Exiting insert_cable execute loop")
+        self.get_logger().info("Exiting replace_bulb execute loop")
 
     def set_target_mode(self, target_mode):
         target_mode_request = ChangeTargetMode.Request()

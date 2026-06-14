@@ -26,7 +26,7 @@ set(msg_files
 )
 
 set(action_files
-  "action/InsertCable.action"
+  "action/ReplaceBulb.action"
 )
 
 rosidl_generate_interfaces(${PROJECT_NAME}

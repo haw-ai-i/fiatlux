@@ -138,12 +138,12 @@ class Policy(ABC):
             self.get_logger().info(f"move_robot exception: {ex}")
 
     @abstractmethod
-    def insert_cable(
+    def replace_bulb(
         self,
         task: Task,
         get_observation: GetObservationCallback,
         move_robot: MoveRobotCallback,
         send_feedback: SendFeedbackCallback,
     ) -> bool:
-        """Called when the insert_cable task is requested by fiatlux_engine"""
+        """Called when the replace_bulb task is requested by fiatlux_engine"""
         pass

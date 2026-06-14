@@ -55,7 +55,7 @@ class FIATLUXTaskSceneCfg(InteractiveSceneCfg):
     robot: ArticulationCfg = ArticulationCfg(
         prim_path="{ENV_REGEX_NS}/Robot",
         spawn=sim_utils.UsdFileCfg(
-            usd_path=os.path.join(FIATLUX_ASSET_DIR, "fiatlux_unified_robot_cable_sdf.usd"),
+            usd_path=os.path.join(FIATLUX_ASSET_DIR, "fiatlux_unified_robot_bulb_sdf.usd"),
             rigid_props=sim_utils.RigidBodyPropertiesCfg(
                 # disable_gravity=True,
                 max_depenetration_velocity=5.0,
@@ -105,8 +105,8 @@ class FIATLUXTaskSceneCfg(InteractiveSceneCfg):
         },
     )
 
-    # cable = ArticulationCfg(
-    #     prim_path="{ENV_REGEX_NS}/Robot/cable",
+    # bulb = ArticulationCfg(
+    #     prim_path="{ENV_REGEX_NS}/Robot/bulb",
     #     spawn=None,
     #     init_state=ArticulationCfg.InitialStateCfg(),
     #     actuators={},
@@ -471,7 +471,7 @@ class RewardsCfg:
             "command_name": "ee_pose",
         },
     )
-    # -- Position tracking (exponential): sharp bonus at very close range for insertion --
+    # -- Position tracking (exponential): sharp bonus at very close range for replacement --
     end_effector_position_tracking_exp = RewTerm(
         func=mdp.position_command_error_exp,
         weight=0.3,

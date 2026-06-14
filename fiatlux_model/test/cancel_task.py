@@ -18,7 +18,7 @@
 
 import rclpy
 
-from fiatlux_task_interfaces.action import InsertCable
+from fiatlux_task_interfaces.action import ReplaceBulb
 from rclpy.executors import ExternalShutdownException
 from rclpy.node import Node
 from std_srvs.srv import Empty

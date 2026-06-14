@@ -461,21 +461,21 @@ environments:
       - conda: https://conda.anaconda.org/conda-forge/linux-64/zenoh-rust-abi-1.7.2.1.85.0-h8619998_0.conda
       - conda: https://conda.anaconda.org/conda-forge/noarch/zipp-3.23.0-pyhcf101f3_1.conda
       - conda: https://conda.anaconda.org/conda-forge/linux-64/zstd-1.5.7-hb78ec9c_6.conda
-      - conda: aic_example_policies
+      - conda: fiatlux_example_policies
         build: hb0f4dca_0
-      - conda: aic_interfaces/aic_control_interfaces
+      - conda: fiatlux_interfaces/fiatlux_control_interfaces
         build: hb0f4dca_0
-      - conda: aic_interfaces/aic_model_interfaces
+      - conda: fiatlux_interfaces/fiatlux_model_interfaces
         build: hb0f4dca_0
-      - conda: aic_interfaces/aic_task_interfaces
+      - conda: fiatlux_interfaces/fiatlux_task_interfaces
         build: hb0f4dca_0
-      - conda: aic_model
+      - conda: fiatlux_model
         build: hb0f4dca_0
-      - conda: aic_utils/aic_teleoperation
+      - conda: fiatlux_utils/fiatlux_teleoperation
         build: hb0f4dca_0
-      - conda: aic_utils/aic_training_interfaces
+      - conda: fiatlux_utils/fiatlux_training_interfaces
         build: hb0f4dca_0
-      - conda: aic_utils/lerobot_robot_aic
+      - conda: fiatlux_utils/lerobot_robot_fiatlux
         build: hb0f4dca_0
       - pypi: https://files.pythonhosted.org/packages/18/a6/907a406bb7d359e6a63f99c313846d9eec4f7e6f7437809e03aa00fa3074/absl_py-2.4.0-py3-none-any.whl
       - pypi: https://files.pythonhosted.org/packages/9f/d2/c581486aa6c4fbd7394c23c47b83fa1a919d34194e16944241daf9e762dd/accelerate-1.12.0-py3-none-any.whl
@@ -959,21 +959,21 @@ environments:
       - conda: https://conda.anaconda.org/conda-forge/osx-arm64/zenoh-rust-abi-1.7.2.1.85.0-h2abaa9c_0.conda
       - conda: https://conda.anaconda.org/conda-forge/noarch/zipp-3.23.0-pyhcf101f3_1.conda
       - conda: https://conda.anaconda.org/conda-forge/osx-arm64/zstd-1.5.7-hbf9d68e_6.conda
-      - conda: aic_example_policies
+      - conda: fiatlux_example_policies
         build: h60d57d3_0
-      - conda: aic_interfaces/aic_control_interfaces
+      - conda: fiatlux_interfaces/fiatlux_control_interfaces
         build: h60d57d3_0
-      - conda: aic_interfaces/aic_model_interfaces
+      - conda: fiatlux_interfaces/fiatlux_model_interfaces
         build: h60d57d3_0
-      - conda: aic_interfaces/aic_task_interfaces
+      - conda: fiatlux_interfaces/fiatlux_task_interfaces
         build: h60d57d3_0
-      - conda: aic_model
+      - conda: fiatlux_model
         build: h60d57d3_0
-      - conda: aic_utils/aic_teleoperation
+      - conda: fiatlux_utils/fiatlux_teleoperation
         build: h60d57d3_0
-      - conda: aic_utils/aic_training_interfaces
+      - conda: fiatlux_utils/fiatlux_training_interfaces
         build: h60d57d3_0
-      - conda: aic_utils/lerobot_robot_aic
+      - conda: fiatlux_utils/lerobot_robot_fiatlux
         build: h60d57d3_0
       - pypi: https://files.pythonhosted.org/packages/18/a6/907a406bb7d359e6a63f99c313846d9eec4f7e6f7437809e03aa00fa3074/absl_py-2.4.0-py3-none-any.whl
       - pypi: https://files.pythonhosted.org/packages/9f/d2/c581486aa6c4fbd7394c23c47b83fa1a919d34194e16944241daf9e762dd/accelerate-1.12.0-py3-none-any.whl
@@ -7941,8 +7941,8 @@ packages:
   license: Apache-2.0
   size: 106066
   timestamp: 1775551583848
-- conda: aic_interfaces/aic_control_interfaces
-  name: ros-kilted-aic-control-interfaces
+- conda: fiatlux_interfaces/fiatlux_control_interfaces
+  name: ros-kilted-fiatlux-control-interfaces
   version: 0.0.1
   build: h60d57d3_0
   subdir: osx-arm64
@@ -7960,8 +7960,8 @@ packages:
   - python_abi 3.12.* *_cp312
   - numpy >=1.23,<3
   license: LicenseRef-Apache-2.0
-- conda: aic_interfaces/aic_control_interfaces
-  name: ros-kilted-aic-control-interfaces
+- conda: fiatlux_interfaces/fiatlux_control_interfaces
+  name: ros-kilted-fiatlux-control-interfaces
   version: 0.0.1
   build: hb0f4dca_0
   subdir: linux-64
@@ -7981,18 +7981,18 @@ packages:
   - python_abi 3.12.* *_cp312
   - numpy >=1.23,<3
   license: LicenseRef-Apache-2.0
-- conda: aic_example_policies
-  name: ros-kilted-aic-example-policies
+- conda: fiatlux_example_policies
+  name: ros-kilted-fiatlux-example-policies
   version: 0.0.1
   build: h60d57d3_0
   subdir: osx-arm64
   variants:
     target_platform: osx-arm64
   depends:
-  - ros-kilted-aic-control-interfaces
-  - ros-kilted-aic-model
-  - ros-kilted-aic-model-interfaces
-  - ros-kilted-aic-task-interfaces
+  - ros-kilted-fiatlux-control-interfaces
+  - ros-kilted-fiatlux-model
+  - ros-kilted-fiatlux-model-interfaces
+  - ros-kilted-fiatlux-task-interfaces
   - ros-kilted-geometry-msgs
   - transforms3d
   - ros-kilted-rclpy
@@ -8006,18 +8006,18 @@ packages:
   - python_abi 3.12.* *_cp312
   - numpy >=1.23,<3
   license: LicenseRef-Apache-2.0
-- conda: aic_example_policies
-  name: ros-kilted-aic-example-policies
+- conda: fiatlux_example_policies
+  name: ros-kilted-fiatlux-example-policies
   version: 0.0.1
   build: hb0f4dca_0
   subdir: linux-64
   variants:
     target_platform: linux-64
   depends:
-  - ros-kilted-aic-control-interfaces
-  - ros-kilted-aic-model
-  - ros-kilted-aic-model-interfaces
-  - ros-kilted-aic-task-interfaces
+  - ros-kilted-fiatlux-control-interfaces
+  - ros-kilted-fiatlux-model
+  - ros-kilted-fiatlux-model-interfaces
+  - ros-kilted-fiatlux-task-interfaces
   - ros-kilted-geometry-msgs
   - transforms3d
   - ros-kilted-rclpy
@@ -8033,17 +8033,17 @@ packages:
   - python_abi 3.12.* *_cp312
   - numpy >=1.23,<3
   license: LicenseRef-Apache-2.0
-- conda: aic_model
-  name: ros-kilted-aic-model
+- conda: fiatlux_model
+  name: ros-kilted-fiatlux-model
   version: 0.0.1
   build: h60d57d3_0
   subdir: osx-arm64
   variants:
     target_platform: osx-arm64
   depends:
-  - ros-kilted-aic-control-interfaces
-  - ros-kilted-aic-model-interfaces
-  - ros-kilted-aic-task-interfaces
+  - ros-kilted-fiatlux-control-interfaces
+  - ros-kilted-fiatlux-model-interfaces
+  - ros-kilted-fiatlux-task-interfaces
   - ros-kilted-geometry-msgs
   - ros-kilted-lifecycle-msgs
   - ros-kilted-rclpy
@@ -8057,17 +8057,17 @@ packages:
   - python_abi 3.12.* *_cp312
   - numpy >=1.23,<3
   license: LicenseRef-Apache-2.0
-- conda: aic_model
-  name: ros-kilted-aic-model
+- conda: fiatlux_model
+  name: ros-kilted-fiatlux-model
   version: 0.0.1
   build: hb0f4dca_0
   subdir: linux-64
   variants:
     target_platform: linux-64
   depends:
-  - ros-kilted-aic-control-interfaces
-  - ros-kilted-aic-model-interfaces
-  - ros-kilted-aic-task-interfaces
+  - ros-kilted-fiatlux-control-interfaces
+  - ros-kilted-fiatlux-model-interfaces
+  - ros-kilted-fiatlux-task-interfaces
   - ros-kilted-geometry-msgs
   - ros-kilted-lifecycle-msgs
   - ros-kilted-rclpy
@@ -8083,8 +8083,8 @@ packages:
   - python_abi 3.12.* *_cp312
   - numpy >=1.23,<3
   license: LicenseRef-Apache-2.0
-- conda: aic_interfaces/aic_model_interfaces
-  name: ros-kilted-aic-model-interfaces
+- conda: fiatlux_interfaces/fiatlux_model_interfaces
+  name: ros-kilted-fiatlux-model-interfaces
   version: 0.0.1
   build: h60d57d3_0
   subdir: osx-arm64
@@ -8092,7 +8092,7 @@ packages:
     target_platform: osx-arm64
   depends:
   - ros-kilted-rosidl-default-runtime
-  - ros-kilted-aic-control-interfaces
+  - ros-kilted-fiatlux-control-interfaces
   - ros-kilted-builtin-interfaces
   - ros-kilted-geometry-msgs
   - ros-kilted-sensor-msgs
@@ -8104,8 +8104,8 @@ packages:
   - python_abi 3.12.* *_cp312
   - numpy >=1.23,<3
   license: LicenseRef-Apache-2.0
-- conda: aic_interfaces/aic_model_interfaces
-  name: ros-kilted-aic-model-interfaces
+- conda: fiatlux_interfaces/fiatlux_model_interfaces
+  name: ros-kilted-fiatlux-model-interfaces
   version: 0.0.1
   build: hb0f4dca_0
   subdir: linux-64
@@ -8113,7 +8113,7 @@ packages:
     target_platform: linux-64
   depends:
   - ros-kilted-rosidl-default-runtime
-  - ros-kilted-aic-control-interfaces
+  - ros-kilted-fiatlux-control-interfaces
   - ros-kilted-builtin-interfaces
   - ros-kilted-geometry-msgs
   - ros-kilted-sensor-msgs
@@ -8127,8 +8127,8 @@ packages:
   - python_abi 3.12.* *_cp312
   - numpy >=1.23,<3
   license: LicenseRef-Apache-2.0
-- conda: aic_interfaces/aic_task_interfaces
-  name: ros-kilted-aic-task-interfaces
+- conda: fiatlux_interfaces/fiatlux_task_interfaces
+  name: ros-kilted-fiatlux-task-interfaces
   version: 0.0.1
   build: h60d57d3_0
   subdir: osx-arm64
@@ -8142,8 +8142,8 @@ packages:
   - python_abi 3.12.* *_cp312
   - numpy >=1.23,<3
   license: LicenseRef-Apache-2.0
-- conda: aic_interfaces/aic_task_interfaces
-  name: ros-kilted-aic-task-interfaces
+- conda: fiatlux_interfaces/fiatlux_task_interfaces
+  name: ros-kilted-fiatlux-task-interfaces
   version: 0.0.1
   build: hb0f4dca_0
   subdir: linux-64
@@ -8159,15 +8159,15 @@ packages:
   - python_abi 3.12.* *_cp312
   - numpy >=1.23,<3
   license: LicenseRef-Apache-2.0
-- conda: aic_utils/aic_teleoperation
-  name: ros-kilted-aic-teleoperation
+- conda: fiatlux_utils/fiatlux_teleoperation
+  name: ros-kilted-fiatlux-teleoperation
   version: 0.0.1
   build: h60d57d3_0
   subdir: osx-arm64
   variants:
     target_platform: osx-arm64
   depends:
-  - ros-kilted-aic-control-interfaces
+  - ros-kilted-fiatlux-control-interfaces
   - ros-kilted-geometry-msgs
   - ros-kilted-rclpy
   - ros2-distro-mutex
@@ -8176,15 +8176,15 @@ packages:
   - python_abi 3.12.* *_cp312
   - numpy >=1.23,<3
   license: LicenseRef-Apache-2.0
-- conda: aic_utils/aic_teleoperation
-  name: ros-kilted-aic-teleoperation
+- conda: fiatlux_utils/fiatlux_teleoperation
+  name: ros-kilted-fiatlux-teleoperation
   version: 0.0.1
   build: hb0f4dca_0
   subdir: linux-64
   variants:
     target_platform: linux-64
   depends:
-  - ros-kilted-aic-control-interfaces
+  - ros-kilted-fiatlux-control-interfaces
   - ros-kilted-geometry-msgs
   - ros-kilted-rclpy
   - ros2-distro-mutex
@@ -8195,8 +8195,8 @@ packages:
   - python_abi 3.12.* *_cp312
   - numpy >=1.23,<3
   license: LicenseRef-Apache-2.0
-- conda: aic_utils/aic_training_interfaces
-  name: ros-kilted-aic-training-interfaces
+- conda: fiatlux_utils/fiatlux_training_interfaces
+  name: ros-kilted-fiatlux-training-interfaces
   version: 0.0.1
   build: h60d57d3_0
   subdir: osx-arm64
@@ -8210,8 +8210,8 @@ packages:
   - python_abi 3.12.* *_cp312
   - numpy >=1.23,<3
   license: LicenseRef-Apache-2.0
-- conda: aic_utils/aic_training_interfaces
-  name: ros-kilted-aic-training-interfaces
+- conda: fiatlux_utils/fiatlux_training_interfaces
+  name: ros-kilted-fiatlux-training-interfaces
   version: 0.0.1
   build: hb0f4dca_0
   subdir: linux-64
@@ -10705,15 +10705,15 @@ packages:
   license: Apache-2.0
   size: 26781
   timestamp: 1775548458911
-- conda: aic_utils/lerobot_robot_aic
-  name: ros-kilted-lerobot-robot-aic
+- conda: fiatlux_utils/lerobot_robot_fiatlux
+  name: ros-kilted-lerobot-robot-fiatlux
   version: 0.0.1
   build: h60d57d3_0
   subdir: osx-arm64
   variants:
     target_platform: osx-arm64
   depends:
-  - ros-kilted-aic-control-interfaces
+  - ros-kilted-fiatlux-control-interfaces
   - ros-kilted-geometry-msgs
   - py-opencv
   - libopencv
@@ -10725,15 +10725,15 @@ packages:
   - python_abi 3.12.* *_cp312
   - numpy >=1.23,<3
   license: LicenseRef-Apache-2.0
-- conda: aic_utils/lerobot_robot_aic
-  name: ros-kilted-lerobot-robot-aic
+- conda: fiatlux_utils/lerobot_robot_fiatlux
+  name: ros-kilted-lerobot-robot-fiatlux
   version: 0.0.1
   build: hb0f4dca_0
   subdir: linux-64
   variants:
     target_platform: linux-64
   depends:
-  - ros-kilted-aic-control-interfaces
+  - ros-kilted-fiatlux-control-interfaces
   - ros-kilted-geometry-msgs
   - py-opencv
   - libopencv

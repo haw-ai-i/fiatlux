@@ -1,4 +1,4 @@
-name: build_aic_eval_image
+name: build_fiatlux_eval_image
 
 on:
   workflow_dispatch:
@@ -19,8 +19,8 @@ defaults:
     shell: bash
 
 jobs:
-  build-aic-eval-image:
-    name: Build and Push AIC Eval Image
+  build-fiatlux-eval-image:
+    name: Build and Push Fiatlux Eval Image
     runs-on: [self-hosted, linux, x64]
     permissions:
       packages: write
@@ -38,12 +38,12 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Build and push aic_eval docker image
+      - name: Build and push fiatlux_eval docker image
         uses: docker/build-push-action@v6
         with:
           push: ${{ github.event.inputs.push }}
-          tags: ghcr.io/intrinsic-dev/aic/aic_eval:${{ github.event.inputs.tag }}
-          file: ./docker/aic_eval/Dockerfile
+          tags: ghcr.io/intrinsic-dev/fiatlux/fiatlux_eval:${{ github.event.inputs.tag }}
+          file: ./docker/fiatlux_eval/Dockerfile
           no-cache: true
 
       - name: Cleanup workspace

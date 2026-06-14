@@ -19,7 +19,7 @@
 import rclpy
 
 from action_msgs.msg import GoalStatus
-from fiatlux_task_interfaces.action import InsertCable
+from fiatlux_task_interfaces.action import ReplaceBulb
 from lifecycle_msgs.msg import State, Transition
 from lifecycle_msgs.srv import ChangeState, GetState
 from rclpy.action import ActionClient
@@ -30,7 +30,7 @@ from rclpy.node import Node
 class CreateAndCancelTaskNode(Node):
     def __init__(self):
         super().__init__("test_create_and_cancel_task")
-        self.action_client = ActionClient(self, InsertCable, "insert_cable")
+        self.action_client = ActionClient(self, ReplaceBulb, "replace_bulb")
         self.get_state_client = self.create_client(GetState, "fiatlux_model/get_state")
         self.change_state_client = self.create_client(
             ChangeState, "fiatlux_model/change_state"
@@ -71,17 +71,17 @@ class CreateAndCancelTaskNode(Node):
         return model_state.id == State.PRIMARY_STATE_ACTIVE
 
     def send_goal(self):
-        self.get_logger().info("Waiting for insert_cable action server...")
+        self.get_logger().info("Waiting for replace_bulb action server...")
         self.action_client.wait_for_server()
-        goal_msg = InsertCable.Goal()
+        goal_msg = ReplaceBulb.Goal()
         goal_msg.task.id = "test_task"
-        goal_msg.task.cable_type = "sfp_sc"
-        goal_msg.task.cable_name = "cable_0"
-        goal_msg.task.plug_type = "sfp"
-        goal_msg.task.plug_name = "sfp_tip"
-        goal_msg.task.port_type = "sfp"
-        goal_msg.task.port_name = "sfp_port_0"
-        goal_msg.task.target_module_name = "nic_card_mount_0"
+        goal_msg.task.bulb_type = "sfp_sc"
+        goal_msg.task.bulb_name = "bulb_0"
+        goal_msg.task.bulb_type = "sfp"
+        goal_msg.task.bulb_name = "sfp_tip"
+        goal_msg.task.socket_type = "sfp"
+        goal_msg.task.socket_name = "sfp_port_0"
+        goal_msg.task.target_fixture_name = "nic_card_mount_0"
         goal_msg.task.time_limit = 180
         self.get_logger().info("Sending goal request...")
         self.send_goal_future = self.action_client.send_goal_async(

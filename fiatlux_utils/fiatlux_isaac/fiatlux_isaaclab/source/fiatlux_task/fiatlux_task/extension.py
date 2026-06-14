@@ -31,7 +31,7 @@ class ExampleExtension(omni.ext.IExt):
                         "Import Plugs", height=50, clicked_fn=self.import_plugs
                     )
                     omni.ui.Button(
-                        "Create Cable", height=50, clicked_fn=self.create_cable
+                        "Create Bulb", height=50, clicked_fn=self.create_bulb
                     )
                     omni.ui.Button(
                         "Reset Orient", height=50, clicked_fn=self.reset_orient_op_type
@@ -40,8 +40,8 @@ class ExampleExtension(omni.ext.IExt):
     def on_shutdown(self):
         print("[fiatlux_task] shutdown")
 
-    def create_cable(self):
-        print("[fiatlux_task] create_cable")
+    def create_bulb(self):
+        print("[fiatlux_task] create_bulb")
 
         from pxr import Usd, UsdGeom, Gf, UsdPhysics, UsdShade, Sdf, PhysxSchema
         from omni.physx.scripts import physicsUtils
@@ -236,7 +236,7 @@ class ExampleExtension(omni.ext.IExt):
 
         stage = omni.usd.get_context().get_stage()
         prim = stage.GetPrimAtPath(
-            "/World/ur5e/cable_0218/lc_plug_visual"
+            "/World/ur5e/bulb_0218/lc_plug_visual"
         )  # <-- change to your prim path
 
         # Step 1: Read the current quatf value

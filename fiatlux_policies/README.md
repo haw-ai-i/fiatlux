@@ -1,6 +1,6 @@
 # Example Policies
 
-This package contains baseline policy implementations that demonstrate different approaches to the cable insertion task. These examples serve as reference implementations and starting points for developing your own policies.
+This package contains baseline policy implementations that demonstrate different approaches to the bulb replacement task. These examples serve as reference implementations and starting points for developing your own policies.
 
 > [!NOTE]
 > **Prerequisites:** Before running these policies, ensure you have the evaluation environment running. See [Getting Started](../docs/getting_started.md) for setup instructions.
@@ -18,7 +18,7 @@ This package contains baseline policy implementations that demonstrate different
 
 ![Wave Arm Policy](../../media/wave_arm_policy.gif)
 
-A minimal example showing how to implement the `insert_cable()` callback and issue motion commands to the arm. This policy simply moves the robot arm back and forth in a waving motion without attempting to solve the task.
+A minimal example showing how to implement the `replace_bulb()` callback and issue motion commands to the arm. This policy simply moves the robot arm back and forth in a waving motion without attempting to solve the task.
 
 **Purpose:** Demonstrates the basic Policy API structure.
 
@@ -66,7 +66,7 @@ A proof-of-concept implementation of a [LeRobot ACT](https://huggingface.co/docs
 
 You may need to modify `pixi.toml` in order to run `lerobot` with your hardware setup. See [Troubleshooting](../docs/troubleshooting.md#nvidia-rtx-50xx-cards-not-supported-on-pytorch-version-locked-in-pixi). 
 
-**Purpose:** Demonstrates integration of a trained neural network policy for the cable insertion task.
+**Purpose:** Demonstrates integration of a trained neural network policy for the bulb replacement task.
 
 **Launch the evaluation environment:**
 ```bash

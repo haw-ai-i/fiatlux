@@ -15,7 +15,7 @@ scoring:
         type: "tf2_msgs/msg/TFMessage"
         latched: true
     - topic:
-    # TF that contains the cable link poses
+    # TF that contains the bulb link poses
         name: "/scoring/tf"
         type: "tf2_msgs/msg/TFMessage"
     - topic:
@@ -23,7 +23,7 @@ scoring:
         name: "/fiatlux/gazebo/contacts/off_limit"
         type: "ros_gz_interfaces/msg/Contacts"
     - topic:
-    # Insertion force sensed by the force torque sensor
+    # Replacement force sensed by the force torque sensor
         name: "/fts_broadcaster/wrench"
         type: "geometry_msgs/msg/WrenchStamped"
     - topic:
@@ -35,8 +35,8 @@ scoring:
         name: "/fiatlux_controller/pose_commands"
         type: "fiatlux_control_interfaces/msg/MotionUpdate"
     - topic:
-    # Cable plug-port insertion task completion event
-        name: "/scoring/insertion_event"
+    # Bulb socket replacement task completion event
+        name: "/scoring/replacement_event"
         type: "std_msgs/msg/String"
     - topic:
     # Controller state for force torque tare
@@ -126,8 +126,8 @@ trials:
             entity_present: False
           sc_mount_rail_1:
             entity_present: False
-        cables:
-          cable_0:
+        bulbs:
+          bulb_0:
             pose:
               gripper_offset:
                 x: 0.0
@@ -136,17 +136,17 @@ trials:
               roll: 0.4432
               pitch: -0.4838
               yaw: 1.3303
-            attach_cable_to_gripper: True
-            cable_type: "sfp_sc_cable" # [sfp_sc_cable, sfp_sc_cable_reversed]
+            attach_bulb_to_gripper: True
+            bulb_type: "sfp_sc_bulb" # [sfp_sc_bulb, sfp_sc_bulb_reversed]
     tasks:
       task_1:
-        cable_type: "sfp_sc"
-        cable_name: "cable_0"
-        plug_type: "sfp"
-        plug_name: "sfp_tip"
-        port_type: "sfp"
-        port_name: "sfp_port_0"
-        target_module_name: "nic_card_mount_0"
+        bulb_type: "sfp_sc"
+        bulb_name: "bulb_0"
+        bulb_type: "sfp"
+        bulb_name: "sfp_tip"
+        socket_type: "sfp"
+        socket_name: "sfp_port_0"
+        target_fixture_name: "nic_card_mount_0"
         time_limit: 180
   trial_2:
     scene:
@@ -220,8 +220,8 @@ trials:
             entity_present: False
           sc_mount_rail_1:
             entity_present: False
-        cables:
-          cable_0:
+        bulbs:
+          bulb_0:
             pose:
               gripper_offset:
                 x: 0.0
@@ -230,17 +230,17 @@ trials:
               roll: 0.4432
               pitch: -0.4838
               yaw: 1.3303
-            attach_cable_to_gripper: True
-            cable_type: "sfp_sc_cable" # [sfp_sc_cable, sfp_sc_cable_reversed]
+            attach_bulb_to_gripper: True
+            bulb_type: "sfp_sc_bulb" # [sfp_sc_bulb, sfp_sc_bulb_reversed]
     tasks:
       task_1:
-        cable_type: "sfp_sc"
-        cable_name: "cable_0"
-        plug_type: "sfp"
-        plug_name: "sfp_tip"
-        port_type: "sfp"
-        port_name: "sfp_port_0"
-        target_module_name: "nic_card_mount_1"
+        bulb_type: "sfp_sc"
+        bulb_name: "bulb_0"
+        bulb_type: "sfp"
+        bulb_name: "sfp_tip"
+        socket_type: "sfp"
+        socket_name: "sfp_port_0"
+        target_fixture_name: "nic_card_mount_1"
         time_limit: 180
   trial_3:
     scene:
@@ -302,8 +302,8 @@ trials:
             entity_present: False
           sc_mount_rail_1:
             entity_present: False
-        cables:
-          cable_1:
+        bulbs:
+          bulb_1:
             pose:
               gripper_offset:
                 x: 0.0
@@ -312,17 +312,17 @@ trials:
               roll: 0.4432
               pitch: -0.4838
               yaw: 1.3303
-            attach_cable_to_gripper: True
-            cable_type: "sfp_sc_cable_reversed" # [sfp_sc_cable, sfp_sc_cable_reversed]
+            attach_bulb_to_gripper: True
+            bulb_type: "sfp_sc_bulb_reversed" # [sfp_sc_bulb, sfp_sc_bulb_reversed]
     tasks:
       task_1:
-        cable_type: "sfp_sc"
-        cable_name: "cable_1"
-        plug_type: "sc"
-        plug_name:  "sc_tip"
-        port_type: "sc"
-        port_name: "sc_port_base"
-        target_module_name: "sc_port_1"
+        bulb_type: "sfp_sc"
+        bulb_name: "bulb_1"
+        bulb_type: "sc"
+        bulb_name:  "sc_tip"
+        socket_type: "sc"
+        socket_name: "sc_port_base"
+        target_fixture_name: "sc_port_1"
         time_limit: 180
 robot:
   home_joint_positions:

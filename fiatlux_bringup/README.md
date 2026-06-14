@@ -2,7 +2,7 @@
 
 ## Overview
 
-`fiatlux_bringup` provides launch files and configuration for setting up the AI for Industry Challenge simulation environment. This package is part of the evaluation component and is your entry point for starting the evaluation environment, spawning robots and task boards, and running trials.
+`fiatlux_bringup` provides launch files and configuration for setting up the Fiatlux Benchmark simulation environment. This package is part of the evaluation component and is your entry point for starting the evaluation environment, spawning robots and task boards, and running trials.
 
 **What This Package Does:**
 - Launches Gazebo simulation with the UR5e robot
@@ -103,18 +103,18 @@ ros2 launch fiatlux_bringup fiatlux_gz_bringup.launch.py [parameters]
 - `task_board_pitch` (default: `"0.0"`) - Task board spawn pitch orientation (radians)
 - `task_board_yaw` (default: `"0.0"`) - Task board spawn yaw orientation (radians)
 
-**Cable Configuration:**
-- `spawn_cable` (default: `"false"`) - Whether to spawn the cable
-- `cable_description_file` (default: `"cable.sdf.xacro"`) - Cable SDF/XACRO file
-- `attach_cable_to_gripper` (default: `"false"`) - Whether to attach cable to gripper
-- `cable_type` (default: `"sfp_sc_cable"`) - Type of cable to spawn. Options: [`sfp_sc_cable`, `sfp_sc_cable_reversed`]
-- `cable_x` (default: `"0.172"`) - Cable spawn X position (meters)
-- `cable_y` (default: `"0.024"`) - Cable spawn Y position (meters)
-- `cable_z` (default: `"1.518"`) - Cable spawn Z position (meters)
-    - Note: set `cable_z` to `1.508` if `cable_type` is `sfp_sc_cable_reversed`
-- `cable_roll` (default: `"0.4432"`) - Cable spawn roll orientation (radians)
-- `cable_pitch` (default: `"-0.48"`) - Cable spawn pitch orientation (radians)
-- `cable_yaw` (default: `"1.3303"`) - Cable spawn yaw orientation (radians)
+**Bulb Configuration:**
+- `spawn_bulb` (default: `"false"`) - Whether to spawn the bulb
+- `bulb_description_file` (default: `"bulb.sdf.xacro"`) - Bulb SDF/XACRO file
+- `attach_bulb_to_gripper` (default: `"false"`) - Whether to attach bulb to gripper
+- `bulb_type` (default: `"sfp_sc_bulb"`) - Type of bulb to spawn. Options: [`sfp_sc_bulb`, `sfp_sc_bulb_reversed`]
+- `bulb_x` (default: `"0.172"`) - Bulb spawn X position (meters)
+- `bulb_y` (default: `"0.024"`) - Bulb spawn Y position (meters)
+- `bulb_z` (default: `"1.518"`) - Bulb spawn Z position (meters)
+    - Note: set `bulb_z` to `1.508` if `bulb_type` is `sfp_sc_bulb_reversed`
+- `bulb_roll` (default: `"0.4432"`) - Bulb spawn roll orientation (radians)
+- `bulb_pitch` (default: `"-0.48"`) - Bulb spawn pitch orientation (radians)
+- `bulb_yaw` (default: `"1.3303"`) - Bulb spawn yaw orientation (radians)
 
 **Gazebo Configuration:**
 - `world_file` (default: `"fiatlux.sdf"`) - Gazebo world file
@@ -238,25 +238,25 @@ Five NIC card mount rails for attaching network interface cards.
 
 ---
 
-### 3. `spawn_cable.launch.py`
+### 3. `spawn_bulb.launch.py`
 
-Standalone launch file for spawning a cable in an existing Gazebo simulation.
+Standalone launch file for spawning a bulb in an existing Gazebo simulation.
 
 #### Usage
 ```bash
-ros2 launch fiatlux_bringup spawn_cable.launch.py
+ros2 launch fiatlux_bringup spawn_bulb.launch.py
 ```
 
 #### Configurable Parameters
 
-- `cable_description_file` (default: `"cable.sdf.xacro"`) - Cable URDF/XACRO description file
-- `cable_x` (default: `"-0.35"`) - Cable spawn X position (meters)
-- `cable_y` (default: `"0.4"`) - Cable spawn Y position (meters)
-- `cable_z` (default: `"1.15"`) - Cable spawn Z position (meters)
-- `cable_roll` (default: `"0.0"`) - Cable spawn roll orientation (radians)
-- `cable_pitch` (default: `"0.0"`) - Cable spawn pitch orientation (radians)
-- `cable_yaw` (default: `"0.0"`) - Cable spawn yaw orientation (radians)
-- `attach_cable_to_gripper` (default: `"false"`) - Whether to attach cable to gripper
+- `bulb_description_file` (default: `"bulb.sdf.xacro"`) - Bulb URDF/XACRO description file
+- `bulb_x` (default: `"-0.35"`) - Bulb spawn X position (meters)
+- `bulb_y` (default: `"0.4"`) - Bulb spawn Y position (meters)
+- `bulb_z` (default: `"1.15"`) - Bulb spawn Z position (meters)
+- `bulb_roll` (default: `"0.0"`) - Bulb spawn roll orientation (radians)
+- `bulb_pitch` (default: `"0.0"`) - Bulb spawn pitch orientation (radians)
+- `bulb_yaw` (default: `"0.0"`) - Bulb spawn yaw orientation (radians)
+- `attach_bulb_to_gripper` (default: `"false"`) - Whether to attach bulb to gripper
 
 ---
 
@@ -273,9 +273,9 @@ ros2 launch fiatlux_bringup fiatlux_gz_bringup.launch.py
 ros2 launch fiatlux_bringup fiatlux_gz_bringup.launch.py robot_x:=1.0 robot_y:=0.5
 ```
 
-### Launch with Task Board and Cable
+### Launch with Task Board and Bulb
 ```bash
-ros2 launch fiatlux_bringup fiatlux_gz_bringup.launch.py spawn_task_board:=true spawn_cable:=true
+ros2 launch fiatlux_bringup fiatlux_gz_bringup.launch.py spawn_task_board:=true spawn_bulb:=true
 ```
 
 ### Spawn Task Board with LC Mount on Rail 0

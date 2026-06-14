@@ -1,6 +1,6 @@
 # FIATLUX Engine
 
-The FIATLUX Engine is the orchestrator for the AI for Industry Challenge.
+The FIATLUX Engine is the orchestrator for the Fiatlux Benchmark.
 It manages trial execution, validates participant models, spawns task boards in simulation, and monitors task completion.
 
 ## Overview

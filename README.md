@@ -1,13 +1,13 @@
-# AI for Industry Challenge Toolkit
+# Fiatlux Benchmark Toolkit
 
 [![build](https://github.com/intrinsic-dev/fiatlux/actions/workflows/build.yml/badge.svg)](https://github.com/intrinsic-dev/fiatlux/actions/workflows/build.yml)
 [![style](https://github.com/intrinsic-dev/fiatlux/actions/workflows/style.yml/badge.svg)](https://github.com/intrinsic-dev/fiatlux/actions/workflows/style.yml)
 
 ![](../media/fiatlux_banner.png)
 
-The **AI for Industry Challenge** is an open competition for developers and roboticists aimed at solving some of the hardest, high-impact problems in robotics and manufacturing.
+The **Fiatlux Benchmark** is an open competition for developers and roboticists aimed at solving some of the hardest, high-impact problems in robotics and manufacturing.
 
-This repository contains the official toolkit to help participants start developing their solutions. For registration details, official rules, and FAQs, please visit the [AI for Industry Challenge event page](https://www.intrinsic.ai/events/ai-for-industry-challenge).
+This repository contains the official toolkit to help participants start developing their solutions. For registration details, official rules, and FAQs, please visit the [Fiatlux Benchmark event page](https://www.intrinsic.ai/events/ai-for-industry-challenge).
 
 ---
 
@@ -51,7 +51,7 @@ Follow the sections below to navigate through each phase of the process.
 
 ![FIATLUX Competition Components](../media/fiatlux_competition_components.png)
 
-The AI for Industry Challenge toolkit is divided into **two main components**:
+The Fiatlux Benchmark toolkit is divided into **two main components**:
 
 ### 1. Evaluation Component (Provided - Run by Organizers)
 
@@ -67,9 +67,9 @@ This component provides the complete evaluation infrastructure:
 
 This is what you develop and submit:
 - **A ROS 2 node** that follows the behavioral requirements defined in [Challenge Rules](./docs/challenge_rules.md).
-- **Your custom logic** - Code to process sensor data and command the robot to insert cables.
+- **Your custom logic** - Code to process sensor data and command the robot to replace bulbs.
 
-**What you provide:** A container with a ROS 2 Lifecycle node named `fiatlux_model` that responds to the `/insert_cable` action and outputs robot motion commands via standard ROS topics/services.
+**What you provide:** A container with a ROS 2 Lifecycle node named `fiatlux_model` that responds to the `/replace_bulb` action and outputs robot motion commands via standard ROS topics/services.
 
 **Convenient Entry Point:** We provide an `fiatlux_model` framework that handles all the ROS 2 boilerplate and lifecycle management. You simply implement a Python policy class that gets dynamically loaded at runtime. See the [Policy Integration Guide](./docs/policy.md) for details.
 
@@ -84,7 +84,7 @@ This is what you develop and submit:
 
 **Submission Requirements:**
 - Package your solution using the provided `fiatlux_model` Dockerfile.
-- Submit your container - it must respond to standard ROS inputs and command the robot to insert cables.
+- Submit your container - it must respond to standard ROS inputs and command the robot to replace bulbs.
 - Your container interfaces with the evaluation component via ROS topics.
 
 ---
@@ -165,7 +165,7 @@ Manages trial execution, validates participant models, and collects scoring data
 
 ### Reference Materials
 
-* **[Glossary](./docs/glossary.md):** Terminology and definitions used throughout the AI for Industry Challenge
+* **[Glossary](./docs/glossary.md):** Terminology and definitions used throughout the Fiatlux Benchmark
 
 ### Submission
 
@@ -179,7 +179,7 @@ Manages trial execution, validates participant models, and collects scoring data
 - **Discussions**: Engage in conversations and ask questions about the challenge on [Open Robotics Discourse](https://discourse.openrobotics.org/c/competitions/ai-for-industry-challenge/). The community is encouraged to participate in discussions and assist each other.
 - **Issues**: Report any bugs or technical issues via [GitHub Issues](https://github.com/intrinsic-dev/fiatlux/issues). Please refrain from using the Issue tracker for general questions about the challenge.
   - **Note:**: Review the list of [known issues](https://github.com/intrinsic-dev/fiatlux/issues?q=is%3Aissue%20state%3Aopen%20label%3A%22known%20issue%22) and [bugs](https://github.com/intrinsic-dev/fiatlux/issues?q=is%3Aissue%20state%3Aopen%20label%3Abug) before opening a new ticket.
-- **Event Page**: Visit the [AI for Industry Challenge](https://www.intrinsic.ai/events/ai-for-industry-challenge) for official updates.
+- **Event Page**: Visit the [Fiatlux Benchmark](https://www.intrinsic.ai/events/ai-for-industry-challenge) for official updates.
 
 ---
 

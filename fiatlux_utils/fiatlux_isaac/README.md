@@ -1,6 +1,6 @@
 # FIATLUX Isaac Lab Integration
 
-This package provides documentation, scripts, and utilities for setting up AI for Industry Challenge (FIATLUX) environment in Isaac Lab.
+This package provides documentation, scripts, and utilities for setting up Fiatlux Benchmark (FIATLUX) environment in Isaac Lab.
 
 
 ## Overview
@@ -81,7 +81,7 @@ Extract and place `Intrinsic_assets` directory inside `fiatlux_task`:
 **Contents of Intrinsic_assets directory** (from the downloaded pack):
 ```
 Intrinsic_assets/
-├── fiatlux_unified_robot_cable_sdf.usd
+├── fiatlux_unified_robot_bulb_sdf.usd
 ├── assets
 │   ├── NIC Card
 │   │   ├── nic_card.usd
