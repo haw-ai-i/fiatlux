@@ -3,7 +3,7 @@
 <package format="3">
   <name>fiatlux_model</name>
   <version>0.0.1</version>
-  <description>Python node which wraps a control model for the AI Challenge</description>
+  <description>Python node which wraps a control model for the Fiatlux benchmark</description>
   <maintainer email="morganquigley@intrinsic.ai">Morgan Quigley</maintainer>
   <license>Apache-2.0</license>
 

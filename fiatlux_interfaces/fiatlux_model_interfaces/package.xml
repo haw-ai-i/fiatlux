@@ -3,7 +3,7 @@
 <package format="3">
   <name>fiatlux_model_interfaces</name>
   <version>0.0.1</version>
-  <description>ROS 2 interfaces to and from the AI model which controls the robot in the AI Challenge</description>
+  <description>ROS 2 interfaces to and from the control model in the Fiatlux benchmark</description>
   <maintainer email="morganquigley@intrinsic.ai">Morgan Quigley</maintainer>
   <license>Apache-2.0</license>
 

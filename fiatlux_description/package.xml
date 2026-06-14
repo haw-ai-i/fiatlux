@@ -3,7 +3,7 @@
 <package format="3">
   <name>fiatlux_description</name>
   <version>0.0.1</version>
-  <description>This package contains the scene description for the challenge</description>
+  <description>This package contains the scene description for the Fiatlux benchmark</description>
   <maintainer email="yadunund@intrinsic.ai">Yadunund Vijay</maintainer>
   <license>Apache License 2.0</license>
 

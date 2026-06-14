@@ -81,7 +81,7 @@ enum class EngineState : uint8_t {
 // States progress from Uninitialized -> EndpointsReady -> SimulatorReady
 // -> ScoringReady -> TasksExecuting -> AllTasksCompleted
 // Uninitialized: Trial has not started.
-// ModelReady: Participant model node is available and conforms to challenge
+// ModelReady: Fiatlux model node is available and conforms to benchmark
 // requirements.
 // EndpointsReady: Required nodes are up and running.
 // SimulatorReady: Simulator is ready with the task board and bulbs spawned.
@@ -213,9 +213,8 @@ class Engine {
   /// \param[in] home_robot If true, also home the robot after cleanup
   void reset_simulator(const Trial& trial, bool home_robot = true);
 
-  /// \brief Check if the participant model is ready. As per challenge
-  /// requirements. See challenge_rules.md for details. \return True if the
-  /// model is ready, false otherwise.
+  /// \brief Check if the model is ready. As per benchmark
+  /// requirements. \return True if the model is ready, false otherwise.
   bool check_model();
 
   /// \brief Check if required endpoints are available.
@@ -273,7 +272,7 @@ class Engine {
   bool transition_model_lifecycle_node(const uint8_t transition);
 
   /// @brief Configure the model node and check expectations in the configured
-  /// state as per challenge requirements.
+  /// state as per benchmark requirements.
   /// @return True if configuration succeeded, false otherwise.
   bool configure_model_node();
 

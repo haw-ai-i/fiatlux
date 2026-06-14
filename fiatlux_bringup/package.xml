@@ -3,7 +3,7 @@
 <package format="3">
   <name>fiatlux_bringup</name>
   <version>0.0.1</version>
-  <description>Launch files for the challenge</description>
+  <description>Launch files for the Fiatlux benchmark</description>
   <maintainer email="yadunund@intrinsic.ai">Yadunund Vijay</maintainer>
   <license>Apache-2.0</license>
 

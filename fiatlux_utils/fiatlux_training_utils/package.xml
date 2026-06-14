@@ -3,7 +3,7 @@
 <package format="3">
   <name>fiatlux_training_utils</name>
   <version>0.0.1</version>
-  <description>Training-oriented bringup utilities for the AI Challenge</description>
+  <description>Training-oriented bringup utilities for the Fiatlux benchmark</description>
   <maintainer email="yadunund@intrinsic.ai">Yadunund Vijay</maintainer>
   <author email="jennifer.e.buehler@gmail.com">Jennifer Buehler</author>
   <license>Apache-2.0</license>

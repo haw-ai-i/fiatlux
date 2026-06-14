@@ -14,7 +14,7 @@ setup(
     zip_safe=True,
     maintainer="Morgan Quigley",
     maintainer_email="morganquigley@intrinsic.ai",
-    description="Example policies for the AI challenge",
+    description="Example policies for the Fiatlux benchmark",
     license="Apache-2.0",
     extras_require={
         "test": [

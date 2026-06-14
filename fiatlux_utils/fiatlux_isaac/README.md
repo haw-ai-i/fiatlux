@@ -7,7 +7,7 @@ This package provides documentation, scripts, and utilities for setting up Fiatl
 
 [Isaac Lab](https://isaac-sim.github.io/IsaacLab/main/index.html) is a unified and modular framework for robot learning that aims to simplify 
 common workflows in robotics research (such as reinforcement learning, learning from demonstrations, and motion planning). In collaboration with 
-**NVIDIA**, this integration enables participants to:
+**NVIDIA**, this integration enables users to:
 
 - Perform teleoperation in FIATLUX environment 
 - Record and replay episodes for Imitation Learning
@@ -17,7 +17,7 @@ common workflows in robotics research (such as reinforcement learning, learning 
 ## Workflow
 
 > [!TIP]
-> If you run into issues that appear to be related to **Isaac Lab** (e.g. framework behavior, Docker setup, or Isaac Lab APIs), please open an issue on the [Isaac Lab GitHub repository](https://github.com/isaac-sim/IsaacLab). The maintainers there are best placed to help. For issues specific to the FIATLUX integration or challenge assets, use this repo’s issue tracker.
+> If you run into issues that appear to be related to **Isaac Lab** (e.g. framework behavior, Docker setup, or Isaac Lab APIs), please open an issue on the [Isaac Lab GitHub repository](https://github.com/isaac-sim/IsaacLab). The maintainers there are best placed to help. For issues specific to the FIATLUX integration or benchmark assets, use this repo’s issue tracker.
 
 **Recommended:** Use the assets prepared by the NVIDIA team. Download and place them as instructed, then start the container and run the task.
 
@@ -70,7 +70,7 @@ git clone git@github.com:intrinsic-dev/fiatlux.git
 
 ## Assets
 
-The **NVIDIA team has prepared the assets** needed for the challenge. [Download the provided asset pack](https://developer.nvidia.com/downloads/Omniverse/learning/Events/Hackathons/Intrinsic_assets.zip), extract it, and place the files as follows.
+The **NVIDIA team has prepared the assets** needed for the benchmark. [Download the provided asset pack](https://developer.nvidia.com/downloads/Omniverse/learning/Events/Hackathons/Intrinsic_assets.zip), extract it, and place the files as follows.
 
 Extract and place `Intrinsic_assets` directory inside `fiatlux_task`:
 

@@ -3,7 +3,7 @@
 <package format="3">
   <name>fiatlux_training_interfaces</name>
   <version>0.0.1</version>
-  <description>ROS 2 interfaces for training-oriented AI Challenge utilities</description>
+  <description>ROS 2 interfaces for training-oriented Fiatlux utilities</description>
   <maintainer email="yadunund@intrinsic.ai">Yadunund Vijay</maintainer>
   <license>Apache-2.0</license>
 

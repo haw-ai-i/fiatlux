@@ -14,7 +14,7 @@ setup(
     zip_safe=True,
     maintainer="Morgan Quigley",
     maintainer_email="morganquigley@intrinsic.ai",
-    description="Control model interface for the AI Challenge",
+    description="Control model interface for the Fiatlux benchmark",
     license="Apache-2.0",
     extras_require={
         "test": [
