@@ -45,7 +45,8 @@ To facilitate progressive training (sim-to-real and reinforcement learning boots
 ## 3. Implementation Plan by Component
 
 ### Component 1: Simulation & Asset Composition
-* Assemble G1, ladder, lamp, and bulb USD files into a composite world asset: `fiatlux_g1_scene.usd`.
+* **Pull G1 & Inspire Hands Assets**: Locate, pull, and aggregate the raw USD/URDF files for the Unitree G1 humanoid robot and the Inspire dexterous hands from internal systems/repositories.
+* Assemble the G1 robot (with Inspire hands attached), ladder, lamp, and bulb USD files into a composite world asset: `fiatlux_g1_scene.usd`.
 * Define specific reference coordinate frames and contact sensors (hands, feet, rungs, bulb screw thread).
 * Update `fiatlux_task_env_cfg.py` to target the G1 humanoid and specify observation, action, and termination limits (e.g. timeout, fall detection).
 * Add domain randomization in `mdp/events.py` to vary ladder incline, lamp socket placement, and initial bulb position during reset.
