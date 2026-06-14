@@ -1,0 +1,9 @@
+{
+    "typeCheckingMode": "basic",
+    "include": [
+        "fiatlux_utils/lerobot_robot_fiatlux",
+    ],
+    "exclude": [
+        "**/build"
+    ]
+}
