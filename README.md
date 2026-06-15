@@ -69,6 +69,13 @@ This repository contains the toolkit to configure the simulation environments, r
    - Use the provided Isaac Lab simulation environment to test your policy.
    - Run `fiatlux_engine` with the `sample_config` in [`fiatlux_engine/config/`](./fiatlux_engine/config/) to test different scenarios.
 
+5. **📅 Project Timeline & Roadmaps**
+   - Review the unified [Project Timeline & Milestones](./docs/timeline_and_milestones.md) for the 12-week schedule.
+   - Explore the individual technical plans:
+     - [Phase 1: Infrastructure Setup](./docs/phase_1_plan.md)
+     - [Phase 2: Simulation Policy Training](./docs/phase_2_plan.md)
+     - [Phase 3: Sim-to-Real Gap Closure](./docs/phase_3_plan.md)
+
 ---
 
 ## Toolkit Architecture

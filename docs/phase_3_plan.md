@@ -19,18 +19,18 @@ To close the sim-to-real gap and safely execute the simulation-trained policy on
 
 ```mermaid
 graph LR
-    Policy[Trained Policy] --> ControllerAdapter[ROS 2 to Unitree SDK 2 Bridge]
-    ControllerAdapter --> RealRobot[Physical G1 & Inspire Hands]
+    Policy[Trained Policy] --> ControllerAdapter[WBC Input Adapter]
+    ControllerAdapter --> GrootWBC[Groot Whole-Body Control]
+    GrootWBC --> RealG1[Physical G1 Actuators]
+    ControllerAdapter --> InspireBridge[Inspire Hands Serial/CAN Bridge]
     RealSensors[Cameras & F/T Sensors] --> PerceptionBridge[State Estimation & Alignment]
     PerceptionBridge --> Policy
 ```
 
 ### A. Hardware Driver & Controller Adapter (Policy Action Interface)
-* **SDK Bridge**: Implement a ROS 2 hardware interface mapping the policy's action outputs (e.g. Cartesian end-effector targets, joint positions, or joint torques) to the **Unitree SDK 2 / socket API** for G1 legs and arms, and the serial/CAN bus protocol for the **Inspire hands**.
-* **Safety Filters**: Implement a low-level safety wrapper running on the G1's onboard computer. This filter will:
-  - Enforce maximum joint limits and joint velocity safety margins.
-  - Saturation-limit the commanded torques to prevent joint over-stress.
-  - Instantly command motor shutdown (E-stop) if contact forces exceed predefined limits.
+* **WBC Target Mapper**: Since Groot WBC abstracts low-level motor commands (Unitree SDK 2 mapping, joint limits, self-collision), we need a bridge to map the policy's action outputs (e.g. Cartesian end-effector targets or joint trajectories) to Groot WBC's ROS 2 input topics.
+* **Inspire Hands Serial Bridge**: Implement a serial/CAN bus driver wrapper to send finger command targets directly to the Inspire dexterous hands.
+* **E-Stop Safety Wrapper**: Set up high-level safety monitors that check for anomalous acceleration or excessive wrist F/T sensor forces, sending a trigger command to engage Groot WBC's built-in emergency braking/E-stop modes.
 
 ### B. Perception Alignment & State Estimation (Policy Observation Interface)
 * **Object Localization**: Set up vision tracking (e.g., ArUco markers or depth-based segmentation models like YOLO) using the G1's wrist and head-mounted cameras to detect:
@@ -40,9 +40,9 @@ graph LR
 * **Coordinate Mapping**: Convert the real-world segmented object coordinates into the identical observation frames defined in the simulation (`fiatlux_task_env_cfg.py`), supplying the policy with the same observations it expects from simulation.
 
 ### C. System Identification & Calibration (SysID)
-* **Latency Calibration**: Measure the round-trip latency (policy inference -> ROS 2 message transmission -> Unitree SDK network delay -> joint motor response). Inject this delay distribution directly into the Isaac Lab simulation during Phase 2 training.
-* **Actuator and Compliance Modeling**: Calibrate joint friction, motor torque constants, and gripper spring/compliance behaviors to match physical responses.
-* **Friction Identification**: Calibrate the friction coefficient between the physical G1 foot pads and the ladder rungs.
+* **Inference-to-WBC Latency Calibration**: Measure and profile the latency from policy forward pass on the host computer to message receipt by the Groot WBC controller. Inject this round-trip communication delay distribution into the Isaac Lab simulation during Phase 2 training.
+* **Camera-to-Hand Calibration**: Calibrate the camera transforms relative to the G1 hand/wrist frames to ensure accurate visual alignment for grasping.
+* **WBC State Alignment**: Verify that the floating-base odometry estimated by Groot WBC aligns with the perception system's coordinate frames.
 
 ### D. Safety & Fall Prevention Infrastructure (Physical & Software)
 * **Physical Gantry/Harness**: A ceiling-mounted or frame-mounted vertical safety tether/harness to catch the G1 humanoid in the event of a slip, loss of balance, or policy failure during climbing.
