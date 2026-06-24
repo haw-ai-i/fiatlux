@@ -1,18 +1,22 @@
-# python artifacts
+# Python
 __pycache__/
+*.py[cod]
 *.egg-info/
+.pytest_cache/
 build/
-files.txt
+dist/
 
-# pixi environments
-.pixi/*
-!.pixi/config.toml
+# Isaac Lab / training outputs
+logs/
+outputs/
+videos/
+wandb/
+runs/
+_isaac_sim*
 
-# Ignore mesh/texture assets in fiatlux_mujoco mjcf, keep only .xml
-fiatlux_utils/fiatlux_mujoco/mjcf/*.obj
-fiatlux_utils/fiatlux_mujoco/mjcf/*.stl
-fiatlux_utils/fiatlux_mujoco/mjcf/*.png
+# Editor / OS
+.vscode/
+.idea/
+.DS_Store
 
-# Ignore fiatlux_isaac usd assets
-fiatlux_utils/fiatlux_isaac/fiatlux_isaaclab/source/fiatlux_task/fiatlux_task/tasks/manager_based/fiatlux_task/Intrinsic_assets/
-
+# Assets are handled by assets/.gitignore (pulled from GCS, not tracked)
