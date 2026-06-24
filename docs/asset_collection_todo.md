@@ -32,4 +32,6 @@ This document tracks the required assets for the Fiatlux benchmark that need to 
 - **Troubleshooting:** If you encounter an access error (e.g., 403 Forbidden) when trying to upload or download assets, please reach out to **molybog@hawaii.edu**.
 
 ## Next Steps
-Once the assets are uploaded to the GCP bucket, the `fiatlux_assets/scripts/download_assets.sh` script (which runs automatically during `pixi run bash` or activation) will sync them to `fiatlux_assets/models/`. You do not need to check these assets into Git.
+Once the assets are uploaded to the GCP bucket, run `./assets/download_assets.sh` to
+sync them into the git-ignored `assets/` directory (`assets/unitree_g1/`,
+`assets/bulb_socket/`, `assets/ladder/`). You do not need to check these assets into Git.

@@ -1,0 +1,4 @@
+# Asset binaries are pulled from the GCS bucket by download_assets.sh, not tracked.
+*
+!.gitignore
+!download_assets.sh

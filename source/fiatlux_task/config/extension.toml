@@ -1,0 +1,21 @@
+[package]
+
+# Semantic Versioning is used: https://semver.org/
+version = "0.1.0"
+
+# Description
+category = "isaaclab"
+readme = "README.md"
+
+title = "Fiatlux Benchmark"
+author = "Fiatlux Benchmark Contributors"
+maintainer = "Fiatlux Benchmark Contributors"
+description = "Unitree G1 light-bulb replacement benchmark for Isaac Lab."
+repository = "https://github.com/haw-ai-i/fiatlux"
+keywords = ["isaaclab", "benchmark", "humanoid", "unitree", "g1", "manipulation"]
+
+[dependencies]
+"isaacsim.core.api" = {}
+
+[[python.module]]
+name = "fiatlux_task"
