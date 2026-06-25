@@ -75,8 +75,15 @@ Minimal import test:
   - `inspect`: scan the local encrypted dataset layout and write a JSON manifest without requiring a BEHAVIOR-1K repo checkout.
 - The helper intentionally does not decrypt/persist assets, upload assets, or store the OmniGibson key in the repo.
 - First `download-key` attempts hung inside the official `asset_utils.download_key()` call; no `omnigibson.key` was created yet.
-- The asset zip download is running on DGX via `download-assets --accept-license --download-dir /tmp/tmpshjpkxua`, extracting into `/raid/home/pbushuyeu/fiatlux_issue2_behavior1k/omnigibson_data` after the zip completes.
-- The first interrupted Hugging Face partial remains in `/tmp/tmpshjpkxua`; the restarted partial is actively growing. The real dataset layout is not available until extraction finishes.
+- `download-assets --accept-license --download-dir /tmp/tmpshjpkxua` completed on DGX and extracted the encrypted dataset into `/raid/home/pbushuyeu/fiatlux_issue2_behavior1k/omnigibson_data`.
+- Extracted dataset size is about 33 GB at `/raid/home/pbushuyeu/fiatlux_issue2_behavior1k/omnigibson_data/behavior-1k-assets`.
+- The temporary Hugging Face download directory `/tmp/tmpshjpkxua` was removed after extraction and manifest copy; DGX root filesystem returned to about 98 GB free.
+- Offline manifest generation completed at `/raid/home/pbushuyeu/fiatlux_issue2_behavior1k/outputs/behavior1k_asset_manifest.json` and was copied into this repo as `journal/specs/issue-2-behavior1k-asset-manifest.json`.
+- Manifest result: 1,829 object categories found. Known candidate models are present as encrypted USD assets:
+  - `light_bulb/kfmkwd`: replacement bulb, `kfmkwd.encrypted.usd`, about 2.3 MB model folder.
+  - `broken_light_bulb/cugtye`: broken bulb, `cugtye.encrypted.usd`, about 12.4 MB model folder.
+  - `table_lamp/ehjsdz`: lamp fixture, `ehjsdz.encrypted.usd`, about 5.2 MB model folder.
+- Plain `.usd` files are not present for those candidates; the expected files are `.encrypted.usd`. No decrypted assets were persisted or uploaded.
 
 ### Dataset Location and Layout
 
