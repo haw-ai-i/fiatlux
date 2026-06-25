@@ -2,3 +2,5 @@
 *
 !.gitignore
 !download_assets.sh
+!README.md
+!behavior1k_uploaded_manifest.csv
