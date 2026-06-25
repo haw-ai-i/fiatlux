@@ -74,7 +74,7 @@ Minimal import test:
   - `download-key`: accept EULA and install only `omnigibson.key`.
   - `inspect`: scan the local encrypted dataset layout and write a JSON manifest without requiring a BEHAVIOR-1K repo checkout.
 - The helper intentionally does not decrypt/persist assets, upload assets, or store the OmniGibson key in the repo.
-- First `download-key` attempts hung inside the official `asset_utils.download_key()` call; no `omnigibson.key` was created yet.
+- First `download-key` attempts hung inside the official `asset_utils.download_key()` call. A follow-up bounded attempt after the asset download also timed out after 90 seconds; no `omnigibson.key` was created yet.
 - `download-assets --accept-license --download-dir /tmp/tmpshjpkxua` completed on DGX and extracted the encrypted dataset into `/raid/home/pbushuyeu/fiatlux_issue2_behavior1k/omnigibson_data`.
 - Extracted dataset size is about 33 GB at `/raid/home/pbushuyeu/fiatlux_issue2_behavior1k/omnigibson_data/behavior-1k-assets`.
 - The temporary Hugging Face download directory `/tmp/tmpshjpkxua` was removed after extraction and manifest copy; DGX root filesystem returned to about 98 GB free.
