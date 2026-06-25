@@ -61,14 +61,13 @@ simulation_app = app_launcher.app
 
 import json
 
+import fiatlux_task.tasks  # noqa: F401
 import gymnasium as gym
 import torch
+from fiatlux_task.tasks.manager_based.fiatlux_task.mdp import rewards as fiatlux_rewards
 
 import isaaclab_tasks  # noqa: F401
 from isaaclab_tasks.utils import parse_env_cfg
-
-import fiatlux_task.tasks  # noqa: F401
-from fiatlux_task.tasks.manager_based.fiatlux_task.mdp import rewards as fiatlux_rewards
 
 
 def _make_policy(name: str, env, checkpoint: str | None):
