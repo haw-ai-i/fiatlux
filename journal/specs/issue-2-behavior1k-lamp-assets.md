@@ -308,7 +308,7 @@ Inspected `light_bulb/kfmkwd`, `table_lamp/ehjsdz`, and `downlight/adwcsx` using
 9. ✅ Decided to split into separate GCS paths: `behavior1k_lamp/`, `behavior1k_bulb/`, `behavior1k_bulb_broken/`, `behavior1k_downlight/`.
 10. ✅ Extracted and uploaded all 15 asset categories to GCS (2,219 files total across `behavior1k_bulb/`, `behavior1k_bulb_broken/`, `behavior1k_lamp/`, `behavior1k_ladder/`, and 11 scene-dressing paths).
 11. ✅ Updated `assets/download_assets.sh` with all 15 GCS paths; task assets synced by default, scene dressing behind `--scene-dressing` flag.
-12. ⬜ Run a smoke test: `./assets/download_assets.sh` on a fresh checkout and confirm task asset folders populate.
+12. ✅ Smoke test passed: `./assets/download_assets.sh` from clean state synced all 4 task-asset groups (57 + 23 + 217 + 52 files).
 13. ✅ Manifest at `assets/behavior1k_uploaded_manifest.csv` — 126 models, all GCS paths, `usage` column (`task_asset` / `scene_dressing`).
 14. ✅ Spec and manifest updated with final asset paths, USD inspection findings, and resolved blockers.
 
