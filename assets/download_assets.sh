@@ -46,8 +46,6 @@ if ! command -v gsutil &> /dev/null; then
 fi
 
 TASK_ASSETS=(
-    unitree_g1
-    bulb_socket
     behavior1k_bulb
     behavior1k_bulb_broken
     behavior1k_lamp
@@ -71,6 +69,7 @@ SCENE_DRESSING_ASSETS=(
 sync_group() {
     local group="$1"
     echo "  $group"
+    mkdir -p "${TARGET_DIR}/${group}"
     gsutil -m rsync -r "${ASSET_BUCKET}/${group}" "${TARGET_DIR}/${group}"
 }
 
