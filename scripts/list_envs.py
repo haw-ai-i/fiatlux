@@ -34,10 +34,9 @@ simulation_app = app_launcher.app
 
 """Rest everything follows."""
 
+import fiatlux_task.tasks  # noqa: F401
 import gymnasium as gym
 from prettytable import PrettyTable
-
-import fiatlux_task.tasks  # noqa: F401
 
 
 def main():

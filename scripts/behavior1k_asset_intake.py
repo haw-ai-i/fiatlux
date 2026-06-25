@@ -24,7 +24,6 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-
 DEFAULT_CANDIDATES = [
     ("light_bulb", "kfmkwd", "replacement_bulb"),
     ("broken_light_bulb", "cugtye", "broken_bulb"),
@@ -240,7 +239,10 @@ def inspect_dataset(data_dir: Path, max_files: int) -> dict[str, Any]:
         "license_gate": {
             "decrypted_assets_persisted": False,
             "gcs_upload_allowed": False,
-            "reason": "BEHAVIOR EULA allows use within OmniGibson and forbids redistribution; explicit project approval required before any decrypted asset upload.",
+            "reason": (
+                "BEHAVIOR EULA allows use within OmniGibson and forbids redistribution; "
+                "explicit project approval required before any decrypted asset upload."
+            ),
         },
     }
 

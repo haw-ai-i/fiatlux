@@ -14,8 +14,9 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-import omni.usd
 import torch
+
+import omni.usd
 from pxr import Gf, UsdLux
 
 if TYPE_CHECKING:
