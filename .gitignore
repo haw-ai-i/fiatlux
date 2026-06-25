@@ -19,4 +19,8 @@ _isaac_sim*
 .idea/
 .DS_Store
 
+# uv
+.venv/
+uv.lock
+
 # Assets are handled by assets/.gitignore (pulled from GCS, not tracked)
