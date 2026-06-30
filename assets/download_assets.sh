@@ -3,8 +3,15 @@
 # Pull Fiatlux benchmark USD assets from the GCS bucket into this folder.
 #
 # Usage:
-#   ./download_assets.sh                   # task assets only
-#   ./download_assets.sh --scene-dressing  # task assets + scene dressing
+#   ./download_assets.sh                   # robot + task assets
+#   ./download_assets.sh --scene-dressing  # robot + task assets + scene dressing
+#
+# Robot assets (always synced):
+#   unitree_g1/wholebody_inspire/  legged G1 + Inspire hands (env default)
+#   unitree_g1/wholebody_{dex3,dex1}/  legged G1 + Dex3 / gripper
+#   unitree_g1/{inspire,dex3,gripper}/  fixed-base G1 variants
+#   Unitree's official pre-assembled USDs, mirrored from the HuggingFace dataset
+#   unitreerobotics/unitree_sim_isaaclab_usds (Apache-2.0).
 #
 # Task assets (bulb/socket mechanic + ladder):
 #   behavior1k_bulb/          light_bulb models (bulblampM Male plug)
@@ -45,6 +52,10 @@ if ! command -v gsutil &> /dev/null; then
     exit 1
 fi
 
+ROBOT_ASSETS=(
+    unitree_g1
+)
+
 TASK_ASSETS=(
     behavior1k_bulb
     behavior1k_bulb_broken
@@ -72,6 +83,11 @@ sync_group() {
     mkdir -p "${TARGET_DIR}/${group}"
     gsutil -m rsync -r "${ASSET_BUCKET}/${group}" "${TARGET_DIR}/${group}"
 }
+
+echo "Syncing robot assets from ${ASSET_BUCKET} ..."
+for group in "${ROBOT_ASSETS[@]}"; do
+    sync_group "$group"
+done
 
 echo "Syncing task assets from ${ASSET_BUCKET} ..."
 for group in "${TASK_ASSETS[@]}"; do

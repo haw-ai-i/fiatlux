@@ -55,7 +55,15 @@ FIATLUX_ASSETS_DIR = os.environ.get(
     "FIATLUX_ASSETS_DIR", os.path.join(_REPO_ROOT, "assets")
 )
 
-G1_USD = os.path.join(FIATLUX_ASSETS_DIR, "unitree_g1", "g1.usd")
+# Unitree's official pre-assembled G1 USDs (mirrored into the GCS bucket from
+# unitreerobotics/unitree_sim_isaaclab_usds). Default to the legged (wholebody)
+# Inspire-hand variant; the Dex3-hand variant is staged for an easy future swap.
+G1_USD = os.path.join(
+    FIATLUX_ASSETS_DIR, "unitree_g1", "wholebody_inspire", "g1_29dof_with_inspire_rev_1_0.usd"
+)
+G1_DEX3_USD = os.path.join(
+    FIATLUX_ASSETS_DIR, "unitree_g1", "wholebody_dex3", "g1_29dof_with_dex3_rev_1_0.usd"
+)
 BULB_USD = os.path.join(FIATLUX_ASSETS_DIR, "bulb_socket", "bulb.usd")
 SOCKET_USD = os.path.join(FIATLUX_ASSETS_DIR, "bulb_socket", "socket.usd")
 
@@ -69,7 +77,23 @@ G1_ARM_JOINTS = [
     "right_wrist_pitch_joint",
     "right_wrist_yaw_joint",
 ]
-# End-effector body the bulb is rigidly grasped at (hand/wrist link).
+# Right Inspire-hand finger joints (12 DoF) so the policy can actually grasp the bulb.
+G1_HAND_JOINTS = [
+    "R_index_proximal_joint",
+    "R_index_intermediate_joint",
+    "R_middle_proximal_joint",
+    "R_middle_intermediate_joint",
+    "R_pinky_proximal_joint",
+    "R_pinky_intermediate_joint",
+    "R_ring_proximal_joint",
+    "R_ring_intermediate_joint",
+    "R_thumb_proximal_yaw_joint",
+    "R_thumb_proximal_pitch_joint",
+    "R_thumb_intermediate_joint",
+    "R_thumb_distal_joint",
+]
+# End-effector body the wrist camera mounts on / eef pose is read from (exists in all
+# G1 variants). The Inspire hand links hang off this via the right_hand_palm_link.
 G1_EE_BODY = "right_wrist_yaw_link"
 
 
@@ -82,10 +106,9 @@ G1_EE_BODY = "right_wrist_yaw_link"
 class G1BulbSceneCfg(InteractiveSceneCfg):
     """Scene: Unitree G1, a graspable bulb, a socket fixture, ground and light."""
 
-    # -- Unitree G1 humanoid --
-    # NOTE: the insertion subtask uses a fixed/standing base. Use a fixed-base G1
-    # USD variant (or set fix_root_link in the USD) so the arm can be trained in
-    # isolation before locomotion/climbing is added.
+    # -- Unitree G1 humanoid (legged / free base) --
+    # The robot spawns standing for the insertion subtask, but keeps its legs so the
+    # same asset can locomote and climb in later roadmap subtasks.
     robot: ArticulationCfg = ArticulationCfg(
         prim_path="{ENV_REGEX_NS}/Robot",
         spawn=sim_utils.UsdFileCfg(
@@ -100,16 +123,51 @@ class G1BulbSceneCfg(InteractiveSceneCfg):
             ),
             activate_contact_sensors=True,
         ),
+        # Spawn standing (matching Unitree's reference init): pelvis at ~0.75 m with the
+        # legs slightly bent so the feet rest on the ground.
         init_state=ArticulationCfg.InitialStateCfg(
-            pos=(0.0, 0.0, 0.0),
-            joint_pos={".*": 0.0},
+            pos=(0.0, 0.0, 0.75),
+            joint_pos={
+                ".*": 0.0,
+                ".*_hip_pitch_joint": -0.05,
+                ".*_knee_joint": 0.2,
+                ".*_ankle_pitch_joint": -0.15,
+            },
         ),
+        # Disjoint actuator groups covering every joint. Only the right arm + right hand
+        # are driven by policy actions; the rest hold their standing pose. NOTE the arm
+        # regex is anchored to shoulder/elbow/wrist so it does not also grab the right
+        # *leg* joints (which also start with ``right_``).
         actuators={
+            "legs": ImplicitActuatorCfg(
+                joint_names_expr=[".*_hip_.*_joint", ".*_knee_joint", ".*_ankle_.*_joint"],
+                effort_limit_sim=300.0,
+                stiffness=200.0,
+                damping=10.0,
+            ),
+            "waist": ImplicitActuatorCfg(
+                joint_names_expr=["waist_.*_joint"],
+                effort_limit_sim=200.0,
+                stiffness=200.0,
+                damping=10.0,
+            ),
+            "left_arm": ImplicitActuatorCfg(
+                joint_names_expr=["left_(shoulder|elbow|wrist).*_joint"],
+                effort_limit_sim=88.0,
+                stiffness=40.0,
+                damping=2.0,
+            ),
             "arm": ImplicitActuatorCfg(
-                joint_names_expr=["right_.*_joint"],
+                joint_names_expr=["right_(shoulder|elbow|wrist).*_joint"],
                 effort_limit_sim=88.0,
                 stiffness=150.0,
                 damping=5.0,
+            ),
+            "hands": ImplicitActuatorCfg(
+                joint_names_expr=["[LR]_.*_joint"],
+                effort_limit_sim=100.0,
+                stiffness=1000.0,
+                damping=15.0,
             ),
         },
     )
@@ -193,6 +251,13 @@ class ActionsCfg:
         scale=0.5,
         use_default_offset=True,
     )
+    # Right Inspire-hand finger targets, so the policy can grasp/release the bulb.
+    hand_action = mdp.JointPositionActionCfg(
+        asset_name="robot",
+        joint_names=G1_HAND_JOINTS,
+        scale=0.5,
+        use_default_offset=True,
+    )
 
 
 @configclass
@@ -205,12 +270,20 @@ class ObservationsCfg:
 
         joint_pos = ObsTerm(
             func=mdp.joint_pos_rel,
-            params={"asset_cfg": SceneEntityCfg("robot", joint_names=G1_ARM_JOINTS)},
+            params={
+                "asset_cfg": SceneEntityCfg(
+                    "robot", joint_names=G1_ARM_JOINTS + G1_HAND_JOINTS
+                )
+            },
             noise=Unoise(n_min=-0.01, n_max=0.01),
         )
         joint_vel = ObsTerm(
             func=mdp.joint_vel_rel,
-            params={"asset_cfg": SceneEntityCfg("robot", joint_names=G1_ARM_JOINTS)},
+            params={
+                "asset_cfg": SceneEntityCfg(
+                    "robot", joint_names=G1_ARM_JOINTS + G1_HAND_JOINTS
+                )
+            },
             noise=Unoise(n_min=-0.01, n_max=0.01),
         )
         eef_pose = ObsTerm(
