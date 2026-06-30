@@ -4,12 +4,40 @@ This document tracks the required assets for the Fiatlux benchmark that need to 
 
 ## Required Assets
 
-### 1. Unitree G1 Robot (with Inspire Hands)
-- **Source:** We have previously used the Unitree G1 with the necessary Inspire hands. These assets exist in our internal repositories/filesystems but need to be located.
-- **TODO:**
-  - [ ] Locate the existing Unitree G1 USD/URDF files with the Inspire hands attached.
-  - [ ] Verify the assets load correctly in Isaac Lab.
-  - [ ] Upload the final assets to `gs://fiatlux/assets/unitree_g1`.
+### 1. Unitree G1 Robot (with Inspire Hands) — DONE
+- **Source:** Unitree's **official** HuggingFace dataset
+  [`unitreerobotics/unitree_sim_isaaclab_usds`](https://huggingface.co/datasets/unitreerobotics/unitree_sim_isaaclab_usds)
+  (`assets.zip`, ~1.3 GB, Apache-2.0). The dexterous hands are attached **by Unitree at
+  the URDF level** and converted to USD on their build machine (the embedded
+  `config.yaml` shows `/home/unitree/.../g1withinspire_hand/...` + `UrdfConverter`), i.e.
+  these are *not* an in-house assembly. All variants are full-body 29-DoF G1 (with legs).
+  There are no standalone hand-only USDs in this dataset.
+- **Done:**
+  - [x] Pulled the official, pre-assembled G1 USDs (Inspire + Dex3 + gripper) — no local assets used.
+  - [x] Verified joint/link names, actuator-group coverage (53 joints, disjoint, complete),
+        and reference closure (self-contained, no stray external/local paths).
+  - [x] Uploaded all baseline variants to `gs://fiatlux/assets/unitree_g1/` (see layout below).
+  - [x] Wired the legged **wholebody Inspire** variant into `g1_bulb_env_cfg.py` as the env
+        default (`G1_USD`) — keeps the legs so the same robot can later locomote/climb —
+        with `G1_DEX3_USD` staged for an easy swap.
+
+**Bucket layout** (`gs://fiatlux/assets/unitree_g1/`, pulled by `download_assets.sh`).
+`base`: `free` = floating/legged base (can stand, walk, climb); `fixed` = pelvis welded
+to the world (stationary manipulation only).
+
+| group folder        | USD                                   | base   | hand    | wired |
+|---------------------|---------------------------------------|--------|---------|-------|
+| `wholebody_inspire/`| `g1_29dof_with_inspire_rev_1_0.usd`   | free   | Inspire | **default** |
+| `wholebody_dex3/`   | `g1_29dof_with_dex3_rev_1_0.usd`      | free   | Dex3    | staged (`G1_DEX3_USD`) |
+| `wholebody_dex1/`   | `g1_29dof_with_dex1_rev_1_0.usd`      | free   | gripper | baseline |
+| `inspire/`          | `g1_29dof_with_inspire_rev_1_0.usd`   | fixed  | Inspire | baseline |
+| `dex3/`             | `g1_29dof_with_dex3_base_fix.usd`     | fixed  | Dex3    | baseline |
+| `gripper/`          | `g1_29dof_with_dex1_base_fix1.usd`    | fixed  | gripper | baseline |
+
+- **Note / future (deferred assembly):** standalone hand-only assets are not in this
+  dataset. The Inspire hand exists as URDF in `unitreerobotics/xr_teleoperate`
+  (`assets/inspire_hand`) and Dex3 in Unitree's repos; converting/attaching those is a
+  separate step and is **not** needed for the current benchmark.
 
 ### 2. Light Bulbs & Lamps
 - **Source:** The `BEHAVIOR-1K` repository (`~/github/tmp/BEHAVIOR-1K`) contains high-quality light bulb and lamp assets.
