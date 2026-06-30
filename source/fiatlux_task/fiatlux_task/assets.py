@@ -32,5 +32,11 @@ G1_DEX3_USD = os.path.join(
     FIATLUX_ASSETS_DIR, "unitree_g1", "wholebody_dex3", "g1_29dof_with_dex3_rev_1_0.usd"
 )
 
-BULB_USD = os.path.join(FIATLUX_ASSETS_DIR, "bulb_socket", "bulb.usd")
-SOCKET_USD = os.path.join(FIATLUX_ASSETS_DIR, "bulb_socket", "socket.usd")
+# Bulb + fixture are BEHAVIOR-1K objects (synced under ``behavior1k_*/`` by
+# ``download_assets.sh``). Each object id is its own dir; swap the id/variant here.
+# - the bulb is the graspable rigid body (``ymomhw`` is a clean single-body variant),
+# - the lamp stands in as the socket/fixture the bulb is seated into. Lamps are
+#   multi-body BEHAVIOR-1K objects; the env spawns this one as a single rigid body by
+#   deactivating its ``meta__*`` helper links (see ``g1_bulb_env_cfg`` / issue #14).
+BULB_USD = os.path.join(FIATLUX_ASSETS_DIR, "behavior1k_bulb", "ymomhw", "usd", "ymomhw.usd")
+SOCKET_USD = os.path.join(FIATLUX_ASSETS_DIR, "behavior1k_lamp", "bbentu", "usd", "bbentu.usd")

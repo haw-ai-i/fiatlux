@@ -78,8 +78,10 @@ G1_INSPIRE_CFG = ArticulationCfg(
     # legs slightly bent so the feet rest on the ground.
     init_state=ArticulationCfg.InitialStateCfg(
         pos=(0.0, 0.0, 0.75),
+        # Only the bent leg joints are listed; every other joint defaults to 0.0.
+        # (A ``".*"`` catch-all here would also match these and trip Isaac Lab's
+        # one-regex-per-joint resolver in ``resolve_matching_names_values``.)
         joint_pos={
-            ".*": 0.0,
             ".*_hip_pitch_joint": -0.05,
             ".*_knee_joint": 0.2,
             ".*_ankle_pitch_joint": -0.15,

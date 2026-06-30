@@ -33,6 +33,8 @@ from isaaclab.managers import SceneEntityCfg
 from isaaclab.managers import TerminationTermCfg as DoneTerm
 from isaaclab.scene import InteractiveSceneCfg
 from isaaclab.sensors import ContactSensorCfg, TiledCameraCfg
+from isaaclab.sim.spawners.from_files.from_files import _spawn_from_usd_file
+from isaaclab.sim.utils import clone
 from isaaclab.utils import configclass
 from isaaclab.utils.noise import AdditiveUniformNoiseCfg as Unoise
 
@@ -46,6 +48,26 @@ from fiatlux_task.robots.g1 import (
 
 from . import mdp
 from .mdp.events import randomize_dome_light
+
+
+# --- BEHAVIOR-1K socket workaround (issue #14, Option A) ----------------------
+# The available lamp assets are multi-body BEHAVIOR-1K objects: a ``base_link`` plus
+# ``meta__*`` helper links (light source, toggle button) joined to it. The socket,
+# however, is modelled as a single kinematic rigid body. This spawner deactivates the
+# ``meta__*`` prims at spawn time so the lamp resolves to just ``base_link`` -- leaving
+# the reward / observation / reset-randomization code untouched. It is decorated with
+# Isaac Lab's ``clone`` (like the stock ``spawn_from_usd``) so the source prim is
+# stripped *before* it is cloned to the other envs, keeping every env single-body.
+# Interim fix; the eventual plan is to model the lamp as an articulation (Option C).
+@clone
+def _spawn_socket_single_body(prim_path, cfg, translation=None, orientation=None):
+    from pxr import Usd
+
+    prim = _spawn_from_usd_file(prim_path, cfg.usd_path, cfg, translation, orientation)
+    meta_prims = [p for p in Usd.PrimRange(prim) if p.GetName().startswith("meta__")]
+    for p in meta_prims:
+        p.SetActive(False)
+    return prim
 
 ##
 # Scene definition
@@ -80,7 +102,12 @@ class G1BulbSceneCfg(InteractiveSceneCfg):
         prim_path="{ENV_REGEX_NS}/Socket",
         spawn=sim_utils.UsdFileCfg(
             usd_path=SOCKET_USD,
+            # Strip the lamp's meta__ helper links so it resolves to one rigid body.
+            func=_spawn_socket_single_body,
             rigid_props=sim_utils.RigidBodyPropertiesCfg(kinematic_enabled=True),
+            # The lamp ships as an articulated object; disable its articulation root so
+            # the leftover base_link is treated as a plain rigid body, not an articulation.
+            articulation_props=sim_utils.ArticulationRootPropertiesCfg(articulation_enabled=False),
         ),
         init_state=RigidObjectCfg.InitialStateCfg(pos=(0.45, 0.0, 1.20)),
     )
