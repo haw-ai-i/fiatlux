@@ -35,11 +35,10 @@ parser.add_argument(
     "--policy",
     type=str,
     default="zero",
-    choices=["zero", "random", "rsl_rl"],
-    help="Baseline policy to evaluate.",
+    help="Policy spec: zero | random | <path>.pt | rsl_rl[:<ckpt>].",
 )
 parser.add_argument(
-    "--checkpoint", type=str, default=None, help="Checkpoint path for --policy rsl_rl."
+    "--checkpoint", type=str, default=None, help="Checkpoint path for rsl_rl policies."
 )
 parser.add_argument("--episodes", type=int, default=20, help="Episodes to evaluate.")
 parser.add_argument("--num_envs", type=int, default=None, help="Parallel envs.")
@@ -64,30 +63,11 @@ import json
 import fiatlux_task.tasks  # noqa: F401
 import gymnasium as gym
 import torch
+from fiatlux_task.policy import make_policy
 from fiatlux_task.tasks.manager_based.fiatlux_task.mdp import rewards as fiatlux_rewards
 
 import isaaclab_tasks  # noqa: F401
 from isaaclab_tasks.utils import parse_env_cfg
-
-
-def _make_policy(name: str, env, checkpoint: str | None):
-    """Return a callable ``policy(obs) -> actions``."""
-    action_shape = (env.num_envs, env.action_space.shape[-1])
-    device = env.device
-
-    if name == "zero":
-        return lambda obs: torch.zeros(action_shape, device=device)
-    if name == "random":
-        return lambda obs: torch.rand(action_shape, device=device) * 2.0 - 1.0
-    if name == "rsl_rl":
-        # Load a trained RSL-RL policy checkpoint.
-        from rsl_rl.runners import OnPolicyRunner
-
-        assert checkpoint is not None, "--checkpoint is required for --policy rsl_rl"
-        runner = OnPolicyRunner(env, {}, log_dir=None, device=device)
-        runner.load(checkpoint)
-        return runner.get_inference_policy(device=device)
-    raise ValueError(name)
 
 
 def main():
@@ -100,7 +80,7 @@ def main():
     env_cfg.seed = args_cli.seed
     env = gym.make(args_cli.task, cfg=env_cfg).unwrapped
 
-    policy = _make_policy(args_cli.policy, env, args_cli.checkpoint)
+    policy = make_policy(args_cli.policy, env, checkpoint=args_cli.checkpoint)
 
     successes = 0
     episodes_done = 0
