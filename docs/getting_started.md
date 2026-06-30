@@ -61,9 +61,12 @@ uv run python scripts/rsl_rl/play.py  --task FIATLUX-Insert-v0  # roll out a che
 A single rollout can be recorded to a trajectory "bag" and scored offline, without
 re-running the simulator:
 
+`--enable_cameras` is required because the env carries a wrist-camera sensor;
+scoring reads the recorded bag and needs no simulator.
+
 ```bash
 uv run python scripts/record_run.py --task FIATLUX-Insert-v0 --policy random \
-    --episodes 2 --record bag --headless --out logs/runs/random0
+    --episodes 2 --record bag --headless --enable_cameras --out logs/runs/random0
 uv run python scripts/score.py logs/runs/random0
 ```
 
