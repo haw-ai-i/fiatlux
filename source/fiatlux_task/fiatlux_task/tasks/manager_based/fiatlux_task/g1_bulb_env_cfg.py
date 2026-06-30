@@ -18,15 +18,11 @@ Design notes (kept deliberately simple and hardware-minded for later sim-to-real
   group (ground-truth bulb/socket pose) used only by the critic and scripted
   baselines -- never as the sole interface.
 
-Asset-dependent identifiers (USD paths, joint/body names) are collected as
-constants at the top of this file. They follow the standard Unitree G1 naming;
-adjust them to match the exact USD pulled by ``assets/download_assets.sh``.
+Reusable robot/asset definitions live in ``fiatlux_task.robots.g1`` and
+``fiatlux_task.assets``; this file only composes the *task* on top of them.
 """
 
-import os
-
 import isaaclab.sim as sim_utils
-from isaaclab.actuators import ImplicitActuatorCfg
 from isaaclab.assets import ArticulationCfg, AssetBaseCfg, RigidObjectCfg
 from isaaclab.envs import ManagerBasedRLEnvCfg
 from isaaclab.managers import EventTermCfg as EventTerm
@@ -40,62 +36,16 @@ from isaaclab.sensors import ContactSensorCfg, TiledCameraCfg
 from isaaclab.utils import configclass
 from isaaclab.utils.noise import AdditiveUniformNoiseCfg as Unoise
 
+from fiatlux_task.assets import BULB_USD, SOCKET_USD
+from fiatlux_task.robots.g1 import (
+    G1_ARM_JOINTS,
+    G1_EE_BODY,
+    G1_HAND_JOINTS,
+    G1_INSPIRE_CFG,
+)
+
 from . import mdp
 from .mdp.events import randomize_dome_light
-
-# ---------------------------------------------------------------------------
-# Asset locations and names (adjust to match the pulled USDs)
-# ---------------------------------------------------------------------------
-
-# Assets are synced into the repo-root ``assets/`` dir by ``download_assets.sh``.
-# Override with the FIATLUX_ASSETS_DIR env var if they live elsewhere.
-_THIS_DIR = os.path.dirname(os.path.abspath(__file__))
-_REPO_ROOT = os.path.abspath(os.path.join(_THIS_DIR, *([os.pardir] * 6)))
-FIATLUX_ASSETS_DIR = os.environ.get(
-    "FIATLUX_ASSETS_DIR", os.path.join(_REPO_ROOT, "assets")
-)
-
-# Unitree's official pre-assembled G1 USDs (mirrored into the GCS bucket from
-# unitreerobotics/unitree_sim_isaaclab_usds). Default to the legged (wholebody)
-# Inspire-hand variant; the Dex3-hand variant is staged for an easy future swap.
-G1_USD = os.path.join(
-    FIATLUX_ASSETS_DIR, "unitree_g1", "wholebody_inspire", "g1_29dof_with_inspire_rev_1_0.usd"
-)
-G1_DEX3_USD = os.path.join(
-    FIATLUX_ASSETS_DIR, "unitree_g1", "wholebody_dex3", "g1_29dof_with_dex3_rev_1_0.usd"
-)
-BULB_USD = os.path.join(FIATLUX_ASSETS_DIR, "bulb_socket", "bulb.usd")
-SOCKET_USD = os.path.join(FIATLUX_ASSETS_DIR, "bulb_socket", "socket.usd")
-
-# Standard Unitree G1 right-arm joints used for the insertion subtask.
-G1_ARM_JOINTS = [
-    "right_shoulder_pitch_joint",
-    "right_shoulder_roll_joint",
-    "right_shoulder_yaw_joint",
-    "right_elbow_joint",
-    "right_wrist_roll_joint",
-    "right_wrist_pitch_joint",
-    "right_wrist_yaw_joint",
-]
-# Right Inspire-hand finger joints (12 DoF) so the policy can actually grasp the bulb.
-G1_HAND_JOINTS = [
-    "R_index_proximal_joint",
-    "R_index_intermediate_joint",
-    "R_middle_proximal_joint",
-    "R_middle_intermediate_joint",
-    "R_pinky_proximal_joint",
-    "R_pinky_intermediate_joint",
-    "R_ring_proximal_joint",
-    "R_ring_intermediate_joint",
-    "R_thumb_proximal_yaw_joint",
-    "R_thumb_proximal_pitch_joint",
-    "R_thumb_intermediate_joint",
-    "R_thumb_distal_joint",
-]
-# End-effector body the wrist camera mounts on / eef pose is read from (exists in all
-# G1 variants). The Inspire hand links hang off this via the right_hand_palm_link.
-G1_EE_BODY = "right_wrist_yaw_link"
-
 
 ##
 # Scene definition
@@ -107,70 +57,9 @@ class G1BulbSceneCfg(InteractiveSceneCfg):
     """Scene: Unitree G1, a graspable bulb, a socket fixture, ground and light."""
 
     # -- Unitree G1 humanoid (legged / free base) --
-    # The robot spawns standing for the insertion subtask, but keeps its legs so the
-    # same asset can locomote and climb in later roadmap subtasks.
-    robot: ArticulationCfg = ArticulationCfg(
-        prim_path="{ENV_REGEX_NS}/Robot",
-        spawn=sim_utils.UsdFileCfg(
-            usd_path=G1_USD,
-            rigid_props=sim_utils.RigidBodyPropertiesCfg(
-                max_depenetration_velocity=5.0,
-            ),
-            articulation_props=sim_utils.ArticulationRootPropertiesCfg(
-                enabled_self_collisions=True,
-                solver_position_iteration_count=16,
-                solver_velocity_iteration_count=8,
-            ),
-            activate_contact_sensors=True,
-        ),
-        # Spawn standing (matching Unitree's reference init): pelvis at ~0.75 m with the
-        # legs slightly bent so the feet rest on the ground.
-        init_state=ArticulationCfg.InitialStateCfg(
-            pos=(0.0, 0.0, 0.75),
-            joint_pos={
-                ".*": 0.0,
-                ".*_hip_pitch_joint": -0.05,
-                ".*_knee_joint": 0.2,
-                ".*_ankle_pitch_joint": -0.15,
-            },
-        ),
-        # Disjoint actuator groups covering every joint. Only the right arm + right hand
-        # are driven by policy actions; the rest hold their standing pose. NOTE the arm
-        # regex is anchored to shoulder/elbow/wrist so it does not also grab the right
-        # *leg* joints (which also start with ``right_``).
-        actuators={
-            "legs": ImplicitActuatorCfg(
-                joint_names_expr=[".*_hip_.*_joint", ".*_knee_joint", ".*_ankle_.*_joint"],
-                effort_limit_sim=300.0,
-                stiffness=200.0,
-                damping=10.0,
-            ),
-            "waist": ImplicitActuatorCfg(
-                joint_names_expr=["waist_.*_joint"],
-                effort_limit_sim=200.0,
-                stiffness=200.0,
-                damping=10.0,
-            ),
-            "left_arm": ImplicitActuatorCfg(
-                joint_names_expr=["left_(shoulder|elbow|wrist).*_joint"],
-                effort_limit_sim=88.0,
-                stiffness=40.0,
-                damping=2.0,
-            ),
-            "arm": ImplicitActuatorCfg(
-                joint_names_expr=["right_(shoulder|elbow|wrist).*_joint"],
-                effort_limit_sim=88.0,
-                stiffness=150.0,
-                damping=5.0,
-            ),
-            "hands": ImplicitActuatorCfg(
-                joint_names_expr=["[LR]_.*_joint"],
-                effort_limit_sim=100.0,
-                stiffness=1000.0,
-                damping=15.0,
-            ),
-        },
-    )
+    # Reusable robot definition (USD, standing init pose, actuator groups) lives in
+    # ``fiatlux_task.robots.g1``; here we only bind it into this scene's namespace.
+    robot: ArticulationCfg = G1_INSPIRE_CFG.replace(prim_path="{ENV_REGEX_NS}/Robot")
 
     # -- Light bulb: graspable rigid body --
     bulb: RigidObjectCfg = RigidObjectCfg(

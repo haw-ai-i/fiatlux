@@ -1,0 +1,36 @@
+# Copyright (c) 2022-2026, The Isaac Lab Project Developers (https://github.com/isaac-sim/IsaacLab/blob/main/CONTRIBUTORS.md).
+# All rights reserved.
+#
+# SPDX-License-Identifier: BSD-3-Clause
+
+"""Central asset locations for the Fiatlux benchmark.
+
+Assets are synced into the repo-root ``assets/`` dir by ``assets/download_assets.sh``.
+Override the root with the ``FIATLUX_ASSETS_DIR`` env var if they live elsewhere.
+
+Every env and script should import paths from here rather than re-deriving the
+repo root, so there is a single place to fix when the asset layout changes.
+"""
+
+import os
+
+# ``source/fiatlux_task/fiatlux_task/assets.py`` -> repo root is three levels up.
+_THIS_DIR = os.path.dirname(os.path.abspath(__file__))
+_REPO_ROOT = os.path.abspath(os.path.join(_THIS_DIR, os.pardir, os.pardir, os.pardir))
+
+FIATLUX_ASSETS_DIR = os.environ.get(
+    "FIATLUX_ASSETS_DIR", os.path.join(_REPO_ROOT, "assets")
+)
+
+# Unitree's official pre-assembled G1 USDs (mirrored into the GCS bucket from
+# unitreerobotics/unitree_sim_isaaclab_usds). The legged (wholebody) Inspire-hand
+# variant is the default; the Dex3-hand variant is staged for an easy future swap.
+G1_USD = os.path.join(
+    FIATLUX_ASSETS_DIR, "unitree_g1", "wholebody_inspire", "g1_29dof_with_inspire_rev_1_0.usd"
+)
+G1_DEX3_USD = os.path.join(
+    FIATLUX_ASSETS_DIR, "unitree_g1", "wholebody_dex3", "g1_29dof_with_dex3_rev_1_0.usd"
+)
+
+BULB_USD = os.path.join(FIATLUX_ASSETS_DIR, "bulb_socket", "bulb.usd")
+SOCKET_USD = os.path.join(FIATLUX_ASSETS_DIR, "bulb_socket", "socket.usd")
