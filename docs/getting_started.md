@@ -1,20 +1,30 @@
 # Getting Started
 
-## 1. Install Isaac Lab
+## Prerequisites
 
-Follow the official guide: <https://isaac-sim.github.io/IsaacLab>. Verify it works
-with one of the shipped examples before continuing. This benchmark targets Isaac
-Sim 4.5/5.x and the `isaaclab` / `isaaclab_rl` / `isaaclab_tasks` packages.
+- [uv](https://docs.astral.sh/uv/) (the only thing you install by hand).
+- An NVIDIA GPU with a driver new enough for CUDA 12.8 (the pinned torch build).
+- `gsutil` (Google Cloud SDK), authenticated, for the assets in step 2.
 
-## 2. Install the Fiatlux task package
+## 1. Build the environment
 
-From the repo root, into the Isaac Lab Python environment:
+The repo is a self-contained `uv` project: the entire stack — Isaac Sim 5.1, Isaac
+Lab 2.3.2, PyTorch (cu128), and the `fiatlux_task` package — is pinned in `uv.lock`.
+There is **no manual Isaac Lab install**; from the repo root just run:
 
 ```bash
-pip install -e source/fiatlux_task
+uv sync
 ```
 
-## 3. Download the assets
+This downloads Isaac Sim and the Isaac Lab wheels (~10 GB on first run) from the
+NVIDIA package index and installs `source/fiatlux_task` in editable mode. Prefix the
+run commands below with `uv run` to use this environment.
+
+> Some of the CUDA wheels are multiple GB; if `uv sync` aborts with a network
+> timeout, raise uv's per-download limit: `UV_HTTP_TIMEOUT=1200 uv sync` (it resumes
+> from whatever already downloaded).
+
+## 2. Download the assets
 
 The G1, bulb/socket, and ladder USDs are pulled from a GCS bucket (they are not
 checked into git):
@@ -36,20 +46,31 @@ assets/ladder/ladder.usd        # for the climbing subtask (roadmap)
 If your assets live elsewhere, point the env at them with
 `export FIATLUX_ASSETS_DIR=/path/to/assets`.
 
-## 4. Run
+## 3. Run
 
 ```bash
-python scripts/list_envs.py                                  # list registered tasks
-python scripts/zero_agent.py --task FIATLUX-Insert-v0        # launch the scene
-python scripts/eval.py --task FIATLUX-Insert-v0 --policy random --episodes 20
-python scripts/rsl_rl/train.py --task FIATLUX-Insert-v0      # train PPO
-python scripts/rsl_rl/play.py  --task FIATLUX-Insert-v0      # roll out a checkpoint
+uv run python scripts/list_envs.py                              # list registered tasks
+uv run python scripts/zero_agent.py --task FIATLUX-Insert-v0    # launch the scene
+uv run python scripts/eval.py --task FIATLUX-Insert-v0 --policy random --episodes 20
+uv run python scripts/rsl_rl/train.py --task FIATLUX-Insert-v0  # train PPO
+uv run python scripts/rsl_rl/play.py  --task FIATLUX-Insert-v0  # roll out a checkpoint
+```
+
+## 4. Record and score a run
+
+A single rollout can be recorded to a trajectory "bag" and scored offline, without
+re-running the simulator:
+
+```bash
+uv run python scripts/record_run.py --task FIATLUX-Insert-v0 --policy random \
+    --episodes 2 --record bag --headless --out logs/runs/random0
+uv run python scripts/score.py logs/runs/random0
 ```
 
 ## Troubleshooting
 
-- **Env not found / empty list** — `pip install -e source/fiatlux_task` did not run
-  in the Isaac Lab env, or `import fiatlux_task.tasks` failed.
+- **Env not found / empty list** — `uv sync` did not complete, or
+  `import fiatlux_task.tasks` failed.
 - **USD not found** — run `./assets/download_assets.sh` or set `FIATLUX_ASSETS_DIR`.
 - **Joint/body name errors** — the constants in `g1_bulb_env_cfg.py`
   (`G1_ARM_JOINTS`, `G1_EE_BODY`) must match the joints/links in your G1 USD.

@@ -36,22 +36,32 @@ fiatlux/
 
 See [docs/getting_started.md](docs/getting_started.md) for the full setup.
 
+Requires [uv](https://docs.astral.sh/uv/), an NVIDIA GPU with a CUDA 12.8-capable
+driver, and `gsutil` (Google Cloud SDK) for the assets.
+
 ```bash
-# 1. Install Isaac Lab (https://isaac-sim.github.io/IsaacLab), then this package:
-pip install -e source/fiatlux_task
+# 1. Build the full environment (Isaac Sim 5.1 + Isaac Lab 2.3.2 + this package).
+#    Everything is pinned in uv.lock -- no manual Isaac Lab install needed.
+#    First run pulls ~10 GB; if a big CUDA wheel stalls: UV_HTTP_TIMEOUT=1200 uv sync
+uv sync
 
 # 2. Pull the USD assets (G1, bulb/socket, ladder) from the bucket:
 ./assets/download_assets.sh
 
 # 3. Sanity-check registration and launch a baseline:
-python scripts/list_envs.py
-python scripts/zero_agent.py --task FIATLUX-Insert-v0
+uv run python scripts/list_envs.py
+uv run python scripts/zero_agent.py --task FIATLUX-Insert-v0
 
 # 4. Evaluate (standardized, reproducible):
-python scripts/eval.py --task FIATLUX-Insert-v0 --policy random --episodes 20 --seed 0
+uv run python scripts/eval.py --task FIATLUX-Insert-v0 --policy random --episodes 20 --seed 0
 
-# 5. Train a policy:
-python scripts/rsl_rl/train.py --task FIATLUX-Insert-v0
+# 5. Record a run, then score it offline (no simulator needed for scoring):
+uv run python scripts/record_run.py --task FIATLUX-Insert-v0 --policy random \
+    --episodes 2 --record bag --headless --out logs/runs/random0
+uv run python scripts/score.py logs/runs/random0
+
+# 6. Train a policy:
+uv run python scripts/rsl_rl/train.py --task FIATLUX-Insert-v0
 ```
 
 ## Sim-to-real

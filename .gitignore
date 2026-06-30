@@ -21,7 +21,6 @@ _isaac_sim*
 
 # uv / ruff
 .venv/
-uv.lock
 .ruff_cache/
 
 # Assets are handled by assets/.gitignore (pulled from GCS, not tracked)
