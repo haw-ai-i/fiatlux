@@ -25,7 +25,6 @@ from isaaclab.utils import configclass
 from . import mdp
 from .scene_cfg import G1LadderSceneCfg
 
-
 ##
 # Observations -- generic G1 proprioception (no task-specific terms yet).
 ##
@@ -96,7 +95,8 @@ class EventCfg:
     # randomize_ladder_scale = EventTerm(
     #     func=mdp.randomize_rigid_body_scale,
     #     mode="prestartup",
-    #     params={"asset_cfg": SceneEntityCfg("ladder"), "scale_range": {"x": (0.95, 1.05), "y": (0.95, 1.05), "z": (0.95, 1.1)}},
+    #     params={"asset_cfg": SceneEntityCfg("ladder"),
+    #             "scale_range": {"x": (0.95, 1.05), "y": (0.95, 1.05), "z": (0.95, 1.1)}},
     # )
     # randomize_lamp_scale = EventTerm(func=mdp.randomize_rigid_body_scale, mode="prestartup",
     #     params={"asset_cfg": SceneEntityCfg("lamp"), "scale_range": (0.9, 1.1)})
@@ -115,7 +115,8 @@ class EventCfg:
     #     params={"asset_cfg": SceneEntityCfg("robot"), "position_range": (-0.05, 0.05), "velocity_range": (0.0, 0.0)},
     # )
     # randomize_ladder_pose = EventTerm(func=mdp.reset_root_state_uniform, mode="reset",
-    #     params={"asset_cfg": SceneEntityCfg("ladder"), "pose_range": {"x": (-0.05, 0.05), "yaw": (-0.1, 0.1)}, "velocity_range": {}})
+    #     params={"asset_cfg": SceneEntityCfg("ladder"),
+    #             "pose_range": {"x": (-0.05, 0.05), "yaw": (-0.1, 0.1)}, "velocity_range": {}})
 
     # ---- (C) COLOR / VISUAL MATERIAL -- mdp.randomize_visual_color ----
     #   TODO: target a specific child mesh of the USD asset ("mesh_name" depends on the
@@ -141,7 +142,8 @@ class EventCfg:
     #   TODO: see mdp.randomize_light_properties (per-env lights + orientation still to do).
     # randomize_dome_light = EventTerm(
     #     func=mdp.randomize_light_properties, mode="reset",
-    #     params={"asset_cfg": SceneEntityCfg("dome_light"), "intensity_range": (600.0, 1000.0), "color": (0.9, 0.9, 0.95)},
+    #     params={"asset_cfg": SceneEntityCfg("dome_light"),
+    #             "intensity_range": (600.0, 1000.0), "color": (0.9, 0.9, 0.95)},
     # )
 
 

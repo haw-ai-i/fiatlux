@@ -109,8 +109,7 @@ def iter_prims(root_path: str):
     root = prim_utils.get_prim_at_path(root_path)
     if not root.IsValid():
         return
-    for prim in Usd.PrimRange(root, Usd.TraverseInstanceProxies(Usd.PrimDefaultPredicate)):
-        yield prim
+    yield from Usd.PrimRange(root, Usd.TraverseInstanceProxies(Usd.PrimDefaultPredicate))
 
 
 def collider_audit(root_path: str) -> tuple[int, int]:
@@ -194,7 +193,7 @@ def main() -> int:
     env_cfg = parse_env_cfg(args_cli.task, device=args_cli.device, num_envs=args_cli.num_envs)
     if args_cli.hold_base:
         env_cfg.scene.robot.spawn.articulation_props.fix_root_link = True
-        print("[verify] --hold_base: G1 root link fixed -> it stands and holds the default pose (balancing not tested).")
+        print("[verify] --hold_base: G1 root fixed -> it stands and holds the default pose (balancing not tested).")
     if args_cli.record:
         env_cfg.scene.record_cam = make_record_camera()
         print("[verify] --record: orbit RTX camera added to the scene.")
