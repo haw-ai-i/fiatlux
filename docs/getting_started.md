@@ -27,7 +27,8 @@ run commands below with `uv run` to use this environment.
 ## 2. Download the assets
 
 The G1, bulb/socket, and ladder USDs are pulled from a GCS bucket (they are not
-checked into git):
+checked into git). This also pulls the table/warehouse/HDRI sky that dress up
+the scene by default (see `assets/README.md`):
 
 ```bash
 ./assets/download_assets.sh
@@ -41,6 +42,7 @@ This produces:
 assets/unitree_g1/g1.usd
 assets/bulb_socket/{bulb.usd,socket.usd}
 assets/ladder/ladder.usd        # for the climbing subtask (roadmap)
+assets/isaac_packing_table/, assets/isaac_warehouse/, assets/isaac_skies/
 ```
 
 If your assets live elsewhere, point the env at them with

@@ -40,3 +40,23 @@ G1_DEX3_USD = os.path.join(
 #   deactivating its ``meta__*`` helper links (see ``g1_bulb_env_cfg`` / issue #14).
 BULB_USD = os.path.join(FIATLUX_ASSETS_DIR, "behavior1k_bulb", "ymomhw", "usd", "ymomhw.usd")
 SOCKET_USD = os.path.join(FIATLUX_ASSETS_DIR, "behavior1k_lamp", "bbentu", "usd", "bbentu.usd")
+
+# Room dressing: table, warehouse backdrop, clutter, and an HDRI sky, mirrored once
+# from Isaac Sim's own Nucleus content library (Isaac/Props, Isaac/Environments) into
+# our own bucket so a clean `uv sync` + `download_assets.sh` never touches NVIDIA's CDN.
+TABLE_USD = os.path.join(FIATLUX_ASSETS_DIR, "isaac_packing_table", "packing_table.usd")
+# The warehouse USD is nested to match its original Nucleus depth (Isaac/Environments/
+# Simple_Warehouse/warehouse.usd) because it references shared props two directories up
+# (Isaac/Props/KLT_Bin/...) via a relative path -- flattening it breaks that reference.
+WAREHOUSE_USD = os.path.join(
+    FIATLUX_ASSETS_DIR, "isaac_warehouse", "Environments", "Simple_Warehouse", "warehouse.usd"
+)
+CLUTTER_BOX_USD = os.path.join(
+    FIATLUX_ASSETS_DIR,
+    "isaac_warehouse",
+    "Environments",
+    "Simple_Warehouse",
+    "Props",
+    "SM_CardBoxB_01_681.usd",
+)
+SKY_HDRI = os.path.join(FIATLUX_ASSETS_DIR, "isaac_skies", "kloofendal_43d_clear_puresky_4k.hdr")

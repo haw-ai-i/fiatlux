@@ -19,6 +19,14 @@
 #   behavior1k_lamp/          table_lamp models with bulblampF Female socket
 #   behavior1k_ladder/        ladder models
 #
+# Room dressing (always synced -- defines the default look of every recorded
+# run): table, warehouse backdrop + clutter props, and an HDRI sky, mirrored
+# once from Isaac Sim's own Nucleus content library into our bucket so nothing
+# is fetched live from NVIDIA's CDN at sim launch.
+#   isaac_packing_table/      table the lamp/bulb rest on
+#   isaac_warehouse/          warehouse room backdrop + clutter props
+#   isaac_skies/              PolyHaven HDRI sky for the dome light
+#
 # Scene dressing (environment lighting, no bulb socket):
 #   behavior1k_downlight/     recessed ceiling fixtures
 #   behavior1k_room_light/    ceiling/pendant/wall fixtures
@@ -63,6 +71,12 @@ TASK_ASSETS=(
     behavior1k_ladder
 )
 
+ROOM_ASSETS=(
+    isaac_packing_table
+    isaac_warehouse
+    isaac_skies
+)
+
 SCENE_DRESSING_ASSETS=(
     behavior1k_downlight
     behavior1k_room_light
@@ -91,6 +105,11 @@ done
 
 echo "Syncing task assets from ${ASSET_BUCKET} ..."
 for group in "${TASK_ASSETS[@]}"; do
+    sync_group "$group"
+done
+
+echo "Syncing room dressing assets from ${ASSET_BUCKET} ..."
+for group in "${ROOM_ASSETS[@]}"; do
     sync_group "$group"
 done
 

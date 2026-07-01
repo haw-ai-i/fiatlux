@@ -6,12 +6,15 @@ Assets are stored in GCS and synced locally via `download_assets.sh`. Binary USD
 ## Download
 
 ```bash
-# Task assets only (bulb, lamp, ladder)
+# Robot + task assets + room dressing (table, warehouse backdrop, HDRI sky)
 ./assets/download_assets.sh
 
-# Task assets + scene dressing
+# ... + BEHAVIOR-1K lighting-fixture scene dressing
 ./assets/download_assets.sh --scene-dressing
 ```
+
+Room dressing (`isaac_*` paths below) is always synced -- it's what every recorded
+run looks like by default -- unlike the opt-in BEHAVIOR-1K lighting fixtures.
 
 Requires `gsutil` (`gcloud` SDK). Override bucket with `FIATLUX_ASSET_BUCKET` env var.
 
@@ -39,8 +42,37 @@ Requires `gsutil` (`gcloud` SDK). Override bucket with `FIATLUX_ASSET_BUCKET` en
 
 Full per-model detail (category, model ID, source path, has_lights, has_socket, usage) in [`behavior1k_uploaded_manifest.csv`](behavior1k_uploaded_manifest.csv).
 
+## Isaac Sim Nucleus mirror (room dressing)
+
+The table, warehouse backdrop, clutter prop, and HDRI sky are mirrored once from
+Isaac Sim 5.1's own Nucleus content library (a public HTTPS/S3 endpoint, no
+Omniverse client needed) into our own bucket, so nothing is fetched live from
+NVIDIA's CDN at sim launch.
+
+| GCS path                                                        | Nucleus source                          | Role               | Files |
+| ---------------------------------------------------------------- | ---------------------------------------- | ------------------ | ----- |
+| `gs://fiatlux/assets/isaac_packing_table/`                      | `Isaac/Props/PackingTable/`             | table for lamp/bulb | 112   |
+| `gs://fiatlux/assets/isaac_warehouse/Environments/Simple_Warehouse/` | `Isaac/Environments/Simple_Warehouse/` | room backdrop + clutter props | 2,025 |
+| `gs://fiatlux/assets/isaac_warehouse/Props/KLT_Bin/`            | `Isaac/Props/KLT_Bin/`                  | shared prop `warehouse.usd` depends on | 24 |
+| `gs://fiatlux/assets/isaac_skies/`                              | `Isaac/Materials/Textures/Skies/PolyHaven/` | HDRI dome light | 1     |
+
+`isaac_warehouse/` preserves its Nucleus directory depth (`Environments/Simple_Warehouse/`
+alongside a top-level `Props/`) rather than being flattened, because `warehouse.usd`
+references the shared `Isaac/Props/KLT_Bin/` prop via a relative path that climbs two
+directories -- flattening it would resolve outside the mirrored tree entirely.
+
+Mirror-specific per-asset detail (Nucleus source path, role, notes) in
+[`isaac_mirror_manifest.csv`](isaac_mirror_manifest.csv). Development-only thumbnail
+caches (`.thumbs/`) under the Nucleus source trees were excluded from the mirror.
+Isaac Sim's asset-root URL is version-pinned (`.../Assets/Isaac/5.1/...`) -- re-verify
+these paths after any Isaac Sim upgrade.
+
 ## Source
 
-All assets are from [BEHAVIOR-1K](https://behavior.stanford.edu/) (Stanford OmniGibson dataset),
+BEHAVIOR-1K assets (bulb, lamp, ladder, lighting fixtures) are from
+[BEHAVIOR-1K](https://behavior.stanford.edu/) (Stanford OmniGibson dataset),
 decrypted from `.encrypted.usd` using the `omnigibson.key`. The key and decrypted binaries are not committed to git.
 See `journal/specs/issue-2-behavior1k-lamp-assets.md` for intake details and USD inspection findings.
+
+Room-dressing assets (table, warehouse, sky) are NVIDIA's own Isaac Sim sample
+content (Props/Environments) plus a CC0 PolyHaven HDRI, mirrored per the table above.
