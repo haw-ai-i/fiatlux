@@ -69,6 +69,8 @@ TASK_ASSETS=(
     behavior1k_bulb_broken
     behavior1k_lamp
     behavior1k_ladder
+    omniverse_ladder        # 98 climb-ready ladders/platforms (convex-decomp collision)
+    omniverse_bulb          # separable LightBulb (bulb-swap candidate)
 )
 
 ROOM_ASSETS=(
@@ -89,6 +91,8 @@ SCENE_DRESSING_ASSETS=(
     behavior1k_paper_lantern
     behavior1k_lampshade
     behavior1k_floor_lamp
+    omniverse_climb         # Mezzanine/OfficeSet elevated-platform climb structures
+    omniverse_lamp          # Omniverse residential lamps/fixtures
 )
 
 sync_group() {

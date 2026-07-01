@@ -38,9 +38,26 @@ Requires `gsutil` (`gcloud` SDK). Override bucket with `FIATLUX_ASSET_BUCKET` en
 | `gs://fiatlux/assets/behavior1k_lampshade/`           | `lampshade`           | 4                               | scene dressing | 69    |
 | `gs://fiatlux/assets/behavior1k_floor_lamp/`          | `floor_lamp`          | 11 with lights metadata         | scene dressing | 188   |
 
-**Total: 2,219 files across 15 paths.**
+**BEHAVIOR-1K total: 2,219 files across 15 paths.**
 
-Full per-model detail (category, model ID, source path, has_lights, has_socket, usage) in [`behavior1k_uploaded_manifest.csv`](behavior1k_uploaded_manifest.csv).
+### Omniverse asset packs (NVIDIA SimReady / ArchVis)
+
+| GCS path                              | Category         | Models                                 | Role           | Size   |
+| ------------------------------------- | ---------------- | -------------------------------------- | -------------- | ------ |
+| `gs://fiatlux/assets/omniverse_ladder/` | `ladder`       | 98 ladders/platforms (16 designs)      | task asset     | 2.9 GB |
+| `gs://fiatlux/assets/omniverse_bulb/`   | `light_bulb`   | 1 (separable LightBulb)                | task asset     | small  |
+| `gs://fiatlux/assets/omniverse_climb/`  | `climb`        | Mezzanine_A + OfficeSet_A              | scene dressing | 0.8 GB |
+| `gs://fiatlux/assets/omniverse_lamp/`   | `lamp_fixture` | residential lamps/chandeliers/fixtures | scene dressing | 1.2 GB |
+
+**Omniverse total: ~4.95 GB across 4 paths.** Ladders ship with authored PhysX collision
+(convex decomposition, static, high friction) — `<name>_collision.usd` beside each; all 98
+verified climbable in Isaac Sim (see
+[`docs/omniverse_ladder_collision_verification.md`](../docs/omniverse_ladder_collision_verification.md)).
+Per-asset detail in [`omniverse_uploaded_manifest.csv`](omniverse_uploaded_manifest.csv).
+
+> Note: Omniverse assets reference shared Omniverse/Kit MDL material libraries (the
+> `materials` column = `external_mdl`); geometry + collision are complete, but visuals
+> render flat unless the material libraries are mounted.
 
 ## Isaac Sim Nucleus mirror (room dressing)
 
@@ -69,10 +86,14 @@ these paths after any Isaac Sim upgrade.
 
 ## Source
 
-BEHAVIOR-1K assets (bulb, lamp, ladder, lighting fixtures) are from
-[BEHAVIOR-1K](https://behavior.stanford.edu/) (Stanford OmniGibson dataset),
+**BEHAVIOR-1K** assets are from [BEHAVIOR-1K](https://behavior.stanford.edu/) (Stanford OmniGibson dataset),
 decrypted from `.encrypted.usd` using the `omnigibson.key`. The key and decrypted binaries are not committed to git.
 See `journal/specs/issue-2-behavior1k-lamp-assets.md` for intake details and USD inspection findings.
 
-Room-dressing assets (table, warehouse, sky) are NVIDIA's own Isaac Sim sample
-content (Props/Environments) plus a CC0 PolyHaven HDRI, mirrored per the table above.
+**Omniverse** assets are from the NVIDIA [Omniverse downloadable USD packs](https://docs.omniverse.nvidia.com/usd/latest/usd_content_samples/downloadable_packs.html#d-openusd-asset-packs)
+(Warehouse, SimReady Warehouse 01, Residential, Sample Scenes). Used under non-commercial
+academic terms. See `docs/omniverse_pack_scan_log.md` for the full 14-pack scan and
+`docs/omniverse_ladder_collision_verification.md` for collision authoring + verification.
+
+**Room-dressing** assets (table, room, sky) are NVIDIA's own Isaac Sim sample content
+(Props/Environments) plus a CC0 PolyHaven HDRI, mirrored per the table above.
