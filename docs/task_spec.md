@@ -5,10 +5,13 @@ Defined in
 
 ## Scene
 
-- **Robot:** Unitree G1 (`assets/unitree_g1/g1.usd`), fixed/standing base for the
-  insertion subtask, right arm actuated.
-- **Bulb:** graspable rigid body (`assets/bulb_socket/bulb.usd`).
-- **Socket:** kinematic lamp/socket fixture (`assets/bulb_socket/socket.usd`).
+- **Robot:** Unitree G1 (`assets/unitree_g1/wholebody_inspire/g1_29dof_with_inspire_rev_1_0.usd`),
+  legged/free base, right arm + Inspire hand actuated.
+- **Bulb:** graspable rigid body, a BEHAVIOR-1K light bulb
+  (`assets/behavior1k_bulb/ymomhw/usd/ymomhw.usd`).
+- **Socket:** kinematic lamp/socket fixture, a BEHAVIOR-1K table lamp stripped to a
+  single rigid body (`assets/behavior1k_lamp/bbentu/usd/bbentu.usd`; see
+  `g1_bulb_env_cfg.py` / issue #14).
 - Ground plane + randomized dome light.
 
 ## Actions

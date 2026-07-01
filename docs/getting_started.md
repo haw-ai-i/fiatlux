@@ -38,10 +38,14 @@ FIATLUX_ASSET_BUCKET=gs://my-bucket/assets ./assets/download_assets.sh
 This produces:
 
 ```
-assets/unitree_g1/g1.usd
-assets/bulb_socket/{bulb.usd,socket.usd}
-assets/ladder/ladder.usd        # for the climbing subtask (roadmap)
+assets/unitree_g1/wholebody_inspire/g1_29dof_with_inspire_rev_1_0.usd
+assets/behavior1k_bulb/ymomhw/usd/ymomhw.usd
+assets/behavior1k_lamp/bbentu/usd/bbentu.usd
+assets/behavior1k_ladder/                # for the climbing subtask (roadmap)
 ```
+
+(See `source/fiatlux_task/fiatlux_task/assets.py` for the exact paths the env
+loads -- swap the G1 hand variant or BEHAVIOR-1K bulb/lamp model there if needed.)
 
 If your assets live elsewhere, point the env at them with
 `export FIATLUX_ASSETS_DIR=/path/to/assets`.
