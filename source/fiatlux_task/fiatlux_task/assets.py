@@ -41,6 +41,12 @@ G1_DEX3_USD = os.path.join(
 BULB_USD = os.path.join(FIATLUX_ASSETS_DIR, "behavior1k_bulb", "ymomhw", "usd", "ymomhw.usd")
 SOCKET_USD = os.path.join(FIATLUX_ASSETS_DIR, "behavior1k_lamp", "bbentu", "usd", "bbentu.usd")
 
+# Ladder for the climb-family tasks: ``shfvtl`` is the tall upright BEHAVIOR-1K
+# ladder (bbox_z=1.67 m) marked "primary ladder for G1 to climb" in
+# ``assets/behavior1k_uploaded_manifest.csv``. Synced with the other task assets
+# by ``download_assets.sh``; 97 more Omniverse ladders are staged for variety.
+LADDER_USD = os.path.join(FIATLUX_ASSETS_DIR, "behavior1k_ladder", "shfvtl", "usd", "shfvtl.usd")
+
 # Room dressing: table, room backdrop, and an HDRI sky, mirrored once from Isaac
 # Sim's own Nucleus content library (Isaac/Props, Isaac/Environments) into our own
 # bucket so a clean `uv sync` + `download_assets.sh` never touches NVIDIA's CDN.

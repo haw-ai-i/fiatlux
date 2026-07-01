@@ -7,7 +7,8 @@
 
 Task hierarchy (see docs/roadmap.md):
 - ``FIATLUX-Insert-v0``  : G1 seats a bulb into a socket (manipulation). FUNCTIONAL.
-- ``FIATLUX-Climb-v0``   : G1 climbs a ladder to the fixture. ROADMAP (not yet built).
+- ``FIATLUX-Climb-v0``   : G1 climbs a ladder to the fixture. Non-RL scene SCAFFOLD,
+  registered with the rest of the ladder task family in ``..ladder``.
 - ``FIATLUX-Replace-v0`` : end-to-end climb + insert. ROADMAP (not yet built).
 """
 
@@ -29,7 +30,6 @@ gym.register(
     },
 )
 
-# ROADMAP: register once the corresponding env cfgs exist (ladder asset + fall
-# termination for climb; combined episode for replace). See docs/roadmap.md.
-# gym.register(id="FIATLUX-Climb-v0", ...)
+# ROADMAP: register once the combined climb+insert episode exists. See docs/roadmap.md.
+# (``FIATLUX-Climb-v0`` is already registered -- as a non-RL scaffold -- in ``..ladder``.)
 # gym.register(id="FIATLUX-Replace-v0", ...)
