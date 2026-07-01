@@ -1,0 +1,129 @@
+gcs_path,category,model,source_pack,units,state,collision_verified,usage,notes
+omniverse_ladder,multipurpose_ladder,AluminiumMultiPurposeLadder_A01_PR_NVD_01,Warehouse,cm,open,passed,task_asset,
+omniverse_ladder,multipurpose_ladder,AluminiumMultiPurposeLadder_A02_PR_NVD_01,Warehouse,cm,open,passed,task_asset,
+omniverse_ladder,multipurpose_ladder,AluminiumMultiPurposeLadder_A03_PR_NVD_01,Warehouse,cm,open,passed,task_asset,
+omniverse_ladder,multipurpose_ladder,AluminiumMultiPurposeLadder_A04_PR_NVD_01,Warehouse,cm,open,passed,task_asset,
+omniverse_ladder,multipurpose_ladder,AluminiumMultiPurposeLadder_A05_PR_NVD_01,Warehouse,cm,folded,passed,task_asset,
+omniverse_ladder,multipurpose_ladder,AluminiumMultiPurposeLadder_A06_PR_NVD_01,Warehouse,cm,folded,passed,task_asset,
+omniverse_ladder,a_frame_ladder,AluminiumStepDoubleLadder_A01_PR_NVD_01,Warehouse,cm,open,passed,task_asset,
+omniverse_ladder,a_frame_ladder,AluminiumStepDoubleLadder_A02_PR_NVD_01,Warehouse,cm,open,passed,task_asset,
+omniverse_ladder,a_frame_ladder,AluminiumStepDoubleLadder_A03_PR_NVD_01,Warehouse,cm,open,passed,task_asset,
+omniverse_ladder,a_frame_ladder,AluminiumStepDoubleLadder_A04_PR_NVD_01,Warehouse,cm,open,passed,task_asset,
+omniverse_ladder,a_frame_ladder,AluminiumStepDoubleLadder_A05_PR_NVD_01,Warehouse,cm,open,passed,task_asset,
+omniverse_ladder,a_frame_ladder,AluminiumStepDoubleLadder_A06_PR_NVD_01,Warehouse,cm,open,passed,task_asset,
+omniverse_ladder,step_stand,AluminumStepStand_A01_PR_NVD_01,Warehouse,cm,open,passed,task_asset,
+omniverse_ladder,step_stand,AluminumStepStand_A02_PR_NVD_01,Warehouse,cm,open,passed,task_asset,
+omniverse_ladder,step_stand,AluminumStepStand_A03_PR_NVD_01,Warehouse,cm,open,passed,task_asset,
+omniverse_ladder,step_ladder,AluminumStepLadder_A01_PR_NVD_01,Warehouse,cm,folded,passed,task_asset,
+omniverse_ladder,step_ladder,AluminumStepLadder_A02_PR_NVD_01,Warehouse,cm,open,passed,task_asset,
+omniverse_ladder,step_ladder,AluminumStepLadder_A03_PR_NVD_01,Warehouse,cm,folded,passed,task_asset,
+omniverse_ladder,step_ladder,AluminumStepLadder_A04_PR_NVD_01,Warehouse,cm,open,passed,task_asset,
+omniverse_ladder,step_ladder,AluminumStepLadder_A05_PR_NVD_01,Warehouse,cm,folded,passed,task_asset,
+omniverse_ladder,step_ladder,AluminumStepLadder_A06_PR_NVD_01,Warehouse,cm,open,passed,task_asset,
+omniverse_ladder,step_ladder,AluminumStepLadder_A07_PR_NVD_01,Warehouse,cm,folded,passed,task_asset,
+omniverse_ladder,step_ladder,AluminumStepLadder_A08_PR_NVD_01,Warehouse,cm,open,passed,task_asset,
+omniverse_ladder,step_ladder,AluminumStepLadder_A09_PR_NVD_01,Warehouse,cm,folded,passed,task_asset,
+omniverse_ladder,step_ladder,AluminumStepLadder_A10_PR_NVD_01,Warehouse,cm,open,passed,task_asset,
+omniverse_ladder,step_ladder,AluminumStepLadder_B01_PR_NVD_01,Warehouse,cm,open,passed,task_asset,
+omniverse_ladder,step_ladder,AluminumStepLadder_B02_PR_NVD_01,Warehouse,cm,open,passed,task_asset,
+omniverse_ladder,step_ladder,AluminumStepLadder_B03_PR_NVD_01,Warehouse,cm,open,passed,task_asset,
+omniverse_ladder,step_ladder,AluminumStepLadder_B04_PR_NVD_01,Warehouse,cm,open,passed,task_asset,
+omniverse_ladder,step_ladder,AluminumStepLadder_B05_PR_NVD_01,Warehouse,cm,open,passed,task_asset,
+omniverse_ladder,step_ladder,AluminumStepLadder_C01_PR_NVD_01,Warehouse,cm,open,passed,task_asset,
+omniverse_ladder,step_ladder,AluminumStepLadder_C02_PR_NVD_01,Warehouse,cm,open,passed,task_asset,
+omniverse_ladder,step_ladder,AluminumStepLadder_C03_PR_NVD_01,Warehouse,cm,open,passed,task_asset,
+omniverse_ladder,step_ladder,AluminumStepLadder_C04_PR_NVD_01,Warehouse,cm,open,passed,task_asset,
+omniverse_ladder,step_ladder,AluminumStepLadder_C05_PR_NVD_01,Warehouse,cm,open,passed,task_asset,
+omniverse_ladder,step_ladder,AluminumStepLadder_C06_PR_NVD_01,Warehouse,cm,open,passed,task_asset,
+omniverse_ladder,step_ladder,AluminumStepLadder_D01_PR_NVD_01,Warehouse,cm,open,passed,task_asset,
+omniverse_ladder,step_ladder,AluminumStepLadder_D02_PR_NVD_01,Warehouse,cm,open,passed,task_asset,
+omniverse_ladder,step_ladder,AluminumStepLadder_D03_PR_NVD_01,Warehouse,cm,open,passed,task_asset,
+omniverse_ladder,step_ladder,AluminumStepLadder_D04_PR_NVD_01,Warehouse,cm,open,passed,task_asset,
+omniverse_ladder,step_ladder,AluminumStepLadder_D05_PR_NVD_01,Warehouse,cm,open,passed,task_asset,
+omniverse_ladder,step_ladder,AluminumStepLadder_D06_PR_NVD_01,Warehouse,cm,open,passed,task_asset,
+omniverse_ladder,extension_ladder,FiberglassExtentionLadder_A01_PR_NVD_01,Warehouse,cm,open,passed,task_asset,vertical/rung type
+omniverse_ladder,extension_ladder,FiberglassExtentionLadder_A02_PR_NVD_01,Warehouse,cm,open,passed,task_asset,vertical/rung type
+omniverse_ladder,extension_ladder,FiberglassExtentionLadder_A03_PR_NVD_01,Warehouse,cm,open,passed,task_asset,vertical/rung type
+omniverse_ladder,extension_ladder,FiberglassExtentionLadder_A04_PR_NVD_01,Warehouse,cm,open,passed,task_asset,vertical/rung type
+omniverse_ladder,extension_ladder,FiberglassExtentionLadder_A05_PR_NVD_01,Warehouse,cm,open,passed,task_asset,vertical/rung type
+omniverse_ladder,extension_ladder,FiberglassExtentionLadder_A06_PR_NVD_01,Warehouse,cm,open,passed,task_asset,vertical/rung type
+omniverse_ladder,extension_ladder,FiberglassExtentionLadder_A07_PR_NVD_01,Warehouse,cm,open,passed,task_asset,vertical/rung type
+omniverse_ladder,extension_ladder,FiberglassExtentionLadder_A08_PR_NVD_01,Warehouse,cm,open,passed,task_asset,vertical/rung type
+omniverse_ladder,step_ladder,FiberglassStepLadder_A01_PR_NVD_01,Warehouse,cm,open,passed,task_asset,
+omniverse_ladder,step_ladder,FiberglassStepLadder_A02_PR_NVD_01,Warehouse,cm,open,passed,task_asset,
+omniverse_ladder,step_ladder,FiberglassStepLadder_A03_PR_NVD_01,Warehouse,cm,open,passed,task_asset,
+omniverse_ladder,step_ladder,FiberglassStepLadder_A04_PR_NVD_01,Warehouse,cm,open,passed,task_asset,
+omniverse_ladder,step_ladder,FiberglassStepLadder_A05_PR_NVD_01,Warehouse,cm,open,passed,task_asset,
+omniverse_ladder,step_ladder,FiberglassStepLadder_A06_PR_NVD_01,Warehouse,cm,open,passed,task_asset,
+omniverse_ladder,folding_step,FoldingStepLadder_A01_PR_NVD_01,Warehouse,cm,folded,passed,task_asset,
+omniverse_ladder,folding_step,FoldingStepLadder_A02_PR_NVD_01,Warehouse,cm,open,passed,task_asset,
+omniverse_ladder,folding_step,FoldingStepLadder_A03_PR_NVD_01,Warehouse,cm,folded,passed,task_asset,
+omniverse_ladder,folding_step,FoldingStepLadder_A04_PR_NVD_01,Warehouse,cm,open,passed,task_asset,
+omniverse_ladder,folding_step,FoldingStepLadder_A05_PR_NVD_01,Warehouse,cm,folded,passed,task_asset,
+omniverse_ladder,folding_step,FoldingStepLadder_A06_PR_NVD_01,Warehouse,cm,open,passed,task_asset,
+omniverse_ladder,rolling_ladder,GripStepRollingLadder_A01_PR_NVD_01,Warehouse,cm,open,passed,task_asset,
+omniverse_ladder,rolling_ladder,GripStepRollingLadder_A02_PR_NVD_01,Warehouse,cm,open,passed,task_asset,
+omniverse_ladder,rolling_ladder,GripStepRollingLadder_A03_PR_NVD_01,Warehouse,cm,open,passed,task_asset,
+omniverse_ladder,rolling_ladder,GripStepRollingLadder_A04_PR_NVD_01,Warehouse,cm,open,passed,task_asset,
+omniverse_ladder,rolling_ladder,GripStepRollingLadder_A05_PR_NVD_01,Warehouse,cm,open,passed,task_asset,
+omniverse_ladder,step_ladder,HeavyDutyFiberglassStepLadder_A01_PR_NVD_01,Warehouse,cm,open,passed,task_asset,
+omniverse_ladder,step_ladder,HeavyDutyFiberglassStepLadder_A02_PR_NVD_01,Warehouse,cm,open,passed,task_asset,
+omniverse_ladder,step_ladder,HeavyDutyFiberglassStepLadder_A03_PR_NVD_01,Warehouse,cm,open,passed,task_asset,
+omniverse_ladder,rolling_ladder,NarrowAisleRollingLadder_A01_PR_NVD_01,Warehouse,cm,open,passed,task_asset,
+omniverse_ladder,rolling_ladder,NarrowAisleRollingLadder_A02_PR_NVD_01,Warehouse,cm,open,passed,task_asset,
+omniverse_ladder,rolling_ladder,NarrowAisleRollingLadder_A03_PR_NVD_01,Warehouse,cm,open,passed,task_asset,
+omniverse_ladder,rolling_ladder,NarrowAisleRollingLadder_A04_PR_NVD_01,Warehouse,cm,open,passed,task_asset,
+omniverse_ladder,rolling_ladder,NarrowAisleRollingLadder_A05_PR_NVD_01,Warehouse,cm,open,passed,task_asset,
+omniverse_ladder,scaffold,SteelRollingScaffold_A01_PR_NVD_01,Warehouse,cm,open,passed,task_asset,
+omniverse_ladder,scaffold,SteelRollingScaffold_A02_PR_NVD_01,Warehouse,cm,open,passed,task_asset,
+omniverse_ladder,scaffold,SteelRollingScaffold_A03_PR_NVD_01,Warehouse,cm,open,passed,task_asset,
+omniverse_ladder,platform_ladder,TiltAndRollLadder_A01_PR_V_NVD_01,Warehouse,cm,open,passed,task_asset,
+omniverse_ladder,platform_ladder,TiltAndRollLadder_A02_PR_V_NVD_01,Warehouse,cm,open,passed,task_asset,
+omniverse_ladder,platform_ladder,TiltAndRollLadder_A03_PR_V_NVD_01,Warehouse,cm,open,passed,task_asset,
+omniverse_ladder,platform_ladder,TiltAndRollLadder_A04_PR_V_NVD_01,Warehouse,cm,open,passed,task_asset,
+omniverse_ladder,work_platform,StationaryWorkplatform_A01_PR_V_NVD_01,Warehouse,cm,open,passed,task_asset,
+omniverse_ladder,work_platform,StationaryWorkplatform_A02_PR_V_NVD_01,Warehouse,cm,open,passed,task_asset,
+omniverse_ladder,work_platform,StationaryWorkplatform_A03_PR_V_NVD_01,Warehouse,cm,open,passed,task_asset,
+omniverse_ladder,work_platform,StationaryWorkplatform_A04_PR_V_NVD_01,Warehouse,cm,open,passed,task_asset,
+omniverse_ladder,step_stand,aluminumstepstand_a01,SimReady WH01,m,open,passed,task_asset,
+omniverse_ladder,step_stand,aluminumstepstand_a02,SimReady WH01,m,open,passed,task_asset,
+omniverse_ladder,step_stand,aluminumstepstand_a03,SimReady WH01,m,open,passed,task_asset,
+omniverse_ladder,platform_ladder,tiltandrollladder_a01,SimReady WH01,m,open,passed,task_asset,
+omniverse_ladder,platform_ladder,tiltandrollladder_a02,SimReady WH01,m,open,passed,task_asset,
+omniverse_ladder,platform_ladder,tiltandrollladder_a03,SimReady WH01,m,open,passed,task_asset,
+omniverse_ladder,platform_ladder,tiltandrollladder_a04,SimReady WH01,m,open,passed,task_asset,
+omniverse_ladder,work_platform,stationaryworkplatform_a01,SimReady WH01,m,open,passed,task_asset,
+omniverse_ladder,work_platform,stationaryworkplatform_a02,SimReady WH01,m,open,passed,task_asset,
+omniverse_ladder,work_platform,stationaryworkplatform_a03,SimReady WH01,m,open,passed,task_asset,
+omniverse_ladder,work_platform,stationaryworkplatform_a04,SimReady WH01,m,open,passed,task_asset,
+omniverse_ladder,ladder,Ladder,Residential,cm,open,passed,task_asset,
+omniverse_climb,climb_structure,Mezzanine_A,Warehouse,cm,-,pending,scene_dressing,38-piece kit with built-in ladders + elevated decks
+omniverse_climb,climb_structure,OfficeSet_A,Warehouse,cm,-,pending,scene_dressing,63-piece kit with built-in ladders + elevated decks
+omniverse_lamp,table_lamp,AshleyLamp,Residential,cm,-,n/a,scene_dressing,"fused model, no separable bulb"
+omniverse_lamp,table_lamp,BlackLamp,Residential,cm,-,n/a,scene_dressing,"fused model, no separable bulb"
+omniverse_lamp,table_lamp,BlackTableLamp,Residential,cm,-,n/a,scene_dressing,"fused model, no separable bulb"
+omniverse_lamp,table_lamp,BubbleLampLarge,Residential,cm,-,n/a,scene_dressing,"fused model, no separable bulb"
+omniverse_lamp,table_lamp,BubbleLampSmall,Residential,cm,-,n/a,scene_dressing,"fused model, no separable bulb"
+omniverse_lamp,table_lamp,Colbert,Residential,cm,-,n/a,scene_dressing,"fused model, no separable bulb"
+omniverse_lamp,table_lamp,Cramer,Residential,cm,-,n/a,scene_dressing,"fused model, no separable bulb"
+omniverse_lamp,table_lamp,Dylan,Residential,cm,-,n/a,scene_dressing,"fused model, no separable bulb"
+omniverse_lamp,table_lamp,Finn,Residential,cm,-,n/a,scene_dressing,"fused model, no separable bulb"
+omniverse_lamp,table_lamp,Isabelle,Residential,cm,-,n/a,scene_dressing,"fused model, no separable bulb"
+omniverse_lamp,table_lamp,Jackson,Residential,cm,-,n/a,scene_dressing,"fused model, no separable bulb"
+omniverse_lamp,table_lamp,Mechant,Residential,cm,-,n/a,scene_dressing,"fused model, no separable bulb"
+omniverse_lamp,table_lamp,Theory,Residential,cm,-,n/a,scene_dressing,"fused model, no separable bulb"
+omniverse_lamp,floor_lamp,ArcFloorLamp,Residential,cm,-,n/a,scene_dressing,"fused model, no separable bulb"
+omniverse_lamp,floor_lamp,BrassFloorLamp,Residential,cm,-,n/a,scene_dressing,"fused model, no separable bulb"
+omniverse_lamp,floor_lamp,Candice,Residential,cm,-,n/a,scene_dressing,"fused model, no separable bulb"
+omniverse_lamp,floor_lamp,FloorLamp,Residential,cm,-,n/a,scene_dressing,"fused model, no separable bulb"
+omniverse_lamp,floor_lamp,VintageFloorLamp,Residential,cm,-,n/a,scene_dressing,"fused model, no separable bulb"
+omniverse_lamp,chandelier,Chandelier_Spiral,Residential,cm,-,n/a,scene_dressing,"fused model, no separable bulb"
+omniverse_lamp,chandelier,chandelier_A,Residential,cm,-,n/a,scene_dressing,"fused model, no separable bulb"
+omniverse_lamp,outdoor_light,3-TierPathLight,Residential,cm,-,n/a,scene_dressing,"fused model, no separable bulb"
+omniverse_lamp,outdoor_light,AgedCopperPathLight,Residential,cm,-,n/a,scene_dressing,"fused model, no separable bulb"
+omniverse_lamp,outdoor_light,CircularBollard,Residential,cm,-,n/a,scene_dressing,"fused model, no separable bulb"
+omniverse_lamp,outdoor_light,CircularWallSconce,Residential,cm,-,n/a,scene_dressing,"fused model, no separable bulb"
+omniverse_lamp,outdoor_light,GardenSpotlight,Residential,cm,-,n/a,scene_dressing,"fused model, no separable bulb"
+omniverse_lamp,outdoor_light,SquareBollard,Residential,cm,-,n/a,scene_dressing,"fused model, no separable bulb"
+omniverse_lamp,outdoor_light,WallSconce,Residential,cm,-,n/a,scene_dressing,"fused model, no separable bulb"
+omniverse_bulb,light_bulb,LightBulb,Sample Scenes,cm,-,pending,task_asset,separable /World/Geom/BulbGrp (glass+screw base); NO socket joint (would author one)
