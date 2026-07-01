@@ -24,3 +24,5 @@ _isaac_sim*
 .ruff_cache/
 
 # Assets are handled by assets/.gitignore (pulled from GCS, not tracked)
+# Large USD/mesh assets pulled from Omniverse S3 / GCS — never tracked in Git.
+/fiatlux_assets/
