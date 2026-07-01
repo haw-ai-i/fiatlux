@@ -70,6 +70,18 @@ uv run python scripts/record_run.py --task FIATLUX-Insert-v0 --policy random \
 uv run python scripts/score.py logs/runs/random0
 ```
 
+Pass `--record video` (or `--record both` to get the bag too) to also render an MP4
+of the rollout to `<out>/video/`:
+
+```bash
+uv run python scripts/record_run.py --task FIATLUX-Insert-v0 --policy random \
+    --episodes 2 --record both --headless --enable_cameras --out logs/runs/random0
+```
+
+This writes `logs/runs/random0/video/rl-video-step-0.mp4`. On a headless/remote box
+there's no display to preview it on, so pull the file to your machine (e.g.
+`scp` or a remote-file-browsing editor) and play it locally.
+
 ## Troubleshooting
 
 - **Env not found / empty list** — `uv sync` did not complete, or
@@ -77,3 +89,7 @@ uv run python scripts/score.py logs/runs/random0
 - **USD not found** — run `./assets/download_assets.sh` or set `FIATLUX_ASSETS_DIR`.
 - **Joint/body name errors** — the constants in `g1_bulb_env_cfg.py`
   (`G1_ARM_JOINTS`, `G1_EE_BODY`) must match the joints/links in your G1 USD.
+- **Hangs at `Do you accept the EULA? (Yes/No):`** — first launch of Isaac Sim's Kit
+  runtime prompts interactively and there's no stdin in a non-interactive/background
+  shell. Set `OMNI_KIT_ACCEPT_EULA=YES` in the environment (accepts once, writes an
+  `EULA_ACCEPTED` marker, and is silent on subsequent runs).
