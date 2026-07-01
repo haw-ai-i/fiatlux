@@ -40,11 +40,10 @@ from isaaclab.utils.noise import AdditiveUniformNoiseCfg as Unoise
 
 from fiatlux_task.assets import (
     BULB_USD,
-    CLUTTER_BOX_USD,
+    ROOM_USD,
     SKY_HDRI,
     SOCKET_USD,
     TABLE_USD,
-    WAREHOUSE_USD,
 )
 from fiatlux_task.robots.g1 import (
     G1_ARM_JOINTS,
@@ -142,16 +141,9 @@ class G1BulbSceneCfg(InteractiveSceneCfg):
     room: AssetBaseCfg = AssetBaseCfg(
         prim_path="/World/Room",
         spawn=sim_utils.UsdFileCfg(
-            usd_path=WAREHOUSE_USD,
+            usd_path=ROOM_USD,
             collision_props=sim_utils.CollisionPropertiesCfg(collision_enabled=False),
         ),
-    )
-
-    # -- Background clutter prop (visual interest only) --
-    clutter_box: AssetBaseCfg = AssetBaseCfg(
-        prim_path="/World/Clutter1",
-        init_state=AssetBaseCfg.InitialStateCfg(pos=(-0.8, 1.2, 0.0)),
-        spawn=sim_utils.UsdFileCfg(usd_path=CLUTTER_BOX_USD),
     )
 
     # -- Table the lamp/bulb rest on: kinematic so it can't be pushed around.

@@ -61,22 +61,24 @@ Per-asset detail in [`omniverse_uploaded_manifest.csv`](omniverse_uploaded_manif
 
 ## Isaac Sim Nucleus mirror (room dressing)
 
-The table, warehouse backdrop, clutter prop, and HDRI sky are mirrored once from
-Isaac Sim 5.1's own Nucleus content library (a public HTTPS/S3 endpoint, no
-Omniverse client needed) into our own bucket, so nothing is fetched live from
-NVIDIA's CDN at sim launch.
+The table, room backdrop, and HDRI sky are mirrored once from Isaac Sim 5.1's own
+Nucleus content library (a public HTTPS/S3 endpoint, no Omniverse client needed)
+into our own bucket, so nothing is fetched live from NVIDIA's CDN at sim launch.
 
 | GCS path                                                        | Nucleus source                          | Role               | Files |
 | ---------------------------------------------------------------- | ---------------------------------------- | ------------------ | ----- |
 | `gs://fiatlux/assets/isaac_packing_table/`                      | `Isaac/Props/PackingTable/`             | table for lamp/bulb | 112   |
-| `gs://fiatlux/assets/isaac_warehouse/Environments/Simple_Warehouse/` | `Isaac/Environments/Simple_Warehouse/` | room backdrop + clutter props | 2,025 |
-| `gs://fiatlux/assets/isaac_warehouse/Props/KLT_Bin/`            | `Isaac/Props/KLT_Bin/`                  | shared prop `warehouse.usd` depends on | 24 |
+| `gs://fiatlux/assets/isaac_room/Environments/Simple_Room/`      | `Isaac/Environments/Simple_Room/`       | room backdrop (walls/floor/windows) | 89 |
 | `gs://fiatlux/assets/isaac_skies/`                              | `Isaac/Materials/Textures/Skies/PolyHaven/` | HDRI dome light | 1     |
 
-`isaac_warehouse/` preserves its Nucleus directory depth (`Environments/Simple_Warehouse/`
-alongside a top-level `Props/`) rather than being flattened, because `warehouse.usd`
-references the shared `Isaac/Props/KLT_Bin/` prop via a relative path that climbs two
-directories -- flattening it would resolve outside the mirrored tree entirely.
+`isaac_room/` uses `Simple_Room` rather than the much heavier `Simple_Warehouse`
+demo scene: the warehouse ships ~100+ unique MDL materials, and NVIDIA's MDL
+compiler compiles each one on first use single-threaded -- that made a single
+`--record video` render take hours. `Simple_Room` has ~11 materials and still
+gives real walls/floor/windows instead of a bare plane. Nested to match its
+original Nucleus depth (`Environments/Simple_Room/`) as a precaution against
+relative references, even though it doesn't escape its own tree like the
+warehouse's `Props/KLT_Bin/` dependency did.
 
 Mirror-specific per-asset detail (Nucleus source path, role, notes) in
 [`isaac_mirror_manifest.csv`](isaac_mirror_manifest.csv). Development-only thumbnail

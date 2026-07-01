@@ -24,7 +24,7 @@
 # once from Isaac Sim's own Nucleus content library into our bucket so nothing
 # is fetched live from NVIDIA's CDN at sim launch.
 #   isaac_packing_table/      table the lamp/bulb rest on
-#   isaac_warehouse/          warehouse room backdrop + clutter props
+#   isaac_room/                room backdrop (walls/floor/windows)
 #   isaac_skies/              PolyHaven HDRI sky for the dome light
 #
 # Scene dressing (environment lighting, no bulb socket):
@@ -75,7 +75,7 @@ TASK_ASSETS=(
 
 ROOM_ASSETS=(
     isaac_packing_table
-    isaac_warehouse
+    isaac_room
     isaac_skies
 )
 

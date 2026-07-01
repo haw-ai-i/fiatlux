@@ -43,7 +43,7 @@ assets/unitree_g1/wholebody_inspire/g1_29dof_with_inspire_rev_1_0.usd
 assets/behavior1k_bulb/ymomhw/usd/ymomhw.usd
 assets/behavior1k_lamp/bbentu/usd/bbentu.usd
 assets/behavior1k_ladder/                # for the climbing subtask (roadmap)
-assets/isaac_packing_table/, assets/isaac_warehouse/, assets/isaac_skies/
+assets/isaac_packing_table/, assets/isaac_room/, assets/isaac_skies/
 ```
 
 (See `source/fiatlux_task/fiatlux_task/assets.py` for the exact paths the env
