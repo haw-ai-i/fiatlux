@@ -7,11 +7,16 @@
 
 This ``InteractiveSceneCfg`` subclass assembles every element as a **named scene entity** so
 each is addressable via ``SceneEntityCfg`` for later randomization: ``ground``, ``dome_light``,
-``key_light``, ``robot``, ``ladder``, ``lamp``, ``bulb``.
+``key_light``, ``room``, ``robot``, ``ladder``, ``lamp``, ``bulb``, ``fixture``.
 
 All assets come from the ``gs://fiatlux`` bucket (see ``fiatlux_task.assets`` and
 ``assets/download_assets.sh``): the same Inspire-hand G1 and BEHAVIOR-1K bulb/lamp the
 insertion task uses, plus the primary BEHAVIOR-1K climb ladder (``shfvtl``).
+
+The scene carries the same room dressing as the insertion task -- the Simple Room backdrop
+and the PolyHaven HDRI sky -- plus one *randomly chosen* BEHAVIOR-1K ceiling fixture per env
+(``fixture``; needs the opt-in ``download_assets.sh --scene-dressing`` asset group, and is
+dropped automatically when those assets are absent).
 
 Note: ``InteractiveSceneCfg`` treats *every* dataclass field as a scene entity, so non-entity
 tunables cannot live here as fields. Asset *placement* defaults are the module constants below
@@ -19,17 +24,17 @@ and are baked onto each entity's ``init_state`` (still overridable per-instance,
 ``scene.ladder.init_state.pos = ...``).
 """
 
+import glob
 import math
+import os
 
 import isaaclab.sim as sim_utils
 from isaaclab.assets import ArticulationCfg, AssetBaseCfg, RigidObjectCfg
-from isaaclab.scene import InteractiveSceneCfg
-from isaaclab.sim.spawners.from_files.from_files import _spawn_from_usd_file
-from isaaclab.sim.utils import clone
 from isaaclab.utils import configclass
 
-from fiatlux_task.assets import BULB_USD, LADDER_USD, SOCKET_USD
+from fiatlux_task.assets import BULB_USD, FIATLUX_ASSETS_DIR, LADDER_USD, SOCKET_USD
 from fiatlux_task.robots.g1 import G1_INSPIRE_CFG
+from fiatlux_task.scenes import DressedSceneCfg, spawn_b1k_single_body
 
 # -- default placement (module constants, not scene fields; override via each entity's
 #    init_state). BEHAVIOR-1K USDs are authored with the origin near the bbox center, so a
@@ -39,6 +44,29 @@ ROBOT_POSITION = (0.0, 0.0, 0.75)  # G1_INSPIRE_CFG's standing pelvis height
 LADDER_POSITION = (1.0, 0.0, 0.85)  # shfvtl bbox_z = 1.67 m -> base on the floor
 LAMP_POSITION = (-0.8, 0.0, 0.20)  # bbentu table lamp resting on the floor
 BULB_POSITION = (-0.55, -0.20, 0.05)  # loose on the floor next to the lamp
+FIXTURE_POSITION = (0.0, 0.0, 2.45)  # hangs overhead in the record camera's frame, clear of robot/ladder
+
+# -- per-env random ceiling fixture pool (visual dressing) --
+# Ceiling-mount BEHAVIOR-1K categories only: floor-standing fixtures would invade the task
+# space. These are the opt-in ``download_assets.sh --scene-dressing`` asset group; when they
+# are absent the pool is empty and ``G1LadderEnvCfg.__post_init__`` drops the ``fixture``
+# entity so the env still loads. Category dirs mix two layouts (``<id>/<id>.usd`` and
+# ``<id>/usd/<id>.usd``), hence the two glob patterns.
+_FIXTURE_CATEGORIES = (
+    "behavior1k_chandelier",
+    "behavior1k_downlight",
+    "behavior1k_paper_lantern",
+    "behavior1k_rectangular_light",
+    "behavior1k_room_light",
+    "behavior1k_square_light",
+    "behavior1k_track_light",
+)
+FIXTURE_USDS = sorted(
+    usd
+    for cat in _FIXTURE_CATEGORIES
+    for pattern in (os.path.join("*", "*.usd"), os.path.join("*", "usd", "*.usd"))
+    for usd in glob.glob(os.path.join(FIATLUX_ASSETS_DIR, cat, pattern))
+)
 
 
 def _quat_y_deg(angle_deg: float) -> tuple[float, float, float, float]:
@@ -47,26 +75,9 @@ def _quat_y_deg(angle_deg: float) -> tuple[float, float, float, float]:
     return (math.cos(half), 0.0, math.sin(half), 0.0)
 
 
-# --- BEHAVIOR-1K single-body workaround (issue #14, Option A) -----------------
-# Same interim fix the insertion task uses for its lamp (see ``g1_bulb_env_cfg``):
-# BEHAVIOR-1K objects can carry ``meta__*`` helper links (light source, toggle button)
-# joined to ``base_link``; deactivating them at spawn time makes the object resolve to a
-# single rigid body. Decorated with ``clone`` so the source prim is stripped *before* it
-# is replicated to the other envs.
-@clone
-def _spawn_b1k_single_body(prim_path, cfg, translation=None, orientation=None):
-    from pxr import Usd
-
-    prim = _spawn_from_usd_file(prim_path, cfg.usd_path, cfg, translation, orientation)
-    meta_prims = [p for p in Usd.PrimRange(prim) if p.GetName().startswith("meta__")]
-    for p in meta_prims:
-        p.SetActive(False)
-    return prim
-
-
 @configclass
-class G1LadderSceneCfg(InteractiveSceneCfg):
-    """G1 + BEHAVIOR-1K ladder/lamp/bulb on a lit ground plane."""
+class G1LadderSceneCfg(DressedSceneCfg):
+    """G1 + BEHAVIOR-1K ladder/lamp/bulb in the shared dressed room (see ``DressedSceneCfg``)."""
 
     # ------------------------------------------------------------------ ground & lighting
     ground: AssetBaseCfg = AssetBaseCfg(
@@ -78,10 +89,7 @@ class G1LadderSceneCfg(InteractiveSceneCfg):
             ),
         ),
     )
-    dome_light: AssetBaseCfg = AssetBaseCfg(
-        prim_path="/World/DomeLight",
-        spawn=sim_utils.DomeLightCfg(intensity=800.0, color=(0.9, 0.9, 0.95)),
-    )
+    # (dome_light + room backdrop are inherited from DressedSceneCfg.)
     key_light: AssetBaseCfg = AssetBaseCfg(
         prim_path="/World/KeyLight",
         spawn=sim_utils.DistantLightCfg(intensity=1500.0, color=(1.0, 0.98, 0.95), angle=0.53),
@@ -102,7 +110,7 @@ class G1LadderSceneCfg(InteractiveSceneCfg):
         spawn=sim_utils.UsdFileCfg(
             usd_path=LADDER_USD,
             # Strip meta__ helper links so the object resolves to one rigid body.
-            func=_spawn_b1k_single_body,
+            func=spawn_b1k_single_body,
             rigid_props=sim_utils.RigidBodyPropertiesCfg(kinematic_enabled=True),
             articulation_props=sim_utils.ArticulationRootPropertiesCfg(articulation_enabled=False),
         ),
@@ -114,7 +122,7 @@ class G1LadderSceneCfg(InteractiveSceneCfg):
         prim_path="{ENV_REGEX_NS}/Lamp",
         spawn=sim_utils.UsdFileCfg(
             usd_path=SOCKET_USD,
-            func=_spawn_b1k_single_body,
+            func=spawn_b1k_single_body,
             rigid_props=sim_utils.RigidBodyPropertiesCfg(kinematic_enabled=True),
             articulation_props=sim_utils.ArticulationRootPropertiesCfg(articulation_enabled=False),
         ),
@@ -132,4 +140,20 @@ class G1LadderSceneCfg(InteractiveSceneCfg):
             ),
         ),
         init_state=RigidObjectCfg.InitialStateCfg(pos=BULB_POSITION),
+    )
+
+    # ------------------------------------------------------------------ randomized dressing
+    # Per-env random ceiling fixture: each cloned env spawns one randomly chosen BEHAVIOR-1K
+    # ceiling-mount fixture from FIXTURE_USDS. AssetBaseCfg (not RigidObjectCfg) keeps it out
+    # of physics entirely -- no meta__ single-body stripping needed -- and collisions are
+    # disabled so task physics is untouched. Heterogeneous per-env assets require
+    # ``replicate_physics=False`` (set where the scene is instantiated, see the base env cfg).
+    fixture: AssetBaseCfg = AssetBaseCfg(
+        prim_path="{ENV_REGEX_NS}/Fixture",
+        spawn=sim_utils.MultiUsdFileCfg(
+            usd_path=FIXTURE_USDS,
+            random_choice=True,
+            collision_props=sim_utils.CollisionPropertiesCfg(collision_enabled=False),
+        ),
+        init_state=AssetBaseCfg.InitialStateCfg(pos=FIXTURE_POSITION),
     )

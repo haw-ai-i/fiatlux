@@ -10,20 +10,22 @@ managers only -- NO reward / termination / command / curriculum managers and no 
 code. The five ladder-family tasks subclass :class:`G1LadderEnvCfg` and add their own task
 logic later (switching to ``ManagerBasedRLEnvCfg``; see ``docs/roadmap.md``).
 
-The event manager carries one *enabled* reset term plus a *disabled* randomization scaffold:
-every future randomization knob is written out, commented, wired to the right
-``SceneEntityCfg`` and tagged ``TODO`` -- enabling randomization later is just uncommenting.
+The event manager carries the reset term and *enabled* per-reset light randomization, plus a
+*disabled* randomization scaffold: every future randomization knob is written out, commented,
+wired to the right ``SceneEntityCfg`` and tagged ``TODO`` -- enabling it later is just
+uncommenting. (Per-env asset randomization -- the ceiling ``fixture`` -- happens at spawn time
+in the scene cfg, not here.)
 """
 
 from isaaclab.envs import ManagerBasedEnvCfg
 from isaaclab.managers import EventTermCfg as EventTerm
 from isaaclab.managers import ObservationGroupCfg as ObsGroup
 from isaaclab.managers import ObservationTermCfg as ObsTerm
-from isaaclab.managers import SceneEntityCfg  # noqa: F401  -- used by the disabled randomization scaffold below
+from isaaclab.managers import SceneEntityCfg
 from isaaclab.utils import configclass
 
 from . import mdp
-from .ladder_scene_cfg import G1LadderSceneCfg
+from .ladder_scene_cfg import FIXTURE_USDS, G1LadderSceneCfg
 
 ##
 # Observations -- generic G1 proprioception (no task-specific terms yet).
@@ -84,6 +86,20 @@ class EventCfg:
     # -------- ENABLED: return robot + props to their configured default states on reset --------
     reset_all = EventTerm(func=mdp.reset_scene_to_default, mode="reset")
 
+    # -------- ENABLED: per-reset light randomization. Intensity only: the dome carries an
+    # HDRI sky texture, and color-tinting a texture reads as a render bug rather than useful
+    # domain randomization (see mdp.events). One global sample per reset (global light prims). --------
+    randomize_sky_intensity = EventTerm(
+        func=mdp.randomize_light_properties,
+        mode="reset",
+        params={"asset_cfg": SceneEntityCfg("dome_light"), "intensity_range": (600.0, 1400.0)},
+    )
+    randomize_key_light = EventTerm(
+        func=mdp.randomize_light_properties,
+        mode="reset",
+        params={"asset_cfg": SceneEntityCfg("key_light"), "intensity_range": (800.0, 2200.0)},
+    )
+
     # =====================================================================================
     #  DISABLED randomization scaffold -- uncomment + tune to enable. Built-in mdp terms are
     #  preferred; lighting uses the project stub mdp.randomize_light_properties. Each term is
@@ -118,14 +134,10 @@ class EventCfg:
     #     params={"asset_cfg": SceneEntityCfg("ladder"),
     #             "pose_range": {"x": (-0.05, 0.05), "yaw": (-0.1, 0.1)}, "velocity_range": {}})
 
-    # ---- (C) COLOR / VISUAL MATERIAL -- mdp.randomize_visual_color ----
-    #   TODO: target a specific child mesh of the USD asset ("mesh_name" depends on the
-    #   BEHAVIOR-1K prim layout -- inspect the spawned stage to pick one).
-    # randomize_ladder_color = EventTerm(
-    #     func=mdp.randomize_visual_color, mode="reset",
-    #     params={"asset_cfg": SceneEntityCfg("ladder"), "mesh_name": "<child mesh path>",
-    #             "colors": {"r": (0.3, 0.7), "g": (0.2, 0.5), "b": (0.1, 0.3)}, "event_name": "ladder_color"},
-    # )
+    # ---- (C) COLOR / VISUAL MATERIAL ----
+    #   TODO: Isaac Lab 2.3.2 ships no built-in visual-color/texture randomization term --
+    #   write a custom mdp term (a USD material-attribute write on the asset's child mesh,
+    #   in the style of mdp.randomize_light_properties) when task-phase DR needs it.
 
     # ---- (D) PHYSICS MATERIAL: friction / restitution -- mdp.randomize_rigid_body_material ----
     # randomize_ladder_material = EventTerm(
@@ -138,13 +150,10 @@ class EventCfg:
     #     params={"asset_cfg": SceneEntityCfg("bulb"), "static_friction_range": (0.5, 0.9),
     #             "dynamic_friction_range": (0.5, 0.9), "restitution_range": (0.0, 0.1), "num_buckets": 64})
 
-    # ---- (E) LIGHTING: intensity / color / orientation -- project stub (no built-in) ----
-    #   TODO: see mdp.randomize_light_properties (per-env lights + orientation still to do).
-    # randomize_dome_light = EventTerm(
-    #     func=mdp.randomize_light_properties, mode="reset",
-    #     params={"asset_cfg": SceneEntityCfg("dome_light"),
-    #             "intensity_range": (600.0, 1000.0), "color": (0.9, 0.9, 0.95)},
-    # )
+    # ---- (E) LIGHTING ----
+    #   Intensity randomization is ENABLED above (randomize_sky_intensity / randomize_key_light).
+    #   TODO: light *orientation* (the key light's direction) and per-env lights are still
+    #   open in the mdp.randomize_light_properties stub.
 
 
 ##
@@ -167,14 +176,22 @@ class G1LadderEnvCfg(ManagerBasedEnvCfg):
     documented knob the RL/task layer will consume once terminations are added."""
 
     # -- scene + managers --
+    # replicate_physics / fabric cloning assume identical envs; the per-env random ceiling
+    # fixture (MultiUsdFileCfg) makes envs heterogeneous, so both stay off. Irrelevant at
+    # scaffold scale; revisit if a task phase needs thousands of envs (drop the fixture then).
     scene: G1LadderSceneCfg = G1LadderSceneCfg(
-        num_envs=4, env_spacing=4.0, replicate_physics=True, clone_in_fabric=True
+        num_envs=4, env_spacing=4.0, replicate_physics=False, clone_in_fabric=False
     )
     observations: ObservationsCfg = ObservationsCfg()
     actions: ActionsCfg = ActionsCfg()
     events: EventCfg = EventCfg()
 
     def __post_init__(self) -> None:
+        # Drop the dressing fixture when its (opt-in) assets are not downloaded, so the env
+        # still loads from a clean clone without `download_assets.sh --scene-dressing`.
+        if not FIXTURE_USDS:
+            print("[fiatlux] no behavior1k_* ceiling-fixture assets found -- spawning without the 'fixture' entity.")
+            self.scene.fixture = None
         # control / physics rates
         self.decimation = self.control_decimation
         self.sim.dt = self.physics_dt
