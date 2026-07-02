@@ -36,7 +36,7 @@ from pathlib import Path
 import numpy as np
 import torch
 
-from .tasks.manager_based.fiatlux_task.mdp import rewards as _rewards
+from .tasks.mdp import rewards as _rewards
 
 RECORDER_VERSION = "1.0"
 

@@ -88,13 +88,13 @@ Two-layer layout: the root `pyproject.toml` is a uv-managed *environment* (`pack
 that pins the stack; `source/fiatlux_task/` is the actual Isaac Lab extension, installed
 editable. Scripts in `scripts/` are thin CLI entrypoints; reusable logic belongs in the package.
 
-**Task registration** — `fiatlux_task/__init__.py` imports `fiatlux_task.tasks`, whose
-`__init__.py` auto-walks subpackages via `isaaclab_tasks.utils.import_packages`; each leaf
-`tasks/manager_based/fiatlux_task/__init__.py` calls `gym.register(...)`. Two rules follow:
+**Task registration** — all task cfgs live flat in `fiatlux_task/tasks/` (the template's
+`tasks/manager_based/fiatlux_task/` nesting was deliberately flattened); `tasks/__init__.py`
+holds every `gym.register(...)` explicitly — there is no auto-import walk. Two rules:
 
 - Registrations use **string entry points only** (`"module:ClassName"`), never eager cfg
-  imports — the auto-import walk swallows import errors, so an eagerly imported cfg that
-  fails (e.g. missing USD) silently drops every registration in that module.
+  imports — importing `fiatlux_task` stays cheap, and a cfg bug can't take the whole
+  registry down with it.
 - After touching registration or cfg imports, run `scripts/list_envs.py` and confirm all
   FIATLUX ids are present.
 
