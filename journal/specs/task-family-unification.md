@@ -1,6 +1,15 @@
 # Task-Family Unification Plan — one world, many starting points
 
-Status: Phases 0–3 LANDED (2026-07-02); Phases 4–5 DEFERRED. Owner: fiatlux maintainers.
+Status: Phases 0–3 LANDED (2026-07-02); Phase 3.5 (per-task start layouts, no RL) LANDED
+(2026-07-02); Phases 4–5 DEFERRED. Owner: fiatlux maintainers.
+
+Phase 3.5 — per-task start layouts: each scaffold starts in its phase of the Replace story
+(carry: ladder stored at the wall; climb/descend: elevated chandelier fixture
+(`assets.ELEVATED_SOCKET_USD`) with robot at base/top; remove: old bulb seated kinematic in
+the fixture; install: empty fixture + fresh bulb in a parts crate (`assets.CRATE_USD`, new
+optional `bin` entity)). verify_scene replaced the hardcoded preset pose asserts with
+presence-per-preset (`scene_preset` attr) + a generic cfg-vs-stage init-state drift check,
+and records each task with cfg-declared `orbit_*` framing.
 
 Implementation notes from landing (decisions log additions):
 

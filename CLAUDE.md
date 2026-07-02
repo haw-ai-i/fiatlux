@@ -103,9 +103,12 @@ editable. Scripts in `scripts/` are thin CLI entrypoints; reusable logic belongs
   FIATLUX ids are present.
 
 **One family scene, preset layouts** — every task shares `scene_cfg.py: G1ReplaceSceneCfg`;
-a preset function (`apply_tabletop_preset` / `apply_workshop_preset`, called from an env
-cfg's `__post_init__`) selects the phase layout. Optional entities (`table`, `ladder`,
-`fixture`) are dropped by setting them `None`. Two env kinds on top of the one scene:
+a preset function (`apply_{tabletop,workshop,carry,at_height,remove,install}_preset`,
+called from an env cfg's `__post_init__`) selects the phase's start layout. Optional
+entities (`table`, `ladder`, `bin`, `fixture`) are dropped by setting them `None`. Each
+task cfg declares `scene_preset` (drives verify_scene's presence checks; positions are
+covered by its generic cfg-vs-stage drift check) and `orbit_*` attrs (frames its own
+`--record` video). Two env kinds on top of the one scene:
 `FIATLUX-Insert-v0` is a full `ManagerBasedRLEnv` (`g1_bulb_env_cfg.py`: tabletop preset +
 rewards/terminations in `mdp/`, PPO cfg in `agents/`); the workshop scaffolds share the
 **non-RL** `base_env_cfg.py: FamilyBaseEnvCfg` (managers only, no rewards), with per-task

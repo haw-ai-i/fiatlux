@@ -181,6 +181,16 @@ class FamilyBaseEnvCfg(ManagerBasedEnvCfg):
     assets require ``replicate_physics=False``, which is fine at scaffold scale but wrong at
     RL-training scale -- training cfgs set this False to get replicated physics back."""
 
+    scene_preset: str = "workshop"
+    """Which family-scene preset this task uses (verify_scene dispatches its presence
+    expectations on this; subclasses override alongside their preset call)."""
+
+    # -- orbit-recording framing (verify_scene --record); subclasses override to frame
+    #    their own layout. Radius must keep the camera inside the Simple Room (~4.5 m walls).
+    orbit_center: tuple[float, float, float] = (0.1, 0.0, 1.3)
+    orbit_radius: float = 4.0
+    orbit_height: float = 2.8
+
     # -- scene + managers --
     scene: G1ReplaceSceneCfg = G1ReplaceSceneCfg(
         num_envs=4, env_spacing=4.0, replicate_physics=False, clone_in_fabric=False

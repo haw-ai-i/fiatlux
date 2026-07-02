@@ -96,16 +96,29 @@ from prettytable import PrettyTable
 import isaacsim.core.utils.prims as prim_utils
 from pxr import Usd, UsdGeom, UsdPhysics
 
-from isaaclab.assets import RigidObjectCfg
+from isaaclab.assets import ArticulationCfg, RigidObjectCfg
 
 from isaaclab_tasks.utils import parse_env_cfg
 
 # global prims (shared across envs) and the per-env tracked entities we expect
 # Candidate scene entities; each is checked only when it exists (and is not None) on the
 # task's scene cfg, so this one verifier covers every family preset: the tabletop preset
-# has no ladder, the workshop preset has no table, dressing cfgs may drop the fixture.
+# has no ladder, the workshop presets have no table, dressing cfgs may drop the fixture.
 GLOBAL_CANDIDATES = ["ground", "dome_light", "key_light", "room"]
-TRACKED_CANDIDATES = ["robot", "ladder", "lamp", "socket", "bulb", "table"]
+TRACKED_CANDIDATES = ["robot", "ladder", "lamp", "socket", "bulb", "table", "bin"]
+
+# Presence expectations per scene preset (env cfg attr `scene_preset`): entities that MUST
+# be present / MUST be absent. Layout *positions* are covered generically by the
+# init-state drift check, which compares spawned poses to the cfg's own init_state.
+PRESET_PRESENCE = {
+    "tabletop": ({"table"}, {"ladder"}),
+    "workshop": ({"ladder"}, {"table"}),
+    "carry": ({"ladder"}, {"table"}),
+    "climb": ({"ladder"}, {"table"}),
+    "descend": ({"ladder"}, {"table"}),
+    "remove": ({"ladder"}, {"table"}),
+    "install": ({"ladder", "bin"}, {"table"}),
+}
 
 # where --record writes MP4s (repo-root logs/ dir, next to the RL runs; gitignored)
 OUT_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "logs", "verify"))
@@ -157,10 +170,10 @@ def maybe_enable_collider_drawing() -> None:
         print(f"[verify] Could not enable collider drawing: {exc}")
 
 
-# Orbit framing for the ladder-family scene: aim between lamp(-0.8), robot(0) and
-# ladder(+1); height/aim chosen so the frame spans the floor props up to the ~2.5 m ceiling
-# fixture. Radius must stay <= 4.0: the Simple Room wall sits ~4.5 m out and a wider orbit
-# puts the camera inside/behind it. (Capture machinery lives in fiatlux_task.viz.)
+# Fallback orbit framing when a task cfg carries no orbit hints. Task cfgs override via
+# `orbit_center` / `orbit_radius` / `orbit_height` attrs to frame their own preset layout.
+# Radius must keep the camera inside the Simple Room (walls ~4.5 m out). Capture machinery
+# lives in fiatlux_task.viz.
 ORBIT_CENTER = (0.1, 0.0, 1.3)
 ORBIT_RADIUS, ORBIT_HEIGHT = 4.0, 2.8
 
@@ -209,8 +222,6 @@ def main() -> int:
         n for n in tracked
         if n not in ("robot", "bulb") and isinstance(getattr(env_cfg.scene, n), RigidObjectCfg)
     ]
-    socket_name = "socket" if "socket" in tracked else ("lamp" if "lamp" in tracked else None)
-
     robot = base.scene["robot"]
 
     # =========================== 1. ASSETS PRESENT ===========================
@@ -222,33 +233,34 @@ def main() -> int:
         record(f"asset:{name}", prim_utils.is_prim_path_valid(p), p)
 
     # =========================== 1b. INITIAL STATE (preset layout) ===========================
-    # The family scene is preset-parametrized; assert the layout matches the preset the
-    # task claims: tabletop (manipulation bench) vs workshop (floor lamp + ladder).
+    # The family scene is preset-parametrized. Two layers of checks:
+    # (a) presence: the entities the task's preset must spawn / must drop;
+    # (b) drift: each rigid entity's spawned root position (env 0, in env-local frame)
+    #     matches the cfg's own init_state, so cfg-vs-stage drift is caught for ANY layout.
     print("\n[verify] (1b) Initial state (preset layout)")
-    if "table" in tracked:
-        if socket_name is not None:
-            sz = base.scene[socket_name].data.root_pos_w[:, 2]
-            record(
-                "preset:tabletop:socket_on_table",
-                bool(((sz - 1.20).abs() < 0.15).all()),
-                f"socket z={sz.mean().item():.2f} m (expect ~1.20)",
-            )
-        bz = base.scene["bulb"].data.root_pos_w[:, 2]
+    preset = getattr(env_cfg, "scene_preset", None)
+    if preset in PRESET_PRESENCE:
+        need, forbid = PRESET_PRESENCE[preset]
+        for n in sorted(need):
+            record(f"preset:{preset}:has_{n}", n in tracked, f"{n} must spawn in this preset")
+        for n in sorted(forbid):
+            record(f"preset:{preset}:no_{n}", n not in tracked, f"{n} must not spawn in this preset")
+    else:
+        print(f"  [INFO] no presence expectations for preset {preset!r}")
+    env0_origin = base.scene.env_origins[0]
+    for name in tracked:
+        entity_cfg = getattr(env_cfg.scene, name)
+        if not isinstance(entity_cfg, (RigidObjectCfg, ArticulationCfg)):
+            continue  # AssetBase entities (table, bin) have no runtime physics state
+        spawned = base.scene[name].data.root_pos_w[0] - env0_origin
+        expect = torch.tensor(entity_cfg.init_state.pos, device=device)
+        drift = (spawned - expect).norm().item()
+        # 0.10 m tolerance covers deliberate reset randomization (Insert: +/-0.05) and settling
         record(
-            "preset:tabletop:bulb_at_table_height",
-            bool(((bz - 1.05).abs() < 0.15).all()),
-            f"bulb z={bz.mean().item():.2f} m (expect ~1.05)",
+            f"init:{name}_at_cfg_pose",
+            drift < 0.10,
+            f"|spawned - cfg init_state| = {drift * 100:.1f} cm",
         )
-        record("preset:tabletop:no_ladder", "ladder" not in tracked, "tabletop preset spawns no ladder")
-    elif "ladder" in tracked:
-        if socket_name is not None:
-            sz = base.scene[socket_name].data.root_pos_w[:, 2]
-            record(
-                "preset:workshop:socket_on_floor",
-                bool((sz < 0.5).all()),
-                f"socket z={sz.mean().item():.2f} m (expect < 0.5)",
-            )
-        record("preset:workshop:no_table", "table" not in tracked, "workshop preset spawns no table")
 
     # =========================== 2. ROBOT SANITY ===========================
     print("\n[verify] (2) Robot sanity")
@@ -312,9 +324,11 @@ def main() -> int:
     # *sound* (finite, bounded, stays on the floor, no explosion), not that the robot balances.
     print("\n[verify] (3) Gravity / settling (numerical soundness)")
     record("sim:no_nans", not nan_seen, "NaNs in root states" if nan_seen else "finite throughout")
+    # z ceiling 2.6: the at-height presets legitimately START the robot at ~1.8 m; the
+    # bound guards launches/explosions, not high starting poses.
     record(
         "robot:bounded(no explosion/sink)",
-        (not nan_seen) and (max_z_seen < 2.0) and (min_z_seen > -0.05) and (max_speed_seen < 25.0),
+        (not nan_seen) and (max_z_seen < 2.6) and (min_z_seen > -0.05) and (max_speed_seen < 25.0),
         f"root z in [{min_z_seen:.2f}, {max_z_seen:.2f}] m, peak speed {max_speed_seen:.1f} m/s",
     )
     # diagnostic only (not graded): posture of the uncontrolled robot
@@ -394,9 +408,9 @@ def main() -> int:
             n_steps=args_cli.record_steps,
             fps=args_cli.record_fps,
             out_path=out_path,
-            center=ORBIT_CENTER,
-            radius=ORBIT_RADIUS,
-            height=ORBIT_HEIGHT,
+            center=tuple(getattr(env_cfg, "orbit_center", ORBIT_CENTER)),
+            radius=float(getattr(env_cfg, "orbit_radius", ORBIT_RADIUS)),
+            height=float(getattr(env_cfg, "orbit_height", ORBIT_HEIGHT)),
         )
         print(f"[verify] wrote video: {out_path}")
 

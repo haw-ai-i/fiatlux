@@ -41,7 +41,15 @@ from isaaclab.assets import ArticulationCfg, AssetBaseCfg, RigidObjectCfg
 from isaaclab.sensors import ContactSensorCfg
 from isaaclab.utils import configclass
 
-from fiatlux_task.assets import BULB_USD, FIATLUX_ASSETS_DIR, LADDER_USD, SOCKET_USD, TABLE_USD
+from fiatlux_task.assets import (
+    BULB_USD,
+    CRATE_USD,
+    ELEVATED_SOCKET_USD,
+    FIATLUX_ASSETS_DIR,
+    LADDER_USD,
+    SOCKET_USD,
+    TABLE_USD,
+)
 from fiatlux_task.robots.g1 import G1_INSPIRE_CFG
 from fiatlux_task.scenes import DressedSceneCfg, spawn_b1k_single_body
 
@@ -61,6 +69,22 @@ FIXTURE_POSITION = (0.0, 0.0, 2.45)  # hangs overhead in the record camera's fra
 TABLE_POSITION = (0.40, -0.10, 0.0)  # authored tabletop surface is ~1.0 m above the origin
 TABLETOP_SOCKET_POSITION = (0.45, 0.0, 1.20)
 TABLETOP_BULB_POSITION = (0.35, -0.20, 1.05)
+
+# -- carry preset: ladder *stored* by the room wall, work area across the room --
+CARRY_LADDER_POSITION = (-3.2, 1.8, 0.85)  # near the Simple Room wall (~4.5 m out)
+CARRY_ROBOT_POSITION = (-2.4, 1.8, 0.75)  # standing next to the stored ladder
+CARRY_LADDER_YAW_DEG = 90.0  # parallel to the wall
+
+# -- at-height presets (climb / descend / remove / install): elevated fixture over the
+#    ladder. The chandelier hangs above/behind the ladder's top; positions are tuned
+#    against verify_scene --record orbit videos, same as the floor layout. --
+ELEVATED_SOCKET_POSITION = (1.9, 0.0, 2.80)  # cage bottom clears the at-top robot's head
+CLIMB_ROBOT_POSITION = (0.9, 0.0, 0.75)  # at the ladder's base, ready to ascend
+TOP_ROBOT_POSITION = (1.15, 0.0, 1.80)  # pelvis at the upper steps (descend/remove/install)
+PARKED_BULB_POSITION = (0.5, -0.6, 0.05)  # out of the way on the floor
+SEATED_BULB_POSITION = (1.9, 0.0, 2.55)  # hanging in the fixture's seat, visible below the cage
+BIN_POSITION = (0.9, -0.55, 0.0)  # parts crate at the ladder base (install preset)
+BIN_BULB_POSITION = (0.9, -0.55, 0.15)  # fresh bulb resting in the crate
 
 # -- per-env random ceiling fixture pool (visual dressing) --
 # Ceiling-mount BEHAVIOR-1K categories only: floor-standing fixtures would invade the task
@@ -89,6 +113,12 @@ def _quat_y_deg(angle_deg: float) -> tuple[float, float, float, float]:
     """(w, x, y, z) quaternion for a rotation about +Y, in degrees."""
     half = math.radians(angle_deg) / 2.0
     return (math.cos(half), 0.0, math.sin(half), 0.0)
+
+
+def _quat_z_deg(angle_deg: float) -> tuple[float, float, float, float]:
+    """(w, x, y, z) quaternion for a rotation about +Z (yaw), in degrees."""
+    half = math.radians(angle_deg) / 2.0
+    return (math.cos(half), 0.0, 0.0, math.sin(half))
 
 
 @configclass
@@ -161,6 +191,8 @@ class G1ReplaceSceneCfg(DressedSceneCfg):
     )
     # Packing table (manipulation bench). Spawned only by the tabletop preset.
     table: AssetBaseCfg | None = None
+    # Parts crate (bulb bin). Spawned only by the install preset.
+    bin: AssetBaseCfg | None = None
 
     # -- Contact sensor on the grasping hand (force/torque safety + obs). Family-wide: the
     # manipulation tasks read it for rewards/recording, climbing will want contact sensing.
@@ -221,3 +253,58 @@ def apply_tabletop_preset(scene: G1ReplaceSceneCfg) -> None:
     )
     scene.socket.init_state.pos = TABLETOP_SOCKET_POSITION
     scene.bulb.init_state.pos = TABLETOP_BULB_POSITION
+
+
+def apply_carry_preset(scene: G1ReplaceSceneCfg) -> None:
+    """Ladder-handling start: the ladder is *stored* by the room wall, robot beside it.
+
+    The work area (the floor socket-lamp) stays across the room -- the task-phase goal is
+    fetching the ladder and standing it up there.
+    """
+    scene.ladder.init_state.pos = CARRY_LADDER_POSITION
+    scene.ladder.init_state.rot = _quat_z_deg(CARRY_LADDER_YAW_DEG)
+    scene.robot.init_state.pos = CARRY_ROBOT_POSITION
+
+
+def apply_at_height_preset(scene: G1ReplaceSceneCfg, robot_at: str = "base") -> None:
+    """Elevated-fixture layout shared by climb / descend / remove / install.
+
+    The socket entity becomes a ceiling chandelier hung above the ladder; the floor lamp
+    is gone. ``robot_at="base"`` starts the robot at the ladder's feet (climb),
+    ``robot_at="top"`` starts it at the upper steps (descend, and the working pose for
+    remove/install). The random dressing ``fixture`` is dropped -- the task chandelier
+    owns the ceiling.
+    """
+    scene.socket.spawn.usd_path = ELEVATED_SOCKET_USD
+    scene.socket.init_state.pos = ELEVATED_SOCKET_POSITION
+    scene.bulb.init_state.pos = PARKED_BULB_POSITION
+    scene.robot.init_state.pos = CLIMB_ROBOT_POSITION if robot_at == "base" else TOP_ROBOT_POSITION
+    scene.fixture = None
+
+
+def apply_remove_preset(scene: G1ReplaceSceneCfg) -> None:
+    """Bulb-removal start: at-height layout with the OLD BULB SEATED in the fixture.
+
+    The bulb is kinematic here -- a stand-in for "screwed into the socket" until the
+    task-phase attach joint exists (unification spec, Phase 4).
+    """
+    apply_at_height_preset(scene, robot_at="top")
+    scene.bulb.init_state.pos = SEATED_BULB_POSITION
+    scene.bulb.spawn.rigid_props.kinematic_enabled = True
+
+
+def apply_install_preset(scene: G1ReplaceSceneCfg) -> None:
+    """Bulb-installation start: at-height layout, empty fixture, fresh bulb in a crate.
+
+    The parts crate (``bin``) sits at the ladder base with the dynamic bulb resting in it.
+    """
+    apply_at_height_preset(scene, robot_at="top")
+    scene.bin = AssetBaseCfg(
+        prim_path="{ENV_REGEX_NS}/Bin",
+        init_state=AssetBaseCfg.InitialStateCfg(pos=BIN_POSITION),
+        spawn=sim_utils.UsdFileCfg(
+            usd_path=CRATE_USD,
+            rigid_props=sim_utils.RigidBodyPropertiesCfg(kinematic_enabled=True),
+        ),
+    )
+    scene.bulb.init_state.pos = BIN_BULB_POSITION

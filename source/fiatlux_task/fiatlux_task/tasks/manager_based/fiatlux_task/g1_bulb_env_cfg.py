@@ -261,6 +261,12 @@ class TerminationsCfg:
 class G1BulbInsertEnvCfg(ManagerBasedRLEnvCfg):
     """Fiatlux insertion subtask: G1 seats a bulb into a socket (family tabletop preset)."""
 
+    scene_preset: str = "tabletop"
+    # orbit-recording framing (verify_scene --record): around the bench
+    orbit_center: tuple[float, float, float] = (0.45, 0.0, 1.15)
+    orbit_radius: float = 3.4
+    orbit_height: float = 2.4
+
     # Homogeneous envs (no per-env dressing randomization) -> replicated physics for
     # training scale. Cloning stays in USD (not fabric): the hand_contact sensor's PhysX
     # contact-reporter API cannot attach to fabric-cloned env prims.

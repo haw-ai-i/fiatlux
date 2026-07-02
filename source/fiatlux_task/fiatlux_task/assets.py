@@ -47,6 +47,23 @@ SOCKET_USD = os.path.join(FIATLUX_ASSETS_DIR, "behavior1k_lamp", "bbentu", "usd"
 # by ``download_assets.sh``; 97 more Omniverse ladders are staged for variety.
 LADDER_USD = os.path.join(FIATLUX_ASSETS_DIR, "behavior1k_ladder", "shfvtl", "usd", "shfvtl.usd")
 
+# Elevated fixture for the at-height task presets (climb/descend/remove/install): a
+# BEHAVIOR-1K ceiling chandelier standing in as the socket the ladder leads to. One
+# deterministic model (``qghfol``); 3 more chandelier ids are local for variety.
+ELEVATED_SOCKET_USD = os.path.join(
+    FIATLUX_ASSETS_DIR, "behavior1k_chandelier", "qghfol", "usd", "qghfol.usd"
+)
+
+# Parts crate (the Install preset's bulb bin), from the packing-table prop set; the
+# ``_physics`` variant ships collision geometry so the bulb can rest inside it.
+CRATE_USD = os.path.join(
+    FIATLUX_ASSETS_DIR,
+    "isaac_packing_table",
+    "props",
+    "SM_Crate_A07_Yellow_01",
+    "SM_Crate_A07_Yellow_01_physics.usd",
+)
+
 # Room dressing: table, room backdrop, and an HDRI sky, mirrored once from Isaac
 # Sim's own Nucleus content library (Isaac/Props, Isaac/Environments) into our own
 # bucket so a clean `uv sync` + `download_assets.sh` never touches NVIDIA's CDN.

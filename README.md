@@ -39,9 +39,14 @@ replacement story:
 
 - **tabletop** — `FIATLUX-Insert-v0` (RL): packing table, socket on top, bulb at hand
   height, no ladder; the manipulation bench.
-- **workshop** — `FIATLUX-{Base,Carry,Climb,Descend,Remove,Install}-v0` (non-RL
-  scaffolds on `base_env_cfg.py: FamilyBaseEnvCfg`): ladder + socket-lamp + bulb on
-  the floor.
+- **workshop and its per-task variants** — the non-RL scaffolds (on
+  `base_env_cfg.py: FamilyBaseEnvCfg`) each start in their phase of the replacement story:
+  - `Base` — the reference floor layout: ladder at the work spot, socket-lamp + bulb on the floor.
+  - `Carry` — ladder *stored* by the room wall, robot beside it; work area across the room.
+  - `Climb` — chandelier fixture overhead, robot at the ladder's base.
+  - `Descend` — same elevated fixture, robot already at the upper steps.
+  - `Remove` — old bulb seated in the fixture (kinematic stand-in for "screwed in"), robot at height.
+  - `Install` — empty fixture, fresh bulb in a parts crate at the ladder base, robot at height.
 
 The scene carries the Simple Room + HDRI-sky dressing everywhere, plus (scaffolds only)
 a per-env random BEHAVIOR-1K ceiling fixture and per-reset lighting randomization (the
