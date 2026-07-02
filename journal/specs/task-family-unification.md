@@ -11,6 +11,12 @@ optional `bin` entity)). verify_scene replaced the hardcoded preset pose asserts
 presence-per-preset (`scene_preset` attr) + a generic cfg-vs-stage init-state drift check,
 and records each task with cfg-declared `orbit_*` framing.
 
+Phase 3.5 regrouping (user feedback): Remove + Install moved onto Insert's bench world --
+the manipulation trio shares the tabletop (Remove: bulb seated in the table lamp + empty
+floor crate; Install: empty socket + bulb in the crate); the at-height chandelier world is
+climb/descend-only. When Phase 4's screw mechanic lands, it anchors at the table lamp's
+seat pose for all three bench tasks.
+
 Phase 3.5 ladder revision (user feedback): all three B1K ladders are authored
 lying/leaning (probe: shfvtl 2.41 long x 1.67 high, pivot rests at z=0.47 -- it had been
 floating at z=0.85); the work-site ladder is now a deployed free-standing Omniverse

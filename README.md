@@ -47,9 +47,12 @@ replacement story:
     robot beside it; work area across the room.
   - `Climb` — chandelier fixture overhead, robot at the step ladder's base.
   - `Descend` — same elevated fixture, robot already up on the steps.
-  - `Remove` — Install's work site with the old bulb seated in the fixture (kinematic
-    stand-in for "screwed in") and an empty parts crate waiting at the base.
-  - `Install` — same work site: empty fixture, fresh bulb in the parts crate, robot at height.
+  - `Remove` — **Insert's bench world**: old bulb seated in the table lamp (kinematic
+    stand-in for "screwed in"), empty parts crate on the floor as its destination.
+  - `Install` — same bench: empty lamp socket, fresh bulb waiting in the parts crate.
+
+  The manipulation trio (`Insert`/`Remove`/`Install`) shares the bench world; the ladder
+  tasks (`Base`/`Carry`/`Climb`/`Descend`) share the workshop/at-height world.
 
 The scene carries the Simple Room + HDRI-sky dressing everywhere, plus (scaffolds only)
 a per-env random BEHAVIOR-1K ceiling fixture and per-reset lighting randomization (the

@@ -116,8 +116,8 @@ PRESET_PRESENCE = {
     "carry": ({"ladder"}, {"table"}),
     "climb": ({"ladder"}, {"table"}),
     "descend": ({"ladder"}, {"table"}),
-    "remove": ({"ladder", "bin"}, {"table"}),
-    "install": ({"ladder", "bin"}, {"table"}),
+    "remove": ({"table", "bin"}, {"ladder"}),
+    "install": ({"table", "bin"}, {"ladder"}),
 }
 
 # where --record writes MP4s (repo-root logs/ dir, next to the RL runs; gitignored)

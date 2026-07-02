@@ -82,16 +82,18 @@ CARRY_LADDER_POSITION = (-3.2, 1.8, 0.47)  # near the Simple Room wall (~4.5 m o
 CARRY_ROBOT_POSITION = (-2.4, 1.8, 0.75)  # standing next to the stored ladder
 CARRY_LADDER_YAW_DEG = 90.0  # parallel to the wall
 
-# -- at-height presets (climb / descend / remove / install): elevated fixture over the
-#    ladder. The chandelier hangs above/behind the ladder's top; positions are tuned
-#    against verify_scene --record orbit videos, same as the floor layout. --
+# -- at-height presets (climb / descend): elevated fixture over the ladder. The
+#    chandelier hangs above/behind the ladder's top; positions are tuned against
+#    verify_scene --record orbit videos, same as the floor layout. --
 ELEVATED_SOCKET_POSITION = (1.9, 0.0, 2.80)  # cage bottom clears the at-top robot's head
 CLIMB_ROBOT_POSITION = (0.75, 0.0, 0.75)  # at the step ladder's base, ready to ascend
-TOP_ROBOT_POSITION = (1.35, 0.0, 1.85)  # pelvis at the upper steps (descend/remove/install)
+TOP_ROBOT_POSITION = (1.35, 0.0, 1.85)  # pelvis at the upper steps (descend)
 PARKED_BULB_POSITION = (0.5, -0.6, 0.05)  # out of the way on the floor
-SEATED_BULB_POSITION = (1.9, 0.0, 2.55)  # hanging in the fixture's seat, visible below the cage
-BIN_POSITION = (0.9, -0.55, 0.0)  # parts crate at the ladder base (remove/install presets)
-BIN_BULB_POSITION = (0.9, -0.55, 0.15)  # fresh bulb resting in the crate (install)
+
+# -- bench manipulation extras (remove / install share Insert's tabletop world) --
+TABLETOP_SEATED_BULB_POSITION = (0.45, 0.0, 1.33)  # in the table lamp's socket seat
+BIN_POSITION = (0.15, -0.75, 0.0)  # parts crate on the floor beside the bench
+BIN_BULB_POSITION = (0.15, -0.75, 0.15)  # fresh bulb resting in the crate (install)
 
 # -- per-env random ceiling fixture pool (visual dressing) --
 # Ceiling-mount BEHAVIOR-1K categories only: floor-standing fixtures would invade the task
@@ -301,13 +303,12 @@ def apply_carry_preset(scene: G1ReplaceSceneCfg) -> None:
 
 
 def apply_at_height_preset(scene: G1ReplaceSceneCfg, robot_at: str = "base") -> None:
-    """Elevated-fixture layout shared by climb / descend / remove / install.
+    """Elevated-fixture layout shared by climb / descend.
 
     The socket entity becomes a ceiling chandelier hung above the ladder; the floor lamp
     is gone. ``robot_at="base"`` starts the robot at the ladder's feet (climb),
-    ``robot_at="top"`` starts it at the upper steps (descend, and the working pose for
-    remove/install). The random dressing ``fixture`` is dropped -- the task chandelier
-    owns the ceiling.
+    ``robot_at="top"`` starts it at the upper steps (descend). The random dressing
+    ``fixture`` is dropped -- the task chandelier owns the ceiling.
     """
     scene.socket.spawn.usd_path = ELEVATED_SOCKET_USD
     scene.socket.init_state.pos = ELEVATED_SOCKET_POSITION
@@ -317,7 +318,7 @@ def apply_at_height_preset(scene: G1ReplaceSceneCfg, robot_at: str = "base") -> 
 
 
 def _add_parts_bin(scene: G1ReplaceSceneCfg) -> None:
-    """Spawn the kinematic parts crate at the ladder base (remove + install work site)."""
+    """Spawn the kinematic parts crate on the floor beside the bench (remove + install)."""
     scene.bin = AssetBaseCfg(
         prim_path="{ENV_REGEX_NS}/Bin",
         init_state=AssetBaseCfg.InitialStateCfg(pos=BIN_POSITION),
@@ -329,20 +330,20 @@ def _add_parts_bin(scene: G1ReplaceSceneCfg) -> None:
 
 
 def apply_remove_preset(scene: G1ReplaceSceneCfg) -> None:
-    """Bulb-removal start: Install's work site with the OLD BULB SEATED in the fixture.
+    """Bulb-removal start: Insert's bench with the OLD BULB SEATED in the table lamp.
 
-    Same scene as the install preset (fixture + ladder + empty parts crate -- the old
-    bulb's destination); only the bulb starts differently: kinematic in the fixture seat,
-    a stand-in for "screwed in" until the task-phase attach joint exists (spec, Phase 4).
+    Same world as the Insert/Install bench; the bulb starts kinematic in the lamp's
+    socket seat (a stand-in for "screwed in" until the task-phase attach joint exists,
+    spec Phase 4), and the empty parts crate beside the bench is its destination.
     """
-    apply_at_height_preset(scene, robot_at="top")
+    apply_tabletop_preset(scene)
     _add_parts_bin(scene)
-    scene.bulb.init_state.pos = SEATED_BULB_POSITION
+    scene.bulb.init_state.pos = TABLETOP_SEATED_BULB_POSITION
     scene.bulb.spawn.rigid_props.kinematic_enabled = True
 
 
 def apply_install_preset(scene: G1ReplaceSceneCfg) -> None:
-    """Bulb-installation start: at-height layout, empty fixture, fresh bulb in the crate."""
-    apply_at_height_preset(scene, robot_at="top")
+    """Bulb-installation start: Insert's bench, empty lamp socket, fresh bulb in the crate."""
+    apply_tabletop_preset(scene)
     _add_parts_bin(scene)
     scene.bulb.init_state.pos = BIN_BULB_POSITION
