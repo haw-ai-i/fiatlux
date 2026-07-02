@@ -3,14 +3,17 @@
 #
 # SPDX-License-Identifier: BSD-3-Clause
 
-"""Load a Fiatlux ladder-family env, step it under a zero/default-hold policy, and assert the scene is solid.
+"""Load any Fiatlux env, step it under a zero/default-hold policy, and assert the scene is solid.
 
 This is a *verification* tool, not training. It checks, with an explicit PASS/FAIL per item:
-assets present, robot sanity, gravity/settling, collision coverage, and contact/penetration.
+assets present, preset initial state, robot sanity, gravity/settling, collision coverage, and
+contact/penetration.
 
-It targets the **ladder task family** (``FIATLUX-Base-v0`` and friends): it expects the scene
-entities ``robot`` / ``ladder`` / ``lamp`` / ``bulb`` and the shared ground/lights, and drives the
-non-RL ``ManagerBasedEnv`` directly. It is not applicable to ``FIATLUX-Insert-v0``.
+It covers the whole task family: the entity list is derived from the task's scene cfg, so
+presets that drop entities (tabletop has no ladder, workshop has no table) verify with the
+same tool. RL members work too -- their step returns are ignored and mid-run auto-resets do
+not disturb the checks. ``FIATLUX-Insert-v0`` carries a wrist-camera sensor, so verifying it
+needs ``--enable_cameras``.
 
 Examples
 --------
@@ -22,6 +25,9 @@ Examples
 
     # verify a specific task env
     uv run python scripts/verify_scene.py --headless --task FIATLUX-Climb-v0
+
+    # the Insert task needs camera rendering for its wrist-camera sensor
+    uv run python scripts/verify_scene.py --headless --enable_cameras --task FIATLUX-Insert-v0
 """
 
 """Launch Isaac Sim Simulator first."""
@@ -33,7 +39,12 @@ import sys
 from isaaclab.app import AppLauncher
 
 parser = argparse.ArgumentParser(description="Verify the Fiatlux ladder scene loads and physics is stable.")
-parser.add_argument("--task", type=str, default="FIATLUX-Base-v0", help="Gym id of the env/task to verify.")
+parser.add_argument(
+    "--task",
+    type=str,
+    default="FIATLUX-Base-v0",
+    help="Gym id of the env/task to verify (any FIATLUX id; Insert also needs --enable_cameras).",
+)
 parser.add_argument("--num_envs", type=int, default=4, help="Number of environments to spawn.")
 parser.add_argument("--steps", type=int, default=200, help="Number of (decimated) env steps to simulate.")
 parser.add_argument(
@@ -85,16 +96,16 @@ from prettytable import PrettyTable
 import isaacsim.core.utils.prims as prim_utils
 from pxr import Usd, UsdGeom, UsdPhysics
 
+from isaaclab.assets import RigidObjectCfg
+
 from isaaclab_tasks.utils import parse_env_cfg
 
 # global prims (shared across envs) and the per-env tracked entities we expect
-GLOBAL_PRIMS = {
-    "ground": "/World/ground",
-    "dome_light": "/World/DomeLight",
-    "key_light": "/World/KeyLight",
-    "room": "/World/Room",
-}
-TRACKED = ["robot", "ladder", "lamp", "bulb"]
+# Candidate scene entities; each is checked only when it exists (and is not None) on the
+# task's scene cfg, so this one verifier covers every family preset: the tabletop preset
+# has no ladder, the workshop preset has no table, dressing cfgs may drop the fixture.
+GLOBAL_CANDIDATES = ["ground", "dome_light", "key_light", "room"]
+TRACKED_CANDIDATES = ["robot", "ladder", "lamp", "socket", "bulb", "table"]
 
 # where --record writes MP4s (repo-root logs/ dir, next to the RL runs; gitignored)
 OUT_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "logs", "verify"))
@@ -183,16 +194,61 @@ def main() -> int:
 
     base.reset()
 
+    # Resolve what this task's scene actually contains (family presets drop entities).
+    # Prim paths come from the *cfg* -- AssetBaseCfg entities (table, lights) are bare
+    # XFormPrims at runtime with no `.cfg` attribute.
+    global_prims = {
+        n: getattr(env_cfg.scene, n).prim_path
+        for n in GLOBAL_CANDIDATES
+        if getattr(env_cfg.scene, n, None) is not None
+    }
+    tracked = [n for n in TRACKED_CANDIDATES if getattr(env_cfg.scene, n, None) is not None]
+    # kinematic set-dressing props (RigidObjects only; the dynamic bulb and the robot are
+    # checked separately, AssetBase entities have no physics state to assert on)
+    kinematic_props = [
+        n for n in tracked
+        if n not in ("robot", "bulb") and isinstance(getattr(env_cfg.scene, n), RigidObjectCfg)
+    ]
+    socket_name = "socket" if "socket" in tracked else ("lamp" if "lamp" in tracked else None)
+
     robot = base.scene["robot"]
-    props = {name: base.scene[name] for name in ("ladder", "lamp", "bulb")}
 
     # =========================== 1. ASSETS PRESENT ===========================
     print("\n[verify] (1) Assets present")
-    for name, path in GLOBAL_PRIMS.items():
+    for name, path in global_prims.items():
         record(f"asset:{name}", prim_utils.is_prim_path_valid(path), path)
-    for name in TRACKED:
-        p = env0(base.scene[name].cfg.prim_path)
+    for name in tracked:
+        p = env0(getattr(env_cfg.scene, name).prim_path)
         record(f"asset:{name}", prim_utils.is_prim_path_valid(p), p)
+
+    # =========================== 1b. INITIAL STATE (preset layout) ===========================
+    # The family scene is preset-parametrized; assert the layout matches the preset the
+    # task claims: tabletop (manipulation bench) vs workshop (floor lamp + ladder).
+    print("\n[verify] (1b) Initial state (preset layout)")
+    if "table" in tracked:
+        if socket_name is not None:
+            sz = base.scene[socket_name].data.root_pos_w[:, 2]
+            record(
+                "preset:tabletop:socket_on_table",
+                bool(((sz - 1.20).abs() < 0.15).all()),
+                f"socket z={sz.mean().item():.2f} m (expect ~1.20)",
+            )
+        bz = base.scene["bulb"].data.root_pos_w[:, 2]
+        record(
+            "preset:tabletop:bulb_at_table_height",
+            bool(((bz - 1.05).abs() < 0.15).all()),
+            f"bulb z={bz.mean().item():.2f} m (expect ~1.05)",
+        )
+        record("preset:tabletop:no_ladder", "ladder" not in tracked, "tabletop preset spawns no ladder")
+    elif "ladder" in tracked:
+        if socket_name is not None:
+            sz = base.scene[socket_name].data.root_pos_w[:, 2]
+            record(
+                "preset:workshop:socket_on_floor",
+                bool((sz < 0.5).all()),
+                f"socket z={sz.mean().item():.2f} m (expect < 0.5)",
+            )
+        record("preset:workshop:no_table", "table" not in tracked, "workshop preset spawns no table")
 
     # =========================== 2. ROBOT SANITY ===========================
     print("\n[verify] (2) Robot sanity")
@@ -200,26 +256,34 @@ def main() -> int:
     record("robot:bodies>0", robot.num_bodies > 0, f"{robot.num_bodies} bodies")
     record("robot:joints>0", robot.num_joints > 0, f"{robot.num_joints} joints/DOFs")
     record("robot:action_dim", action_dim > 0, f"action_dim={action_dim}")
-    # default standing pose applied by the reset
+    # default standing pose applied by the reset (0.1 rad tolerance: task cfgs may
+    # deliberately randomize joint offsets on reset, e.g. Insert's +/-0.05 rad)
     dpose_err = (robot.data.joint_pos - robot.data.default_joint_pos).abs().max().item()
-    record("robot:default_pose_applied", dpose_err < 1e-3, f"max|q-q_default|={dpose_err:.2e} rad")
+    record("robot:default_pose_applied", dpose_err < 0.1, f"max|q-q_default|={dpose_err:.2e} rad")
 
     # ----- record initial state, then roll out under zero (hold-default) actions -----
     actions = torch.zeros((base.num_envs, action_dim), device=device)
     init_root_z = robot.data.root_pos_w[:, 2].clone()
-    init_bulb_p = props["bulb"].data.root_pos_w.clone()
-    init_kin = {n: props[n].data.root_pos_w.clone() for n in ("ladder", "lamp")}
+    init_bulb_p = base.scene["bulb"].data.root_pos_w.clone()
     step1_root = None
     nan_seen = False
     min_z_seen, max_z_seen, max_speed_seen = float("inf"), float("-inf"), 0.0
     render_viewer = not args_cli.headless
+
+    # Kinematic props must not move *within* an episode. RL family members auto-reset
+    # finished episodes inside step() and their reset events may deliberately re-pose
+    # kinematic props (e.g. Insert re-samples the socket +/- a few cm), so track per-step
+    # movement and skip comparisons across a reset (detected via episode_length_buf).
+    prev_kin = {n: base.scene[n].data.root_pos_w.clone() for n in kinematic_props}
+    prev_ep_len = base.episode_length_buf.clone()
+    max_kin_move = dict.fromkeys(kinematic_props, 0.0)
 
     print(f"\n[verify] Stepping {args_cli.steps} steps under zero/default-hold actions...")
     for i in range(args_cli.steps):
         base.step(actions)
         if render_viewer:
             base.sim.render()
-        if torch.isnan(robot.data.root_pos_w).any() or torch.isnan(props["bulb"].data.root_pos_w).any():
+        if torch.isnan(robot.data.root_pos_w).any() or torch.isnan(base.scene["bulb"].data.root_pos_w).any():
             nan_seen = True
             break
         rz = robot.data.root_pos_w[:, 2]
@@ -228,6 +292,15 @@ def main() -> int:
         max_speed_seen = max(max_speed_seen, robot.data.root_lin_vel_w.norm(dim=-1).max().item())
         if i == 0:
             step1_root = robot.data.root_pos_w.clone()
+        ep_len = base.episode_length_buf
+        progressed = ep_len > prev_ep_len  # envs that did NOT reset during this step
+        for n in kinematic_props:
+            cur = base.scene[n].data.root_pos_w
+            if bool(progressed.any()):
+                moved = (cur[progressed] - prev_kin[n][progressed]).norm(dim=-1).max().item()
+                max_kin_move[n] = max(max_kin_move[n], moved)
+            prev_kin[n] = cur.clone()
+        prev_ep_len = ep_len.clone()
 
     # =========================== 3. GRAVITY / SETTLING (numerical soundness) ===========================
     # NOTE: a free-base humanoid holding a fixed joint pose is an inverted pendulum -- without an
@@ -252,10 +325,13 @@ def main() -> int:
     # props rest stably: kinematic props must not move; the dynamic bulb must settle near where it
     # started (its init pose is an estimate above the floor, so allow a small drop -- what this
     # catches is falling through the floor, being launched, or exploding).
-    for n in ("ladder", "lamp"):
-        moved = (props[n].data.root_pos_w - init_kin[n]).norm(dim=-1).max().item()
-        record(f"{n}:static", moved < 1e-2, f"max move={moved * 1000:.2f} mm (kinematic)")
-    bulb_move = (props["bulb"].data.root_pos_w[:, 2] - init_bulb_p[:, 2]).abs().max().item()
+    for n in kinematic_props:
+        record(
+            f"{n}:static",
+            max_kin_move[n] < 1e-2,
+            f"max within-episode move={max_kin_move[n] * 1000:.2f} mm (kinematic)",
+        )
+    bulb_move = (base.scene["bulb"].data.root_pos_w[:, 2] - init_bulb_p[:, 2]).abs().max().item()
     record("bulb:settles", (bulb_move < 0.15) and not nan_seen, f"vertical move from init = {bulb_move * 1000:.1f} mm")
 
     # =========================== 4. COLLISION COVERAGE ===========================
@@ -263,8 +339,8 @@ def main() -> int:
     # dedicated collision meshes, so we require colliders to EXIST under each entity rather
     # than a 1:1 visual-geom:collider match.
     print("\n[verify] (4) Collision coverage (every tracked entity must have colliders)")
-    for name in TRACKED:
-        root = env0(base.scene[name].cfg.prim_path)
+    for name in tracked:
+        root = env0(getattr(env_cfg.scene, name).prim_path)
         n_geom, n_coll = collider_audit(root)
         record(f"{name}:colliders", n_coll > 0, f"{n_coll} collision prims ({n_geom} visual geoms)")
 
@@ -273,7 +349,7 @@ def main() -> int:
     # robot never sank through the floor at any point in the run (negative pelvis z == fell through)
     record("robot:above_floor", min_z_seen > -0.05 and not nan_seen, f"min root z over run={min_z_seen:.3f} m")
     # bulb did not sink through the ground plane
-    bulb_z = props["bulb"].data.root_pos_w[:, 2]
+    bulb_z = base.scene["bulb"].data.root_pos_w[:, 2]
     record(
         "bulb:above_floor",
         bool((bulb_z > -0.02).all()) and not nan_seen,
