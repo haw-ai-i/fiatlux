@@ -51,10 +51,14 @@ First non-interactive Isaac Sim launch hangs on the EULA prompt — set `OMNI_KI
 uv run python scripts/list_envs.py                                  # sanity-check registrations
 uv run python scripts/zero_agent.py --task FIATLUX-Insert-v0        # launch scene (also random_agent.py, teleop.py)
 
-# Ladder-family scaffolds are verified with verify_scene.py ONLY (they are non-RL envs;
-# train/eval/teleop assume RL envs). Prints PASS/FAIL table, exits non-zero on failure.
+# verify_scene.py covers EVERY family member (entity list derives from the task's scene
+# cfg). Prints PASS/FAIL table incl. preset initial-state checks, exits non-zero on failure.
+# Insert carries a wrist camera -> needs --enable_cameras. train/eval/teleop = RL members only.
 uv run python scripts/verify_scene.py --headless                    # defaults to FIATLUX-Base-v0
 uv run python scripts/verify_scene.py --headless --task FIATLUX-Climb-v0
+uv run python scripts/verify_scene.py --headless --enable_cameras --hold_base --task FIATLUX-Insert-v0
+# (Insert: --hold_base is required -- known issue: a policy-less free-base G1 collapsing
+#  onto the table is unstable; tracked for the RL gate in the unification spec)
 uv run python scripts/verify_scene.py --record --hold_base --headless --num_envs 1  # orbiting MP4 -> logs/verify/
 
 # Evaluate / record / score (Insert task). --enable_cameras is required when recording:
@@ -98,12 +102,19 @@ editable. Scripts in `scripts/` are thin CLI entrypoints; reusable logic belongs
 - After touching registration or cfg imports, run `scripts/list_envs.py` and confirm all
   FIATLUX ids are present.
 
-**Two env kinds, two toolchains** — `FIATLUX-Insert-v0` is a full `ManagerBasedRLEnv`
-(`g1_bulb_env_cfg.py`: scene + rewards/terminations in `mdp/`, PPO cfg in `agents/`). The
-ladder family shares one **non-RL** `ManagerBasedEnv` base (`g1_ladder_env_cfg.py` on top of
-`ladder_scene_cfg.py`) with observation/action/event managers only — no rewards, no training;
-the per-task cfgs (`carry_env_cfg.py`, etc.) are subclasses holding TODO scaffolds. Task
-work later upgrades a scaffold to `ManagerBasedRLEnvCfg` (see `docs/roadmap.md`).
+**One family scene, preset layouts** — every task shares `scene_cfg.py: G1ReplaceSceneCfg`;
+a preset function (`apply_tabletop_preset` / `apply_workshop_preset`, called from an env
+cfg's `__post_init__`) selects the phase layout. Optional entities (`table`, `ladder`,
+`fixture`) are dropped by setting them `None`. Two env kinds on top of the one scene:
+`FIATLUX-Insert-v0` is a full `ManagerBasedRLEnv` (`g1_bulb_env_cfg.py`: tabletop preset +
+rewards/terminations in `mdp/`, PPO cfg in `agents/`); the workshop scaffolds share the
+**non-RL** `base_env_cfg.py: FamilyBaseEnvCfg` (managers only, no rewards), with per-task
+subclasses (`carry_env_cfg.py`, etc.) holding TODO scaffolds that later upgrade to
+`ManagerBasedRLEnvCfg` (see `docs/roadmap.md` and `journal/specs/task-family-unification.md`).
+Two physics gotchas encoded in the cfgs: the per-env random `fixture` requires
+`replicate_physics=False` (the `enable_dressing_randomization` flag trades it off — off in
+training cfgs), and the `hand_contact` sensor's PhysX contact-reporter cannot attach to
+fabric-cloned env prims, so cloning stays in USD (`clone_in_fabric=False`).
 
 **Shared building blocks** (import from these; don't re-derive):
 

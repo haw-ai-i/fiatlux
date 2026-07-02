@@ -246,6 +246,10 @@ class TerminationsCfg:
         func=mdp.object_dropped,
         params={"asset_cfg": SceneEntityCfg("bulb"), "min_height": 0.4},
     )
+    # TODO(RL gate): add a robot-fell termination (base height/tilt threshold). KNOWN
+    # ISSUE (unification spec): a collapsed free-base G1 draped over the kinematic table
+    # accumulates violent PD-vs-contact solver kicks if episodes linger in that state --
+    # ending them immediately is the proper fix (plus possibly compliant gains).
 
 
 ##

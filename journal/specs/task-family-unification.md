@@ -1,6 +1,27 @@
 # Task-Family Unification Plan — one world, many starting points
 
-Status: PROPOSED (2026-07-02). Owner: fiatlux maintainers.
+Status: Phases 0–3 LANDED (2026-07-02); Phases 4–5 DEFERRED. Owner: fiatlux maintainers.
+
+Implementation notes from landing (decisions log additions):
+
+- Manager blocks (Actions/Obs/Rewards/Terminations) stayed in ``g1_bulb_env_cfg.py``
+  rather than moving to shared modules -- factoring happens when Install becomes their
+  second consumer (avoid single-consumer abstractions).
+- ``clone_in_fabric`` must stay False family-wide: the ``hand_contact`` sensor's PhysX
+  contact-reporter cannot attach to fabric-cloned env prims.
+- The Phase 0 Insert verification surfaced a real, PRE-EXISTING physics defect: an
+  uncontrolled free-base G1 collapsing onto the kinematic table picks up violent solver
+  kicks (observed up to ~1200 m root height / 470 m/s; matches the ~385 kN contact
+  spikes in earlier score output). Two genuine mitigations landed -- family PhysX solver
+  floors + ``enable_stabilization`` (~100x better worst case) and a hardware-realistic
+  Inspire finger torque cap (100 -> 2 N.m in ``robots/g1.py``) -- but the instability is
+  stochastic and persists (legs' 300 N.m PD vs the table edge). KNOWN ISSUE, deferred to
+  the RL gate: the proper fix is task design (a robot-fell termination ends such episodes
+  immediately) plus possibly compliant gains. Until then the acceptance battery verifies
+  the Insert *scene* with ``--hold_base`` (the tool's documented mode for policy-less
+  humanoids); the free-base run reproduces the defect on demand.
+- verify_scene checks are RL-aware: within-episode kinematic drift (auto-reset events
+  legitimately re-pose the socket) and reset-randomization-tolerant default-pose check.
 
 ## Goal
 

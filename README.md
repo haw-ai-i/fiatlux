@@ -24,33 +24,46 @@ extension — no ROS, no distributed harness — so it plugs into the standard
 | `FIATLUX-Install-v0` | seat a new bulb at the fixture (the at-fixture counterpart of `Insert`) | 🧱 scaffold (non-RL) |
 | `FIATLUX-Replace-v0` | end-to-end climb + insert | 🚧 roadmap |
 
-Scaffolds share one **non-RL** base env (observation/action/event managers only) and
-are exercised with `scripts/verify_scene.py` — **not** the train / eval / teleop
-scripts, which assume RL envs.
+All seven ids are members of **one task family** backed by **one scene** with preset
+layouts; the scaffolds share a non-RL base env (observation/action/event managers only).
+The train / eval / record scripts apply to the RL members; `scripts/verify_scene.py`
+covers every member.
 
-## Ladder task family (new)
+## One task family: one scene, preset layouts
 
-The six scaffold envs live in `source/.../tasks/manager_based/fiatlux_task/` (alongside
-the Insert task) and share one scene built entirely from the bucket assets: the same
-Inspire-hand G1 and BEHAVIOR-1K bulb/lamp the insertion task uses, plus the primary
-BEHAVIOR-1K climb ladder (`shfvtl`, wired as `LADDER_USD` in `fiatlux_task.assets`).
-The scene carries the same Simple Room + HDRI-sky dressing as the insertion task, plus
+The family scene (`tasks/.../scene_cfg.py: G1ReplaceSceneCfg`) is built entirely from
+the bucket assets: the Inspire-hand G1, the BEHAVIOR-1K bulb and socket-lamp, plus the
+primary BEHAVIOR-1K climb ladder (`shfvtl`, wired as `LADDER_USD` in
+`fiatlux_task.assets`). A *preset* picks the layout for the task's phase of the
+replacement story:
+
+- **tabletop** — `FIATLUX-Insert-v0` (RL): packing table, socket on top, bulb at hand
+  height, no ladder; the manipulation bench.
+- **workshop** — `FIATLUX-{Base,Carry,Climb,Descend,Remove,Install}-v0` (non-RL
+  scaffolds on `base_env_cfg.py: FamilyBaseEnvCfg`): ladder + socket-lamp + bulb on
+  the floor.
+
+The scene carries the Simple Room + HDRI-sky dressing everywhere, plus (scaffolds only)
 a per-env random BEHAVIOR-1K ceiling fixture and per-reset lighting randomization (the
-fixtures are the opt-in `./assets/download_assets.sh --scene-dressing` asset group and
-are skipped gracefully when absent). To test them:
+fixtures are the opt-in `./assets/download_assets.sh --scene-dressing` asset group, are
+skipped gracefully when absent, and are disabled in training cfgs to keep replicated
+physics). To test any member:
 
 ```bash
 ./assets/download_assets.sh    # unchanged -- it already syncs the ladder assets
 uv run python scripts/list_envs.py                                        # all 7 FIATLUX ids
 uv run python scripts/verify_scene.py --headless                          # FIATLUX-Base-v0 checks
 uv run python scripts/verify_scene.py --headless --task FIATLUX-Climb-v0  # any family member
+# Insert needs cameras (wrist sensor) + a held base (a policy-less free-base humanoid
+# collapsing onto the table is a known-unstable regime; see the unification spec)
+uv run python scripts/verify_scene.py --headless --enable_cameras --hold_base --task FIATLUX-Insert-v0
 # actually SEE the scene on a headless box: orbiting MP4 -> logs/verify/
 uv run python scripts/verify_scene.py --record --hold_base --headless --num_envs 1
 ```
 
 `verify_scene.py` loads the env, steps it under a zero/default-hold policy, and prints
-a PASS/FAIL table (assets present, robot sanity, gravity/settling, collision coverage,
-contact/penetration), exiting non-zero on failure.
+a PASS/FAIL table (assets present, preset initial state, robot sanity, gravity/settling,
+collision coverage, contact/penetration), exiting non-zero on failure.
 
 ## Repository layout
 
@@ -60,9 +73,9 @@ fiatlux/
 │   ├── .../fiatlux_task/scenes.py   # shared scene vocabulary (room dressing + B1K spawner)
 │   ├── .../fiatlux_task/viz.py      # shared video capture (orbit / rollout MP4s + posters)
 │   └── .../manager_based/fiatlux_task/
-│       ├── g1_bulb_env_cfg.py   # G1 + bulb + socket scene & MDP (Insert)
-│       ├── ladder_scene_cfg.py  # G1 + ladder + lamp + bulb scene (bucket USDs)
-│       ├── g1_ladder_env_cfg.py # shared non-RL ladder base env (managers only)
+│       ├── scene_cfg.py         # THE family scene + tabletop/workshop presets
+│       ├── base_env_cfg.py      # shared non-RL base env (managers only)
+│       ├── g1_bulb_env_cfg.py   # Insert task MDP (RL, tabletop preset)
 │       ├── *_env_cfg.py         # carry / climb / descend / remove / install scaffolds
 │       ├── mdp/                 # rewards, events, observations
 │       ├── agents/              # rsl_rl PPO config
