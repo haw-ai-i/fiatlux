@@ -11,7 +11,7 @@ terminations) plus the task-specific functions defined in this sub-package.
 
 from isaaclab.envs.mdp import *  # noqa: F401, F403
 
-from .events import randomize_dome_light  # noqa: F401
+from .events import randomize_light_properties  # noqa: F401
 from .observations import contact_net_forces, root_pose_w  # noqa: F401
 from .rewards import (  # noqa: F401
     bulb_seated,

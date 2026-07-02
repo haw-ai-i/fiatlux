@@ -10,6 +10,11 @@ fixture holding a bulb and must align and seat it into the socket. It is built
 as a standard Isaac Lab ``ManagerBasedRLEnvCfg`` so it slots into the usual
 train / play / teleop / eval scripts.
 
+The scene is the shared family world (``scene_cfg.G1ReplaceSceneCfg``) in its
+**tabletop preset**: packing table, socket-lamp on top, bulb at hand height, no
+ladder. Dressing randomization is off here -- homogeneous envs keep
+``replicate_physics=True`` for training scale.
+
 Design notes (kept deliberately simple and hardware-minded for later sim-to-real):
 - **Actions** are joint-position targets on the G1 arm (optionally hand), which
   map directly onto commands the Unitree SDK can consume on the real robot.
@@ -18,16 +23,12 @@ Design notes (kept deliberately simple and hardware-minded for later sim-to-real
   group (ground-truth bulb/socket pose) used only by the critic and scripted
   baselines -- never as the sole interface.
 
-Asset-dependent identifiers (USD paths, joint/body names) are collected as
-constants at the top of this file. They follow the standard Unitree G1 naming;
-adjust them to match the exact USD pulled by ``assets/download_assets.sh``.
+The Actions/Observations/Rewards/Terminations cfgs below stay in this module for
+now; they get factored into shared manipulation blocks when the at-fixture
+Install task becomes their second consumer (unification spec, Phase 4).
 """
 
-import os
-
 import isaaclab.sim as sim_utils
-from isaaclab.actuators import ImplicitActuatorCfg
-from isaaclab.assets import ArticulationCfg, AssetBaseCfg, RigidObjectCfg
 from isaaclab.envs import ManagerBasedRLEnvCfg
 from isaaclab.managers import EventTermCfg as EventTerm
 from isaaclab.managers import ObservationGroupCfg as ObsGroup
@@ -35,206 +36,18 @@ from isaaclab.managers import ObservationTermCfg as ObsTerm
 from isaaclab.managers import RewardTermCfg as RewTerm
 from isaaclab.managers import SceneEntityCfg
 from isaaclab.managers import TerminationTermCfg as DoneTerm
-from isaaclab.scene import InteractiveSceneCfg
-from isaaclab.sensors import ContactSensorCfg, TiledCameraCfg
+from isaaclab.sensors import TiledCameraCfg
 from isaaclab.utils import configclass
 from isaaclab.utils.noise import AdditiveUniformNoiseCfg as Unoise
 
+from fiatlux_task.robots.g1 import (
+    G1_ARM_JOINTS,
+    G1_EE_BODY,
+    G1_HAND_JOINTS,
+)
+
 from . import mdp
-from .mdp.events import randomize_dome_light
-
-# ---------------------------------------------------------------------------
-# Asset locations and names (adjust to match the pulled USDs)
-# ---------------------------------------------------------------------------
-
-# Assets are synced into the repo-root ``assets/`` dir by ``download_assets.sh``.
-# Override with the FIATLUX_ASSETS_DIR env var if they live elsewhere.
-_THIS_DIR = os.path.dirname(os.path.abspath(__file__))
-_REPO_ROOT = os.path.abspath(os.path.join(_THIS_DIR, *([os.pardir] * 6)))
-FIATLUX_ASSETS_DIR = os.environ.get(
-    "FIATLUX_ASSETS_DIR", os.path.join(_REPO_ROOT, "assets")
-)
-
-# Unitree's official pre-assembled G1 USDs (mirrored into the GCS bucket from
-# unitreerobotics/unitree_sim_isaaclab_usds). Default to the legged (wholebody)
-# Inspire-hand variant; the Dex3-hand variant is staged for an easy future swap.
-G1_USD = os.path.join(
-    FIATLUX_ASSETS_DIR, "unitree_g1", "wholebody_inspire", "g1_29dof_with_inspire_rev_1_0.usd"
-)
-G1_DEX3_USD = os.path.join(
-    FIATLUX_ASSETS_DIR, "unitree_g1", "wholebody_dex3", "g1_29dof_with_dex3_rev_1_0.usd"
-)
-BULB_USD = os.path.join(FIATLUX_ASSETS_DIR, "bulb_socket", "bulb.usd")
-SOCKET_USD = os.path.join(FIATLUX_ASSETS_DIR, "bulb_socket", "socket.usd")
-
-# Standard Unitree G1 right-arm joints used for the insertion subtask.
-G1_ARM_JOINTS = [
-    "right_shoulder_pitch_joint",
-    "right_shoulder_roll_joint",
-    "right_shoulder_yaw_joint",
-    "right_elbow_joint",
-    "right_wrist_roll_joint",
-    "right_wrist_pitch_joint",
-    "right_wrist_yaw_joint",
-]
-# Right Inspire-hand finger joints (12 DoF) so the policy can actually grasp the bulb.
-G1_HAND_JOINTS = [
-    "R_index_proximal_joint",
-    "R_index_intermediate_joint",
-    "R_middle_proximal_joint",
-    "R_middle_intermediate_joint",
-    "R_pinky_proximal_joint",
-    "R_pinky_intermediate_joint",
-    "R_ring_proximal_joint",
-    "R_ring_intermediate_joint",
-    "R_thumb_proximal_yaw_joint",
-    "R_thumb_proximal_pitch_joint",
-    "R_thumb_intermediate_joint",
-    "R_thumb_distal_joint",
-]
-# End-effector body the wrist camera mounts on / eef pose is read from (exists in all
-# G1 variants). The Inspire hand links hang off this via the right_hand_palm_link.
-G1_EE_BODY = "right_wrist_yaw_link"
-
-
-##
-# Scene definition
-##
-
-
-@configclass
-class G1BulbSceneCfg(InteractiveSceneCfg):
-    """Scene: Unitree G1, a graspable bulb, a socket fixture, ground and light."""
-
-    # -- Unitree G1 humanoid (legged / free base) --
-    # The robot spawns standing for the insertion subtask, but keeps its legs so the
-    # same asset can locomote and climb in later roadmap subtasks.
-    robot: ArticulationCfg = ArticulationCfg(
-        prim_path="{ENV_REGEX_NS}/Robot",
-        spawn=sim_utils.UsdFileCfg(
-            usd_path=G1_USD,
-            rigid_props=sim_utils.RigidBodyPropertiesCfg(
-                max_depenetration_velocity=5.0,
-            ),
-            articulation_props=sim_utils.ArticulationRootPropertiesCfg(
-                enabled_self_collisions=True,
-                solver_position_iteration_count=16,
-                solver_velocity_iteration_count=8,
-            ),
-            activate_contact_sensors=True,
-        ),
-        # Spawn standing (matching Unitree's reference init): pelvis at ~0.75 m with the
-        # legs slightly bent so the feet rest on the ground.
-        init_state=ArticulationCfg.InitialStateCfg(
-            pos=(0.0, 0.0, 0.75),
-            joint_pos={
-                ".*": 0.0,
-                ".*_hip_pitch_joint": -0.05,
-                ".*_knee_joint": 0.2,
-                ".*_ankle_pitch_joint": -0.15,
-            },
-        ),
-        # Disjoint actuator groups covering every joint. Only the right arm + right hand
-        # are driven by policy actions; the rest hold their standing pose. NOTE the arm
-        # regex is anchored to shoulder/elbow/wrist so it does not also grab the right
-        # *leg* joints (which also start with ``right_``).
-        actuators={
-            "legs": ImplicitActuatorCfg(
-                joint_names_expr=[".*_hip_.*_joint", ".*_knee_joint", ".*_ankle_.*_joint"],
-                effort_limit_sim=300.0,
-                stiffness=200.0,
-                damping=10.0,
-            ),
-            "waist": ImplicitActuatorCfg(
-                joint_names_expr=["waist_.*_joint"],
-                effort_limit_sim=200.0,
-                stiffness=200.0,
-                damping=10.0,
-            ),
-            "left_arm": ImplicitActuatorCfg(
-                joint_names_expr=["left_(shoulder|elbow|wrist).*_joint"],
-                effort_limit_sim=88.0,
-                stiffness=40.0,
-                damping=2.0,
-            ),
-            "arm": ImplicitActuatorCfg(
-                joint_names_expr=["right_(shoulder|elbow|wrist).*_joint"],
-                effort_limit_sim=88.0,
-                stiffness=150.0,
-                damping=5.0,
-            ),
-            "hands": ImplicitActuatorCfg(
-                joint_names_expr=["[LR]_.*_joint"],
-                effort_limit_sim=100.0,
-                stiffness=1000.0,
-                damping=15.0,
-            ),
-        },
-    )
-
-    # -- Light bulb: graspable rigid body --
-    bulb: RigidObjectCfg = RigidObjectCfg(
-        prim_path="{ENV_REGEX_NS}/Bulb",
-        spawn=sim_utils.UsdFileCfg(
-            usd_path=BULB_USD,
-            rigid_props=sim_utils.RigidBodyPropertiesCfg(
-                solver_position_iteration_count=16,
-                solver_velocity_iteration_count=8,
-                max_depenetration_velocity=1.0,
-            ),
-        ),
-        init_state=RigidObjectCfg.InitialStateCfg(pos=(0.35, -0.20, 1.05)),
-    )
-
-    # -- Socket / lamp fixture: kinematic so it can be re-posed on reset --
-    socket: RigidObjectCfg = RigidObjectCfg(
-        prim_path="{ENV_REGEX_NS}/Socket",
-        spawn=sim_utils.UsdFileCfg(
-            usd_path=SOCKET_USD,
-            rigid_props=sim_utils.RigidBodyPropertiesCfg(kinematic_enabled=True),
-        ),
-        init_state=RigidObjectCfg.InitialStateCfg(pos=(0.45, 0.0, 1.20)),
-    )
-
-    # -- Lights --
-    light = AssetBaseCfg(
-        prim_path="/World/light",
-        spawn=sim_utils.DomeLightCfg(color=(0.75, 0.75, 0.75), intensity=2500.0),
-    )
-
-    # -- Ground --
-    ground = AssetBaseCfg(
-        prim_path="/World/ground",
-        spawn=sim_utils.GroundPlaneCfg(),
-        init_state=AssetBaseCfg.InitialStateCfg(pos=(0.0, 0.0, 0.0)),
-    )
-
-    # -- Contact sensor on the grasping hand (force/torque safety + obs) --
-    hand_contact: ContactSensorCfg = ContactSensorCfg(
-        prim_path="{ENV_REGEX_NS}/Robot/right_.*",
-        history_length=1,
-        track_air_time=False,
-    )
-
-    def __post_init__(self):
-        super().__post_init__()
-
-        # Wrist-mounted RGB camera (sensor-realizable observation).
-        self.wrist_camera = TiledCameraCfg(
-            prim_path="{ENV_REGEX_NS}/Robot/" + G1_EE_BODY + "/wrist_camera",
-            spawn=sim_utils.PinholeCameraCfg(
-                focal_length=22.48,
-                horizontal_aperture=20.955,
-                clipping_range=(0.05, 5.0),
-            ),
-            height=224,
-            width=224,
-            data_types=["rgb"],
-            offset=TiledCameraCfg.OffsetCfg(
-                pos=(0.05, 0.0, 0.0), rot=(1.0, 0.0, 0.0, 0.0), convention="ros"
-            ),
-        )
-
+from .scene_cfg import G1ReplaceSceneCfg, apply_tabletop_preset
 
 ##
 # MDP settings
@@ -359,12 +172,14 @@ class EventCfg:
         },
     )
 
+    # Intensity only: the dome carries an HDRI sky texture, and color-tinting a texture
+    # reads as a render bug rather than useful domain randomization (see mdp.events).
     randomize_light = EventTerm(
-        func=randomize_dome_light,
+        func=mdp.randomize_light_properties,
         mode="reset",
         params={
-            "intensity_range": (1500.0, 3500.0),
-            "color_range": ((0.5, 0.5, 0.5), (1.0, 1.0, 1.0)),
+            "asset_cfg": SceneEntityCfg("dome_light"),
+            "intensity_range": (500.0, 2000.0),
         },
     )
 
@@ -431,6 +246,10 @@ class TerminationsCfg:
         func=mdp.object_dropped,
         params={"asset_cfg": SceneEntityCfg("bulb"), "min_height": 0.4},
     )
+    # TODO(RL gate): add a robot-fell termination (base height/tilt threshold). KNOWN
+    # ISSUE (unification spec): a collapsed free-base G1 draped over the kinematic table
+    # accumulates violent PD-vs-contact solver kicks if episodes linger in that state --
+    # ending them immediately is the proper fix (plus possibly compliant gains).
 
 
 ##
@@ -440,9 +259,20 @@ class TerminationsCfg:
 
 @configclass
 class G1BulbInsertEnvCfg(ManagerBasedRLEnvCfg):
-    """Fiatlux insertion subtask: G1 seats a bulb into a socket."""
+    """Fiatlux insertion subtask: G1 seats a bulb into a socket (family tabletop preset)."""
 
-    scene: G1BulbSceneCfg = G1BulbSceneCfg(num_envs=1, env_spacing=4.0)
+    scene_preset: str = "tabletop"
+    # orbit-recording framing (verify_scene --record): around the bench
+    orbit_center: tuple[float, float, float] = (0.45, 0.0, 1.15)
+    orbit_radius: float = 3.4
+    orbit_height: float = 2.4
+
+    # Homogeneous envs (no per-env dressing randomization) -> replicated physics for
+    # training scale. Cloning stays in USD (not fabric): the hand_contact sensor's PhysX
+    # contact-reporter API cannot attach to fabric-cloned env prims.
+    scene: G1ReplaceSceneCfg = G1ReplaceSceneCfg(
+        num_envs=1, env_spacing=4.0, replicate_physics=True, clone_in_fabric=False
+    )
     observations: ObservationsCfg = ObservationsCfg()
     actions: ActionsCfg = ActionsCfg()
     rewards: RewardsCfg = RewardsCfg()
@@ -452,9 +282,42 @@ class G1BulbInsertEnvCfg(ManagerBasedRLEnvCfg):
     def __post_init__(self) -> None:
         super().__post_init__()
 
+        # Family scene -> manipulation bench layout; no random ceiling fixture (that
+        # would force replicate_physics=False; see FamilyBaseEnvCfg's dressing flag).
+        apply_tabletop_preset(self.scene)
+        self.scene.fixture = None
+
+        # Wrist-mounted RGB camera (sensor-realizable observation). Requires launching
+        # with --enable_cameras.
+        self.scene.wrist_camera = TiledCameraCfg(
+            prim_path="{ENV_REGEX_NS}/Robot/" + G1_EE_BODY + "/wrist_camera",
+            spawn=sim_utils.PinholeCameraCfg(
+                focal_length=22.48,
+                horizontal_aperture=20.955,
+                clipping_range=(0.05, 5.0),
+            ),
+            height=224,
+            width=224,
+            data_types=["rgb"],
+            offset=TiledCameraCfg.OffsetCfg(
+                pos=(0.05, 0.0, 0.0), rot=(1.0, 0.0, 0.0, 0.0), convention="ros"
+            ),
+        )
+
         self.decimation = 4
         self.sim.render_interval = self.decimation
         self.episode_length_s = 15.0
+        # Control-rate parity with the pre-unification env (30 Hz); the family base runs
+        # 50 Hz -- reconciling is a deliberate, separate decision (unification spec).
         self.sim.dt = 1.0 / 120.0
+        # PhysX solver floors from the family base: without them the uncontrolled robot
+        # picks up multi-hundred-m/s kicks against the kinematic table (verify_scene
+        # finding, Phase 0). Stabilization further damps the PD-vs-table wedge impulses
+        # when the robot lies collapsed against the furniture.
+        self.sim.physx.solver_type = 1
+        self.sim.physx.min_position_iteration_count = 8
+        self.sim.physx.min_velocity_iteration_count = 4
+        self.sim.physx.bounce_threshold_velocity = 0.2
+        self.sim.physx.enable_stabilization = True
         self.viewer.eye = (2.0, 2.0, 2.0)
         self.viewer.lookat = (0.45, 0.0, 1.1)

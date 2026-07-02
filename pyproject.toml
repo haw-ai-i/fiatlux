@@ -3,6 +3,55 @@
 #
 # SPDX-License-Identifier: BSD-3-Clause
 
+[project]
+name = "fiatlux"
+version = "0.1.0"
+description = "Reproducible runtime environment for the Fiatlux humanoid light-bulb benchmark."
+readme = "README.md"
+license = { text = "Apache-2.0" }
+# Isaac Sim 5.1 requires CPython 3.11.
+requires-python = "==3.11.*"
+dependencies = [
+    # Isaac Lab 2.3.2 for Isaac Sim 5.1. The [isaacsim] extra pulls Isaac Sim itself
+    # and [all] pulls the isaaclab-{tasks,rl,assets,mimic} sub-extensions plus the RL
+    # frameworks -- all from the NVIDIA index (see [[tool.uv.index]] below).
+    "isaaclab[isaacsim,all]==2.3.2.post1",
+    # Pinned to the combo Isaac Lab ships for Sim 5.1 (CUDA 12.8).
+    "torch==2.7.0",
+    "torchvision==0.22.0",
+    # scripts/rsl_rl/train.py hard-checks this exact minimum.
+    "rsl-rl-lib==3.0.1",
+    # Imported by the benchmark but not guaranteed transitively.
+    "h5py",
+    "prettytable",
+    "psutil",
+    # scripts/verify_scene.py --record renders MP4s (libx264 via the ffmpeg plugin).
+    "imageio",
+    "imageio-ffmpeg",
+    # The benchmark task package itself (editable, see [tool.uv.sources]).
+    "fiatlux_task",
+]
+
+[tool.uv]
+# Root is a managed environment, not a distributable package.
+package = false
+# Stop Isaac Sim / Isaac Lab from resolving a different torch than the cu128 build.
+override-dependencies = ["torch==2.7.0", "torchvision==0.22.0"]
+
+[[tool.uv.index]]
+name = "nvidia"
+url = "https://pypi.nvidia.com"
+
+[[tool.uv.index]]
+name = "pytorch-cu128"
+url = "https://download.pytorch.org/whl/cu128"
+explicit = true
+
+[tool.uv.sources]
+torch = { index = "pytorch-cu128" }
+torchvision = { index = "pytorch-cu128" }
+fiatlux_task = { path = "source/fiatlux_task", editable = true }
+
 [tool.ruff]
 line-length = 120
 target-version = "py310"

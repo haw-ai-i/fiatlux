@@ -6,12 +6,15 @@ Assets are stored in GCS and synced locally via `download_assets.sh`. Binary USD
 ## Download
 
 ```bash
-# Task assets only (bulb, lamp, ladder)
+# Robot + task assets + room dressing (table, warehouse backdrop, HDRI sky)
 ./assets/download_assets.sh
 
-# Task assets + scene dressing
+# ... + BEHAVIOR-1K lighting-fixture scene dressing
 ./assets/download_assets.sh --scene-dressing
 ```
+
+Room dressing (`isaac_*` paths below) is always synced -- it's what every recorded
+run looks like by default -- unlike the opt-in BEHAVIOR-1K lighting fixtures.
 
 Requires `gsutil` (`gcloud` SDK). Override bucket with `FIATLUX_ASSET_BUCKET` env var.
 
@@ -56,6 +59,33 @@ Per-asset detail in [`omniverse_uploaded_manifest.csv`](omniverse_uploaded_manif
 > `materials` column = `external_mdl`); geometry + collision are complete, but visuals
 > render flat unless the material libraries are mounted.
 
+## Isaac Sim Nucleus mirror (room dressing)
+
+The table, room backdrop, and HDRI sky are mirrored once from Isaac Sim 5.1's own
+Nucleus content library (a public HTTPS/S3 endpoint, no Omniverse client needed)
+into our own bucket, so nothing is fetched live from NVIDIA's CDN at sim launch.
+
+| GCS path                                                        | Nucleus source                          | Role               | Files |
+| ---------------------------------------------------------------- | ---------------------------------------- | ------------------ | ----- |
+| `gs://fiatlux/assets/isaac_packing_table/`                      | `Isaac/Props/PackingTable/`             | table for lamp/bulb | 112   |
+| `gs://fiatlux/assets/isaac_room/Environments/Simple_Room/`      | `Isaac/Environments/Simple_Room/`       | room backdrop (walls/floor/windows) | 89 |
+| `gs://fiatlux/assets/isaac_skies/`                              | `Isaac/Materials/Textures/Skies/PolyHaven/` | HDRI dome light | 1     |
+
+`isaac_room/` uses `Simple_Room` rather than the much heavier `Simple_Warehouse`
+demo scene: the warehouse ships ~100+ unique MDL materials, and NVIDIA's MDL
+compiler compiles each one on first use single-threaded -- that made a single
+`--record video` render take hours. `Simple_Room` has ~11 materials and still
+gives real walls/floor/windows instead of a bare plane. Nested to match its
+original Nucleus depth (`Environments/Simple_Room/`) as a precaution against
+relative references, even though it doesn't escape its own tree like the
+warehouse's `Props/KLT_Bin/` dependency did.
+
+Mirror-specific per-asset detail (Nucleus source path, role, notes) in
+[`isaac_mirror_manifest.csv`](isaac_mirror_manifest.csv). Development-only thumbnail
+caches (`.thumbs/`) under the Nucleus source trees were excluded from the mirror.
+Isaac Sim's asset-root URL is version-pinned (`.../Assets/Isaac/5.1/...`) -- re-verify
+these paths after any Isaac Sim upgrade.
+
 ## Source
 
 **BEHAVIOR-1K** assets are from [BEHAVIOR-1K](https://behavior.stanford.edu/) (Stanford OmniGibson dataset),
@@ -66,3 +96,6 @@ See `journal/specs/issue-2-behavior1k-lamp-assets.md` for intake details and USD
 (Warehouse, SimReady Warehouse 01, Residential, Sample Scenes). Used under non-commercial
 academic terms. See `docs/omniverse_pack_scan_log.md` for the full 14-pack scan and
 `docs/omniverse_ladder_collision_verification.md` for collision authoring + verification.
+
+**Room-dressing** assets (table, room, sky) are NVIDIA's own Isaac Sim sample content
+(Props/Environments) plus a CC0 PolyHaven HDRI, mirrored per the table above.

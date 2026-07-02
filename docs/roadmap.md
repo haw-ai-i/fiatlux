@@ -6,12 +6,16 @@ intentional.
 
 ## 1. Climbing subtask — `FIATLUX-Climb-v0`
 
-G1 climbs a ladder (`assets/ladder/ladder.usd`) to reach the fixture height.
+G1 climbs a ladder to reach the fixture height. The scene side of this exists: the
+ladder task family (`FIATLUX-{Base,Carry,Climb,Descend,Remove,Install}-v0`) is
+registered as non-RL scene scaffolds sharing `g1_ladder_env_cfg.py`, with the
+BEHAVIOR-1K `shfvtl` ladder (`fiatlux_task.assets.LADDER_USD`). What remains is the
+task logic:
 
-- Switch the G1 to a floating base; add a whole-body / locomotion action space.
+- Upgrade the scaffold to `ManagerBasedRLEnvCfg`; add a whole-body / locomotion
+  action space (the G1 base is already free).
 - Add a fall-detection termination (base height / orientation thresholds).
 - Reward: progressive height + hand/foot–rung contact + CoM-sway penalty.
-- Register the env in the leaf `__init__.py`.
 
 ## 2. Combined task — `FIATLUX-Replace-v0`
 

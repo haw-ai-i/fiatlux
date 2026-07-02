@@ -5,11 +5,17 @@ Defined in
 
 ## Scene
 
-- **Robot:** Unitree G1 (`assets/unitree_g1/g1.usd`), fixed/standing base for the
-  insertion subtask, right arm actuated.
-- **Bulb:** graspable rigid body (`assets/bulb_socket/bulb.usd`).
-- **Socket:** kinematic lamp/socket fixture (`assets/bulb_socket/socket.usd`).
-- Ground plane + randomized dome light.
+The **tabletop preset** of the shared family scene (`scene_cfg.py: G1ReplaceSceneCfg`):
+
+- **Robot:** Unitree G1 (`assets/unitree_g1/wholebody_inspire/g1_29dof_with_inspire_rev_1_0.usd`),
+  legged/free base, right arm + Inspire hand actuated.
+- **Bulb:** graspable rigid body, a BEHAVIOR-1K light bulb
+  (`assets/behavior1k_bulb/ymomhw/usd/ymomhw.usd`), at hand height on the table.
+- **Socket:** kinematic lamp/socket fixture on the table, a BEHAVIOR-1K table lamp
+  stripped to a single rigid body (`assets/behavior1k_lamp/bbentu/usd/bbentu.usd`; see
+  `fiatlux_task/scenes.py: spawn_b1k_single_body` / issue #14).
+- Packing table; ground plane; Simple Room backdrop + HDRI sky dome (randomized
+  intensity); no ladder (that's the workshop preset's business).
 
 ## Actions
 
