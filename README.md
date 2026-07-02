@@ -30,10 +30,14 @@ scripts, which assume RL envs.
 
 ## Ladder task family (new)
 
-The six scaffold envs live in `source/.../tasks/manager_based/ladder/` and share one
-scene built entirely from the bucket assets: the same Inspire-hand G1 and BEHAVIOR-1K
-bulb/lamp the insertion task uses, plus the primary BEHAVIOR-1K climb ladder
-(`shfvtl`, wired as `LADDER_USD` in `fiatlux_task.assets`). To test them:
+The six scaffold envs live in `source/.../tasks/manager_based/fiatlux_task/` (alongside
+the Insert task) and share one scene built entirely from the bucket assets: the same
+Inspire-hand G1 and BEHAVIOR-1K bulb/lamp the insertion task uses, plus the primary
+BEHAVIOR-1K climb ladder (`shfvtl`, wired as `LADDER_USD` in `fiatlux_task.assets`).
+The scene carries the same Simple Room + HDRI-sky dressing as the insertion task, plus
+a per-env random BEHAVIOR-1K ceiling fixture and per-reset lighting randomization (the
+fixtures are the opt-in `./assets/download_assets.sh --scene-dressing` asset group and
+are skipped gracefully when absent). To test them:
 
 ```bash
 ./assets/download_assets.sh    # unchanged -- it already syncs the ladder assets
@@ -53,16 +57,16 @@ contact/penetration), exiting non-zero on failure.
 ```
 fiatlux/
 ├── source/fiatlux_task/      # the Isaac Lab extension package (the benchmark)
-│   ├── .../manager_based/fiatlux_task/
-│   │   ├── g1_bulb_env_cfg.py   # G1 + bulb + socket scene & MDP
-│   │   ├── mdp/                 # rewards, events, observations
-│   │   ├── agents/              # rsl_rl PPO config
-│   │   └── __init__.py          # gym.register(...)
-│   └── .../manager_based/ladder/
-│       ├── scene_cfg.py         # G1 + ladder + lamp + bulb scene (bucket USDs)
-│       ├── base_env_cfg.py      # shared non-RL base env (managers only)
+│   ├── .../fiatlux_task/scenes.py   # shared scene vocabulary (room dressing + B1K spawner)
+│   ├── .../fiatlux_task/viz.py      # shared video capture (orbit / rollout MP4s + posters)
+│   └── .../manager_based/fiatlux_task/
+│       ├── g1_bulb_env_cfg.py   # G1 + bulb + socket scene & MDP (Insert)
+│       ├── ladder_scene_cfg.py  # G1 + ladder + lamp + bulb scene (bucket USDs)
+│       ├── g1_ladder_env_cfg.py # shared non-RL ladder base env (managers only)
 │       ├── *_env_cfg.py         # carry / climb / descend / remove / install scaffolds
-│       └── __init__.py          # gym.register(...) x6
+│       ├── mdp/                 # rewards, events, observations
+│       ├── agents/              # rsl_rl PPO config
+│       └── __init__.py          # gym.register(...) x7
 ├── scripts/                  # zero / random / teleop / list_envs / rsl_rl / eval / verify_scene
 ├── assets/                   # download_assets.sh (pulls USDs from GCS; git-ignored)
 └── docs/                     # overview, getting_started, task_spec, scoring, roadmap
