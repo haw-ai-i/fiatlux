@@ -25,43 +25,6 @@ if TYPE_CHECKING:
     from isaaclab.envs import ManagerBasedEnv
 
 
-def randomize_dome_light(
-    env: ManagerBasedEnv,
-    env_ids: torch.Tensor,
-    intensity_range: tuple[float, float] = (1500.0, 3500.0),
-    color_range: tuple[tuple[float, float, float], tuple[float, float, float]] = (
-        (0.5, 0.5, 0.5),
-        (1.0, 1.0, 1.0),
-    ),
-    intensity_only: bool = False,
-) -> None:
-    """Randomize the dome light's intensity and, optionally, color on reset.
-
-    The light is a single shared prim, so the randomization is global across
-    all environments regardless of ``env_ids``. Set ``intensity_only=True``
-    when the dome uses an HDRI ``texture_file``: the color attribute only
-    tints the sky texture there, so jittering it looks like a rendering bug
-    rather than useful domain randomization.
-    """
-    stage = omni.usd.get_context().get_stage()
-    light_prim = stage.GetPrimAtPath("/World/light")
-    if not light_prim.IsValid():
-        return
-    light = UsdLux.DomeLight(light_prim)
-
-    intensity = torch.empty(1).uniform_(intensity_range[0], intensity_range[1]).item()
-    light.GetIntensityAttr().Set(intensity)
-
-    if intensity_only:
-        return
-
-    color_min, color_max = color_range
-    r = torch.empty(1).uniform_(color_min[0], color_max[0]).item()
-    g = torch.empty(1).uniform_(color_min[1], color_max[1]).item()
-    b = torch.empty(1).uniform_(color_min[2], color_max[2]).item()
-    light.GetColorAttr().Set(Gf.Vec3f(r, g, b))
-
-
 def randomize_light_properties(
     env: ManagerBasedEnv,
     env_ids: torch.Tensor | None,
@@ -71,12 +34,13 @@ def randomize_light_properties(
 ) -> None:
     """Randomize a scene light's intensity (and optionally set a color) on reset.
 
-    Generic counterpart of :func:`randomize_dome_light` for the ladder-family scene, which
-    addresses its lights as named scene entities (``dome_light``, ``key_light``). Isaac Lab
-    has no built-in light-randomization event term. Lights are single shared prims, so one
-    global sample is applied regardless of ``env_ids``. Leave ``color`` unset when the light
-    carries an HDRI ``texture_file`` -- the color attribute only tints the texture, which
-    reads as a render bug rather than useful domain randomization.
+    The one light-randomization term for every Fiatlux scene: lights are addressed as named
+    scene entities (``dome_light``, ``key_light``, ...), so both the Insert task and the
+    ladder family use this with a ``SceneEntityCfg``. Isaac Lab has no built-in
+    light-randomization event term. Lights are single shared prims, so one global sample is
+    applied regardless of ``env_ids``. Leave ``color`` unset when the light carries an HDRI
+    ``texture_file`` -- the color attribute only tints the texture, which reads as a render
+    bug rather than useful domain randomization.
 
     TODO(task phase):
         * sample per-env values and support per-env lights (the scene lights are global prims);

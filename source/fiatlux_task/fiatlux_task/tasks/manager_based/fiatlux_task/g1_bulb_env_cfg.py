@@ -31,49 +31,20 @@ from isaaclab.managers import ObservationTermCfg as ObsTerm
 from isaaclab.managers import RewardTermCfg as RewTerm
 from isaaclab.managers import SceneEntityCfg
 from isaaclab.managers import TerminationTermCfg as DoneTerm
-from isaaclab.scene import InteractiveSceneCfg
 from isaaclab.sensors import ContactSensorCfg, TiledCameraCfg
-from isaaclab.sim.spawners.from_files.from_files import _spawn_from_usd_file
-from isaaclab.sim.utils import clone
 from isaaclab.utils import configclass
 from isaaclab.utils.noise import AdditiveUniformNoiseCfg as Unoise
 
-from fiatlux_task.assets import (
-    BULB_USD,
-    ROOM_USD,
-    SKY_HDRI,
-    SOCKET_USD,
-    TABLE_USD,
-)
+from fiatlux_task.assets import BULB_USD, SOCKET_USD, TABLE_USD
 from fiatlux_task.robots.g1 import (
     G1_ARM_JOINTS,
     G1_EE_BODY,
     G1_HAND_JOINTS,
     G1_INSPIRE_CFG,
 )
+from fiatlux_task.scenes import DressedSceneCfg, spawn_b1k_single_body
 
 from . import mdp
-from .mdp.events import randomize_dome_light
-
-
-# --- BEHAVIOR-1K socket workaround (issue #14, Option A) ----------------------
-# The available lamp assets are multi-body BEHAVIOR-1K objects: a ``base_link`` plus
-# ``meta__*`` helper links (light source, toggle button) joined to it. The socket,
-# however, is modelled as a single kinematic rigid body. This spawner deactivates the
-# ``meta__*`` prims at spawn time so the lamp resolves to just ``base_link`` -- leaving
-# the reward / observation / reset-randomization code untouched. It is decorated with
-# Isaac Lab's ``clone`` (like the stock ``spawn_from_usd``) so the source prim is
-# stripped *before* it is cloned to the other envs, keeping every env single-body.
-# Interim fix; the eventual plan is to model the lamp as an articulation (Option C).
-@clone
-def _spawn_socket_single_body(prim_path, cfg, translation=None, orientation=None):
-    from pxr import Usd
-
-    prim = _spawn_from_usd_file(prim_path, cfg.usd_path, cfg, translation, orientation)
-    meta_prims = [p for p in Usd.PrimRange(prim) if p.GetName().startswith("meta__")]
-    for p in meta_prims:
-        p.SetActive(False)
-    return prim
 
 ##
 # Scene definition
@@ -81,8 +52,13 @@ def _spawn_socket_single_body(prim_path, cfg, translation=None, orientation=None
 
 
 @configclass
-class G1BulbSceneCfg(InteractiveSceneCfg):
-    """Scene: Unitree G1, a graspable bulb, a socket fixture, ground and light."""
+class G1BulbSceneCfg(DressedSceneCfg):
+    """Scene: Unitree G1, a graspable bulb, a socket fixture, in the shared dressed room.
+
+    The HDRI sky (``dome_light``) and Simple Room backdrop come from ``DressedSceneCfg``;
+    the BEHAVIOR-1K socket workaround (issue #14) is the shared
+    :func:`fiatlux_task.scenes.spawn_b1k_single_body`.
+    """
 
     # -- Unitree G1 humanoid (legged / free base) --
     # Reusable robot definition (USD, standing init pose, actuator groups) lives in
@@ -109,7 +85,7 @@ class G1BulbSceneCfg(InteractiveSceneCfg):
         spawn=sim_utils.UsdFileCfg(
             usd_path=SOCKET_USD,
             # Strip the lamp's meta__ helper links so it resolves to one rigid body.
-            func=_spawn_socket_single_body,
+            func=spawn_b1k_single_body,
             rigid_props=sim_utils.RigidBodyPropertiesCfg(kinematic_enabled=True),
             # The lamp ships as an articulated object; disable its articulation root so
             # the leftover base_link is treated as a plain rigid body, not an articulation.
@@ -118,32 +94,13 @@ class G1BulbSceneCfg(InteractiveSceneCfg):
         init_state=RigidObjectCfg.InitialStateCfg(pos=(0.45, 0.0, 1.20)),
     )
 
-    # -- Lights: HDRI sky instead of a flat color, for realistic ambient lighting --
-    light = AssetBaseCfg(
-        prim_path="/World/light",
-        spawn=sim_utils.DomeLightCfg(
-            texture_file=SKY_HDRI,
-            texture_format="latlong",
-            intensity=1000.0,
-        ),
-    )
+    # (HDRI dome_light + room backdrop are inherited from DressedSceneCfg.)
 
     # -- Ground --
     ground = AssetBaseCfg(
         prim_path="/World/ground",
         spawn=sim_utils.GroundPlaneCfg(),
         init_state=AssetBaseCfg.InitialStateCfg(pos=(0.0, 0.0, 0.0)),
-    )
-
-    # -- Room backdrop: visual only, collision explicitly disabled so it never
-    # conflicts with the GroundPlaneCfg collider above, which keeps owning floor
-    # physics. Shared static geometry (num_envs=1), so it lives under /World/... --
-    room: AssetBaseCfg = AssetBaseCfg(
-        prim_path="/World/Room",
-        spawn=sim_utils.UsdFileCfg(
-            usd_path=ROOM_USD,
-            collision_props=sim_utils.CollisionPropertiesCfg(collision_enabled=False),
-        ),
     )
 
     # -- Table the lamp/bulb rest on: kinematic so it can't be pushed around.
@@ -309,12 +266,14 @@ class EventCfg:
         },
     )
 
+    # Intensity only: the dome carries an HDRI sky texture, and color-tinting a texture
+    # reads as a render bug rather than useful domain randomization (see mdp.events).
     randomize_light = EventTerm(
-        func=randomize_dome_light,
+        func=mdp.randomize_light_properties,
         mode="reset",
         params={
+            "asset_cfg": SceneEntityCfg("dome_light"),
             "intensity_range": (500.0, 2000.0),
-            "intensity_only": True,
         },
     )
 
