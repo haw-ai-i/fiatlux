@@ -78,15 +78,12 @@ import math
 
 import fiatlux_task.tasks  # noqa: F401  -- registers the FIATLUX Gym environments
 import gymnasium as gym
-import numpy as np
 import torch
+from fiatlux_task.viz import make_video_camera_cfg, record_orbit
 from prettytable import PrettyTable
 
 import isaacsim.core.utils.prims as prim_utils
 from pxr import Usd, UsdGeom, UsdPhysics
-
-import isaaclab.sim as sim_utils
-from isaaclab.sensors.camera import CameraCfg
 
 from isaaclab_tasks.utils import parse_env_cfg
 
@@ -139,46 +136,12 @@ def maybe_enable_collider_drawing() -> None:
         print(f"[verify] Could not enable collider drawing: {exc}")
 
 
-def make_record_camera(width: int = 1280, height: int = 720) -> CameraCfg:
-    """A pinhole RGB camera added to the scene only when --record; aimed each frame in record_video."""
-    return CameraCfg(
-        prim_path="{ENV_REGEX_NS}/record_cam",
-        update_period=0.0,  # refresh every render
-        height=height,
-        width=width,
-        data_types=["rgb"],
-        spawn=sim_utils.PinholeCameraCfg(focal_length=24.0, clipping_range=(0.05, 1.0e4)),
-        offset=CameraCfg.OffsetCfg(pos=(0.0, -4.0, 2.2), rot=(1.0, 0.0, 0.0, 0.0), convention="world"),
-    )
-
-
-def record_video(base, cam, actions, n_steps: int, fps: int, out_path: str) -> str:
-    """Step the env while orbiting the camera 360 deg around the scene; write the frames to an MP4.
-
-    A turntable orbit makes the (policy-less, near-static) scene watchable and shows it in 3D -- the
-    robot just holds its pose (use --hold_base), so there is nothing else to "perform" yet.
-    """
-    import imageio.v2 as imageio
-
-    device = base.device
-    n_cam = base.num_envs  # one camera per env; we orbit them all together and capture env 0
-    center = torch.tensor([0.1, 0.0, 0.9], device=device)  # between lamp(-0.8), robot(0), ladder(+1)
-    radius, cam_h = 4.0, 2.2
-    frames: list[np.ndarray] = []
-    for i in range(n_steps):
-        theta = 2.0 * math.pi * i / max(n_steps, 1)
-        eye = torch.tensor([0.1 + radius * math.cos(theta), radius * math.sin(theta), cam_h], device=device)
-        cam.set_world_poses_from_view(eye.expand(n_cam, 3), center.expand(n_cam, 3))
-        base.step(actions)
-        rgb = cam.data.output["rgb"][0, ..., :3]  # (H, W, 3) uint8 on device
-        frames.append(rgb.detach().cpu().numpy().astype(np.uint8))
-    os.makedirs(os.path.dirname(out_path), exist_ok=True)
-    imageio.mimwrite(out_path, frames, fps=fps, codec="libx264", quality=8)
-    # also drop a poster PNG: PNGs preview inline in most editors, MP4s do not
-    poster = out_path.rsplit(".", 1)[0] + "_poster.png"
-    imageio.imwrite(poster, frames[len(frames) // 2])
-    print(f"[verify] poster frame : {poster}")
-    return out_path
+# Orbit framing for the ladder-family scene: aim between lamp(-0.8), robot(0) and
+# ladder(+1); height/aim chosen so the frame spans the floor props up to the ~2.5 m ceiling
+# fixture. Radius must stay <= 4.0: the Simple Room wall sits ~4.5 m out and a wider orbit
+# puts the camera inside/behind it. (Capture machinery lives in fiatlux_task.viz.)
+ORBIT_CENTER = (0.1, 0.0, 1.3)
+ORBIT_RADIUS, ORBIT_HEIGHT = 4.0, 2.8
 
 
 def main() -> int:
@@ -195,7 +158,7 @@ def main() -> int:
         env_cfg.scene.robot.spawn.articulation_props.fix_root_link = True
         print("[verify] --hold_base: G1 root fixed -> it stands and holds the default pose (balancing not tested).")
     if args_cli.record:
-        env_cfg.scene.record_cam = make_record_camera()
+        env_cfg.scene.video_cam = make_video_camera_cfg()
         print("[verify] --record: orbit RTX camera added to the scene.")
     # Resolve the env class from the Gym registry (proves the id is registered and loadable), then
     # instantiate directly: ManagerBasedEnv is non-RL and its step() returns (obs, extras), so we
@@ -334,7 +297,17 @@ def main() -> int:
 
         out_path = os.path.join(OUT_DIR, f"{args_cli.task}_{time.strftime('%Y%m%d_%H%M%S')}.mp4")
         print(f"\n[verify] --record: orbiting camera for {args_cli.record_steps} frames -> {out_path}")
-        record_video(base, base.scene["record_cam"], actions, args_cli.record_steps, args_cli.record_fps, out_path)
+        record_orbit(
+            base,
+            base.scene["video_cam"],
+            actions,
+            n_steps=args_cli.record_steps,
+            fps=args_cli.record_fps,
+            out_path=out_path,
+            center=ORBIT_CENTER,
+            radius=ORBIT_RADIUS,
+            height=ORBIT_HEIGHT,
+        )
         print(f"[verify] wrote video: {out_path}")
 
     # optional: hold the scene open so it can be inspected live (livestream client or GUI).

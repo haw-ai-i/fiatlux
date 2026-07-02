@@ -7,7 +7,9 @@
 
 A single rollout produces both artifacts so they describe the *same* run:
 
-- ``video/`` : an MP4 of the run (gymnasium ``RecordVideo``, third-person viewport).
+- ``video/`` : an MP4 of the run plus a poster PNG, captured by an RTX sensor camera
+  (``fiatlux_task.viz``) posed by ``--cam``: fixed ``third_person`` / ``closeup``
+  viewpoints, or a 360-degree ``orbit`` of the scene.
 - ``run.h5`` + ``meta.json`` : the experiment bag -- every per-step signal needed to
   score the run offline (see ``scripts/score.py``). ``--format npz`` for a flat fallback.
 
@@ -56,8 +58,8 @@ parser.add_argument(
     "--cam",
     type=str,
     default="third_person",
-    choices=["third_person", "closeup"],
-    help="Viewport camera preset for the video.",
+    choices=["third_person", "closeup", "orbit"],
+    help="Camera pose for the video: fixed presets or a 360-degree scene orbit.",
 )
 parser.add_argument(
     "--video_length", type=int, default=600, help="Video length (env steps)."
@@ -89,13 +91,18 @@ import gymnasium as gym
 import torch
 from fiatlux_task.policy import make_policy
 from fiatlux_task.recording import TrajectoryRecorder
+from fiatlux_task.viz import VideoRecorder, make_video_camera_cfg, orbit_pose
 
 import isaaclab_tasks  # noqa: F401
 from isaaclab_tasks.utils import parse_env_cfg
 
-_CAM_PRESETS = {
-    "third_person": {"eye": (2.0, 2.0, 2.0), "lookat": (0.45, 0.0, 1.1)},
-    "closeup": {"eye": (0.9, 0.8, 1.4), "lookat": (0.45, 0.0, 1.15)},
+# Camera pose per captured frame ``(i, n_frames) -> (eye, lookat)``, framing the Insert
+# scene's table area. ``orbit`` turntables around it (radius must stay well inside the
+# Simple Room, whose wall sits ~4.5 m out).
+_CAM_POSES = {
+    "third_person": lambda i, n: ((2.0, 2.0, 2.0), (0.45, 0.0, 1.1)),
+    "closeup": lambda i, n: ((0.9, 0.8, 1.4), (0.45, 0.0, 1.15)),
+    "orbit": lambda i, n: orbit_pose(i, n, center=(0.45, 0.0, 1.1), radius=2.6, height=2.0),
 }
 
 
@@ -107,26 +114,19 @@ def main():
         use_fabric=not args_cli.disable_fabric,
     )
     env_cfg.seed = args_cli.seed
-    preset = _CAM_PRESETS[args_cli.cam]
-    env_cfg.viewer.eye = preset["eye"]
-    env_cfg.viewer.lookat = preset["lookat"]
-
-    env = gym.make(
-        args_cli.task, cfg=env_cfg, render_mode="rgb_array" if want_video else None
-    )
-
     if want_video:
-        video_dir = os.path.join(args_cli.out, "video")
-        env = gym.wrappers.RecordVideo(
-            env,
-            video_folder=video_dir,
-            step_trigger=lambda step: step == 0,
-            video_length=args_cli.video_length,
-            disable_logger=True,
-        )
-        print(f"[INFO] recording video to {video_dir}")
+        # RTX sensor camera for the video (fiatlux_task.viz), posed per frame from --cam.
+        env_cfg.scene.video_cam = make_video_camera_cfg()
 
+    env = gym.make(args_cli.task, cfg=env_cfg)
     base_env = env.unwrapped
+
+    video = None
+    pose_fn = _CAM_POSES[args_cli.cam]
+    if want_video:
+        video_path = os.path.join(args_cli.out, "video", "run.mp4")
+        video = VideoRecorder(base_env, base_env.scene["video_cam"], video_path)
+        print(f"[INFO] recording video to {video_path}")
 
     policy = make_policy(args_cli.policy, base_env, checkpoint=args_cli.checkpoint)
     recorder = (
@@ -146,10 +146,14 @@ def main():
         while episodes_done < args_cli.episodes:
             actions = policy(obs)
             obs, reward, terminated, truncated, _ = env.step(actions)
+            if video is not None and len(video) < args_cli.video_length:
+                video.capture(pose_fn(len(video), args_cli.video_length))
             if recorder is not None:
                 recorder.record_step(obs, actions, reward, terminated, truncated)
             episodes_done += int((terminated | truncated).sum().item())
 
+    if video is not None:
+        print(f"[INFO] wrote video {video.write()}")
     if recorder is not None:
         info = recorder.write(args_cli.out, fmt=args_cli.format)
         print(f"[INFO] wrote bag {info['bag']} ({info['episodes']} episodes)")
