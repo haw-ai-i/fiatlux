@@ -29,18 +29,6 @@ layouts; the scaffolds share a non-RL base env (observation/action/event manager
 The train / eval / record scripts apply to the RL members; `scripts/verify_scene.py`
 covers every member.
 
-```bash
-./assets/download_assets.sh    # unchanged -- it already syncs the ladder assets
-uv run python scripts/list_envs.py                                        # all 7 FIATLUX ids
-uv run python scripts/verify_scene.py --headless                          # FIATLUX-Base-v0 checks
-uv run python scripts/verify_scene.py --headless --task FIATLUX-Climb-v0  # any family member
-# Insert needs cameras (wrist sensor) + a held base (a policy-less free-base humanoid
-# collapsing onto the table is a known-unstable regime; see the unification spec)
-uv run python scripts/verify_scene.py --headless --enable_cameras --hold_base --task FIATLUX-Insert-v0
-# actually SEE the scene on a headless box: orbiting MP4 -> logs/verify/
-uv run python scripts/verify_scene.py --record --hold_base --headless --num_envs 1
-```
-
 ## Repository layout
 
 ```
