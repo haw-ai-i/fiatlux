@@ -38,10 +38,12 @@ from fiatlux_task.scenes import DressedSceneCfg, spawn_b1k_single_body
 
 # -- default placement (module constants, not scene fields; override via each entity's
 #    init_state). BEHAVIOR-1K USDs are authored with the origin near the bbox center, so a
-#    prop resting on the floor sits at roughly half its height. The z values below are
-#    estimates pending the first verified spawn -- tune them with scripts/verify_scene.py. --
+#    prop resting on the floor sits at roughly half its height. Tuned against
+#    scripts/verify_scene.py --record orbit videos; adjust the same way. --
 ROBOT_POSITION = (0.0, 0.0, 0.75)  # G1_INSPIRE_CFG's standing pelvis height
-LADDER_POSITION = (1.0, 0.0, 0.85)  # shfvtl bbox_z = 1.67 m -> base on the floor
+# x=1.5 puts the A-frame's near face ~arm's length in front of the robot (x=1.0 stood the
+# robot inside the frame's footprint); z = bbox_z/2 rests the feet on the floor.
+LADDER_POSITION = (1.5, 0.0, 0.85)
 LAMP_POSITION = (-0.8, 0.0, 0.20)  # bbentu table lamp resting on the floor
 BULB_POSITION = (-0.55, -0.20, 0.05)  # loose on the floor next to the lamp
 FIXTURE_POSITION = (0.0, 0.0, 2.45)  # hangs overhead in the record camera's frame, clear of robot/ladder

@@ -88,7 +88,12 @@ from pxr import Usd, UsdGeom, UsdPhysics
 from isaaclab_tasks.utils import parse_env_cfg
 
 # global prims (shared across envs) and the per-env tracked entities we expect
-GLOBAL_PRIMS = {"ground": "/World/ground", "dome_light": "/World/DomeLight", "key_light": "/World/KeyLight"}
+GLOBAL_PRIMS = {
+    "ground": "/World/ground",
+    "dome_light": "/World/DomeLight",
+    "key_light": "/World/KeyLight",
+    "room": "/World/Room",
+}
 TRACKED = ["robot", "ladder", "lamp", "bulb"]
 
 # where --record writes MP4s (repo-root logs/ dir, next to the RL runs; gitignored)
@@ -110,13 +115,18 @@ def iter_prims(root_path: str):
 
 
 def collider_audit(root_path: str) -> tuple[int, int]:
-    """Return (number of geometry prims, number of those carrying a CollisionAPI) under a subtree."""
+    """Return (renderable Gprims, prims of ANY type carrying a CollisionAPI) under a subtree.
+
+    Collision is counted on every prim type, not just Gprims: robot USDs (e.g. the Unitree
+    G1) author it on per-link ``collisions`` Xforms (PhysicsCollisionAPI +
+    PhysicsMeshCollisionAPI on the Xform, visual meshes carry nothing).
+    """
     n_geom = n_coll = 0
     for prim in iter_prims(root_path):
         if prim.IsA(UsdGeom.Gprim):  # a renderable shape (Cube/Cylinder/Sphere/Mesh/...)
             n_geom += 1
-            if prim.HasAPI(UsdPhysics.CollisionAPI):
-                n_coll += 1
+        if prim.HasAPI(UsdPhysics.CollisionAPI):
+            n_coll += 1
     return n_geom, n_coll
 
 
@@ -256,7 +266,7 @@ def main() -> int:
     for name in TRACKED:
         root = env0(base.scene[name].cfg.prim_path)
         n_geom, n_coll = collider_audit(root)
-        record(f"{name}:colliders", n_coll > 0, f"{n_coll}/{n_geom} geoms have CollisionAPI")
+        record(f"{name}:colliders", n_coll > 0, f"{n_coll} collision prims ({n_geom} visual geoms)")
 
     # =========================== 5. CONTACT / PENETRATION ===========================
     print("\n[verify] (5) Contact / penetration")
@@ -333,12 +343,16 @@ if __name__ == "__main__":
     code = 1
     try:
         code = main()
-    except Exception:  # noqa: BLE001 -- print the traceback before close() hard-exits the process
+    except Exception:  # noqa: BLE001 -- print the traceback before the process exits
         import traceback
 
         traceback.print_exc()
+    finally:
+        # SimulationApp.close() ends in a native framework shutdown that terminates the
+        # process with exit code 0, so nothing placed after it (sys.exit included) ever
+        # runs. main() already closed the env; flush and exit with the real verification
+        # result ourselves. os._exit skips Kit's graceful shutdown on purpose -- process
+        # teardown releases the GPU, and CI must see a non-zero code on FAIL.
         sys.stdout.flush()
         sys.stderr.flush()
-    finally:
-        simulation_app.close()
-    sys.exit(code)
+        os._exit(code)
