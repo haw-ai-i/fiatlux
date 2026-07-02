@@ -12,11 +12,11 @@ attach gated by rotation -- NOT threaded geometry -- anchored at the lamp's sock
 
 from isaaclab.utils import configclass
 
-from .g1_ladder_env_cfg import G1LadderEnvCfg
+from .base_env_cfg import FamilyBaseEnvCfg
 
 
 @configclass
-class RemoveEnvCfg(G1LadderEnvCfg):
+class RemoveEnvCfg(FamilyBaseEnvCfg):
     """Bulb-removal environment (foundation: identical to the base env)."""
 
     def __post_init__(self) -> None:

@@ -273,9 +273,11 @@ def main() -> int:
     # Kinematic props must not move *within* an episode. RL family members auto-reset
     # finished episodes inside step() and their reset events may deliberately re-pose
     # kinematic props (e.g. Insert re-samples the socket +/- a few cm), so track per-step
-    # movement and skip comparisons across a reset (detected via episode_length_buf).
+    # movement and skip comparisons across a reset (detected via episode_length_buf --
+    # an RL-env buffer; the non-RL ManagerBasedEnv never auto-resets mid-run).
     prev_kin = {n: base.scene[n].data.root_pos_w.clone() for n in kinematic_props}
-    prev_ep_len = base.episode_length_buf.clone()
+    ep_len_buf = getattr(base, "episode_length_buf", None)
+    prev_ep_len = ep_len_buf.clone() if ep_len_buf is not None else None
     max_kin_move = dict.fromkeys(kinematic_props, 0.0)
 
     print(f"\n[verify] Stepping {args_cli.steps} steps under zero/default-hold actions...")
@@ -292,15 +294,17 @@ def main() -> int:
         max_speed_seen = max(max_speed_seen, robot.data.root_lin_vel_w.norm(dim=-1).max().item())
         if i == 0:
             step1_root = robot.data.root_pos_w.clone()
-        ep_len = base.episode_length_buf
-        progressed = ep_len > prev_ep_len  # envs that did NOT reset during this step
+        if ep_len_buf is not None:
+            progressed = ep_len_buf > prev_ep_len  # envs that did NOT reset during this step
+            prev_ep_len = ep_len_buf.clone()
+        else:
+            progressed = torch.ones(base.num_envs, dtype=torch.bool, device=device)
         for n in kinematic_props:
             cur = base.scene[n].data.root_pos_w
             if bool(progressed.any()):
                 moved = (cur[progressed] - prev_kin[n][progressed]).norm(dim=-1).max().item()
                 max_kin_move[n] = max(max_kin_move[n], moved)
             prev_kin[n] = cur.clone()
-        prev_ep_len = ep_len.clone()
 
     # =========================== 3. GRAVITY / SETTLING (numerical soundness) ===========================
     # NOTE: a free-base humanoid holding a fixed joint pose is an inverted pendulum -- without an

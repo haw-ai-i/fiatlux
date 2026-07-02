@@ -7,9 +7,12 @@
 
 Task hierarchy (see docs/roadmap.md):
 
-- ``FIATLUX-Insert-v0``  : G1 seats a bulb into a socket (manipulation). FUNCTIONAL, RL.
-- Ladder task family     : G1 + ladder + lamp + bulb scene scaffolds. All six share the
-  **non-RL** :class:`g1_ladder_env_cfg.G1LadderEnvCfg` base (observation / action / event
+One family, one scene (``scene_cfg.G1ReplaceSceneCfg``), preset layouts per task:
+
+- ``FIATLUX-Insert-v0``  : G1 seats a bulb into a socket (manipulation, *tabletop* preset).
+  FUNCTIONAL, RL.
+- Workshop-preset scaffolds: G1 + ladder + socket-lamp + bulb on the floor. All six share
+  the **non-RL** :class:`base_env_cfg.FamilyBaseEnvCfg` base (observation / action / event
   managers only -- no rewards, terminations, or training code yet):
 
   - ``FIATLUX-Base-v0``    : the shared base scene, no task logic (verify_scene.py's default).
@@ -22,9 +25,9 @@ Task hierarchy (see docs/roadmap.md):
 
 - ``FIATLUX-Replace-v0`` : end-to-end climb + insert. ROADMAP (not yet built).
 
-The ladder family registers the non-RL ``isaaclab.envs:ManagerBasedEnv`` entry point, so
-those envs are exercised with ``scripts/verify_scene.py`` -- NOT the train / eval / teleop
-scripts (those assume RL envs and gym-style 5-tuple stepping).
+The scaffolds register the non-RL ``isaaclab.envs:ManagerBasedEnv`` entry point; the
+train / eval / teleop scripts assume RL envs and only apply to the RL members.
+``scripts/verify_scene.py`` covers every family member (Insert needs ``--enable_cameras``).
 
 Registration is deliberately lazy (string entry points only, no eager cfg imports):
 ``fiatlux_task.tasks`` swallows import errors during its auto-import walk, so an eagerly
@@ -53,14 +56,14 @@ gym.register(
 # gym.register(id="FIATLUX-Replace-v0", ...)
 
 ##
-# Ladder task family (non-RL scene scaffolds).
+# Workshop-preset scaffolds (non-RL).
 ##
 
 gym.register(
     id="FIATLUX-Base-v0",
     entry_point="isaaclab.envs:ManagerBasedEnv",
     disable_env_checker=True,
-    kwargs={"env_cfg_entry_point": f"{__name__}.g1_ladder_env_cfg:G1LadderEnvCfg"},
+    kwargs={"env_cfg_entry_point": f"{__name__}.base_env_cfg:FamilyBaseEnvCfg"},
 )
 
 gym.register(

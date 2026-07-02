@@ -13,11 +13,11 @@ anchored at the lamp's socket seat pose -- NOT threaded geometry.
 
 from isaaclab.utils import configclass
 
-from .g1_ladder_env_cfg import G1LadderEnvCfg
+from .base_env_cfg import FamilyBaseEnvCfg
 
 
 @configclass
-class InstallEnvCfg(G1LadderEnvCfg):
+class InstallEnvCfg(FamilyBaseEnvCfg):
     """Bulb-installation environment (foundation: identical to the base env)."""
 
     def __post_init__(self) -> None:

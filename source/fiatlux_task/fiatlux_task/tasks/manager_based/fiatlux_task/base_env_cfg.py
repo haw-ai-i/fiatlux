@@ -3,12 +3,13 @@
 #
 # SPDX-License-Identifier: BSD-3-Clause
 
-"""Base (non-RL) ``ManagerBasedEnvCfg`` wiring the Fiatlux ladder scene to its managers.
+"""Base (non-RL) ``ManagerBasedEnvCfg`` wiring the Fiatlux family scene to its managers.
 
 Deliberately uses the **non-RL** ``ManagerBasedEnv`` base: it has observation, action and event
 managers only -- NO reward / termination / command / curriculum managers and no policy/training
-code. The five ladder-family tasks subclass :class:`G1LadderEnvCfg` and add their own task
-logic later (switching to ``ManagerBasedRLEnvCfg``; see ``docs/roadmap.md``).
+code. The scaffold tasks subclass :class:`FamilyBaseEnvCfg` and add their own task logic later
+(switching to ``ManagerBasedRLEnvCfg``; see ``docs/roadmap.md``). RL family members (the Insert
+task) use ``ManagerBasedRLEnvCfg`` directly on the same scene + presets.
 
 The event manager carries the reset term and *enabled* per-reset light randomization, plus a
 *disabled* randomization scaffold: every future randomization knob is written out, commented,
@@ -25,7 +26,7 @@ from isaaclab.managers import SceneEntityCfg
 from isaaclab.utils import configclass
 
 from . import mdp
-from .ladder_scene_cfg import FIXTURE_USDS, G1LadderSceneCfg
+from .scene_cfg import FIXTURE_USDS, G1ReplaceSceneCfg, apply_workshop_preset
 
 ##
 # Observations -- generic G1 proprioception (no task-specific terms yet).
@@ -106,7 +107,7 @@ class EventCfg:
     #  already wired to the correct SceneEntityCfg(name=...).
     # =====================================================================================
 
-    # ---- (A) asset SCALE: ladder / lamp / bulb -- mdp.randomize_rigid_body_scale ----
+    # ---- (A) asset SCALE: ladder / socket / bulb -- mdp.randomize_rigid_body_scale ----
     #   TODO: scale runs on the USD stage, so use mode="prestartup". Replicate per prop.
     # randomize_ladder_scale = EventTerm(
     #     func=mdp.randomize_rigid_body_scale,
@@ -114,8 +115,8 @@ class EventCfg:
     #     params={"asset_cfg": SceneEntityCfg("ladder"),
     #             "scale_range": {"x": (0.95, 1.05), "y": (0.95, 1.05), "z": (0.95, 1.1)}},
     # )
-    # randomize_lamp_scale = EventTerm(func=mdp.randomize_rigid_body_scale, mode="prestartup",
-    #     params={"asset_cfg": SceneEntityCfg("lamp"), "scale_range": (0.9, 1.1)})
+    # randomize_socket_scale = EventTerm(func=mdp.randomize_rigid_body_scale, mode="prestartup",
+    #     params={"asset_cfg": SceneEntityCfg("socket"), "scale_range": (0.9, 1.1)})
     # randomize_bulb_scale = EventTerm(func=mdp.randomize_rigid_body_scale, mode="prestartup",
     #     params={"asset_cfg": SceneEntityCfg("bulb"), "scale_range": (0.9, 1.1)})
 
@@ -162,8 +163,8 @@ class EventCfg:
 
 
 @configclass
-class G1LadderEnvCfg(ManagerBasedEnvCfg):
-    """Base manager-based (non-RL) environment for the Fiatlux ladder scene."""
+class FamilyBaseEnvCfg(ManagerBasedEnvCfg):
+    """Base manager-based (non-RL) environment for the Fiatlux family scene (workshop preset)."""
 
     # -- simulation knobs (humanoid-friendly defaults; all overridable e.g. via Hydra) --
     physics_dt: float = 1.0 / 200.0
@@ -175,11 +176,13 @@ class G1LadderEnvCfg(ManagerBasedEnvCfg):
     """Nominal episode length. NOTE: ManagerBasedEnv (non-RL) has no episode horizon; this is a
     documented knob the RL/task layer will consume once terminations are added."""
 
+    enable_dressing_randomization: bool = True
+    """Per-env random ceiling fixture (visual domain randomization). Heterogeneous per-env
+    assets require ``replicate_physics=False``, which is fine at scaffold scale but wrong at
+    RL-training scale -- training cfgs set this False to get replicated physics back."""
+
     # -- scene + managers --
-    # replicate_physics / fabric cloning assume identical envs; the per-env random ceiling
-    # fixture (MultiUsdFileCfg) makes envs heterogeneous, so both stay off. Irrelevant at
-    # scaffold scale; revisit if a task phase needs thousands of envs (drop the fixture then).
-    scene: G1LadderSceneCfg = G1LadderSceneCfg(
+    scene: G1ReplaceSceneCfg = G1ReplaceSceneCfg(
         num_envs=4, env_spacing=4.0, replicate_physics=False, clone_in_fabric=False
     )
     observations: ObservationsCfg = ObservationsCfg()
@@ -187,11 +190,18 @@ class G1LadderEnvCfg(ManagerBasedEnvCfg):
     events: EventCfg = EventCfg()
 
     def __post_init__(self) -> None:
-        # Drop the dressing fixture when its (opt-in) assets are not downloaded, so the env
-        # still loads from a clean clone without `download_assets.sh --scene-dressing`.
-        if not FIXTURE_USDS:
+        apply_workshop_preset(self.scene)
+        # Dressing randomization: drop the fixture when disabled, or when its (opt-in)
+        # assets are not downloaded (`download_assets.sh --scene-dressing`) so the env
+        # still loads from a clean clone.
+        if self.enable_dressing_randomization and not FIXTURE_USDS:
             print("[fiatlux] no behavior1k_* ceiling-fixture assets found -- spawning without the 'fixture' entity.")
+        if not self.enable_dressing_randomization or not FIXTURE_USDS:
             self.scene.fixture = None
+        if not self.enable_dressing_randomization:
+            # homogeneous envs again -> replicated physics is safe and fast
+            self.scene.replicate_physics = True
+            self.scene.clone_in_fabric = True
         # control / physics rates
         self.decimation = self.control_decimation
         self.sim.dt = self.physics_dt
@@ -205,3 +215,7 @@ class G1LadderEnvCfg(ManagerBasedEnvCfg):
         # default viewer framing
         self.viewer.eye = (4.5, 4.5, 3.0)
         self.viewer.lookat = (0.0, 0.0, 1.0)
+
+
+# Backwards-compat alias (pre-unification name).
+G1LadderEnvCfg = FamilyBaseEnvCfg

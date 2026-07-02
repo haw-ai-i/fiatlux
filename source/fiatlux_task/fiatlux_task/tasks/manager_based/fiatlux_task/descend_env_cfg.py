@@ -10,11 +10,11 @@ Scaffolding only: the env shares the common scene and managers; no rewards/termi
 
 from isaaclab.utils import configclass
 
-from .g1_ladder_env_cfg import G1LadderEnvCfg
+from .base_env_cfg import FamilyBaseEnvCfg
 
 
 @configclass
-class DescendEnvCfg(G1LadderEnvCfg):
+class DescendEnvCfg(FamilyBaseEnvCfg):
     """Ladder-descent environment (foundation: identical to the base env)."""
 
     def __post_init__(self) -> None:
