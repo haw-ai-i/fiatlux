@@ -118,7 +118,10 @@ G1_INSPIRE_CFG = ArticulationCfg(
         ),
         "hands": ImplicitActuatorCfg(
             joint_names_expr=["[LR]_.*_joint"],
-            effort_limit_sim=100.0,
+            # Real Inspire fingers produce ~1-2 N.m; 2.0 is plenty for a 60 g bulb. The
+            # old 100 N.m limit let a wedged finger's saturated PD torque catapult the
+            # whole robot off furniture (hundreds of m/s -- verify_scene finding).
+            effort_limit_sim=2.0,
             stiffness=1000.0,
             damping=15.0,
         ),
