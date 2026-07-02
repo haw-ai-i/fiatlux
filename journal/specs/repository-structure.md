@@ -143,6 +143,10 @@ Rules:
   decrypt, upload, or generate heavy assets as an import side effect.
 - Optional sim-to-real adapters do not belong in the core task package until
   there is a tested reason to put them there.
+- The config that assembles the scene must not configure assets inline. Asset
+  configs belong in a separate folder and get imported into the scene config.
+  Otherwise the scene config becomes an unmanageable monolith with everything in
+  it. (Beware: the default tendency is to cram every setting into one config.)
 
 Near-term tasks:
 
