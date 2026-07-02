@@ -39,6 +39,9 @@ import os
 import isaaclab.sim as sim_utils
 from isaaclab.assets import ArticulationCfg, AssetBaseCfg, RigidObjectCfg
 from isaaclab.sensors import ContactSensorCfg
+from isaaclab.sim import schemas
+from isaaclab.sim.spawners.from_files.from_files import _spawn_from_usd_file
+from isaaclab.sim.utils import clone
 from isaaclab.utils import configclass
 
 from fiatlux_task.assets import (
@@ -48,6 +51,7 @@ from fiatlux_task.assets import (
     FIATLUX_ASSETS_DIR,
     LADDER_USD,
     SOCKET_USD,
+    STEP_LADDER_USD,
     TABLE_USD,
 )
 from fiatlux_task.robots.g1 import G1_INSPIRE_CFG
@@ -58,9 +62,10 @@ from fiatlux_task.scenes import DressedSceneCfg, spawn_b1k_single_body
 #    center, so a prop resting on the floor sits at roughly half its height. Tuned against
 #    scripts/verify_scene.py --record orbit videos; adjust the same way. --
 ROBOT_POSITION = (0.0, 0.0, 0.75)  # G1_INSPIRE_CFG's standing pelvis height
-# x=1.5 puts the A-frame's near face ~arm's length in front of the robot (x=1.0 stood the
-# robot inside the frame's footprint); z = bbox_z/2 rests the feet on the floor.
-LADDER_POSITION = (1.5, 0.0, 0.85)
+# Work-site step ladder (STEP_LADDER_USD, probe: 0.68 wide x 1.11 deep x 1.75 tall, base
+# authored at z=0). Yawed 90 deg so its steps face -x (toward the robot's approach).
+LADDER_POSITION = (1.6, 0.0, 0.0)
+LADDER_YAW_DEG = 90.0
 SOCKET_POSITION = (-0.8, 0.0, 0.20)  # bbentu socket-lamp resting on the floor
 BULB_POSITION = (-0.55, -0.20, 0.05)  # loose on the floor next to the lamp
 FIXTURE_POSITION = (0.0, 0.0, 2.45)  # hangs overhead in the record camera's frame, clear of robot/ladder
@@ -70,8 +75,10 @@ TABLE_POSITION = (0.40, -0.10, 0.0)  # authored tabletop surface is ~1.0 m above
 TABLETOP_SOCKET_POSITION = (0.45, 0.0, 1.20)
 TABLETOP_BULB_POSITION = (0.35, -0.20, 1.05)
 
-# -- carry preset: ladder *stored* by the room wall, work area across the room --
-CARRY_LADDER_POSITION = (-3.2, 1.8, 0.85)  # near the Simple Room wall (~4.5 m out)
+# -- carry preset: the B1K straight ladder (shfvtl) *stored* by the room wall in its
+#    authored lying/leaning pose (probe: 2.41 long x 1.67 high, bbox bottom at -0.47 ->
+#    pivot z=+0.47 rests it on the floor), robot beside it, work area across the room --
+CARRY_LADDER_POSITION = (-3.2, 1.8, 0.47)  # near the Simple Room wall (~4.5 m out)
 CARRY_ROBOT_POSITION = (-2.4, 1.8, 0.75)  # standing next to the stored ladder
 CARRY_LADDER_YAW_DEG = 90.0  # parallel to the wall
 
@@ -79,12 +86,12 @@ CARRY_LADDER_YAW_DEG = 90.0  # parallel to the wall
 #    ladder. The chandelier hangs above/behind the ladder's top; positions are tuned
 #    against verify_scene --record orbit videos, same as the floor layout. --
 ELEVATED_SOCKET_POSITION = (1.9, 0.0, 2.80)  # cage bottom clears the at-top robot's head
-CLIMB_ROBOT_POSITION = (0.9, 0.0, 0.75)  # at the ladder's base, ready to ascend
-TOP_ROBOT_POSITION = (1.15, 0.0, 1.80)  # pelvis at the upper steps (descend/remove/install)
+CLIMB_ROBOT_POSITION = (0.75, 0.0, 0.75)  # at the step ladder's base, ready to ascend
+TOP_ROBOT_POSITION = (1.35, 0.0, 1.85)  # pelvis at the upper steps (descend/remove/install)
 PARKED_BULB_POSITION = (0.5, -0.6, 0.05)  # out of the way on the floor
 SEATED_BULB_POSITION = (1.9, 0.0, 2.55)  # hanging in the fixture's seat, visible below the cage
-BIN_POSITION = (0.9, -0.55, 0.0)  # parts crate at the ladder base (install preset)
-BIN_BULB_POSITION = (0.9, -0.55, 0.15)  # fresh bulb resting in the crate
+BIN_POSITION = (0.9, -0.55, 0.0)  # parts crate at the ladder base (remove/install presets)
+BIN_BULB_POSITION = (0.9, -0.55, 0.15)  # fresh bulb resting in the crate (install)
 
 # -- per-env random ceiling fixture pool (visual dressing) --
 # Ceiling-mount BEHAVIOR-1K categories only: floor-standing fixtures would invade the task
@@ -121,6 +128,21 @@ def _quat_z_deg(angle_deg: float) -> tuple[float, float, float, float]:
     return (math.cos(half), 0.0, 0.0, math.sin(half))
 
 
+# Omniverse SimReady assets author PhysX colliders but no RigidBodyAPI; Isaac Lab's
+# RigidObjectCfg requires exactly one rigid-body prim (the spawner's property pass only
+# *modifies* an existing API). Apply it on the root at spawn time, then apply the cfg's
+# rigid props (e.g. kinematic_enabled) which would otherwise silently no-op.
+@clone
+def _spawn_usd_as_rigid_body(prim_path, cfg, translation=None, orientation=None):
+    from pxr import UsdPhysics
+
+    prim = _spawn_from_usd_file(prim_path, cfg.usd_path, cfg, translation, orientation)
+    UsdPhysics.RigidBodyAPI.Apply(prim)
+    if cfg.rigid_props is not None:
+        schemas.modify_rigid_body_properties(prim.GetPath(), cfg.rigid_props)
+    return prim
+
+
 @configclass
 class G1ReplaceSceneCfg(DressedSceneCfg):
     """The G1 light-bulb-replacement world (see module docstring for the preset layouts)."""
@@ -150,18 +172,22 @@ class G1ReplaceSceneCfg(DressedSceneCfg):
         prim_path="{ENV_REGEX_NS}/Robot",
         init_state=G1_INSPIRE_CFG.init_state.replace(pos=ROBOT_POSITION),
     )
-    # Tall upright BEHAVIOR-1K ladder; kinematic so it stays put while climbed.
-    # Dropped by the tabletop preset.
+    # Work-site step ladder: a free-standing Omniverse SimReady A-frame (the _collision
+    # USD carries both render meshes and authored PhysX colliders). cm-authored -> scale
+    # 0.01. Kinematic so it stays put while climbed. Dropped by the tabletop preset;
+    # the carry preset swaps in the B1K straight ladder as stored cargo instead.
     ladder: RigidObjectCfg | None = RigidObjectCfg(
         prim_path="{ENV_REGEX_NS}/Ladder",
         spawn=sim_utils.UsdFileCfg(
-            usd_path=LADDER_USD,
-            # Strip meta__ helper links so the object resolves to one rigid body.
-            func=spawn_b1k_single_body,
+            usd_path=STEP_LADDER_USD,
+            # SimReady asset: apply the missing RigidBodyAPI at spawn (see helper above).
+            func=_spawn_usd_as_rigid_body,
+            scale=(0.01, 0.01, 0.01),
             rigid_props=sim_utils.RigidBodyPropertiesCfg(kinematic_enabled=True),
-            articulation_props=sim_utils.ArticulationRootPropertiesCfg(articulation_enabled=False),
         ),
-        init_state=RigidObjectCfg.InitialStateCfg(pos=LADDER_POSITION),
+        init_state=RigidObjectCfg.InitialStateCfg(
+            pos=LADDER_POSITION, rot=_quat_z_deg(LADDER_YAW_DEG)
+        ),
     )
     # Socket fixture: a BEHAVIOR-1K lamp standing in for the bulb socket; kinematic so it
     # can be re-posed on reset. On the floor in the workshop preset, on the table in the
@@ -256,11 +282,19 @@ def apply_tabletop_preset(scene: G1ReplaceSceneCfg) -> None:
 
 
 def apply_carry_preset(scene: G1ReplaceSceneCfg) -> None:
-    """Ladder-handling start: the ladder is *stored* by the room wall, robot beside it.
+    """Ladder-handling start: a straight ladder *stored* by the room wall, robot beside it.
 
-    The work area (the floor socket-lamp) stays across the room -- the task-phase goal is
-    fetching the ladder and standing it up there.
+    The stored cargo is the B1K straight ladder (shfvtl) in its authored lying/leaning
+    pose -- the realistic start for "carry the ladder to the work site". The work area
+    (the floor socket-lamp) stays across the room.
     """
+    scene.ladder.spawn = sim_utils.UsdFileCfg(
+        usd_path=LADDER_USD,
+        # Strip meta__ helper links so the B1K object resolves to one rigid body.
+        func=spawn_b1k_single_body,
+        rigid_props=sim_utils.RigidBodyPropertiesCfg(kinematic_enabled=True),
+        articulation_props=sim_utils.ArticulationRootPropertiesCfg(articulation_enabled=False),
+    )
     scene.ladder.init_state.pos = CARRY_LADDER_POSITION
     scene.ladder.init_state.rot = _quat_z_deg(CARRY_LADDER_YAW_DEG)
     scene.robot.init_state.pos = CARRY_ROBOT_POSITION
@@ -282,23 +316,8 @@ def apply_at_height_preset(scene: G1ReplaceSceneCfg, robot_at: str = "base") -> 
     scene.fixture = None
 
 
-def apply_remove_preset(scene: G1ReplaceSceneCfg) -> None:
-    """Bulb-removal start: at-height layout with the OLD BULB SEATED in the fixture.
-
-    The bulb is kinematic here -- a stand-in for "screwed into the socket" until the
-    task-phase attach joint exists (unification spec, Phase 4).
-    """
-    apply_at_height_preset(scene, robot_at="top")
-    scene.bulb.init_state.pos = SEATED_BULB_POSITION
-    scene.bulb.spawn.rigid_props.kinematic_enabled = True
-
-
-def apply_install_preset(scene: G1ReplaceSceneCfg) -> None:
-    """Bulb-installation start: at-height layout, empty fixture, fresh bulb in a crate.
-
-    The parts crate (``bin``) sits at the ladder base with the dynamic bulb resting in it.
-    """
-    apply_at_height_preset(scene, robot_at="top")
+def _add_parts_bin(scene: G1ReplaceSceneCfg) -> None:
+    """Spawn the kinematic parts crate at the ladder base (remove + install work site)."""
     scene.bin = AssetBaseCfg(
         prim_path="{ENV_REGEX_NS}/Bin",
         init_state=AssetBaseCfg.InitialStateCfg(pos=BIN_POSITION),
@@ -307,4 +326,23 @@ def apply_install_preset(scene: G1ReplaceSceneCfg) -> None:
             rigid_props=sim_utils.RigidBodyPropertiesCfg(kinematic_enabled=True),
         ),
     )
+
+
+def apply_remove_preset(scene: G1ReplaceSceneCfg) -> None:
+    """Bulb-removal start: Install's work site with the OLD BULB SEATED in the fixture.
+
+    Same scene as the install preset (fixture + ladder + empty parts crate -- the old
+    bulb's destination); only the bulb starts differently: kinematic in the fixture seat,
+    a stand-in for "screwed in" until the task-phase attach joint exists (spec, Phase 4).
+    """
+    apply_at_height_preset(scene, robot_at="top")
+    _add_parts_bin(scene)
+    scene.bulb.init_state.pos = SEATED_BULB_POSITION
+    scene.bulb.spawn.rigid_props.kinematic_enabled = True
+
+
+def apply_install_preset(scene: G1ReplaceSceneCfg) -> None:
+    """Bulb-installation start: at-height layout, empty fixture, fresh bulb in the crate."""
+    apply_at_height_preset(scene, robot_at="top")
+    _add_parts_bin(scene)
     scene.bulb.init_state.pos = BIN_BULB_POSITION

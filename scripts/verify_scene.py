@@ -116,7 +116,7 @@ PRESET_PRESENCE = {
     "carry": ({"ladder"}, {"table"}),
     "climb": ({"ladder"}, {"table"}),
     "descend": ({"ladder"}, {"table"}),
-    "remove": ({"ladder"}, {"table"}),
+    "remove": ({"ladder", "bin"}, {"table"}),
     "install": ({"ladder", "bin"}, {"table"}),
 }
 

@@ -11,6 +11,17 @@ optional `bin` entity)). verify_scene replaced the hardcoded preset pose asserts
 presence-per-preset (`scene_preset` attr) + a generic cfg-vs-stage init-state drift check,
 and records each task with cfg-declared `orbit_*` framing.
 
+Phase 3.5 ladder revision (user feedback): all three B1K ladders are authored
+lying/leaning (probe: shfvtl 2.41 long x 1.67 high, pivot rests at z=0.47 -- it had been
+floating at z=0.85); the work-site ladder is now a deployed free-standing Omniverse
+SimReady A-frame (`assets.STEP_LADDER_USD`, HeavyDutyFRPStep 0.68x1.11x1.75 m, cm-authored
+-> spawn scale 0.01, `_collision.usd` carries visuals AND colliders, RigidBodyAPI applied
+at spawn via `_spawn_usd_as_rigid_body` -- SimReady packs author colliders only). shfvtl
+stays as Carry's stored cargo in its natural lying pose. Remove now shares Install's exact
+work site (crate included, empty). 27 more SimReady ladder designs are local for later
+variety/DR via MultiUsdFileCfg. Its fiberglass base MDL resolves via a missing relative
+pack path (renders in fallback red; decals/textures bundled) -- cosmetic, noted.
+
 Implementation notes from landing (decisions log additions):
 
 - Manager blocks (Actions/Obs/Rewards/Terminations) stayed in ``g1_bulb_env_cfg.py``

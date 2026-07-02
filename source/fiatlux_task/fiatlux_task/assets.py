@@ -47,6 +47,18 @@ SOCKET_USD = os.path.join(FIATLUX_ASSETS_DIR, "behavior1k_lamp", "bbentu", "usd"
 # by ``download_assets.sh``; 97 more Omniverse ladders are staged for variety.
 LADDER_USD = os.path.join(FIATLUX_ASSETS_DIR, "behavior1k_ladder", "shfvtl", "usd", "shfvtl.usd")
 
+# Work-site step ladder: a deployed, free-standing A-frame from the Omniverse SimReady
+# pack (probe: 0.68 x 1.11 x 1.75 m deployed, cm-authored -> spawn scale 0.01, base at
+# z=0). The ``_collision`` variant carries BOTH the visible render meshes and the authored
+# PhysX colliders; the plain variant has no colliders. 27 more designs are local for
+# variety/domain randomization (see assets/omniverse_ladder/).
+STEP_LADDER_USD = os.path.join(
+    FIATLUX_ASSETS_DIR,
+    "omniverse_ladder",
+    "HeavyDutyFRPStep_A",
+    "HeavyDutyFiberglassStepLadder_A01_PR_NVD_01_collision.usd",
+)
+
 # Elevated fixture for the at-height task presets (climb/descend/remove/install): a
 # BEHAVIOR-1K ceiling chandelier standing in as the socket the ladder leads to. One
 # deterministic model (``qghfol``); 3 more chandelier ids are local for variety.
