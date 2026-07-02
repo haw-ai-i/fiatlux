@@ -40,3 +40,17 @@ G1_DEX3_USD = os.path.join(
 #   deactivating its ``meta__*`` helper links (see ``g1_bulb_env_cfg`` / issue #14).
 BULB_USD = os.path.join(FIATLUX_ASSETS_DIR, "behavior1k_bulb", "ymomhw", "usd", "ymomhw.usd")
 SOCKET_USD = os.path.join(FIATLUX_ASSETS_DIR, "behavior1k_lamp", "bbentu", "usd", "bbentu.usd")
+
+# Room dressing: table, room backdrop, and an HDRI sky, mirrored once from Isaac
+# Sim's own Nucleus content library (Isaac/Props, Isaac/Environments) into our own
+# bucket so a clean `uv sync` + `download_assets.sh` never touches NVIDIA's CDN.
+TABLE_USD = os.path.join(FIATLUX_ASSETS_DIR, "isaac_packing_table", "packing_table.usd")
+# Simple_Room, not the much heavier Simple_Warehouse: the warehouse's ~100+ unique
+# MDL materials each need a one-time (single-threaded) shader compile on first use,
+# which made a single video render take hours. Simple_Room has ~11 materials and
+# still gives real walls/floor/windows instead of a bare plane. Nested to match its
+# original Nucleus depth in case of relative references, same precaution as before.
+ROOM_USD = os.path.join(
+    FIATLUX_ASSETS_DIR, "isaac_room", "Environments", "Simple_Room", "simple_room.usd"
+)
+SKY_HDRI = os.path.join(FIATLUX_ASSETS_DIR, "isaac_skies", "kloofendal_43d_clear_puresky_4k.hdr")

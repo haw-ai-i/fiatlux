@@ -27,7 +27,8 @@ run commands below with `uv run` to use this environment.
 ## 2. Download the assets
 
 The G1, bulb/socket, and ladder USDs are pulled from a GCS bucket (they are not
-checked into git):
+checked into git). This also pulls the table/warehouse/HDRI sky that dress up
+the scene by default (see `assets/README.md`):
 
 ```bash
 ./assets/download_assets.sh
@@ -42,6 +43,7 @@ assets/unitree_g1/wholebody_inspire/g1_29dof_with_inspire_rev_1_0.usd
 assets/behavior1k_bulb/ymomhw/usd/ymomhw.usd
 assets/behavior1k_lamp/bbentu/usd/bbentu.usd
 assets/behavior1k_ladder/                # for the climbing subtask (roadmap)
+assets/isaac_packing_table/, assets/isaac_room/, assets/isaac_skies/
 ```
 
 (See `source/fiatlux_task/fiatlux_task/assets.py` for the exact paths the env

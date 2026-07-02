@@ -38,7 +38,13 @@ from isaaclab.sim.utils import clone
 from isaaclab.utils import configclass
 from isaaclab.utils.noise import AdditiveUniformNoiseCfg as Unoise
 
-from fiatlux_task.assets import BULB_USD, SOCKET_USD
+from fiatlux_task.assets import (
+    BULB_USD,
+    ROOM_USD,
+    SKY_HDRI,
+    SOCKET_USD,
+    TABLE_USD,
+)
 from fiatlux_task.robots.g1 import (
     G1_ARM_JOINTS,
     G1_EE_BODY,
@@ -112,10 +118,14 @@ class G1BulbSceneCfg(InteractiveSceneCfg):
         init_state=RigidObjectCfg.InitialStateCfg(pos=(0.45, 0.0, 1.20)),
     )
 
-    # -- Lights --
+    # -- Lights: HDRI sky instead of a flat color, for realistic ambient lighting --
     light = AssetBaseCfg(
         prim_path="/World/light",
-        spawn=sim_utils.DomeLightCfg(color=(0.75, 0.75, 0.75), intensity=2500.0),
+        spawn=sim_utils.DomeLightCfg(
+            texture_file=SKY_HDRI,
+            texture_format="latlong",
+            intensity=1000.0,
+        ),
     )
 
     # -- Ground --
@@ -123,6 +133,30 @@ class G1BulbSceneCfg(InteractiveSceneCfg):
         prim_path="/World/ground",
         spawn=sim_utils.GroundPlaneCfg(),
         init_state=AssetBaseCfg.InitialStateCfg(pos=(0.0, 0.0, 0.0)),
+    )
+
+    # -- Room backdrop: visual only, collision explicitly disabled so it never
+    # conflicts with the GroundPlaneCfg collider above, which keeps owning floor
+    # physics. Shared static geometry (num_envs=1), so it lives under /World/... --
+    room: AssetBaseCfg = AssetBaseCfg(
+        prim_path="/World/Room",
+        spawn=sim_utils.UsdFileCfg(
+            usd_path=ROOM_USD,
+            collision_props=sim_utils.CollisionPropertiesCfg(collision_enabled=False),
+        ),
+    )
+
+    # -- Table the lamp/bulb rest on: kinematic so it can't be pushed around.
+    # Positioned so its authored top surface (~1.0m) lands just under the
+    # existing bulb (z=1.05) and socket/lamp (z=1.20) init heights -- no
+    # EventCfg pose ranges need to change. --
+    table: AssetBaseCfg = AssetBaseCfg(
+        prim_path="{ENV_REGEX_NS}/Table",
+        init_state=AssetBaseCfg.InitialStateCfg(pos=(0.40, -0.10, 0.0)),
+        spawn=sim_utils.UsdFileCfg(
+            usd_path=TABLE_USD,
+            rigid_props=sim_utils.RigidBodyPropertiesCfg(kinematic_enabled=True),
+        ),
     )
 
     # -- Contact sensor on the grasping hand (force/torque safety + obs) --
@@ -279,8 +313,8 @@ class EventCfg:
         func=randomize_dome_light,
         mode="reset",
         params={
-            "intensity_range": (1500.0, 3500.0),
-            "color_range": ((0.5, 0.5, 0.5), (1.0, 1.0, 1.0)),
+            "intensity_range": (500.0, 2000.0),
+            "intensity_only": True,
         },
     )
 

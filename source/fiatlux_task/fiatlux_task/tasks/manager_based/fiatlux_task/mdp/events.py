@@ -31,11 +31,15 @@ def randomize_dome_light(
         (0.5, 0.5, 0.5),
         (1.0, 1.0, 1.0),
     ),
+    intensity_only: bool = False,
 ) -> None:
-    """Randomize the dome light's intensity and color on reset.
+    """Randomize the dome light's intensity and, optionally, color on reset.
 
     The light is a single shared prim, so the randomization is global across
-    all environments regardless of ``env_ids``.
+    all environments regardless of ``env_ids``. Set ``intensity_only=True``
+    when the dome uses an HDRI ``texture_file``: the color attribute only
+    tints the sky texture there, so jittering it looks like a rendering bug
+    rather than useful domain randomization.
     """
     stage = omni.usd.get_context().get_stage()
     light_prim = stage.GetPrimAtPath("/World/light")
@@ -45,6 +49,9 @@ def randomize_dome_light(
 
     intensity = torch.empty(1).uniform_(intensity_range[0], intensity_range[1]).item()
     light.GetIntensityAttr().Set(intensity)
+
+    if intensity_only:
+        return
 
     color_min, color_max = color_range
     r = torch.empty(1).uniform_(color_min[0], color_max[0]).item()

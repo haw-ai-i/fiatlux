@@ -1,0 +1,4 @@
+gcs_path,nucleus_path,role,notes
+gs://fiatlux/assets/isaac_packing_table/,Isaac/Props/PackingTable/,table,"Table the lamp/bulb rest on in G1BulbSceneCfg (assets.TABLE_USD). Authored top surface ~1.0m above its own origin."
+gs://fiatlux/assets/isaac_room/Environments/Simple_Room/,Isaac/Environments/Simple_Room/,room_backdrop,"Room backdrop (assets.ROOM_USD); collision explicitly disabled in the scene cfg so it never conflicts with GroundPlaneCfg. Chosen over Simple_Warehouse (~100+ MDL materials, hours-long single-threaded first-compile) -- Simple_Room has ~11 materials and still gives real walls/floor/windows."
+gs://fiatlux/assets/isaac_skies/,Isaac/Materials/Textures/Skies/PolyHaven/,hdri_sky,"kloofendal_43d_clear_puresky_4k.hdr (assets.SKY_HDRI), CC0 PolyHaven, used as DomeLightCfg.texture_file for image-based lighting."
