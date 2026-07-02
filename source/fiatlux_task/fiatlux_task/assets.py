@@ -41,6 +41,41 @@ G1_DEX3_USD = os.path.join(
 BULB_USD = os.path.join(FIATLUX_ASSETS_DIR, "behavior1k_bulb", "ymomhw", "usd", "ymomhw.usd")
 SOCKET_USD = os.path.join(FIATLUX_ASSETS_DIR, "behavior1k_lamp", "bbentu", "usd", "bbentu.usd")
 
+# Ladder for the climb-family tasks: ``shfvtl`` is the tall upright BEHAVIOR-1K
+# ladder (bbox_z=1.67 m) marked "primary ladder for G1 to climb" in
+# ``assets/behavior1k_uploaded_manifest.csv``. Synced with the other task assets
+# by ``download_assets.sh``; 97 more Omniverse ladders are staged for variety.
+LADDER_USD = os.path.join(FIATLUX_ASSETS_DIR, "behavior1k_ladder", "shfvtl", "usd", "shfvtl.usd")
+
+# Work-site step ladder: a deployed, free-standing A-frame from the Omniverse SimReady
+# pack (probe: 0.68 x 1.11 x 1.75 m deployed, cm-authored -> spawn scale 0.01, base at
+# z=0). The ``_collision`` variant carries BOTH the visible render meshes and the authored
+# PhysX colliders; the plain variant has no colliders. 27 more designs are local for
+# variety/domain randomization (see assets/omniverse_ladder/).
+STEP_LADDER_USD = os.path.join(
+    FIATLUX_ASSETS_DIR,
+    "omniverse_ladder",
+    "HeavyDutyFRPStep_A",
+    "HeavyDutyFiberglassStepLadder_A01_PR_NVD_01_collision.usd",
+)
+
+# Elevated fixture for the at-height task presets (climb/descend/remove/install): a
+# BEHAVIOR-1K ceiling chandelier standing in as the socket the ladder leads to. One
+# deterministic model (``qghfol``); 3 more chandelier ids are local for variety.
+ELEVATED_SOCKET_USD = os.path.join(
+    FIATLUX_ASSETS_DIR, "behavior1k_chandelier", "qghfol", "usd", "qghfol.usd"
+)
+
+# Parts crate (the Install preset's bulb bin), from the packing-table prop set; the
+# ``_physics`` variant ships collision geometry so the bulb can rest inside it.
+CRATE_USD = os.path.join(
+    FIATLUX_ASSETS_DIR,
+    "isaac_packing_table",
+    "props",
+    "SM_Crate_A07_Yellow_01",
+    "SM_Crate_A07_Yellow_01_physics.usd",
+)
+
 # Room dressing: table, room backdrop, and an HDRI sky, mirrored once from Isaac
 # Sim's own Nucleus content library (Isaac/Props, Isaac/Environments) into our own
 # bucket so a clean `uv sync` + `download_assets.sh` never touches NVIDIA's CDN.

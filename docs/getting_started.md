@@ -84,9 +84,13 @@ uv run python scripts/record_run.py --task FIATLUX-Insert-v0 --policy random \
     --episodes 2 --record both --headless --enable_cameras --out logs/runs/random0
 ```
 
-This writes `logs/runs/random0/video/rl-video-step-0.mp4`. On a headless/remote box
-there's no display to preview it on, so pull the file to your machine (e.g.
-`scp` or a remote-file-browsing editor) and play it locally.
+This writes `logs/runs/random0/video/run.mp4` plus a `run_poster.png` still (PNGs
+preview inline in most editors). `--cam` picks the camera: the fixed `third_person`
+(default) / `closeup` viewpoints, or `orbit` for a 360° turntable of the scene —
+the same scene-inspection view `verify_scene.py --record` produces for the ladder
+family. On a headless/remote box there's no display to preview the MP4 on, so pull
+the file to your machine (e.g. `scp` or a remote-file-browsing editor) and play it
+locally.
 
 ## Troubleshooting
 

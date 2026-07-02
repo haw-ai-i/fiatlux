@@ -25,6 +25,9 @@ dependencies = [
     "h5py",
     "prettytable",
     "psutil",
+    # scripts/verify_scene.py --record renders MP4s (libx264 via the ffmpeg plugin).
+    "imageio",
+    "imageio-ffmpeg",
     # The benchmark task package itself (editable, see [tool.uv.sources]).
     "fiatlux_task",
 ]

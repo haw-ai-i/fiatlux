@@ -6,28 +6,45 @@ extension — no ROS, no distributed harness — so it plugs into the standard
 `train` / `play` / `teleop` / `eval` scripts.
 
 > **Status (honest):** the **insertion** subtask (`FIATLUX-Insert-v0`) is the
-> functional target. Ladder **climbing** and the combined **replace** task are
-> defined in the roadmap but not yet implemented. See [docs/roadmap.md](docs/roadmap.md).
+> functional target. The **ladder task family** (base scene + carry / climb /
+> descend / remove / install) exists as loadable non-RL scene **scaffolds** — no
+> rewards or training yet. The combined **replace** task is still roadmap.
+> See [docs/roadmap.md](docs/roadmap.md).
 
 ## Task hierarchy
 
 | Env id | Description | Status |
 | --- | --- | --- |
-| `FIATLUX-Insert-v0` | G1 seats a bulb into a socket (manipulation only) | ✅ functional |
-| `FIATLUX-Climb-v0` | G1 climbs a ladder to the fixture | 🚧 roadmap |
+| `FIATLUX-Insert-v0` | G1 seats a bulb into a socket (tabletop manipulation) | ✅ functional |
+| `FIATLUX-Base-v0` | shared G1 + ladder + lamp + bulb scene, no task logic | 🧱 scaffold (non-RL) |
+| `FIATLUX-Carry-v0` | grab and position the ladder | 🧱 scaffold (non-RL) |
+| `FIATLUX-Climb-v0` | G1 climbs the ladder to the fixture | 🧱 scaffold (non-RL) |
+| `FIATLUX-Descend-v0` | bipedal ladder descent | 🧱 scaffold (non-RL) |
+| `FIATLUX-Remove-v0` | unscrew / remove the seated bulb | 🧱 scaffold (non-RL) |
+| `FIATLUX-Install-v0` | seat a new bulb at the fixture (the at-fixture counterpart of `Insert`) | 🧱 scaffold (non-RL) |
 | `FIATLUX-Replace-v0` | end-to-end climb + insert | 🚧 roadmap |
+
+All seven ids are members of **one task family** backed by **one scene** with preset
+layouts; the scaffolds share a non-RL base env (observation/action/event managers only).
+The train / eval / record scripts apply to the RL members; `scripts/verify_scene.py`
+covers every member.
 
 ## Repository layout
 
 ```
 fiatlux/
 ├── source/fiatlux_task/      # the Isaac Lab extension package (the benchmark)
+│   ├── .../fiatlux_task/scenes.py   # shared scene vocabulary (room dressing + B1K spawner)
+│   ├── .../fiatlux_task/viz.py      # shared video capture (orbit / rollout MP4s + posters)
 │   └── .../manager_based/fiatlux_task/
-│       ├── g1_bulb_env_cfg.py   # G1 + bulb + socket scene & MDP
+│       ├── scene_cfg.py         # THE family scene + tabletop/workshop presets
+│       ├── base_env_cfg.py      # shared non-RL base env (managers only)
+│       ├── g1_bulb_env_cfg.py   # Insert task MDP (RL, tabletop preset)
+│       ├── *_env_cfg.py         # carry / climb / descend / remove / install scaffolds
 │       ├── mdp/                 # rewards, events, observations
 │       ├── agents/              # rsl_rl PPO config
-│       └── __init__.py          # gym.register(...)
-├── scripts/                  # zero / random / teleop / list_envs / rsl_rl / eval
+│       └── __init__.py          # gym.register(...) x7
+├── scripts/                  # zero / random / teleop / list_envs / rsl_rl / eval / verify_scene
 ├── assets/                   # download_assets.sh (pulls USDs from GCS; git-ignored)
 └── docs/                     # overview, getting_started, task_spec, scoring, roadmap
 ```
@@ -49,8 +66,9 @@ uv sync
 ./assets/download_assets.sh
 
 # 3. Sanity-check registration and launch a baseline:
-uv run python scripts/list_envs.py
-uv run python scripts/zero_agent.py --task FIATLUX-Insert-v0
+uv run python scripts/list_envs.py                                        # all 7 FIATLUX ids
+uv run python scripts/verify_scene.py --headless                          # FIATLUX-Base-v0 checks
+uv run python scripts/verify_scene.py --headless --task FIATLUX-Climb-v0  # any family member
 
 # 4. Evaluate (standardized, reproducible):
 uv run python scripts/eval.py --task FIATLUX-Insert-v0 --policy random --episodes 20 --seed 0
