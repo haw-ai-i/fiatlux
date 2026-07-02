@@ -1,7 +1,7 @@
 # Task Specification — `FIATLUX-Insert-v0`
 
 Defined in
-`source/fiatlux_task/fiatlux_task/tasks/g1_bulb_env_cfg.py`.
+`source/fiatlux_task/fiatlux_task/tasks/manager_based/fiatlux_task/g1_bulb_env_cfg.py`.
 
 ## Scene
 

@@ -30,7 +30,7 @@ scripts, which assume RL envs.
 
 ## Ladder task family (new)
 
-The six scaffold envs live in `source/fiatlux_task/fiatlux_task/tasks/` (alongside
+The six scaffold envs live in `source/.../tasks/manager_based/fiatlux_task/` (alongside
 the Insert task) and share one scene built entirely from the bucket assets: the same
 Inspire-hand G1 and BEHAVIOR-1K bulb/lamp the insertion task uses, plus the primary
 BEHAVIOR-1K climb ladder (`shfvtl`, wired as `LADDER_USD` in `fiatlux_task.assets`).
@@ -57,17 +57,16 @@ contact/penetration), exiting non-zero on failure.
 ```
 fiatlux/
 ├── source/fiatlux_task/      # the Isaac Lab extension package (the benchmark)
-│   └── fiatlux_task/
-│       ├── scenes.py            # shared scene vocabulary (room dressing + B1K spawner)
-│       ├── viz.py               # shared video capture (orbit / rollout MP4s + posters)
-│       └── tasks/
-│           ├── g1_bulb_env_cfg.py   # G1 + bulb + socket scene & MDP (Insert)
-│           ├── ladder_scene_cfg.py  # G1 + ladder + lamp + bulb scene (bucket USDs)
-│           ├── g1_ladder_env_cfg.py # shared non-RL ladder base env (managers only)
-│           ├── *_env_cfg.py         # carry / climb / descend / remove / install scaffolds
-│           ├── mdp/                 # rewards, events, observations
-│           ├── agents/              # rsl_rl PPO config
-│           └── __init__.py          # gym.register(...) x7
+│   ├── .../fiatlux_task/scenes.py   # shared scene vocabulary (room dressing + B1K spawner)
+│   ├── .../fiatlux_task/viz.py      # shared video capture (orbit / rollout MP4s + posters)
+│   └── .../manager_based/fiatlux_task/
+│       ├── g1_bulb_env_cfg.py   # G1 + bulb + socket scene & MDP (Insert)
+│       ├── ladder_scene_cfg.py  # G1 + ladder + lamp + bulb scene (bucket USDs)
+│       ├── g1_ladder_env_cfg.py # shared non-RL ladder base env (managers only)
+│       ├── *_env_cfg.py         # carry / climb / descend / remove / install scaffolds
+│       ├── mdp/                 # rewards, events, observations
+│       ├── agents/              # rsl_rl PPO config
+│       └── __init__.py          # gym.register(...) x7
 ├── scripts/                  # zero / random / teleop / list_envs / rsl_rl / eval / verify_scene
 ├── assets/                   # download_assets.sh (pulls USDs from GCS; git-ignored)
 └── docs/                     # overview, getting_started, task_spec, scoring, roadmap
