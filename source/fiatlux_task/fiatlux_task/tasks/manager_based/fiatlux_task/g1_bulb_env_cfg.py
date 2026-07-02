@@ -10,6 +10,11 @@ fixture holding a bulb and must align and seat it into the socket. It is built
 as a standard Isaac Lab ``ManagerBasedRLEnvCfg`` so it slots into the usual
 train / play / teleop / eval scripts.
 
+The scene is the shared family world (``scene_cfg.G1ReplaceSceneCfg``) in its
+**tabletop preset**: packing table, socket-lamp on top, bulb at hand height, no
+ladder. Dressing randomization is off here -- homogeneous envs keep
+``replicate_physics=True`` for training scale.
+
 Design notes (kept deliberately simple and hardware-minded for later sim-to-real):
 - **Actions** are joint-position targets on the G1 arm (optionally hand), which
   map directly onto commands the Unitree SDK can consume on the real robot.
@@ -18,12 +23,12 @@ Design notes (kept deliberately simple and hardware-minded for later sim-to-real
   group (ground-truth bulb/socket pose) used only by the critic and scripted
   baselines -- never as the sole interface.
 
-Reusable robot/asset definitions live in ``fiatlux_task.robots.g1`` and
-``fiatlux_task.assets``; this file only composes the *task* on top of them.
+The Actions/Observations/Rewards/Terminations cfgs below stay in this module for
+now; they get factored into shared manipulation blocks when the at-fixture
+Install task becomes their second consumer (unification spec, Phase 4).
 """
 
 import isaaclab.sim as sim_utils
-from isaaclab.assets import ArticulationCfg, AssetBaseCfg, RigidObjectCfg
 from isaaclab.envs import ManagerBasedRLEnvCfg
 from isaaclab.managers import EventTermCfg as EventTerm
 from isaaclab.managers import ObservationGroupCfg as ObsGroup
@@ -31,117 +36,18 @@ from isaaclab.managers import ObservationTermCfg as ObsTerm
 from isaaclab.managers import RewardTermCfg as RewTerm
 from isaaclab.managers import SceneEntityCfg
 from isaaclab.managers import TerminationTermCfg as DoneTerm
-from isaaclab.sensors import ContactSensorCfg, TiledCameraCfg
+from isaaclab.sensors import TiledCameraCfg
 from isaaclab.utils import configclass
 from isaaclab.utils.noise import AdditiveUniformNoiseCfg as Unoise
 
-from fiatlux_task.assets import BULB_USD, SOCKET_USD, TABLE_USD
 from fiatlux_task.robots.g1 import (
     G1_ARM_JOINTS,
     G1_EE_BODY,
     G1_HAND_JOINTS,
-    G1_INSPIRE_CFG,
 )
-from fiatlux_task.scenes import DressedSceneCfg, spawn_b1k_single_body
 
 from . import mdp
-
-##
-# Scene definition
-##
-
-
-@configclass
-class G1BulbSceneCfg(DressedSceneCfg):
-    """Scene: Unitree G1, a graspable bulb, a socket fixture, in the shared dressed room.
-
-    The HDRI sky (``dome_light``) and Simple Room backdrop come from ``DressedSceneCfg``;
-    the BEHAVIOR-1K socket workaround (issue #14) is the shared
-    :func:`fiatlux_task.scenes.spawn_b1k_single_body`.
-    """
-
-    # -- Unitree G1 humanoid (legged / free base) --
-    # Reusable robot definition (USD, standing init pose, actuator groups) lives in
-    # ``fiatlux_task.robots.g1``; here we only bind it into this scene's namespace.
-    robot: ArticulationCfg = G1_INSPIRE_CFG.replace(prim_path="{ENV_REGEX_NS}/Robot")
-
-    # -- Light bulb: graspable rigid body --
-    bulb: RigidObjectCfg = RigidObjectCfg(
-        prim_path="{ENV_REGEX_NS}/Bulb",
-        spawn=sim_utils.UsdFileCfg(
-            usd_path=BULB_USD,
-            rigid_props=sim_utils.RigidBodyPropertiesCfg(
-                solver_position_iteration_count=16,
-                solver_velocity_iteration_count=8,
-                max_depenetration_velocity=1.0,
-            ),
-        ),
-        init_state=RigidObjectCfg.InitialStateCfg(pos=(0.35, -0.20, 1.05)),
-    )
-
-    # -- Socket / lamp fixture: kinematic so it can be re-posed on reset --
-    socket: RigidObjectCfg = RigidObjectCfg(
-        prim_path="{ENV_REGEX_NS}/Socket",
-        spawn=sim_utils.UsdFileCfg(
-            usd_path=SOCKET_USD,
-            # Strip the lamp's meta__ helper links so it resolves to one rigid body.
-            func=spawn_b1k_single_body,
-            rigid_props=sim_utils.RigidBodyPropertiesCfg(kinematic_enabled=True),
-            # The lamp ships as an articulated object; disable its articulation root so
-            # the leftover base_link is treated as a plain rigid body, not an articulation.
-            articulation_props=sim_utils.ArticulationRootPropertiesCfg(articulation_enabled=False),
-        ),
-        init_state=RigidObjectCfg.InitialStateCfg(pos=(0.45, 0.0, 1.20)),
-    )
-
-    # (HDRI dome_light + room backdrop are inherited from DressedSceneCfg.)
-
-    # -- Ground --
-    ground = AssetBaseCfg(
-        prim_path="/World/ground",
-        spawn=sim_utils.GroundPlaneCfg(),
-        init_state=AssetBaseCfg.InitialStateCfg(pos=(0.0, 0.0, 0.0)),
-    )
-
-    # -- Table the lamp/bulb rest on: kinematic so it can't be pushed around.
-    # Positioned so its authored top surface (~1.0m) lands just under the
-    # existing bulb (z=1.05) and socket/lamp (z=1.20) init heights -- no
-    # EventCfg pose ranges need to change. --
-    table: AssetBaseCfg = AssetBaseCfg(
-        prim_path="{ENV_REGEX_NS}/Table",
-        init_state=AssetBaseCfg.InitialStateCfg(pos=(0.40, -0.10, 0.0)),
-        spawn=sim_utils.UsdFileCfg(
-            usd_path=TABLE_USD,
-            rigid_props=sim_utils.RigidBodyPropertiesCfg(kinematic_enabled=True),
-        ),
-    )
-
-    # -- Contact sensor on the grasping hand (force/torque safety + obs) --
-    hand_contact: ContactSensorCfg = ContactSensorCfg(
-        prim_path="{ENV_REGEX_NS}/Robot/right_.*",
-        history_length=1,
-        track_air_time=False,
-    )
-
-    def __post_init__(self):
-        super().__post_init__()
-
-        # Wrist-mounted RGB camera (sensor-realizable observation).
-        self.wrist_camera = TiledCameraCfg(
-            prim_path="{ENV_REGEX_NS}/Robot/" + G1_EE_BODY + "/wrist_camera",
-            spawn=sim_utils.PinholeCameraCfg(
-                focal_length=22.48,
-                horizontal_aperture=20.955,
-                clipping_range=(0.05, 5.0),
-            ),
-            height=224,
-            width=224,
-            data_types=["rgb"],
-            offset=TiledCameraCfg.OffsetCfg(
-                pos=(0.05, 0.0, 0.0), rot=(1.0, 0.0, 0.0, 0.0), convention="ros"
-            ),
-        )
-
+from .scene_cfg import G1ReplaceSceneCfg, apply_tabletop_preset
 
 ##
 # MDP settings
@@ -349,9 +255,14 @@ class TerminationsCfg:
 
 @configclass
 class G1BulbInsertEnvCfg(ManagerBasedRLEnvCfg):
-    """Fiatlux insertion subtask: G1 seats a bulb into a socket."""
+    """Fiatlux insertion subtask: G1 seats a bulb into a socket (family tabletop preset)."""
 
-    scene: G1BulbSceneCfg = G1BulbSceneCfg(num_envs=1, env_spacing=4.0)
+    # Homogeneous envs (no per-env dressing randomization) -> replicated physics for
+    # training scale. Cloning stays in USD (not fabric): the hand_contact sensor's PhysX
+    # contact-reporter API cannot attach to fabric-cloned env prims.
+    scene: G1ReplaceSceneCfg = G1ReplaceSceneCfg(
+        num_envs=1, env_spacing=4.0, replicate_physics=True, clone_in_fabric=False
+    )
     observations: ObservationsCfg = ObservationsCfg()
     actions: ActionsCfg = ActionsCfg()
     rewards: RewardsCfg = RewardsCfg()
@@ -361,9 +272,42 @@ class G1BulbInsertEnvCfg(ManagerBasedRLEnvCfg):
     def __post_init__(self) -> None:
         super().__post_init__()
 
+        # Family scene -> manipulation bench layout; no random ceiling fixture (that
+        # would force replicate_physics=False; see FamilyBaseEnvCfg's dressing flag).
+        apply_tabletop_preset(self.scene)
+        self.scene.fixture = None
+
+        # Wrist-mounted RGB camera (sensor-realizable observation). Requires launching
+        # with --enable_cameras.
+        self.scene.wrist_camera = TiledCameraCfg(
+            prim_path="{ENV_REGEX_NS}/Robot/" + G1_EE_BODY + "/wrist_camera",
+            spawn=sim_utils.PinholeCameraCfg(
+                focal_length=22.48,
+                horizontal_aperture=20.955,
+                clipping_range=(0.05, 5.0),
+            ),
+            height=224,
+            width=224,
+            data_types=["rgb"],
+            offset=TiledCameraCfg.OffsetCfg(
+                pos=(0.05, 0.0, 0.0), rot=(1.0, 0.0, 0.0, 0.0), convention="ros"
+            ),
+        )
+
         self.decimation = 4
         self.sim.render_interval = self.decimation
         self.episode_length_s = 15.0
+        # Control-rate parity with the pre-unification env (30 Hz); the family base runs
+        # 50 Hz -- reconciling is a deliberate, separate decision (unification spec).
         self.sim.dt = 1.0 / 120.0
+        # PhysX solver floors from the family base: without them the uncontrolled robot
+        # picks up multi-hundred-m/s kicks against the kinematic table (verify_scene
+        # finding, Phase 0). Stabilization further damps the PD-vs-table wedge impulses
+        # when the robot lies collapsed against the furniture.
+        self.sim.physx.solver_type = 1
+        self.sim.physx.min_position_iteration_count = 8
+        self.sim.physx.min_velocity_iteration_count = 4
+        self.sim.physx.bounce_threshold_velocity = 0.2
+        self.sim.physx.enable_stabilization = True
         self.viewer.eye = (2.0, 2.0, 2.0)
         self.viewer.lookat = (0.45, 0.0, 1.1)

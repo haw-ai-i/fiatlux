@@ -199,9 +199,10 @@ class FamilyBaseEnvCfg(ManagerBasedEnvCfg):
         if not self.enable_dressing_randomization or not FIXTURE_USDS:
             self.scene.fixture = None
         if not self.enable_dressing_randomization:
-            # homogeneous envs again -> replicated physics is safe and fast
+            # Homogeneous envs again -> replicated physics is safe and fast. Cloning
+            # stays in USD (not fabric): the hand_contact sensor's PhysX contact-reporter
+            # API cannot attach to fabric-cloned env prims.
             self.scene.replicate_physics = True
-            self.scene.clone_in_fabric = True
         # control / physics rates
         self.decimation = self.control_decimation
         self.sim.dt = self.physics_dt
