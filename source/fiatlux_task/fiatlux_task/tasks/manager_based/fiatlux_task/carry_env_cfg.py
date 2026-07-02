@@ -10,7 +10,7 @@ Scaffolding only: the env shares the common scene and managers; no rewards/termi
 
 from isaaclab.utils import configclass
 
-from .base_env_cfg import G1LadderEnvCfg
+from .g1_ladder_env_cfg import G1LadderEnvCfg
 
 
 @configclass

@@ -23,7 +23,7 @@ from isaaclab.managers import SceneEntityCfg  # noqa: F401  -- used by the disab
 from isaaclab.utils import configclass
 
 from . import mdp
-from .scene_cfg import G1LadderSceneCfg
+from .ladder_scene_cfg import G1LadderSceneCfg
 
 ##
 # Observations -- generic G1 proprioception (no task-specific terms yet).

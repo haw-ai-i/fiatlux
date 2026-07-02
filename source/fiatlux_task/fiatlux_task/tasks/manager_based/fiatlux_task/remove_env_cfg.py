@@ -12,7 +12,7 @@ attach gated by rotation -- NOT threaded geometry -- anchored at the lamp's sock
 
 from isaaclab.utils import configclass
 
-from .base_env_cfg import G1LadderEnvCfg
+from .g1_ladder_env_cfg import G1LadderEnvCfg
 
 
 @configclass

@@ -13,7 +13,7 @@ anchored at the lamp's socket seat pose -- NOT threaded geometry.
 
 from isaaclab.utils import configclass
 
-from .base_env_cfg import G1LadderEnvCfg
+from .g1_ladder_env_cfg import G1LadderEnvCfg
 
 
 @configclass
