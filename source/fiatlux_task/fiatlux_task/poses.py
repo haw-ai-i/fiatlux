@@ -43,8 +43,8 @@ _ARM_PRESS_BASE: dict[str, float] = {
 ARM_PRESS_HOVER: dict[str, float] = {**_ARM_PRESS_BASE, "right_wrist_pitch_joint": 0.00}
 # gentle hold: palm target a few cm INSIDE the lying bulb -- arm PD compliance
 # (stiffness 150) turns the blocked travel into a modest sustained press.
-# -0.55 is calibrated: deeper tilts the palm face enough to nudge the egg away.
-ARM_PRESS_DOWN: dict[str, float] = {**_ARM_PRESS_BASE, "right_wrist_pitch_joint": -0.55}
+# Calibrated: much deeper tilts the palm face enough to nudge the egg away.
+ARM_PRESS_DOWN: dict[str, float] = {**_ARM_PRESS_BASE, "right_wrist_pitch_joint": -0.60}
 # deep press: the forearm/wrist wedges onto the kinematic slab edge via shoulder
 # descent -- sustained force far past 50 N on the wrist bodies. (Wrist-only
 # descent cannot do this: past ~45 deg the palm face turns sideways; and an

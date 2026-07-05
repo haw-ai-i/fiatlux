@@ -18,8 +18,41 @@ it via ``.replace(prim_path=...)`` so the same robot can be reused across tasks.
 import isaaclab.sim as sim_utils
 from isaaclab.actuators import ImplicitActuatorCfg
 from isaaclab.assets import ArticulationCfg
+from isaaclab.sim.spawners.from_files.from_files import _spawn_from_usd_file
+from isaaclab.sim.utils import clone
 
 from ..assets import G1_USD
+
+# The Inspire hand is authored with collision meshes that interpenetrate their
+# non-joint-connected neighbors at the default pose (PhysX adjacency filtering
+# only exempts pairs sharing a joint): the camera housing sits 15-17 mm inside
+# the wrist-pitch and palm colliders (~8-9 kN permanent wedge), and the thumb
+# proximal link overlaps the palm across the thumb-yaw link (~300 N). With
+# self-collisions enabled these saturate every contact reading on the hand.
+# Filter exactly those pairs at spawn; a fixed-joint merge of the asset would
+# cover only the camera housing and requires re-authoring the USD.
+_G1_FILTERED_PAIRS = {
+    "{side}_hand_camera_base_link": ("{side}_wrist_pitch_link", "{side}_hand_base_link"),
+    "{S}_thumb_proximal": ("{side}_hand_base_link",),
+}
+
+
+@clone
+def _spawn_g1_with_filtered_hand_mounts(prim_path, cfg, translation=None, orientation=None):
+    from pxr import UsdPhysics
+
+    prim = _spawn_from_usd_file(prim_path, cfg.usd_path, cfg, translation, orientation)
+    stage = prim.GetStage()
+    for side in ("left", "right"):
+        fmt = {"side": side, "S": side[0].upper()}
+        for body, targets in _G1_FILTERED_PAIRS.items():
+            api = UsdPhysics.FilteredPairsAPI.Apply(
+                stage.GetPrimAtPath(f"{prim_path}/{body.format(**fmt)}")
+            )
+            rel = api.GetFilteredPairsRel()
+            for target in targets:
+                rel.AddTarget(f"{prim_path}/{target.format(**fmt)}")
+    return prim
 
 # ---------------------------------------------------------------------------
 # Joint / body names (standard Unitree G1 naming)
@@ -64,6 +97,7 @@ G1_EE_BODY = "right_wrist_yaw_link"
 G1_INSPIRE_CFG = ArticulationCfg(
     spawn=sim_utils.UsdFileCfg(
         usd_path=G1_USD,
+        func=_spawn_g1_with_filtered_hand_mounts,
         rigid_props=sim_utils.RigidBodyPropertiesCfg(
             max_depenetration_velocity=5.0,
         ),

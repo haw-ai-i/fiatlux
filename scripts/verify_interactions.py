@@ -411,16 +411,9 @@ def scenario_socket():
 # Scenario: bulb in hand                                                       #
 # --------------------------------------------------------------------------- #
 def build_hand_cfg():
-    """Fixed-root G1, palm-down HOVER pose over the bench table as its default.
-
-    Self-collisions stay OFF: the stock G1 hand-mount bodies interpenetrate by
-    authoring and self-collide at ~9 kN sustained (graded by the socket scenario's
-    ``robot:no_self_collision_noise`` check), which makes the hand launch anything
-    it touches. These checks grade the hand<->bulb interaction, not that defect.
-    """
+    """Fixed-root G1, palm-down HOVER pose over the bench table as its default."""
     cfg = build_insert_cfg()
     cfg.scene.robot.spawn.articulation_props.fix_root_link = True
-    cfg.scene.robot.spawn.articulation_props.enabled_self_collisions = False
     # outside the table footprint (slab spans x[-0.82,1.62], y[-0.48,0.28]; the
     # stock spot is INSIDE it), facing -y, palm working just inboard of the +y
     # slab edge so the forearm clears it (the edge otherwise becomes a fulcrum
@@ -744,9 +737,6 @@ def scenario_ladder(probe: bool = False):
     cfg.scene.socket = None
     # FREE root: the robot leans onto the kinematic A-frame and the force balance
     # self-calibrates (a welded root turns every mm of overlap into a kN wedge)
-    # same isolation as build_hand_cfg: the stock hand-mount self-collision wedge
-    # shakes the arms and would pollute the limb contact readings
-    cfg.scene.robot.spawn.articulation_props.enabled_self_collisions = False
     cfg.scene.robot.init_state.pos = LADDER_STANCE_ROOT_POS
     cfg.scene.robot.init_state.rot = LADDER_STANCE_ROOT_ROT
     cfg.scene.robot.init_state.joint_pos = {
