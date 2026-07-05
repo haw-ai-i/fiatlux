@@ -230,8 +230,11 @@ class G1ReplaceSceneCfg(DressedSceneCfg):
 
     # -- Contact sensor on the grasping hand (force/torque safety + obs). Family-wide: the
     # manipulation tasks read it for rewards/recording, climbing will want contact sensing.
+    # Hand bodies only: this channel feeds the recorded fragility scoring, and a broader
+    # match (leg/foot bodies) would put the robot's own ground reaction (~170 N standing,
+    # >> the 50 N fragility threshold) into every episode's peak contact force.
     hand_contact: ContactSensorCfg = ContactSensorCfg(
-        prim_path="{ENV_REGEX_NS}/Robot/right_.*",
+        prim_path="{ENV_REGEX_NS}/Robot/(right_hand_.*|right_wrist_.*|R_.*)",
         history_length=1,
         track_air_time=False,
     )

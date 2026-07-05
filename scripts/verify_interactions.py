@@ -434,9 +434,6 @@ def build_hand_cfg():
         **HAND_FLAT,
     }
     cfg.scene.bulb.spawn.activate_contact_sensors = True
-    # hand bodies only: the stock right_.* sensor also nets leg/foot forces, which
-    # would dominate the recorded contact_force channel the fragility scorer reads
-    cfg.scene.hand_contact.prim_path = "{ENV_REGEX_NS}/Robot/(right_hand_.*|right_wrist_.*|R_.*)"
     cfg.scene.hand_bulb_contact = ContactSensorCfg(
         prim_path="{ENV_REGEX_NS}/Robot/(right_hand_.*|right_wrist_yaw_link|R_.*)",
         filter_prim_paths_expr=["{ENV_REGEX_NS}/Bulb/base_link"],
