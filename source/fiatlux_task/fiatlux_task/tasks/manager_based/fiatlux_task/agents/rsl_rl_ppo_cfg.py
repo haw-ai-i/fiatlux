@@ -41,3 +41,20 @@ class PPORunnerCfg(RslRlOnPolicyRunnerCfg):
         desired_kl=0.01,
         max_grad_norm=1.0,
     )
+
+
+@configclass
+class ClimbPPORunnerCfg(PPORunnerCfg):
+    """PPO runner for the ladder-climb task (house hyperparameters, longer horizon).
+
+    ``obs_groups`` must be explicit: rsl_rl's ``resolve_obs_groups`` only auto-routes
+    an env obs group literally named ``critic`` -- a group named ``privileged`` would
+    otherwise silently never reach the critic (it falls back to the policy set).
+    ``PPORunnerCfg`` above predates this finding and is left unchanged by review
+    decision; revisit when Insert's privileged group should feed its critic.
+    """
+
+    max_iterations = 3000  # locomotion-scale training budget
+    save_interval = 100
+    experiment_name = "fiatlux_climb"
+    obs_groups = {"policy": ["policy"], "critic": ["policy", "privileged"]}

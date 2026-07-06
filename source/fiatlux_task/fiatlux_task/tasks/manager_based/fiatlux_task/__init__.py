@@ -11,13 +11,14 @@ One family, one scene (``scene_cfg.G1ReplaceSceneCfg``), preset layouts per task
 
 - ``FIATLUX-Insert-v0``  : G1 seats a bulb into a socket (manipulation, *tabletop* preset).
   FUNCTIONAL, RL.
-- Workshop-preset scaffolds: G1 + ladder + socket-lamp + bulb on the floor. All six share
+- ``FIATLUX-Climb-v0``   : G1 climbs the step ladder to the fixture height (*at-height*
+  preset, whole-body RL). FUNCTIONAL, RL.
+- Workshop-preset scaffolds: G1 + ladder + socket-lamp + bulb on the floor. The five share
   the **non-RL** :class:`base_env_cfg.FamilyBaseEnvCfg` base (observation / action / event
   managers only -- no rewards, terminations, or training code yet):
 
   - ``FIATLUX-Base-v0``    : the shared base scene, no task logic (verify_scene.py's default).
   - ``FIATLUX-Carry-v0``   : grab and position the ladder.
-  - ``FIATLUX-Climb-v0``   : bipedal ladder ascent (the roadmap climb slot, as a scaffold).
   - ``FIATLUX-Descend-v0`` : bipedal ladder descent.
   - ``FIATLUX-Remove-v0``  : unscrew / remove the seated bulb.
   - ``FIATLUX-Install-v0`` : seat a new bulb at the fixture (the at-fixture counterpart of
@@ -52,6 +53,16 @@ gym.register(
     },
 )
 
+gym.register(
+    id="FIATLUX-Climb-v0",
+    entry_point="isaaclab.envs:ManagerBasedRLEnv",
+    disable_env_checker=True,
+    kwargs={
+        "env_cfg_entry_point": f"{__name__}.climb_env_cfg:ClimbEnvCfg",
+        "rsl_rl_cfg_entry_point": f"{agents.__name__}.rsl_rl_ppo_cfg:ClimbPPORunnerCfg",
+    },
+)
+
 # ROADMAP: register once the combined climb+insert episode exists. See docs/roadmap.md.
 # gym.register(id="FIATLUX-Replace-v0", ...)
 
@@ -71,13 +82,6 @@ gym.register(
     entry_point="isaaclab.envs:ManagerBasedEnv",
     disable_env_checker=True,
     kwargs={"env_cfg_entry_point": f"{__name__}.carry_env_cfg:CarryEnvCfg"},
-)
-
-gym.register(
-    id="FIATLUX-Climb-v0",
-    entry_point="isaaclab.envs:ManagerBasedEnv",
-    disable_env_checker=True,
-    kwargs={"env_cfg_entry_point": f"{__name__}.climb_env_cfg:ClimbEnvCfg"},
 )
 
 gym.register(
@@ -101,7 +105,8 @@ gym.register(
     kwargs={"env_cfg_entry_point": f"{__name__}.install_env_cfg:InstallEnvCfg"},
 )
 
-# Convenience list for scripts/tests that iterate the ladder family.
+# Convenience list for scripts/tests that iterate the ladder family (Climb is the
+# family's RL member; the rest are non-RL scaffolds).
 TASK_IDS = [
     "FIATLUX-Base-v0",
     "FIATLUX-Carry-v0",

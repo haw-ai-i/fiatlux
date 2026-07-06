@@ -329,6 +329,23 @@ def apply_at_height_preset(scene: G1ReplaceSceneCfg, robot_at: str = "base") -> 
     scene.fixture = None
 
 
+def add_ladder_contact_sensor(scene: G1ReplaceSceneCfg) -> None:
+    """Feet + palms filtered against the kinematic ladder (climb / descend tasks).
+
+    Not a class field: presets without a ``Ladder`` prim (tabletop) could not resolve
+    the filter expression. One multi-body sensor suffices — per-body ``force_matrix_w``
+    against a *single* filter body works in this stack (proven by
+    ``verify_interactions.py``'s whole-robot ``limb_ladder_contact`` sensor), so the
+    per-link-sensor workaround from the upstream ContactSensor docstring is not needed.
+    """
+    scene.ladder_contact = ContactSensorCfg(
+        prim_path="{ENV_REGEX_NS}/Robot/.*(ankle_roll|hand_base)_link",
+        filter_prim_paths_expr=["{ENV_REGEX_NS}/Ladder"],
+        history_length=1,
+        track_air_time=False,
+    )
+
+
 def _add_parts_bin(scene: G1ReplaceSceneCfg) -> None:
     """Spawn the kinematic parts crate on the floor beside the bench (remove + install)."""
     scene.bin = AssetBaseCfg(
