@@ -5,20 +5,20 @@ G1 robot inserts a light bulb into a socket. It is a plain Python / Isaac Lab
 extension — no ROS, no distributed harness — so it plugs into the standard
 `train` / `play` / `teleop` / `eval` scripts.
 
-> **Status (honest):** the **insertion** subtask (`FIATLUX-Insert-v0`) is the
-> functional target. The **ladder task family** (base scene + carry / climb /
-> descend / remove / install) exists as loadable non-RL scene **scaffolds** — no
-> rewards or training yet. The combined **replace** task is still roadmap.
-> See [docs/roadmap.md](docs/roadmap.md).
+> **Status (honest):** the **insertion** (`FIATLUX-Insert-v0`) and **climbing**
+> (`FIATLUX-Climb-v0`) subtasks are functional RL tasks. The rest of the ladder
+> family (base scene + carry / descend / remove / install) exists as loadable
+> non-RL scene **scaffolds** — no rewards or training yet. The combined
+> **replace** task is still roadmap. See [docs/roadmap.md](docs/roadmap.md).
 
 ## Task hierarchy
 
 | Env id | Description | Status |
 | --- | --- | --- |
 | `FIATLUX-Insert-v0` | G1 seats a bulb into a socket (tabletop manipulation) | ✅ functional |
+| `FIATLUX-Climb-v0` | G1 climbs the step ladder to the fixture height (whole-body RL) | ✅ functional |
 | `FIATLUX-Base-v0` | shared G1 + ladder + lamp + bulb scene, no task logic | 🧱 scaffold (non-RL) |
 | `FIATLUX-Carry-v0` | grab and position the ladder | 🧱 scaffold (non-RL) |
-| `FIATLUX-Climb-v0` | G1 climbs the ladder to the fixture | 🧱 scaffold (non-RL) |
 | `FIATLUX-Descend-v0` | bipedal ladder descent | 🧱 scaffold (non-RL) |
 | `FIATLUX-Remove-v0` | unscrew / remove the seated bulb | 🧱 scaffold (non-RL) |
 | `FIATLUX-Install-v0` | seat a new bulb at the fixture (the at-fixture counterpart of `Insert`) | 🧱 scaffold (non-RL) |
@@ -40,7 +40,8 @@ fiatlux/
 │       ├── scene_cfg.py         # THE family scene + tabletop/workshop presets
 │       ├── base_env_cfg.py      # shared non-RL base env (managers only)
 │       ├── g1_bulb_env_cfg.py   # Insert task MDP (RL, tabletop preset)
-│       ├── *_env_cfg.py         # carry / climb / descend / remove / install scaffolds
+│       ├── climb_env_cfg.py     # Climb task MDP (RL, at-height preset)
+│       ├── *_env_cfg.py         # carry / descend / remove / install scaffolds
 │       ├── mdp/                 # rewards, events, observations
 │       ├── agents/              # rsl_rl PPO config
 │       └── __init__.py          # gym.register(...) x7
@@ -81,6 +82,7 @@ uv run python scripts/score.py logs/runs/random0
 
 # 6. Train a policy:
 uv run python scripts/rsl_rl/train.py --task FIATLUX-Insert-v0
+uv run python scripts/rsl_rl/train.py --task FIATLUX-Climb-v0
 ```
 
 ## Sim-to-real

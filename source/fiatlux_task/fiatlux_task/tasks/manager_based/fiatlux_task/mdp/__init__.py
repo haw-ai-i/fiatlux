@@ -3,7 +3,7 @@
 #
 # SPDX-License-Identifier: BSD-3-Clause
 
-"""MDP terms for the Fiatlux G1 bulb task.
+"""MDP terms for the Fiatlux G1 tasks.
 
 Re-exports Isaac Lab's built-in MDP terms (actions, observations, events,
 terminations) plus the task-specific functions defined in this sub-package.
@@ -15,9 +15,14 @@ from .events import randomize_light_properties  # noqa: F401
 from .observations import contact_net_forces, root_pose_w  # noqa: F401
 from .rewards import (  # noqa: F401
     bulb_seated,
+    climb_height_progress,
+    climbed_to_target,
+    com_sway_l2,
+    fall_terminated,
     hand_contact_force_l2,
     joint_acc_l2,
     joint_pos_limits,
+    ladder_contact_fraction,
     object_dropped,
     object_socket_distance,
     object_socket_distance_exp,

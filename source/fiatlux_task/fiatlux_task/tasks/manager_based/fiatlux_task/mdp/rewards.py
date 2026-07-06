@@ -3,14 +3,21 @@
 #
 # SPDX-License-Identifier: BSD-3-Clause
 
-"""Reward / success functions for the Fiatlux G1 bulb-insertion task.
+"""Reward / success functions for the Fiatlux G1 tasks.
 
-The task signal is the pose error between the grasped *bulb* and the *socket*:
+Bulb insertion (``FIATLUX-Insert-v0``) — the task signal is the pose error between
+the grasped *bulb* and the *socket*:
 - distance kernels (L2 / tanh / exponential) for coarse-to-fine reaching,
 - an orientation-alignment kernel,
 - a sparse "seated" bonus (also reused as the success termination),
 - a contact-force penalty for compliant insertion,
 plus generic smoothness / joint-limit penalties.
+
+Ladder climb (``FIATLUX-Climb-v0``) — ascent terms:
+- a progressive best-height reward (each centimetre of new height paid once),
+- a limb-on-ladder contact fraction (filtered contact sensor),
+- a whole-body CoM sway penalty,
+- an at-the-top success predicate (also the success termination).
 """
 
 from __future__ import annotations
@@ -20,12 +27,15 @@ from typing import TYPE_CHECKING
 import torch
 
 from isaaclab.assets import Articulation, RigidObject
-from isaaclab.managers import SceneEntityCfg
+from isaaclab.managers import ManagerTermBase, SceneEntityCfg
 from isaaclab.sensors import ContactSensor
 from isaaclab.utils.math import quat_error_magnitude
 
 if TYPE_CHECKING:
+    from collections.abc import Sequence
+
     from isaaclab.envs import ManagerBasedRLEnv
+    from isaaclab.managers import RewardTermCfg
 
 
 # ---------------------------------------------------------------------------
@@ -135,3 +145,130 @@ def joint_pos_limits(
         - asset.data.soft_joint_pos_limits[:, asset_cfg.joint_ids, 1]
     ).clip(min=0.0)
     return torch.sum(out_of_limits, dim=1)
+
+
+# ---------------------------------------------------------------------------
+# Ladder ascent (FIATLUX-Climb-v0)
+# ---------------------------------------------------------------------------
+
+
+def _root_pos_env(env: ManagerBasedRLEnv, asset_cfg: SceneEntityCfg) -> torch.Tensor:
+    """Root position in the env-local frame (world minus per-env origin)."""
+    asset: Articulation = env.scene[asset_cfg.name]
+    return asset.data.root_pos_w - env.scene.env_origins
+
+
+class climb_height_progress(ManagerTermBase):
+    """Progressive-ascent reward: the positive increment of the episode's best root height.
+
+    Each centimetre of *new* height is paid exactly once (episode total = metres
+    gained), so standing still earns nothing and oscillating/jumping cannot farm the
+    term — unlike a distance-to-target kernel (constant pay for standing anywhere)
+    or a z-velocity reward (pays launch transients). The per-env best-height buffer
+    is re-seeded on reset from the post-randomization root state (reset events run
+    before the reward-manager reset).
+    """
+
+    def __init__(self, cfg: RewardTermCfg, env: ManagerBasedRLEnv):
+        super().__init__(cfg, env)
+        self._best_z = torch.zeros(env.num_envs, device=env.device)
+
+    def reset(self, env_ids: Sequence[int] | None = None) -> None:
+        if env_ids is None:
+            env_ids = slice(None)
+        asset: Articulation = self._env.scene["robot"]
+        z = asset.data.root_pos_w[env_ids, 2] - self._env.scene.env_origins[env_ids, 2]
+        self._best_z[env_ids] = z
+
+    def __call__(
+        self, env: ManagerBasedRLEnv, asset_cfg: SceneEntityCfg = SceneEntityCfg("robot")
+    ) -> torch.Tensor:
+        z = _root_pos_env(env, asset_cfg)[:, 2]
+        gain = (z - self._best_z).clamp(min=0.0)
+        self._best_z = torch.maximum(self._best_z, z)
+        return gain
+
+
+def ladder_contact_fraction(
+    env: ManagerBasedRLEnv, sensor_cfg: SceneEntityCfg, threshold: float = 1.0
+) -> torch.Tensor:
+    """Fraction of the sensor's bodies in contact with its filtered prim (the ladder).
+
+    Reads the filtered ``force_matrix_w`` of one multi-body contact sensor (feet +
+    palms vs the single-rigid-body ladder), so ground reaction and self-contact do
+    not count — only genuine limb-on-ladder force above ``threshold`` (N).
+    """
+    sensor: ContactSensor = env.scene.sensors[sensor_cfg.name]
+    force = sensor.data.force_matrix_w.sum(dim=2)  # (N, B, M, 3) -> (N, B, 3)
+    in_contact = force.norm(dim=-1) > threshold
+    return in_contact.float().mean(dim=1)
+
+
+class com_sway_l2(ManagerTermBase):
+    """Squared horizontal velocity of the whole-body centre of mass (sway penalty).
+
+    A controlled ascent moves the CoM mostly vertically, so this penalizes lunging
+    and lateral wobble without fighting the sustained forward lean that climbing an
+    A-frame requires (which a CoM-offset-from-support formulation would punish).
+    Mass fractions are precomputed once; ``default_mass`` lives on the CPU.
+    """
+
+    def __init__(self, cfg: RewardTermCfg, env: ManagerBasedRLEnv):
+        super().__init__(cfg, env)
+        asset: Articulation = env.scene["robot"]
+        masses = asset.data.default_mass.to(env.device)  # (N, B)
+        self._mass_frac = (masses / masses.sum(dim=-1, keepdim=True)).unsqueeze(-1)
+
+    def __call__(
+        self, env: ManagerBasedRLEnv, asset_cfg: SceneEntityCfg = SceneEntityCfg("robot")
+    ) -> torch.Tensor:
+        asset: Articulation = env.scene[asset_cfg.name]
+        com_vel = (asset.data.body_com_lin_vel_w * self._mass_frac).sum(dim=1)  # (N, 3)
+        return torch.sum(torch.square(com_vel[:, :2]), dim=1)
+
+
+def fall_terminated(
+    env: ManagerBasedRLEnv,
+    minimum_height: float,
+    limit_angle: float,
+    asset_cfg: SceneEntityCfg = SceneEntityCfg("robot"),
+) -> torch.Tensor:
+    """True on the step the robot falls (root below ``minimum_height`` or tilt beyond
+    ``limit_angle``), i.e. exactly the ``fell_*`` termination step — the env resets
+    right after, so the penalty fires once per fall.
+
+    Recomputes the same predicates as the built-in ``root_height_below_minimum`` /
+    ``bad_orientation`` terminations instead of using ``mdp.is_terminated_term``:
+    that helper reads ``TerminationManager.get_term``, whose backing buffer is the
+    *sticky* which-term-ended-the-last-episode log (``compute()`` never clears rows
+    for envs where no term fired), so a per-step reward built on it keeps paying the
+    penalty every step after an env's first fall.
+    """
+    asset: Articulation = env.scene[asset_cfg.name]
+    below = asset.data.root_pos_w[:, 2] < minimum_height
+    tilted = torch.acos(-asset.data.projected_gravity_b[:, 2]).abs() > limit_angle
+    return (below | tilted).float()
+
+
+def climbed_to_target(
+    env: ManagerBasedRLEnv,
+    minimum_height: float,
+    xy_center: tuple[float, float],
+    xy_radius: float,
+    max_speed: float = 1.5,
+    asset_cfg: SceneEntityCfg = SceneEntityCfg("robot"),
+) -> torch.Tensor:
+    """True where the root has climbed above ``minimum_height`` at the ladder top.
+
+    The horizontal gate (env-local xy within ``xy_radius`` of the upper steps) and
+    the ``max_speed`` cap reject ballistic trajectories (a solver-kicked robot flying
+    through the success region must not score). Also the ``success`` termination.
+    """
+    asset: Articulation = env.scene[asset_cfg.name]
+    pos = _root_pos_env(env, asset_cfg)
+    high = pos[:, 2] > minimum_height
+    dx = pos[:, 0] - xy_center[0]
+    dy = pos[:, 1] - xy_center[1]
+    near = (dx.square() + dy.square()) < xy_radius**2
+    calm = asset.data.root_lin_vel_w.norm(dim=-1) < max_speed
+    return high & near & calm

@@ -726,9 +726,12 @@ def scenario_ladder(probe: bool = False):
     print("\n[verify] === scenario: robot-on-ladder ===")
     cfg = parse_env_cfg("FIATLUX-Climb-v0", device=args_cli.device, num_envs=1)
     cfg.seed = args_cli.seed
-    # deterministic: no per-reset light sampling
+    # deterministic: no per-reset light sampling, no start-pose randomization (the
+    # RL env's reset events would perturb the calibrated stance below)
     cfg.events.randomize_sky_intensity = None
     cfg.events.randomize_key_light = None
+    cfg.events.reset_robot_joints = None
+    cfg.events.reset_robot_root = None
     # the elevated chandelier is an opt-in dressing asset and irrelevant to
     # rung contact; the scene loads without it
     cfg.scene.socket = None

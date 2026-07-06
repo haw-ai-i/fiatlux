@@ -1,21 +1,27 @@
 # Roadmap
 
-The functional benchmark today is the **insertion** subtask (`FIATLUX-Insert-v0`).
-Everything below is planned, not implemented — listed so the extension seams are
-intentional.
+The functional benchmark today is the **insertion** subtask (`FIATLUX-Insert-v0`)
+plus the **climbing** subtask (`FIATLUX-Climb-v0`). Everything below is planned,
+not implemented — listed so the extension seams are intentional.
 
-## 1. Climbing subtask — `FIATLUX-Climb-v0`
+## 1. Climbing subtask — `FIATLUX-Climb-v0` — ✅ DONE (2026-07-06)
 
-G1 climbs a ladder to reach the fixture height. The scene side of this exists: the
-ladder task family (`FIATLUX-{Base,Carry,Climb,Descend,Remove,Install}-v0`) is
-registered as non-RL scene scaffolds sharing `g1_ladder_env_cfg.py`, with the
-BEHAVIOR-1K `shfvtl` ladder (`fiatlux_task.assets.LADDER_USD`). What remains is the
-task logic:
+G1 climbs the work-site step ladder (`fiatlux_task.assets.STEP_LADDER_USD`, the
+at-height preset) to the fixture height. All three deliverables landed in
+`climb_env_cfg.py`:
 
-- Upgrade the scaffold to `ManagerBasedRLEnvCfg`; add a whole-body / locomotion
-  action space (the G1 base is already free).
-- Add a fall-detection termination (base height / orientation thresholds).
-- Reward: progressive height + hand/foot–rung contact + CoM-sway penalty.
+- ~~Upgrade the scaffold to `ManagerBasedRLEnvCfg`; add a whole-body / locomotion
+  action space (the G1 base is already free).~~ Whole-body joint-position targets
+  (all 53 DoF).
+- ~~Add a fall-detection termination (base height / orientation thresholds).~~
+  `fell_below` (root z < 0.35 m) + `fell_over` (tilt > 1.0 rad).
+- ~~Reward: progressive height + hand/foot–rung contact + CoM-sway penalty.~~
+  `mdp.climb_height_progress` / `mdp.ladder_contact_fraction` (filtered contact
+  sensor on feet+palms) / `mdp.com_sway_l2`, see `docs/task_spec.md`.
+
+Remaining polish for later: a start-state curriculum (mounted poses from
+`fiatlux_task/poses.py`), and the phase-handoff state bank (unification spec
+Phase 5).
 
 ## 2. Combined task — `FIATLUX-Replace-v0`
 

@@ -87,6 +87,16 @@ G1_HAND_JOINTS = [
 # all G1 variants). The Inspire hand links hang off this via right_hand_palm_link.
 G1_EE_BODY = "right_wrist_yaw_link"
 
+# Climb-family limbs and joint groups (probe-verified against the Inspire USD via
+# `verify_interactions.py --scenario ladder --probe`, 2026-07-06).
+G1_FOOT_BODIES = ["left_ankle_roll_link", "right_ankle_roll_link"]
+# The Inspire palm body; its surface is the local -x side (see fiatlux_task/poses.py).
+G1_PALM_BODIES = ["left_hand_base_link", "right_hand_base_link"]
+G1_TORSO_BODY = "torso_link"
+# Joint-name patterns for reward scoping (match the actuator groups below).
+G1_WAIST_JOINT_PATTERNS = ["waist_.*_joint"]
+G1_FINGER_JOINT_PATTERNS = ["[LR]_.*_joint"]
+
 
 # ---------------------------------------------------------------------------
 # Articulation config (legged / free base, Inspire hand)

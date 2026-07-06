@@ -64,12 +64,29 @@ def make_policy(
 
     # RSL-RL convenience loader: "rsl_rl" (+ checkpoint) or "rsl_rl:<path>".
     if spec == "rsl_rl" or spec.startswith("rsl_rl:"):
+        import os
+
+        import yaml
         from rsl_rl.runners import OnPolicyRunner
+
+        from isaaclab_rl.rsl_rl import RslRlVecEnvWrapper
 
         ckpt = spec.split(":", 1)[1] if ":" in spec else None
         ckpt = ckpt or checkpoint
         assert ckpt, "rsl_rl policy requires a checkpoint (--checkpoint or rsl_rl:<path>)"
-        runner = OnPolicyRunner(env, {}, log_dir=None, device=device)
+        # The runner needs the training config (rsl_rl >= 3 reads policy/algorithm/
+        # obs_groups from it) and a VecEnv-interfaced env. Isaac Lab's train.py dumps
+        # the config next to every checkpoint (params/agent.yaml), so the loaded
+        # policy always matches what the checkpoint was trained with.
+        agent_yaml = os.path.join(os.path.dirname(ckpt), "params", "agent.yaml")
+        assert os.path.isfile(agent_yaml), (
+            f"expected the run's training config at {agent_yaml} (written by "
+            "scripts/rsl_rl/train.py next to its checkpoints)"
+        )
+        with open(agent_yaml) as f:
+            train_cfg = yaml.safe_load(f)
+        wrapped = RslRlVecEnvWrapper(env, clip_actions=train_cfg.get("clip_actions"))
+        runner = OnPolicyRunner(wrapped, train_cfg, log_dir=None, device=device)
         runner.load(ckpt)
         return runner.get_inference_policy(device=device)
 
