@@ -70,10 +70,16 @@ SOCKET_POSITION = (-0.8, 0.0, 0.20)  # bbentu socket-lamp resting on the floor
 BULB_POSITION = (-0.55, -0.20, 0.05)  # loose on the floor next to the lamp
 FIXTURE_POSITION = (0.0, 0.0, 2.45)  # hangs overhead in the record camera's frame, clear of robot/ladder
 
-# -- tabletop (manipulation bench) placement: the Insert layout --
+# -- tabletop (manipulation bench) placement: the Insert layout. The robot works
+#    the bench from its +y long side, facing -y: the packing table's collision
+#    volume spans x[-0.82,1.62] x y[-0.48,0.28] with an under-frame up to z=0.95,
+#    so a robot standing inside that footprint spawns with its legs among the
+#    frame members (kN solver wedges the moment anything touches). --
 TABLE_POSITION = (0.40, -0.10, 0.0)  # authored tabletop surface is ~1.0 m above the origin
-TABLETOP_SOCKET_POSITION = (0.45, 0.0, 1.20)
-TABLETOP_BULB_POSITION = (0.35, -0.20, 1.05)
+TABLETOP_ROBOT_POSITION = (0.60, 0.58, 0.75)
+TABLETOP_ROBOT_YAW_DEG = -90.0
+TABLETOP_SOCKET_POSITION = (0.45, 0.10, 1.20)
+TABLETOP_BULB_POSITION = (0.30, 0.18, 1.05)
 
 # -- carry preset: the B1K straight ladder (shfvtl) *stored* by the room wall in its
 #    authored lying/leaning pose (probe: 2.41 long x 1.67 high, bbox bottom at -0.47 ->
@@ -91,7 +97,7 @@ TOP_ROBOT_POSITION = (1.35, 0.0, 1.85)  # pelvis at the upper steps (descend)
 PARKED_BULB_POSITION = (0.5, -0.6, 0.05)  # out of the way on the floor
 
 # -- bench manipulation extras (remove / install share Insert's tabletop world) --
-TABLETOP_SEATED_BULB_POSITION = (0.45, 0.0, 1.33)  # in the table lamp's socket seat
+TABLETOP_SEATED_BULB_POSITION = (0.45, 0.10, 1.33)  # in the table lamp's socket seat
 BIN_POSITION = (0.15, -0.75, 0.0)  # parts crate on the floor beside the bench
 BIN_BULB_POSITION = (0.15, -0.75, 0.15)  # fresh bulb resting in the crate (install)
 
@@ -224,8 +230,11 @@ class G1ReplaceSceneCfg(DressedSceneCfg):
 
     # -- Contact sensor on the grasping hand (force/torque safety + obs). Family-wide: the
     # manipulation tasks read it for rewards/recording, climbing will want contact sensing.
+    # Hand bodies only: this channel feeds the recorded fragility scoring, and a broader
+    # match (leg/foot bodies) would put the robot's own ground reaction (~170 N standing,
+    # >> the 50 N fragility threshold) into every episode's peak contact force.
     hand_contact: ContactSensorCfg = ContactSensorCfg(
-        prim_path="{ENV_REGEX_NS}/Robot/right_.*",
+        prim_path="{ENV_REGEX_NS}/Robot/(right_hand_.*|right_wrist_.*|R_.*)",
         history_length=1,
         track_air_time=False,
     )
@@ -267,7 +276,8 @@ def apply_workshop_preset(scene: G1ReplaceSceneCfg) -> None:
 def apply_tabletop_preset(scene: G1ReplaceSceneCfg) -> None:
     """The manipulation bench (Insert layout): table, socket on top, bulb at hand height.
 
-    Drops the ladder; the robot stands at the table and never locomotes.
+    Drops the ladder; the robot stands at the bench's +y side (clear of the
+    table's collision footprint) and never locomotes.
     """
     scene.ladder = None
     scene.table = AssetBaseCfg(
@@ -279,6 +289,8 @@ def apply_tabletop_preset(scene: G1ReplaceSceneCfg) -> None:
             rigid_props=sim_utils.RigidBodyPropertiesCfg(kinematic_enabled=True),
         ),
     )
+    scene.robot.init_state.pos = TABLETOP_ROBOT_POSITION
+    scene.robot.init_state.rot = _quat_z_deg(TABLETOP_ROBOT_YAW_DEG)
     scene.socket.init_state.pos = TABLETOP_SOCKET_POSITION
     scene.bulb.init_state.pos = TABLETOP_BULB_POSITION
 

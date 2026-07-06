@@ -59,6 +59,16 @@ Per-asset detail in [`omniverse_uploaded_manifest.csv`](omniverse_uploaded_manif
 > `materials` column = `external_mdl`); geometry + collision are complete, but visuals
 > render flat unless the material libraries are mounted.
 
+### Verification contract
+
+Every task-critical asset is physics-verified **once at intake** (collider audit /
+drop test), with the result recorded in the manifests (`collision_verified`,
+`has_physics`, `physics_notes` columns); the binary USD is immutable afterward.
+Ongoing verification targets the *composition*, not the assets: run
+`scripts/verify_scene.py` (scene solidity) and `scripts/verify_interactions.py`
+(graded interactions) after env changes and as a pre-flight before scoring runs —
+never in per-commit CI.
+
 ## Isaac Sim Nucleus mirror (room dressing)
 
 The table, room backdrop, and HDRI sky are mirrored once from Isaac Sim 5.1's own
