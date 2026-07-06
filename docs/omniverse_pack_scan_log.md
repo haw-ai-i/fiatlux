@@ -4,13 +4,17 @@ We're working through NVIDIA's free [Omniverse USD asset packs](https://docs.omn
 looking for things the Fiatlux benchmark needs: **light bulbs, lamps, light fixtures,
 sockets, and ladders**.
 
-**Standard procedure for every pack** (same as Warehouse):
-1. Download the ZIP to `~/omniverse_packs/zips/`.
-2. Scan it ([`scripts/omniverse_pack_scan.py`](../scripts/omniverse_pack_scan.py)) and write the
+**Standard procedure for every pack:**
+1. Download the ZIP (`scripts/omniverse/omniverse_pack_download.py`) to a
+   local staging dir (transient — deleted after curation).
+2. Scan it (`scripts/omniverse/omniverse_pack_scan.py`) and write the
    **full detailed inventory** here — every category → subgroup (count) → each item, one per bullet.
-3. Extract the Fiatlux-relevant assets (lamps, bulbs, fixtures, ladders, climb structures) to
-   `~/omniverse_packs/keep/<Pack>_<what>/`.
-4. **Keep the ZIP and ask before deleting anything.**
+3. Extract the Fiatlux-relevant assets (lamps, bulbs, fixtures, ladders, climb structures), author
+   physics + restore materials, and upload the **curated set to GCS** —
+   `gs://fiatlux/assets/omniverse_{ladder,climb,lamp,bulb}/`.
+4. The ZIP and local staging are transient; the **canonical assets live in GCS** (synced via
+   [`assets/download_assets.sh`](../assets/download_assets.sh)). The destination annotations below
+   are GCS paths.
 
 A few words used below:
 - **design** = one named asset (e.g. "TiltAndRoll ladder").
@@ -40,7 +44,8 @@ A few words used below:
 Packs skipped entirely (not asset catalogs): materials, skies, automotive, city/AEC.
 All 14 prop/scene packs are scanned below — even the ones with nothing for us.
 
-Disk: scanned ZIPs deleted on confirmation; keep/ extracts retained.
+Disk: scanned ZIPs and local staging are transient; the curated assets live in GCS
+(`gs://fiatlux/assets/omniverse_*/`).
 
 ---
 
@@ -304,7 +309,7 @@ Full breakdown, every category → subgroup (count) → items:
 > — potentially a ready-made environment for the G1 climbing task.
 
 ### What we kept: the ladders
-**16 ladder designs, 86 model files (902 MB)** → `~/omniverse_packs/keep/Warehouse_ladders/`.
+**16 ladder designs, 86 model files (902 MB)** → `gs://fiatlux/assets/omniverse_ladder/ (Warehouse designs)`.
 This includes ladder types we couldn't find before (extension, A-frame, scaffold):
 
 | Ladder design | Model files | What it is |
@@ -463,7 +468,7 @@ A home-interior pack — **507 model files**. Full breakdown, every category →
 - Fixtures: 2
 
 ### What we kept: lighting + fixtures + ladder
-**30 model files + 1 ladder (1.2 GB)** → `~/omniverse_packs/keep/Residential_lighting/`:
+**27 model files + 1 ladder (1.2 GB)** → `gs://fiatlux/assets/omniverse_lamp/ (+ omniverse_ladder for the 1 ladder)`:
 
 | Asset | Model files |
 |---|---|
@@ -471,8 +476,9 @@ A home-interior pack — **507 model files**. Full breakdown, every category →
 | Floor Lamps | 5 |
 | Outdoor lighting | 7 |
 | Chandeliers | 2 |
-| Fixtures (ceiling/wall) | 2 |
 | Ladder (`Misc/Ladders`) | 1 |
+
+(The 2 ceiling/wall fixtures found in this pack were not uploaded — lamp total = 27.)
 
 ### ⚠️ Important: probably no *separable* bulb
 There is **no standalone light-bulb asset** in this pack, and these ArchVis lamps are
@@ -509,12 +515,12 @@ ladders** came from.
 - recycledwoodpallet: 8
 - metalfencing: 3
 
-#### 🪜 Ladders — 7  *(kept)*  → `~/omniverse_packs/keep/SimReadyWH01_ladders/` (990 MB)
+#### 🪜 Ladders — 7  *(kept)*  → `gs://fiatlux/assets/omniverse_ladder/ (SimReady ladders)` (990 MB)
 - tiltandrollladder: 4  (a01–a04)
 - aluminumstepstand: 3  (a01–a03)
 - (these are the same 7 as our original Phase-1 set)
 
-#### Work platforms — 4  *(kept)*  → `~/omniverse_packs/keep/SimReadyWH01_workplatforms/` (860 MB)
+#### Work platforms — 4  *(kept)*  → `gs://fiatlux/assets/omniverse_ladder/ (SimReady work platforms)` (860 MB)
 - stationaryworkplatform: a01, a02, a03, a04
 
 #### Misc — 1
@@ -783,15 +789,16 @@ Assembled showcase scenes (each also mirrored under `Examples/Rendering/`). Scen
 - **Flight** 11 · **EuclidVR** 4 · **Claire** 2 · **Astronaut** 1
 - **Visual Scripting** 1 — (← contains the LightBulb)
 
-### KEPT — lighting (71 MB) → `~/omniverse_packs/keep/SampleScenes_lights/`
+### KEPT — lighting (71 MB) → `gs://fiatlux/assets/omniverse_bulb/ (LightBulb only; other SampleScenes lamps not uploaded)`
 **🔌 LightBulb** (`Visual Scripting/LightBulb`) — the ONLY standalone, *modeled* light
 bulb in any Omniverse pack. Geometry is structured as a desk fixture with a **separable
 bulb**: `/World/Geom/BulbGrp` = **Bulb** (glass) + **Base** (screw cap), distinct from the
 lamp `/World/Geom/Base` (feet + NVIDIA logo). → the bulb can be removed from the fixture,
 which is exactly what the Fiatlux bulb-swap task needs (the ArchVis lamps were fused).
 
-Also kept from **OldAttic/Props**: `TableLamp.usd`, `table_light.usd`, 5× `string_lights_strand`,
-5× `StringLightLights` (string-light bulbs).
+**OldAttic/Props** also holds lamps (`TableLamp`, `table_light`, 5× `string_lights_strand`,
+5× `StringLightLights` string-light bulbs), but these were **not uploaded** — the lamp set is
+sourced from the Residential pack (`omniverse_lamp`, 27 models), so the attic props are redundant.
 
 ---
 

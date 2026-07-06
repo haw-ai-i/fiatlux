@@ -44,20 +44,32 @@ Requires `gsutil` (`gcloud` SDK). Override bucket with `FIATLUX_ASSET_BUCKET` en
 
 | GCS path                              | Category         | Models                                 | Role           | Size   |
 | ------------------------------------- | ---------------- | -------------------------------------- | -------------- | ------ |
-| `gs://fiatlux/assets/omniverse_ladder/` | `ladder`       | 98 ladders/platforms (16 designs)      | task asset     | 2.9 GB |
+| `gs://fiatlux/assets/omniverse_ladder/` | `ladder`       | 98 ladders/platforms (16 designs)      | task asset     | 3.4 GB |
 | `gs://fiatlux/assets/omniverse_bulb/`   | `light_bulb`   | 1 (separable LightBulb)                | task asset     | small  |
-| `gs://fiatlux/assets/omniverse_climb/`  | `climb`        | Mezzanine_A + OfficeSet_A              | scene dressing | 0.8 GB |
+| `gs://fiatlux/assets/omniverse_climb/`  | `climb`        | Mezzanine_A + OfficeSet_A              | scene dressing | 1.9 GB |
 | `gs://fiatlux/assets/omniverse_lamp/`   | `lamp_fixture` | residential lamps/chandeliers/fixtures | scene dressing | 1.2 GB |
 
-**Omniverse total: ~4.95 GB across 4 paths.** Ladders ship with authored PhysX collision
-(convex decomposition, static, high friction) — `<name>_collision.usd` beside each; all 98
-verified climbable in Isaac Sim (see
-[`docs/omniverse_ladder_collision_verification.md`](../docs/omniverse_ladder_collision_verification.md)).
-Per-asset detail in [`omniverse_uploaded_manifest.csv`](omniverse_uploaded_manifest.csv).
+**Omniverse total: ~6.5 GB across 4 paths.** Each ladder is authored in **three physics tiers**
+beside the original geometry — the scene builder just references the one it wants:
 
-> Note: Omniverse assets reference shared Omniverse/Kit MDL material libraries (the
-> `materials` column = `external_mdl`); geometry + collision are complete, but visuals
-> render flat unless the material libraries are mounted.
+| File | Physics | Behaviour |
+|---|---|---|
+| `<name>.usd` (original) | none | geometry only (robot clips through) — visual prop |
+| `<name>_collision.usd` | collision, static | **solid + fixed** — climbable, never moves |
+| `<name>_collision_rigid.usd` | collision + rigid body | **solid + movable** — climbable *and* can tip / be carried |
+
+The static `_collision.usd` files (convex decomposition, high friction) are in GCS and all 98 are
+verified climbable in Isaac Sim.
+The movable `_collision_rigid.usd` variants are authored beside each by
+`scripts/omniverse/omniverse_ladder_rigid.py` and upload with the
+ladder group. `_collision_rigid.usd` sublayers `_collision.usd` sublayers the original, so **the three files
+must stay together**. Note: as rigid bodies, **extension and folded ladders can't free-stand** — they
+need a wall/support to lean on (they're still climbable leaned). Per-asset detail in
+[`omniverse_uploaded_manifest.csv`](omniverse_uploaded_manifest.csv).
+
+> Note: Omniverse ladder assets reference shared Omniverse/Kit MDL material libraries; their
+> extracted base materials and textures are uploaded alongside the geometry, so each ladder
+> group ships geometry + collision + materials together.
 
 ### Verification contract
 
@@ -105,7 +117,7 @@ See `journal/specs/issue-2-behavior1k-lamp-assets.md` for intake details and USD
 **Omniverse** assets are from the NVIDIA [Omniverse downloadable USD packs](https://docs.omniverse.nvidia.com/usd/latest/usd_content_samples/downloadable_packs.html#d-openusd-asset-packs)
 (Warehouse, SimReady Warehouse 01, Residential, Sample Scenes). Used under non-commercial
 academic terms. See `docs/omniverse_pack_scan_log.md` for the full 14-pack scan and
-`docs/omniverse_ladder_collision_verification.md` for collision authoring + verification.
+`docs/collision_authoring_explained.md` for collision authoring.
 
 **Room-dressing** assets (table, room, sky) are NVIDIA's own Isaac Sim sample content
 (Props/Environments) plus a CC0 PolyHaven HDRI, mirrored per the table above.
