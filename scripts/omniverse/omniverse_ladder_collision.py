@@ -12,6 +12,7 @@ Usage: python scripts/omniverse/omniverse_ladder_collision.py <dir> [<dir> ...]
 """
 import os
 import sys
+
 from pxr import Usd, UsdGeom, UsdPhysics, UsdShade
 
 SF, DF, RES = 1.2, 1.0, 0.0

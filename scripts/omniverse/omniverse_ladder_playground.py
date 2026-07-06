@@ -21,15 +21,17 @@ Run:  DISPLAY=:1001 python scripts/omniverse/omniverse_ladder_playground.py
 Visual tool only -- physics plays automatically; you judge it by eye (a headless
 pass/fail on "did a box rest on an open ladder" is too noisy to be meaningful).
 """
-import os
 import math
+import os
+
 import numpy as np
+
 from isaacsim import SimulationApp
 
 simulation_app = SimulationApp({"headless": False})
 
 import omni.usd  # noqa: E402
-from pxr import Usd, UsdGeom, UsdPhysics, UsdLux, Gf, PhysxSchema  # noqa: E402
+from pxr import Gf, PhysxSchema, Usd, UsdGeom, UsdLux, UsdPhysics  # noqa: E402
 
 # Point at the downloaded asset group (from download_assets.sh). It's flattened:
 # all design folders + the shared Materials/ live directly under omniverse_ladder/.

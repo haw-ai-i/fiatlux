@@ -35,13 +35,76 @@ def top_level(name):
     return parts[0] if parts else name
 
 
+def common_prefix(paths):
+    """Longest common folder prefix across USD paths, stripped for readable asset paths."""
+    if not paths:
+        return ""
+    sp = [p.split("/")[:-1] for p in paths]
+    out = []
+    for i in range(min(len(s) for s in sp)):
+        col = {s[i] for s in sp}
+        if len(col) == 1:
+            out.append(col.pop())
+        else:
+            break
+    return "/".join(out) + ("/" if out else "")
+
+
+def detail_report(names, sub):
+    """--detail <substr>: list every model USD whose path contains <substr>, grouped by folder."""
+    hits = [n for n in names if n.lower().endswith(ASSET_EXTS) and sub in n.lower()]
+    byfolder = defaultdict(list)
+    for n in hits:
+        byfolder[n.rsplit("/", 1)[0]].append(n.rsplit("/", 1)[-1])
+    print(f"# detail: '{sub}' — {len(hits)} USD files in {len(byfolder)} folders\n")
+    for folder in sorted(byfolder):
+        files = sorted(byfolder[folder])
+        print(f"{folder}/  ({len(files)})")
+        for f in files:
+            print(f"    {f}")
+
+
+def extract_matches(zf, names, wanted, extract_dir, pack, flat):
+    """Extract the matched asset folders to extract_dir (flat = curated per-design layout)."""
+    n_ex = 0
+    if flat:
+        # curated flat layout: each matched folder -> extract_dir/<basename>/...,
+        # stripping the pack's deep nesting so no separate flatten pass is needed
+        os.makedirs(extract_dir, exist_ok=True)
+        for w in wanted:                              # w is relative, e.g. Equipment/Ladders/AlumStep_A
+            base = w.rsplit("/", 1)[-1]
+            if base.startswith("."):                  # .SubUSDs / .thumbs -- stub containers, not designs
+                continue
+            for n in names:
+                if n.endswith("/"):
+                    continue
+                i = n.find(w + "/")                   # locate the matched folder in the full zip path
+                if i < 0:
+                    continue
+                out = os.path.join(extract_dir, base, n[i + len(w) + 1:])
+                os.makedirs(os.path.dirname(out), exist_ok=True)
+                with zf.open(n) as src, open(out, "wb") as dst:
+                    dst.write(src.read())
+                n_ex += 1
+        print(f"\n[extracted {n_ex} files (flattened) for {len(wanted)} folders -> {extract_dir}]",
+              file=sys.stderr)
+    else:
+        dest = os.path.join(extract_dir, pack)
+        os.makedirs(dest, exist_ok=True)
+        for n in names:
+            if any(n.startswith(w) or w in n for w in wanted):
+                zf.extract(n, dest)
+                n_ex += 1
+        print(f"\n[extracted {n_ex} files for {len(wanted)} matched folders -> {dest}]",
+              file=sys.stderr)
+
+
 def main():
     if len(sys.argv) < 2:
         print(__doc__)
         sys.exit(1)
     zip_path = sys.argv[1]
     extract_dir = None
-    as_md = "--md" in sys.argv
     if "--extract" in sys.argv:
         extract_dir = sys.argv[sys.argv.index("--extract") + 1]
 
@@ -52,19 +115,10 @@ def main():
     # --detail <substr>: list every model USD whose path contains <substr>, by folder
     if "--detail" in sys.argv:
         sub = sys.argv[sys.argv.index("--detail") + 1].lower()
-        hits = [n for n in names if n.lower().endswith(ASSET_EXTS) and sub in n.lower()]
-        from collections import defaultdict as _dd
-        byfolder = _dd(list)
-        for n in hits:
-            byfolder[n.rsplit("/", 1)[0]].append(n.rsplit("/", 1)[-1])
-        print(f"# detail: '{sub}' — {len(hits)} USD files in {len(byfolder)} folders\n")
-        for folder in sorted(byfolder):
-            files = sorted(byfolder[folder])
-            print(f"{folder}/  ({len(files)})")
-            for f in files:
-                print(f"    {f}")
+        detail_report(names, sub)
         zf.close()
         return
+
     # count only real MODEL usd files — exclude material/texture/thumbnail USDs so
     # per-asset and per-subcategory totals reflect actual models, not sub-files.
     NOISE = ("/materials/", "/textures/", "/.thumbs/")
@@ -75,20 +129,6 @@ def main():
     tops = defaultdict(int)
     for n in usd_names:
         tops[top_level(n)] += 1
-
-    # common prefix across all USDs, stripped for readable asset paths
-    def common_prefix(paths):
-        if not paths:
-            return ""
-        sp = [p.split("/")[:-1] for p in paths]
-        out = []
-        for i in range(min(len(s) for s in sp)):
-            col = {s[i] for s in sp}
-            if len(col) == 1:
-                out.append(col.pop())
-            else:
-                break
-        return "/".join(out) + ("/" if out else "")
 
     root = common_prefix(usd_names)
 
@@ -151,37 +191,7 @@ def main():
     if extract_dir:
         flat = "--flat" in sys.argv
         wanted = sorted({m for ms in matches.values() for m in ms})
-        n_ex = 0
-        if flat:
-            # curated flat layout: each matched folder -> extract_dir/<basename>/...,
-            # stripping the pack's deep nesting so no separate flatten pass is needed
-            os.makedirs(extract_dir, exist_ok=True)
-            for w in wanted:                              # w is relative, e.g. Equipment/Ladders/AlumStep_A
-                base = w.rsplit("/", 1)[-1]
-                if base.startswith("."):                  # .SubUSDs / .thumbs -- stub containers, not designs
-                    continue
-                for n in names:
-                    if n.endswith("/"):
-                        continue
-                    i = n.find(w + "/")                   # locate the matched folder in the full zip path
-                    if i < 0:
-                        continue
-                    out = os.path.join(extract_dir, base, n[i + len(w) + 1:])
-                    os.makedirs(os.path.dirname(out), exist_ok=True)
-                    with zf.open(n) as src, open(out, "wb") as dst:
-                        dst.write(src.read())
-                    n_ex += 1
-            print(f"\n[extracted {n_ex} files (flattened) for {len(wanted)} folders -> {extract_dir}]",
-                  file=sys.stderr)
-        else:
-            dest = os.path.join(extract_dir, pack)
-            os.makedirs(dest, exist_ok=True)
-            for n in names:
-                if any(n.startswith(w) or w in n for w in wanted):
-                    zf.extract(n, dest)
-                    n_ex += 1
-            print(f"\n[extracted {n_ex} files for {len(wanted)} matched folders -> {dest}]",
-                  file=sys.stderr)
+        extract_matches(zf, names, wanted, extract_dir, pack, flat)
     zf.close()
 
 

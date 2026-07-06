@@ -14,6 +14,7 @@ Usage: python scripts/omniverse/omniverse_ladder_rigid.py <dir> [<dir> ...]
 """
 import os
 import sys
+
 from pxr import Usd, UsdGeom, UsdPhysics
 
 
