@@ -21,6 +21,7 @@ _isaac_sim*
 
 # Personal notes (local only, never committed)
 /NOTES.md
+/CLAUDE.md
 
 # uv / ruff
 .venv/
