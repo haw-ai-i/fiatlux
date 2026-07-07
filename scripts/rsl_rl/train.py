@@ -301,6 +301,6 @@ def main(
 
 if __name__ == "__main__":
     # run the main function
-    main()
+    main()  # pyright: ignore[reportCallIssue]
     # close sim app
     simulation_app.close()

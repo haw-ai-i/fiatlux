@@ -39,7 +39,7 @@ import glob
 import math
 import os
 import random
-from typing import Literal
+from typing import Literal, cast
 
 import isaaclab.sim as sim_utils
 from isaaclab.assets import ArticulationCfg, AssetBaseCfg, RigidObjectCfg
@@ -519,8 +519,7 @@ def _sample_nonoverlapping_centers(
     sampled first can strand a later, larger one with nowhere left to fit).
     """
     n = len(half_sizes)
-    fixed = fixed or [None] * n
-    centers: list[tuple[float, float] | None] = list(fixed)
+    centers: list[tuple[float, float] | None] = list(fixed) if fixed else [None] * n
     order = sorted((i for i in range(n) if centers[i] is None), key=lambda i: -half_sizes[i])
 
     def overlaps(i: int, c: tuple[float, float]) -> bool:
@@ -542,7 +541,7 @@ def _sample_nonoverlapping_centers(
             if not overlaps(i, candidate):
                 break
         centers[i] = candidate  # best-effort: accept the last sample rather than raise
-    return centers
+    return cast(list[tuple[float, float]], centers)  # every slot filled: fixed, or by the loop
 
 
 def apply_replace_preset(
@@ -599,6 +598,7 @@ def apply_replace_preset(
         if mount_kind == "ceiling":
             fixed_ladder = (fixture_pos[0], fixture_pos[1])
         else:
+            assert wall_normal is not None  # non-None on every non-ceiling mount
             standoff = LADDER_ZONE_HALF_SIZE + LADDER_WALL_STANDOFF
             fixed_ladder = (
                 fixture_pos[0] + wall_normal[0] * standoff,

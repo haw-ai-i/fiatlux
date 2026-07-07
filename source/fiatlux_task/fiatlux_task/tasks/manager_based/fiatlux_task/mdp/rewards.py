@@ -192,11 +192,10 @@ class climb_height_progress(ManagerTermBase):
         self._best_z = torch.zeros(env.num_envs, device=env.device)
 
     def reset(self, env_ids: Sequence[int] | None = None) -> None:
-        if env_ids is None:
-            env_ids = slice(None)
+        ids = slice(None) if env_ids is None else env_ids
         asset: Articulation = self._env.scene["robot"]
-        z = asset.data.root_pos_w[env_ids, 2] - self._env.scene.env_origins[env_ids, 2]
-        self._best_z[env_ids] = z
+        z = asset.data.root_pos_w[ids, 2] - self._env.scene.env_origins[ids, 2]
+        self._best_z[ids] = z
 
     def __call__(
         self, env: ManagerBasedRLEnv, asset_cfg: SceneEntityCfg = SceneEntityCfg("robot")

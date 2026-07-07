@@ -140,6 +140,7 @@ from isaaclab_tasks.utils import parse_env_cfg
 _SCORE_SPEC = importlib.util.spec_from_file_location(
     "fiatlux_score", os.path.join(os.path.dirname(os.path.abspath(__file__)), "score.py")
 )
+assert _SCORE_SPEC is not None and _SCORE_SPEC.loader is not None
 score = importlib.util.module_from_spec(_SCORE_SPEC)
 sys.modules["fiatlux_score"] = score  # dataclass resolution needs the module registered
 _SCORE_SPEC.loader.exec_module(score)
