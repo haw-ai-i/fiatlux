@@ -107,7 +107,7 @@ Full scan complete across all 1,829 categories
 - Full `import omnigibson` pulls in simulation dependencies such as `torch`; avoid full simulation install until needed.
 - The asset download/decrypt helpers are in `OmniGibson/omnigibson/utils/asset_utils.py`; they can be driven with a minimal Python environment or a small shim.
 - The official helper requires the BEHAVIOR Data Bundle EULA acceptance before it installs `omnigibson.key`.
-- Added `scripts/behavior1k_asset_intake.py` as a lightweight helper that loads `asset_utils.py` through a focused shim, without installing the full simulator stack. Subcommands: `download-all`, `download-assets`, `download-key`, `inspect`.
+- Added `scripts/behavior1k/behavior1k_asset_intake.py` as a lightweight helper that loads `asset_utils.py` through a focused shim, without installing the full simulator stack. Subcommands: `download-all`, `download-assets`, `download-key`, `inspect`.
 - The helper intentionally does not decrypt/persist assets, upload assets, or store the OmniGibson key in the repo.
 - `download-key` may hang if `storage.googleapis.com:443` is firewalled. Workaround: decode the obfuscated URL in `asset_utils.py` and download the 44-byte `omnigibson.key` manually with `curl`.
 - Encrypted dataset downloaded via `download-assets --accept-license`; extracted size ~33 GB, 1,829 categories.
