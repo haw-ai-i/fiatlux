@@ -7,12 +7,6 @@
 
 Re-exports Isaac Lab's built-in MDP terms (actions, observations, events,
 terminations) plus the task-specific functions defined in this sub-package.
-
-Isaac Lab's own ``isaaclab.envs.mdp`` re-exports via multi-level ``from .x import *`` with no
-``__all__`` declared, which pyright's static analyzer cannot resolve through (confirmed: every
-name below exists at runtime and resolves cleanly here as soon as it's named explicitly) -- so
-this lists every built-in term the task family actually uses by name instead of wildcarding, to
-keep ``fiatlux_task....mdp.<term>`` type-checkable.
 """
 
 from isaaclab.envs.mdp import (  # noqa: F401

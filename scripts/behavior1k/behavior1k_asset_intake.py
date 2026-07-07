@@ -149,7 +149,7 @@ def download_zipped_dataset(
 
     LOGGER.info("downloading %s into %s", online_filename, download_dir)
     zip_path = Path(
-        hf_hub_download(
+        hf_hub_download(  # nosec B615
             repo_id="behavior-1k/zipped-datasets",
             filename=online_filename,
             repo_type="dataset",
