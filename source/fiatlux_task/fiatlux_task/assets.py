@@ -34,12 +34,23 @@ G1_DEX3_USD = os.path.join(
 
 # Bulb + fixture are BEHAVIOR-1K objects (synced under ``behavior1k_*/`` by
 # ``download_assets.sh``). Each object id is its own dir; swap the id/variant here.
-# - the bulb is the graspable rigid body (``ymomhw`` is a clean single-body variant),
-# - the lamp stands in as the socket/fixture the bulb is seated into. Lamps are
-#   multi-body BEHAVIOR-1K objects; the env spawns this one as a single rigid body by
-#   deactivating its ``meta__*`` helper links (see ``g1_bulb_env_cfg`` / issue #14).
-BULB_USD = os.path.join(FIATLUX_ASSETS_DIR, "behavior1k_bulb", "ymomhw", "usd", "ymomhw.usd")
-SOCKET_USD = os.path.join(FIATLUX_ASSETS_DIR, "behavior1k_lamp", "bbentu", "usd", "bbentu.usd")
+# ``kfmkwd`` (bulb) and ``ehjsdz`` (lamp) are BEHAVIOR's canonical ``changing_light_bulbs``
+# mating pair: the bulb carries a ``bulblampM`` male-plug metalink that seats into the
+# lamp's ``bulblampF`` female-socket metalink (manifest ``has_socket=True``, usage
+# ``task_asset``). The earlier ``ymomhw``/``bbentu`` pair had no attachment metalinks --
+# ``bbentu`` is a closed decorative dressing lamp with no socket, which made the seated
+# pose physically unattainable (issue #29). The env spawns each as a single rigid body by
+# deactivating its ``meta__*`` helper links (``spawn_b1k_single_body``), so the metalink
+# transforms below are baked as constants rather than read at runtime.
+BULB_USD = os.path.join(FIATLUX_ASSETS_DIR, "behavior1k_bulb", "kfmkwd", "kfmkwd.usd")
+SOCKET_USD = os.path.join(FIATLUX_ASSETS_DIR, "behavior1k_lamp", "ehjsdz", "ehjsdz.usd")
+
+# Attachment-metalink offsets (metres, in each object's base_link frame; both assets are
+# Z-up, metersPerUnit=1.0). The bulb is "seated" when the bulb's plug point coincides with
+# the lamp's socket point. Read once from the ``meta__*_attachment_*_joint`` localPos0 in
+# the source USDs (see issue #29 fix).
+SOCKET_SEAT_OFFSET = (0.0, 0.0, 0.0326)  # bulblampF, relative to the lamp base_link origin
+BULB_PLUG_OFFSET = (0.0635, 0.0, -0.0225)  # bulblampM, relative to the bulb base_link origin
 
 # Ladder for the climb-family tasks: ``shfvtl`` is the tall upright BEHAVIOR-1K
 # ladder (bbox_z=1.67 m) marked "primary ladder for G1 to climb" in
