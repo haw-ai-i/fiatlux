@@ -110,6 +110,21 @@ attributed in `assets/behavior1k_materials/NOTICE.md`.
   `gs://fiatlux/assets/`, and `behavior1k_materials` was added to `download_assets.sh` (task set),
   so a fresh `download_assets.sh` pulls the working assets + the shared mdls.
 
+### Addendum: 3 flat-layout objects missed by the original re-sync (2026-07-07)
+
+`behavior1k_fix_flat_texpaths.py` already handles this bug class, but the mdl-path fix's re-sync
+(above) didn't include every flat-layout object -- `behavior1k_lamp/ehjsdz`, `behavior1k_bulb/
+kfmkwd`, and `behavior1k_bulb_broken/cugtye` (the task's actual bulb + lamp + broken-bulb assets)
+still had `../material/` texture paths after a fresh `download_assets.sh`, confirmed by re-running
+`FIATLUX-Insert-v0`: the mdl resolved (no more red fallback) but every texture logged "asset can
+not be found" and the lamp rendered flat grey/untextured.
+
+Ran `behavior1k_fix_flat_texpaths.py --apply` locally (28 texture paths across these 3 files),
+confirmed 0 errors and real materials (white lampshade, dark metal neck, white bulb) in a
+re-recorded `FIATLUX-Insert-v0`, and `gsutil cp`'d the 3 fixed USDs back to their `gs://fiatlux/
+assets/` paths (targeted single-file copies, not a directory rsync). Round-trip verified: a fresh
+download of `ehjsdz.usd` from GCS now carries the corrected `material/...` path.
+
 
 ## Task Breakdown
 
