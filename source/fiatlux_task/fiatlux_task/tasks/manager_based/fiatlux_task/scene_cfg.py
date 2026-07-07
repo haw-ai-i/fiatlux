@@ -45,11 +45,13 @@ from isaaclab.sim.utils import clone
 from isaaclab.utils import configclass
 
 from fiatlux_task.assets import (
+    BULB_PLUG_OFFSET,
     BULB_USD,
     CRATE_USD,
     ELEVATED_SOCKET_USD,
     FIATLUX_ASSETS_DIR,
     LADDER_USD,
+    SOCKET_SEAT_OFFSET,
     SOCKET_USD,
     STEP_LADDER_USD,
     TABLE_USD,
@@ -99,7 +101,15 @@ TOP_ROBOT_POSITION = (1.35, 0.0, 1.85)  # pelvis at the upper steps (descend)
 PARKED_BULB_POSITION = (0.5, -0.6, 0.05)  # out of the way on the floor
 
 # -- bench manipulation extras (remove / install share Insert's tabletop world) --
-TABLETOP_SEATED_BULB_POSITION = (0.45, 0.10, 1.33)  # in the table lamp's socket seat
+# Bulb pose whose plug metalink (BULB_PLUG_OFFSET) coincides with the tabletop lamp's seat
+# metalink (TABLETOP_SOCKET_POSITION + SOCKET_SEAT_OFFSET); both objects at identity rotation
+# here, so the offsets add/subtract directly (see rewards._seat_point_w / _plug_point_w).
+TABLETOP_SEATED_BULB_POSITION = tuple(
+    seat - plug
+    for seat, plug in zip(
+        (a + b for a, b in zip(TABLETOP_SOCKET_POSITION, SOCKET_SEAT_OFFSET)), BULB_PLUG_OFFSET
+    )
+)
 BIN_POSITION = (0.15, -0.75, 0.0)  # parts crate on the floor beside the bench
 BIN_BULB_POSITION = (0.15, -0.75, 0.15)  # fresh bulb resting in the crate (install)
 
