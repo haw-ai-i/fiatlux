@@ -17,6 +17,9 @@ phase of the light-bulb-replacement story:
   bulb on the floor (Base / Carry / Climb / Descend / Remove / Install scaffolds).
 - :func:`apply_tabletop_preset` -- the manipulation bench: packing table, socket-lamp on the
   tabletop, bulb at hand height, no ladder (the Insert task).
+- :func:`apply_replace_preset` -- the whole family world at once (issue #20): robot, ladder,
+  table+bulb, and the elevated fixture each randomized into their own non-overlapping floor
+  "safe zone", fixture randomly ceiling- or wall-mounted (the ``Replace`` scaffold).
 
 Presets are plain functions called from an env cfg's ``__post_init__`` --
 ``InteractiveSceneCfg`` treats *every* dataclass field as a scene entity, so preset knobs
@@ -35,6 +38,8 @@ those assets are absent).
 import glob
 import math
 import os
+import random
+from typing import Literal
 
 import isaaclab.sim as sim_utils
 from isaaclab.assets import ArticulationCfg, AssetBaseCfg, RigidObjectCfg
@@ -113,6 +118,28 @@ TABLETOP_SEATED_BULB_POSITION = tuple(
 BIN_POSITION = (0.15, -0.75, 0.0)  # parts crate on the floor beside the bench
 BIN_BULB_POSITION = (0.15, -0.75, 0.15)  # fresh bulb resting in the crate (install)
 
+# -- replace preset (issue #20): the whole family world at once, robot / table+bulb / ladder
+# each randomized into their own non-overlapping floor "safe zone", fixture ceiling- or
+# wall-mounted. Room extent measured directly off the Simple Room USD (``UsdGeom.BBoxCache``
+# over its ``Towel_Room01_wall_*``/``floor_*`` prims, excluding the oversized decorative
+# ``Floor2-5``/light helper prims): walls span roughly x=[-4.52,4.52], y=[-3.4,4.86],
+# z=[-0.58,3.22]. These are inset from that measured box; tuned against
+# ``verify_scene.py --record`` like every other placement constant in this file.
+ROOM_FLOOR_MIN = (-4.0, -3.0)
+ROOM_FLOOR_MAX = (4.0, 4.2)
+ROOM_CEILING_Z = 3.0  # inset from the measured 3.22 m wall-top
+WALL_MOUNT_Z = 2.2  # reach height for a wall-mounted fixture
+
+# Zone half-sizes (m) -- each occupant's own "safe square" half-extent, footprint + a bit of
+# working clearance. Table's is a square bound around its actual (elongated) footprint --
+# collision volume x[-0.82,1.62] x y[-0.48,0.28] is centered on TABLE_POSITION (0.40,-0.10),
+# so its own origin already IS its footprint center; half-extent is 1.22 m (x) / 0.38 m (y).
+ROBOT_ZONE_HALF_SIZE = 0.6
+TABLE_ZONE_HALF_SIZE = 1.5
+LADDER_ZONE_HALF_SIZE = 1.0
+ZONE_MARGIN = 0.5  # minimum gap left between any two zones' bounding squares
+LADDER_WALL_STANDOFF = 0.4  # extra gap between the (coupled) ladder zone edge and the wall
+
 # -- per-env random ceiling fixture pool (visual dressing) --
 # Ceiling-mount BEHAVIOR-1K categories only: floor-standing fixtures would invade the task
 # space. These are the opt-in ``download_assets.sh --scene-dressing`` asset group; when they
@@ -146,6 +173,37 @@ def _quat_z_deg(angle_deg: float) -> tuple[float, float, float, float]:
     """(w, x, y, z) quaternion for a rotation about +Z (yaw), in degrees."""
     half = math.radians(angle_deg) / 2.0
     return (math.cos(half), 0.0, 0.0, math.sin(half))
+
+
+Quat = tuple[float, float, float, float]
+Vec3 = tuple[float, float, float]
+
+
+def _quat_mul(q1: Quat, q2: Quat) -> Quat:
+    """Hamilton product ``q1 * q2`` (w, x, y, z); rotating by the result applies ``q2``
+    first, then ``q1`` -- the same convention as composing rotation matrices."""
+    w1, x1, y1, z1 = q1
+    w2, x2, y2, z2 = q2
+    return (
+        w1 * w2 - x1 * x2 - y1 * y2 - z1 * z2,
+        w1 * x2 + x1 * w2 + y1 * z2 - z1 * y2,
+        w1 * y2 - x1 * z2 + y1 * w2 + z1 * x2,
+        w1 * z2 + x1 * y2 - y1 * x2 + z1 * w2,
+    )
+
+
+def _rotate_vec(q: Quat, v: Vec3) -> Vec3:
+    """Rotate a 3-vector by a unit quaternion (w, x, y, z); pure-Python mirror of
+    ``isaaclab.utils.math.quat_apply`` for use at cfg-build time (no torch/tensors yet)."""
+    w, x, y, z = q
+    vx, vy, vz = v
+    uvx, uvy, uvz = y * vz - z * vy, z * vx - x * vz, x * vy - y * vx
+    uuvx, uuvy, uuvz = y * uvz - z * uvy, z * uvx - x * uvz, x * uvy - y * uvx
+    return (
+        vx + 2.0 * (w * uvx + uuvx),
+        vy + 2.0 * (w * uvy + uuvy),
+        vz + 2.0 * (w * uvz + uuvz),
+    )
 
 
 # Omniverse SimReady assets author PhysX colliders but no RigidBodyAPI; Isaac Lab's
@@ -391,3 +449,190 @@ def apply_install_preset(scene: G1ReplaceSceneCfg) -> None:
     apply_tabletop_preset(scene)
     _add_parts_bin(scene)
     scene.bulb.init_state.pos = BIN_BULB_POSITION
+
+
+##
+# Replace preset (issue #20): randomized full-scene layout.
+##
+
+# Wall lookup for the fixture's random mount: name -> (fixed axis index (0=x, 1=y), the
+# fixed coordinate on that wall, its inward-facing unit normal, yaw so local +X faces inward).
+_WALLS: dict[str, tuple[int, float, tuple[float, float], float]] = {
+    "west": (0, ROOM_FLOOR_MIN[0], (1.0, 0.0), 0.0),
+    "east": (0, ROOM_FLOOR_MAX[0], (-1.0, 0.0), 180.0),
+    "south": (1, ROOM_FLOOR_MIN[1], (0.0, 1.0), 90.0),
+    "north": (1, ROOM_FLOOR_MAX[1], (0.0, -1.0), -90.0),
+}
+
+
+def _sample_fixture_mount(
+    rng: random.Random,
+) -> tuple[Literal["ceiling", "wall"], Vec3, Quat, tuple[float, float] | None]:
+    """Randomly mount the fixture on the ceiling or a wall.
+
+    Returns ``(mount_kind, position, orientation, wall_inward_normal)`` -- the normal is
+    ``None`` for a ceiling mount (nothing to stand off from). ``ehjsdz`` is authored as an
+    upright desk lamp (socket opening up, base on a horizontal surface), so each mount kind
+    needs a reorienting rotation: ceiling flips it ~180 deg so the shade/socket point down
+    like a pendant light; wall rotates it ~90 deg so it projects outward from the wall face.
+    """
+    margin = 0.5
+    if rng.random() < 0.5:
+        x = rng.uniform(ROOM_FLOOR_MIN[0] + margin, ROOM_FLOOR_MAX[0] - margin)
+        y = rng.uniform(ROOM_FLOOR_MIN[1] + margin, ROOM_FLOOR_MAX[1] - margin)
+        return "ceiling", (x, y, ROOM_CEILING_Z), _quat_y_deg(180.0), None
+
+    wall_name = rng.choice(list(_WALLS))
+    axis, value, normal, yaw = _WALLS[wall_name]
+    if axis == 0:
+        along = rng.uniform(ROOM_FLOOR_MIN[1] + margin, ROOM_FLOOR_MAX[1] - margin)
+        pos = (value, along, WALL_MOUNT_Z)
+    else:
+        along = rng.uniform(ROOM_FLOOR_MIN[0] + margin, ROOM_FLOOR_MAX[0] - margin)
+        pos = (along, value, WALL_MOUNT_Z)
+    # +90 (not -90): local +Z (the shade/socket opening) must map to local +X so the
+    # per-wall yaw (chosen so "local +X faces inward") ends up pointing the shade into the
+    # room. -90 was checked numerically and puts the shade dot(inward_normal) = -1.0 --
+    # exactly backwards, facing into the wall with only the lamp's base in the room.
+    quat = _quat_mul(_quat_z_deg(yaw), _quat_y_deg(90.0))
+    return "wall", pos, quat, normal
+
+
+def _sample_nonoverlapping_centers(
+    rng: random.Random,
+    half_sizes: list[float],
+    bounds_min: tuple[float, float],
+    bounds_max: tuple[float, float],
+    fixed: list[tuple[float, float] | None] | None = None,
+    margin: float = ZONE_MARGIN,
+    max_tries: int = 500,
+) -> list[tuple[float, float]]:
+    """Rejection-sample 2D zone centers (axis-aligned squares of half-extent ``half_sizes[i]``)
+    so every pair stays >= the sum of their half-sizes + ``margin`` apart, each inset from the
+    room bounds by its own half-size. ``fixed[i]``, if given, pins zone ``i`` to that center
+    instead of sampling it (used for the ladder in ``couple_ladder_to_fixture`` mode) -- other
+    zones are still sampled to avoid it. Runs once at cfg-build time (plain Python, no torch).
+
+    Free zones are placed largest-first (a fixed zone, e.g. a coupled ladder, still goes in
+    first regardless of size): stress-tested at 5000 random layouts against this room/these
+    zone sizes with zero placement failures, vs. ~1.3% with left-to-right order (small zones
+    sampled first can strand a later, larger one with nowhere left to fit).
+    """
+    n = len(half_sizes)
+    fixed = fixed or [None] * n
+    centers: list[tuple[float, float] | None] = list(fixed)
+    order = sorted((i for i in range(n) if centers[i] is None), key=lambda i: -half_sizes[i])
+
+    def overlaps(i: int, c: tuple[float, float]) -> bool:
+        for j, other in enumerate(centers):
+            if other is None or j == i:
+                continue
+            min_dist = half_sizes[i] + half_sizes[j] + margin
+            if (c[0] - other[0]) ** 2 + (c[1] - other[1]) ** 2 < min_dist**2:
+                return True
+        return False
+
+    for i in order:
+        hs = half_sizes[i]
+        lo_x, lo_y = bounds_min[0] + hs, bounds_min[1] + hs
+        hi_x, hi_y = bounds_max[0] - hs, bounds_max[1] - hs
+        candidate = (rng.uniform(lo_x, hi_x), rng.uniform(lo_y, hi_y))
+        for _ in range(max_tries):
+            candidate = (rng.uniform(lo_x, hi_x), rng.uniform(lo_y, hi_y))
+            if not overlaps(i, candidate):
+                break
+        centers[i] = candidate  # best-effort: accept the last sample rather than raise
+    return centers
+
+
+def apply_replace_preset(
+    scene: G1ReplaceSceneCfg,
+    rng: random.Random | None = None,
+    couple_ladder_to_fixture: bool = True,
+    bulb_state: Literal["install", "remove"] = "install",
+) -> None:
+    """Full combined-family layout (issue #20): the whole world at once -- robot, ladder,
+    table+bulb, and the elevated socket/lamp ("fixture") -- with each floor occupant
+    randomized into its own non-overlapping "safe zone", and the fixture randomly ceiling- or
+    wall-mounted. Randomized once per scene build (this function's own ``rng`` draw), not
+    re-sampled every episode reset.
+
+    The fixture reuses ``SOCKET_USD`` (``ehjsdz``/``kfmkwd``, the validated bulblampF/M pair
+    already used by the tabletop Insert task) rather than the decorative ``ELEVATED_SOCKET_USD``
+    chandelier (used only by climb/descend, which never validated a socket metalink on it) --
+    this scene needs a genuinely insertible bulb+socket at height.
+
+    Args:
+        couple_ladder_to_fixture: place the ladder's zone reachably relative to wherever the
+            fixture mounted (beneath a ceiling point, or standing off from a mounted wall)
+            instead of sampling it fully independently.
+        bulb_state: ``"install"`` -- fixture socket starts empty, fresh bulb rests on the
+            table. ``"remove"`` -- fixture socket starts with a bulb already seated
+            (kinematic, computed from ``SOCKET_SEAT_OFFSET``/``BULB_PLUG_OFFSET`` rotated by
+            the fixture's actual mount orientation -- the same math as the
+            ``TABLETOP_SEATED_BULB_POSITION`` fix, generalized to an arbitrary pose); table is
+            then the empty destination.
+    """
+    rng = rng or random.Random()
+
+    # Table: holds the bulb. No separate tabletop socket -- the elevated fixture is the real
+    # insertion target in this scene.
+    scene.table = AssetBaseCfg(
+        prim_path="{ENV_REGEX_NS}/Table",
+        spawn=sim_utils.UsdFileCfg(
+            usd_path=TABLE_USD,
+            rigid_props=sim_utils.RigidBodyPropertiesCfg(kinematic_enabled=True),
+        ),
+        init_state=AssetBaseCfg.InitialStateCfg(),
+    )
+    scene.fixture = None  # the task fixture owns the ceiling/wall in this scene
+
+    # Fixture mount (socket stays on its default SOCKET_USD -- the validated lamp).
+    mount_kind, fixture_pos, fixture_quat, wall_normal = _sample_fixture_mount(rng)
+    scene.socket.init_state.pos = fixture_pos
+    scene.socket.init_state.rot = fixture_quat
+
+    # Ladder zone: coupled (reachable from the fixture) or fully independent.
+    fixed_ladder = None
+    ladder_yaw = rng.uniform(0.0, 360.0)
+    if couple_ladder_to_fixture:
+        if mount_kind == "ceiling":
+            fixed_ladder = (fixture_pos[0], fixture_pos[1])
+        else:
+            standoff = LADDER_ZONE_HALF_SIZE + LADDER_WALL_STANDOFF
+            fixed_ladder = (
+                fixture_pos[0] + wall_normal[0] * standoff,
+                fixture_pos[1] + wall_normal[1] * standoff,
+            )
+            # steps face back toward the wall/fixture
+            ladder_yaw = math.degrees(math.atan2(-wall_normal[1], -wall_normal[0]))
+
+    robot_center, table_center, ladder_center = _sample_nonoverlapping_centers(
+        rng,
+        half_sizes=[ROBOT_ZONE_HALF_SIZE, TABLE_ZONE_HALF_SIZE, LADDER_ZONE_HALF_SIZE],
+        bounds_min=ROOM_FLOOR_MIN,
+        bounds_max=ROOM_FLOOR_MAX,
+        fixed=[None, None, fixed_ladder],
+    )
+
+    scene.robot.init_state.pos = (robot_center[0], robot_center[1], ROBOT_POSITION[2])
+    scene.robot.init_state.rot = _quat_z_deg(rng.uniform(0.0, 360.0))
+    scene.table.init_state.pos = (table_center[0], table_center[1], TABLE_POSITION[2])
+    bulb_local_offset = tuple(b - t for b, t in zip(TABLETOP_BULB_POSITION, TABLE_POSITION))
+    scene.bulb.init_state.pos = (
+        table_center[0] + bulb_local_offset[0],
+        table_center[1] + bulb_local_offset[1],
+        TABLE_POSITION[2] + bulb_local_offset[2],
+    )
+    scene.ladder.init_state.pos = (ladder_center[0], ladder_center[1], LADDER_POSITION[2])
+    scene.ladder.init_state.rot = _quat_z_deg(ladder_yaw)
+
+    if bulb_state == "remove":
+        seat_w = tuple(
+            f + o for f, o in zip(fixture_pos, _rotate_vec(fixture_quat, SOCKET_SEAT_OFFSET))
+        )
+        scene.bulb.init_state.pos = tuple(
+            s - o for s, o in zip(seat_w, _rotate_vec(fixture_quat, BULB_PLUG_OFFSET))
+        )
+        scene.bulb.init_state.rot = fixture_quat
+        scene.bulb.spawn.rigid_props.kinematic_enabled = True
