@@ -177,6 +177,28 @@ reportOptionalMemberAccess = "warning" # -> raises 8 errors
 reportPrivateUsage = "warning"
 
 
+[tool.deptry]
+# fiatlux_task's own setup.py is a build-time helper (setuptools/toml), not a runtime concern.
+extend_exclude = ["source/fiatlux_task/setup.py"]
+
+[tool.deptry.package_module_name_map]
+"rsl-rl-lib" = "rsl_rl"
+
+[tool.deptry.per_rule_ignores]
+# All transitive through the single isaaclab[isaacsim,all] dependency (gymnasium, isaaclab_rl,
+# isaaclab_tasks, isaacsim, numpy, omni, carb, pxr, yaml), or intentionally-optional imports
+# gated behind their own runtime/CLI opt-in (huggingface_hub, pinocchio), or a sibling script
+# resolved via the launcher's own sys.path convention, not a package (cli_args).
+DEP001 = [
+    "carb", "cli_args", "gymnasium", "huggingface_hub", "isaaclab_rl", "isaaclab_tasks",
+    "isaacsim", "numpy", "omni", "pinocchio", "pxr", "yaml",
+]
+# Each declared for a reason that isn't a direct import: torchvision/psutil pin an exact
+# version isaaclab needs without importing them ourselves; imageio-ffmpeg is a plugin backend
+# imageio loads internally.
+DEP002 = ["torchvision", "psutil", "imageio-ffmpeg"]
+DEP003 = ["packaging", "tomli"]
+
 [tool.codespell]
 skip = '*.usd,*.usda,*.usdz,*.svg,*.png,_isaac_sim*,*.bib,*.css,*/_build'
 quiet-level = 0

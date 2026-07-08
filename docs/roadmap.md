@@ -25,8 +25,16 @@ Phase 5).
 
 ## 2. Combined task — `FIATLUX-Replace-v0`
 
-End-to-end: approach → climb → insert → verify. Chains the two subtasks in one
-episode with a staged curriculum (manipulation → climbing → full chain).
+Descoped by the issue's own author comment: policy stitching/staged-curriculum chaining
+is "structurally not part of the benchmark, but of solution" and stays off the roadmap
+indefinitely, not just deferred.
+
+- ~~Build and verify the full combined-family scene: robot, ladder, table+bulb, and the
+  elevated fixture together, each randomized into its own non-overlapping floor "safe
+  zone" per scene build, fixture randomly ceiling- or wall-mounted.~~ DONE (2026-07-07):
+  non-RL scaffold, `scene_cfg.apply_replace_preset`.
+- Reward/termination logic and end-to-end approach → climb → insert → verify chaining:
+  not planned.
 
 ## 3. Learned-policy support
 

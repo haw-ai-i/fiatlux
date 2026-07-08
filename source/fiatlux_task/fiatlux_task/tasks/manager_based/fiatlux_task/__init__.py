@@ -23,8 +23,11 @@ One family, one scene (``scene_cfg.G1ReplaceSceneCfg``), preset layouts per task
   - ``FIATLUX-Remove-v0``  : unscrew / remove the seated bulb.
   - ``FIATLUX-Install-v0`` : seat a new bulb at the fixture (the at-fixture counterpart of
     the tabletop ``FIATLUX-Insert-v0`` manipulation task).
-
-- ``FIATLUX-Replace-v0`` : end-to-end climb + insert. ROADMAP (not yet built).
+  - ``FIATLUX-Replace-v0`` : the whole family world at once (issue #20) -- robot, ladder,
+    table+bulb, and the elevated fixture, each randomized into its own non-overlapping floor
+    "safe zone", fixture randomly ceiling- or wall-mounted. Scene-only: no reward/termination
+    or policy-chaining logic (that stays on the roadmap; see the issue's own descoping
+    comment).
 
 The scaffolds register the non-RL ``isaaclab.envs:ManagerBasedEnv`` entry point; the
 train / eval / teleop scripts assume RL envs and only apply to the RL members.
@@ -62,9 +65,6 @@ gym.register(
         "rsl_rl_cfg_entry_point": f"{agents.__name__}.rsl_rl_ppo_cfg:ClimbPPORunnerCfg",
     },
 )
-
-# ROADMAP: register once the combined climb+insert episode exists. See docs/roadmap.md.
-# gym.register(id="FIATLUX-Replace-v0", ...)
 
 ##
 # Workshop-preset scaffolds (non-RL).
@@ -105,6 +105,13 @@ gym.register(
     kwargs={"env_cfg_entry_point": f"{__name__}.install_env_cfg:InstallEnvCfg"},
 )
 
+gym.register(
+    id="FIATLUX-Replace-v0",
+    entry_point="isaaclab.envs:ManagerBasedEnv",
+    disable_env_checker=True,
+    kwargs={"env_cfg_entry_point": f"{__name__}.replace_env_cfg:ReplaceEnvCfg"},
+)
+
 # Convenience list for scripts/tests that iterate the ladder family (Climb is the
 # family's RL member; the rest are non-RL scaffolds).
 TASK_IDS = [
@@ -114,4 +121,5 @@ TASK_IDS = [
     "FIATLUX-Descend-v0",
     "FIATLUX-Remove-v0",
     "FIATLUX-Install-v0",
+    "FIATLUX-Replace-v0",
 ]

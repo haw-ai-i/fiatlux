@@ -48,18 +48,18 @@ def _install_omnigibson_shim(data_dir: Path, temp_dir: Path, behavior_repo: Path
     temp_dir.mkdir(parents=True, exist_ok=True)
 
     og = types.ModuleType("omnigibson")
-    og.example_config_path = str(
-        behavior_repo / "OmniGibson" / "omnigibson" / "configs"
+    setattr(
+        og, "example_config_path", str(behavior_repo / "OmniGibson" / "omnigibson" / "configs")
     )
-    og.tempdir = str(temp_dir)
-    og.shutdown = lambda: None
+    setattr(og, "tempdir", str(temp_dir))
+    setattr(og, "shutdown", lambda: None)
 
     macros = types.ModuleType("omnigibson.macros")
-    macros.gm = types.SimpleNamespace(DATA_PATH=str(data_dir))
+    setattr(macros, "gm", types.SimpleNamespace(DATA_PATH=str(data_dir)))
 
     utils = types.ModuleType("omnigibson.utils")
     ui_utils = types.ModuleType("omnigibson.utils.ui_utils")
-    ui_utils.create_module_logger = lambda module_name: logging.getLogger(module_name)
+    setattr(ui_utils, "create_module_logger", lambda module_name: logging.getLogger(module_name))
 
     sys.modules["omnigibson"] = og
     sys.modules["omnigibson.macros"] = macros
@@ -149,7 +149,7 @@ def download_zipped_dataset(
 
     LOGGER.info("downloading %s into %s", online_filename, download_dir)
     zip_path = Path(
-        hf_hub_download(
+        hf_hub_download(  # nosec B615
             repo_id="behavior-1k/zipped-datasets",
             filename=online_filename,
             repo_type="dataset",
