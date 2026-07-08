@@ -29,7 +29,9 @@ import torch
 from isaaclab.assets import Articulation, RigidObject
 from isaaclab.managers import ManagerTermBase, SceneEntityCfg
 from isaaclab.sensors import ContactSensor
-from isaaclab.utils.math import quat_error_magnitude
+from isaaclab.utils.math import quat_apply, quat_error_magnitude
+
+from fiatlux_task.assets import BULB_PLUG_OFFSET, SOCKET_SEAT_OFFSET
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
@@ -43,11 +45,27 @@ if TYPE_CHECKING:
 # ---------------------------------------------------------------------------
 
 
-def _bulb_socket_pos_error(env: ManagerBasedRLEnv) -> torch.Tensor:
-    """Euclidean distance (m) between the bulb and the socket centre."""
-    bulb: RigidObject = env.scene["bulb"]
+def _seat_point_w(env: ManagerBasedRLEnv) -> torch.Tensor:
+    """World position of the lamp's socket seat (bulblampF metalink)."""
     socket: RigidObject = env.scene["socket"]
-    return torch.norm(bulb.data.root_pos_w - socket.data.root_pos_w, dim=1)
+    offset = torch.tensor(SOCKET_SEAT_OFFSET, device=env.device).expand(env.num_envs, 3)
+    return socket.data.root_pos_w + quat_apply(socket.data.root_quat_w, offset)
+
+
+def _plug_point_w(env: ManagerBasedRLEnv) -> torch.Tensor:
+    """World position of the bulb's plug (bulblampM metalink)."""
+    bulb: RigidObject = env.scene["bulb"]
+    offset = torch.tensor(BULB_PLUG_OFFSET, device=env.device).expand(env.num_envs, 3)
+    return bulb.data.root_pos_w + quat_apply(bulb.data.root_quat_w, offset)
+
+
+def _bulb_socket_pos_error(env: ManagerBasedRLEnv) -> torch.Tensor:
+    """Euclidean distance (m) between the bulb's plug point and the lamp's socket seat.
+
+    Both are the OmniGibson attachment metalinks (bulblampM / bulblampF), not the object
+    origins: seating means the plug reaches the socket, and the two origins are offset by
+    the plug geometry even when fully mated (issue #29)."""
+    return torch.norm(_plug_point_w(env) - _seat_point_w(env), dim=1)
 
 
 def _bulb_socket_ori_error(env: ManagerBasedRLEnv) -> torch.Tensor:

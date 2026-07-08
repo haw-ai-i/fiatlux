@@ -45,11 +45,13 @@ from isaaclab.sim.utils import clone
 from isaaclab.utils import configclass
 
 from fiatlux_task.assets import (
+    BULB_PLUG_OFFSET,
     BULB_USD,
     CRATE_USD,
     ELEVATED_SOCKET_USD,
     FIATLUX_ASSETS_DIR,
     LADDER_USD,
+    SOCKET_SEAT_OFFSET,
     SOCKET_USD,
     STEP_LADDER_USD,
     TABLE_USD,
@@ -78,7 +80,9 @@ FIXTURE_POSITION = (0.0, 0.0, 2.45)  # hangs overhead in the record camera's fra
 TABLE_POSITION = (0.40, -0.10, 0.0)  # authored tabletop surface is ~1.0 m above the origin
 TABLETOP_ROBOT_POSITION = (0.60, 0.58, 0.75)
 TABLETOP_ROBOT_YAW_DEG = -90.0
-TABLETOP_SOCKET_POSITION = (0.45, 0.10, 1.20)
+# ehjsdz base_link origin sits 0.48 m above the lamp's feet, so z=1.47 rests it on the
+# ~0.99 m tabletop; the bulblampF socket seat is then ~1.50 m (base_link + 3.3 cm).
+TABLETOP_SOCKET_POSITION = (0.45, 0.10, 1.47)
 TABLETOP_BULB_POSITION = (0.30, 0.18, 1.05)
 
 # -- carry preset: the B1K straight ladder (shfvtl) *stored* by the room wall in its
@@ -97,7 +101,15 @@ TOP_ROBOT_POSITION = (1.35, 0.0, 1.85)  # pelvis at the upper steps (descend)
 PARKED_BULB_POSITION = (0.5, -0.6, 0.05)  # out of the way on the floor
 
 # -- bench manipulation extras (remove / install share Insert's tabletop world) --
-TABLETOP_SEATED_BULB_POSITION = (0.45, 0.10, 1.33)  # in the table lamp's socket seat
+# Bulb pose whose plug metalink (BULB_PLUG_OFFSET) coincides with the tabletop lamp's seat
+# metalink (TABLETOP_SOCKET_POSITION + SOCKET_SEAT_OFFSET); both objects at identity rotation
+# here, so the offsets add/subtract directly (see rewards._seat_point_w / _plug_point_w).
+TABLETOP_SEATED_BULB_POSITION = tuple(
+    seat - plug
+    for seat, plug in zip(
+        (a + b for a, b in zip(TABLETOP_SOCKET_POSITION, SOCKET_SEAT_OFFSET)), BULB_PLUG_OFFSET
+    )
+)
 BIN_POSITION = (0.15, -0.75, 0.0)  # parts crate on the floor beside the bench
 BIN_BULB_POSITION = (0.15, -0.75, 0.15)  # fresh bulb resting in the crate (install)
 
@@ -210,16 +222,19 @@ class G1ReplaceSceneCfg(DressedSceneCfg):
         ),
         init_state=RigidObjectCfg.InitialStateCfg(pos=SOCKET_POSITION),
     )
-    # Graspable bulb (dynamic).
+    # Graspable bulb (dynamic). kfmkwd is a 2-body B1K object (base_link + bulblampM
+    # attachment metalink); strip the meta__ link so it resolves to one rigid body.
     bulb: RigidObjectCfg = RigidObjectCfg(
         prim_path="{ENV_REGEX_NS}/Bulb",
         spawn=sim_utils.UsdFileCfg(
             usd_path=BULB_USD,
+            func=spawn_b1k_single_body,
             rigid_props=sim_utils.RigidBodyPropertiesCfg(
                 solver_position_iteration_count=16,
                 solver_velocity_iteration_count=8,
                 max_depenetration_velocity=1.0,
             ),
+            articulation_props=sim_utils.ArticulationRootPropertiesCfg(articulation_enabled=False),
         ),
         init_state=RigidObjectCfg.InitialStateCfg(pos=BULB_POSITION),
     )
