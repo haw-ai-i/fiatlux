@@ -528,15 +528,16 @@ def _sample_nonoverlapping_centers(
     max_tries: int = 500,
 ) -> list[tuple[float, float]]:
     """Rejection-sample 2D zone centers (axis-aligned squares of half-extent ``half_sizes[i]``)
-    so every pair stays >= the sum of their half-sizes + ``margin`` apart, each inset from the
-    room bounds by its own half-size. ``fixed[i]``, if given, pins zone ``i`` to that center
-    instead of sampling it (used for the ladder in ``couple_ladder_to_fixture`` mode) -- other
-    zones are still sampled to avoid it. Runs once at cfg-build time (plain Python, no torch).
+    so every pair stays >= the sum of their half-sizes + ``margin`` apart on at least one
+    axis (the bounding squares, plus margin, never overlap), each inset from the room bounds
+    by its own half-size. ``fixed[i]``, if given, pins zone ``i`` to that center instead of
+    sampling it (used for the ladder in ``couple_ladder_to_fixture`` mode) -- other zones
+    are still sampled to avoid it. Runs once at cfg-build time (plain Python, no torch).
 
     Free zones are placed largest-first (a fixed zone, e.g. a coupled ladder, still goes in
     first regardless of size): stress-tested at 5000 random layouts against this room/these
-    zone sizes with zero placement failures, vs. ~1.3% with left-to-right order (small zones
-    sampled first can strand a later, larger one with nowhere left to fit).
+    zone sizes with ~0.1% placement failures, vs. ~1.3% with left-to-right order (small
+    zones sampled first can strand a later, larger one with nowhere left to fit).
     """
     n = len(half_sizes)
     centers: list[tuple[float, float] | None] = list(fixed) if fixed else [None] * n
@@ -546,8 +547,9 @@ def _sample_nonoverlapping_centers(
         for j, other in enumerate(centers):
             if other is None or j == i:
                 continue
-            min_dist = half_sizes[i] + half_sizes[j] + margin
-            if (c[0] - other[0]) ** 2 + (c[1] - other[1]) ** 2 < min_dist**2:
+            min_sep = half_sizes[i] + half_sizes[j] + margin
+            # bounding boxes overlap iff BOTH axis gaps are under min_sep
+            if max(abs(c[0] - other[0]), abs(c[1] - other[1])) < min_sep:
                 return True
         return False
 

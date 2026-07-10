@@ -132,13 +132,14 @@ class ScoreLogger:
         }
         sinks: list[Sink] = []
         if getattr(args_cli, "wandb", False):
-            run_name = args_cli.wandb_run_name or (
+            # getattr throughout: a script may declare --wandb without the companion flags.
+            run_name = getattr(args_cli, "wandb_run_name", None) or (
                 f"{args_cli.task}-{Path(str(args_cli.policy)).stem}-seed{args_cli.seed}"
             )
             sinks.append(
                 WandbSink(
-                    project=args_cli.wandb_project,
-                    entity=args_cli.wandb_entity,
+                    project=getattr(args_cli, "wandb_project", "fiatlux"),
+                    entity=getattr(args_cli, "wandb_entity", None),
                     run_name=run_name,
                     config=config,
                 )
