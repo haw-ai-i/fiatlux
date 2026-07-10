@@ -75,8 +75,10 @@ want_bag = args_cli.record in ("bag", "both")
 # Cameras are required to render video frames.
 if want_video:
     args_cli.enable_cameras = True
-# Headless by default (video still renders via enable_cameras).
-args_cli.headless = True if args_cli.headless is None else args_cli.headless
+# Always headless (video still renders via enable_cameras). AppLauncher's --headless is
+# store_true default False -- never None -- so the old None-guard was dead code and a
+# displayless machine wedged in GUI mode; use --livestream for interactive viewing.
+args_cli.headless = True
 
 app_launcher = AppLauncher(args_cli)
 simulation_app = app_launcher.app

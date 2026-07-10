@@ -13,6 +13,17 @@ Supported specs (``make_policy(spec, env)``):
 
 - ``"zero"``            -- no action (sanity floor).
 - ``"random"``          -- uniform actions in ``[-1, 1]`` (sanity floor).
+- ``"basic_standard"``  -- smoke-test policy for the *standard* observation mode: consumes
+                           only the sensor-realizable ``policy`` group (asserts it exists,
+                           never reads privileged state) and holds posture (zero action).
+                           Its purpose is to prove the env / observations / action
+                           interface / resets / episode loop / recording / scoring run
+                           end-to-end -- acceptance is valid episode execution and score
+                           artifact generation, not task success.
+- ``"basic_cheatcode"`` -- smoke-test policy for the *cheatcode* mode: additionally asserts
+                           the ``privileged`` group exists and reads it every step, still
+                           acting through the normal action space (zero action). Not a
+                           solver; same acceptance bar as ``basic_standard``.
 - ``"<path>.pt"``       -- a TorchScript module taking the policy observation
                            tensor and returning actions. This is the portable,
                            framework-agnostic artifact ``scripts/rsl_rl/play.py``
@@ -48,8 +59,8 @@ def make_policy(
     """Return a callable ``policy(obs) -> actions`` for ``spec``.
 
     Args:
-        spec: One of ``"zero"``, ``"random"``, a TorchScript ``.pt`` path, or
-            ``"rsl_rl"`` / ``"rsl_rl:<checkpoint>"``.
+        spec: One of ``"zero"``, ``"random"``, ``"basic_standard"``, ``"basic_cheatcode"``,
+            a TorchScript ``.pt`` path, or ``"rsl_rl"`` / ``"rsl_rl:<checkpoint>"``.
         env: The (unwrapped) environment; used for ``num_envs``/``action_space``/``device``.
         checkpoint: Checkpoint path for ``"rsl_rl"`` (alternative to the ``rsl_rl:`` suffix).
         device: Override device; defaults to ``env.device``.
@@ -61,6 +72,35 @@ def make_policy(
         return lambda obs: torch.zeros(action_shape, device=device)
     if spec == "random":
         return lambda obs: torch.rand(action_shape, device=device) * 2.0 - 1.0
+
+    if spec == "basic_standard":
+
+        def basic_standard(obs):
+            # The standard contract: the sensor-realizable group must exist and is the
+            # ONLY thing consumed -- privileged/cheat state is never touched.
+            assert isinstance(obs, dict) and "policy" in obs, (
+                "basic_standard requires a 'policy' observation group (the standard, "
+                "sensor-realizable mode)"
+            )
+            _ = obs["policy"]
+            return torch.zeros(action_shape, device=device)
+
+        return basic_standard
+
+    if spec == "basic_cheatcode":
+
+        def basic_cheatcode(obs):
+            # The cheatcode contract: privileged simulator state must be present and
+            # readable; actions still go through the normal action space.
+            assert isinstance(obs, dict) and "privileged" in obs, (
+                "basic_cheatcode requires a 'privileged' observation group (the cheatcode "
+                "mode); this env exposes only sensor-realizable observations"
+            )
+            privileged = obs["privileged"]
+            assert torch.isfinite(privileged).all(), "privileged observations must be finite"
+            return torch.zeros(action_shape, device=device)
+
+        return basic_cheatcode
 
     # RSL-RL convenience loader: "rsl_rl" (+ checkpoint) or "rsl_rl:<path>".
     if spec == "rsl_rl" or spec.startswith("rsl_rl:"):

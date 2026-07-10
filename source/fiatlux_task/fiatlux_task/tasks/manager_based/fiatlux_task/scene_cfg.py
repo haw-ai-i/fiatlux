@@ -17,9 +17,12 @@ phase of the light-bulb-replacement story:
   bulb on the floor (Base / Carry / Climb / Descend / Remove / Install scaffolds).
 - :func:`apply_tabletop_preset` -- the manipulation bench: packing table, socket-lamp on the
   tabletop, bulb at hand height, no ladder (the Insert task).
-- :func:`apply_replace_preset` -- the whole family world at once (issue #20): robot, ladder,
-  table+bulb, and the elevated fixture each randomized into their own non-overlapping floor
-  "safe zone", fixture randomly ceiling- or wall-mounted (the ``Replace`` scaffold).
+- :func:`apply_replace_preset` -- the full replacement task world (issue #20 scene, promoted
+  to the primary benchmark by the full-task plan): robot, ladder, table+fresh bulb, disposal
+  crate, and the elevated fixture (old bulb seated in it) each randomized into their own
+  non-overlapping floor "safe zone", fixture randomly ceiling- or wall-mounted. The ladder is
+  a *dynamic* rigid body here (it can genuinely tip/fall, which the task penalizes) --
+  kinematic everywhere else.
 
 Presets are plain functions called from an env cfg's ``__post_init__`` --
 ``InteractiveSceneCfg`` treats *every* dataclass field as a scene entity, so preset knobs
@@ -137,8 +140,14 @@ WALL_MOUNT_Z = 2.2  # reach height for a wall-mounted fixture
 ROBOT_ZONE_HALF_SIZE = 0.6
 TABLE_ZONE_HALF_SIZE = 1.5
 LADDER_ZONE_HALF_SIZE = 1.0
+DISPOSAL_ZONE_HALF_SIZE = 0.5  # the old-bulb disposal crate (crate footprint ~0.6 m + clearance)
 ZONE_MARGIN = 0.5  # minimum gap left between any two zones' bounding squares
 LADDER_WALL_STANDOFF = 0.4  # extra gap between the (coupled) ladder zone edge and the wall
+
+# Dynamic-ladder mass (replace preset only). Without an authored MassAPI PhysX derives mass
+# from collider volume at 1000 kg/m^3, which lands a hollow A-frame at furniture-crushing
+# tens of kg; a real 1.75 m fiberglass step ladder is ~12 kg.
+LADDER_MASS_KG = 12.0
 
 # -- per-env random ceiling fixture pool (visual dressing) --
 # Ceiling-mount BEHAVIOR-1K categories only: floor-standing fixtures would invade the task
@@ -206,10 +215,10 @@ def _rotate_vec(q: Quat, v: Vec3) -> Vec3:
     )
 
 
-# Omniverse SimReady assets author PhysX colliders but no RigidBodyAPI; Isaac Lab's
-# RigidObjectCfg requires exactly one rigid-body prim (the spawner's property pass only
-# *modifies* an existing API). Apply it on the root at spawn time, then apply the cfg's
-# rigid props (e.g. kinematic_enabled) which would otherwise silently no-op.
+# Omniverse SimReady assets author PhysX colliders but no RigidBodyAPI (nor MassAPI);
+# Isaac Lab's RigidObjectCfg requires exactly one rigid-body prim (the spawner's property
+# pass only *modifies* an existing API). Apply them on the root at spawn time, then apply
+# the cfg's rigid/mass props (e.g. kinematic_enabled) which would otherwise silently no-op.
 @clone
 def _spawn_usd_as_rigid_body(prim_path, cfg, translation=None, orientation=None):
     from pxr import UsdPhysics
@@ -218,6 +227,9 @@ def _spawn_usd_as_rigid_body(prim_path, cfg, translation=None, orientation=None)
     UsdPhysics.RigidBodyAPI.Apply(prim)
     if cfg.rigid_props is not None:
         schemas.modify_rigid_body_properties(prim.GetPath(), cfg.rigid_props)
+    if cfg.mass_props is not None:
+        UsdPhysics.MassAPI.Apply(prim)
+        schemas.modify_mass_properties(prim.GetPath(), cfg.mass_props)
     return prim
 
 
@@ -296,9 +308,14 @@ class G1ReplaceSceneCfg(DressedSceneCfg):
         ),
         init_state=RigidObjectCfg.InitialStateCfg(pos=BULB_POSITION),
     )
+    # Old bulb, seated in the elevated fixture (replace preset only). Kinematic: the
+    # stand-in for "screwed in" until the attach/detach joint exists (unification spec
+    # Phase 4), same convention as the remove preset's seated bulb.
+    old_bulb: RigidObjectCfg | None = None
     # Packing table (manipulation bench). Spawned only by the tabletop preset.
     table: AssetBaseCfg | None = None
-    # Parts crate (bulb bin). Spawned only by the install preset.
+    # Parts crate: bulb bin (install/remove presets) or old-bulb disposal target (replace
+    # preset, where it is a kinematic RigidObjectCfg so rewards/obs can read its pose).
     bin: AssetBaseCfg | None = None
 
     # -- Contact sensor on the grasping hand (force/torque safety + obs). Family-wide: the
@@ -419,11 +436,11 @@ def add_ladder_contact_sensor(scene: G1ReplaceSceneCfg) -> None:
     )
 
 
-def _add_parts_bin(scene: G1ReplaceSceneCfg) -> None:
-    """Spawn the kinematic parts crate on the floor beside the bench (remove + install)."""
+def _add_parts_bin(scene: G1ReplaceSceneCfg, position: Vec3 = BIN_POSITION) -> None:
+    """Spawn the kinematic parts crate on the floor (remove + install: beside the bench)."""
     scene.bin = AssetBaseCfg(
         prim_path="{ENV_REGEX_NS}/Bin",
-        init_state=AssetBaseCfg.InitialStateCfg(pos=BIN_POSITION),
+        init_state=AssetBaseCfg.InitialStateCfg(pos=position),
         spawn=sim_utils.UsdFileCfg(
             usd_path=CRATE_USD,
             rigid_props=sim_utils.RigidBodyPropertiesCfg(kinematic_enabled=True),
@@ -547,11 +564,10 @@ def _sample_nonoverlapping_centers(
 def apply_replace_preset(
     scene: G1ReplaceSceneCfg,
     rng: random.Random | None = None,
-    couple_ladder_to_fixture: bool = True,
-    bulb_state: Literal["install", "remove"] = "install",
+    couple_ladder_to_fixture: bool = False,
 ) -> None:
-    """Full combined-family layout (issue #20): the whole world at once -- robot, ladder,
-    table+bulb, and the elevated socket/lamp ("fixture") -- with each floor occupant
+    """The full replacement-task layout: robot, ladder, table+fresh bulb, disposal crate, and
+    the elevated socket/lamp ("fixture") with the OLD BULB seated in it -- each floor occupant
     randomized into its own non-overlapping "safe zone", and the fixture randomly ceiling- or
     wall-mounted. Randomized once per scene build (this function's own ``rng`` draw), not
     re-sampled every episode reset.
@@ -561,21 +577,23 @@ def apply_replace_preset(
     chandelier (used only by climb/descend, which never validated a socket metalink on it) --
     this scene needs a genuinely insertible bulb+socket at height.
 
+    Unlike every other preset the ladder spawns *dynamic* (mass ``LADDER_MASS_KG``): a
+    knocked-over ladder is a real, penalized event in this task. The old bulb starts seated
+    kinematic (computed from ``SOCKET_SEAT_OFFSET``/``BULB_PLUG_OFFSET`` rotated by the
+    fixture's actual mount orientation -- the ``TABLETOP_SEATED_BULB_POSITION`` math
+    generalized to an arbitrary pose) -- the "screwed in" stand-in until the attach/detach
+    joint exists.
+
     Args:
         couple_ladder_to_fixture: place the ladder's zone reachably relative to wherever the
             fixture mounted (beneath a ceiling point, or standing off from a mounted wall)
-            instead of sampling it fully independently.
-        bulb_state: ``"install"`` -- fixture socket starts empty, fresh bulb rests on the
-            table. ``"remove"`` -- fixture socket starts with a bulb already seated
-            (kinematic, computed from ``SOCKET_SEAT_OFFSET``/``BULB_PLUG_OFFSET`` rotated by
-            the fixture's actual mount orientation -- the same math as the
-            ``TABLETOP_SEATED_BULB_POSITION`` fix, generalized to an arbitrary pose); table is
-            then the empty destination.
+            instead of sampling it fully independently. Off by default -- positioning the
+            ladder is part of the task; coupling is a debug/curriculum aid only.
     """
     rng = rng or random.Random()
 
-    # Table: holds the bulb. No separate tabletop socket -- the elevated fixture is the real
-    # insertion target in this scene.
+    # Table: holds the fresh bulb. No separate tabletop socket -- the elevated fixture is the
+    # real insertion target in this scene.
     scene.table = AssetBaseCfg(
         prim_path="{ENV_REGEX_NS}/Table",
         spawn=sim_utils.UsdFileCfg(
@@ -591,7 +609,8 @@ def apply_replace_preset(
     scene.socket.init_state.pos = fixture_pos
     scene.socket.init_state.rot = fixture_quat
 
-    # Ladder zone: coupled (reachable from the fixture) or fully independent.
+    # Ladder zone: independent by default; coupled (reachable from the fixture) as an
+    # explicit debug/curriculum opt-in.
     fixed_ladder = None
     ladder_yaw = rng.uniform(0.0, 360.0)
     if couple_ladder_to_fixture:
@@ -607,12 +626,17 @@ def apply_replace_preset(
             # steps face back toward the wall/fixture
             ladder_yaw = math.degrees(math.atan2(-wall_normal[1], -wall_normal[0]))
 
-    robot_center, table_center, ladder_center = _sample_nonoverlapping_centers(
+    robot_center, table_center, ladder_center, disposal_center = _sample_nonoverlapping_centers(
         rng,
-        half_sizes=[ROBOT_ZONE_HALF_SIZE, TABLE_ZONE_HALF_SIZE, LADDER_ZONE_HALF_SIZE],
+        half_sizes=[
+            ROBOT_ZONE_HALF_SIZE,
+            TABLE_ZONE_HALF_SIZE,
+            LADDER_ZONE_HALF_SIZE,
+            DISPOSAL_ZONE_HALF_SIZE,
+        ],
         bounds_min=ROOM_FLOOR_MIN,
         bounds_max=ROOM_FLOOR_MAX,
-        fixed=[None, None, fixed_ladder],
+        fixed=[None, None, fixed_ladder, None],
     )
 
     scene.robot.init_state.pos = (robot_center[0], robot_center[1], ROBOT_POSITION[2])
@@ -626,13 +650,45 @@ def apply_replace_preset(
     )
     scene.ladder.init_state.pos = (ladder_center[0], ladder_center[1], LADDER_POSITION[2])
     scene.ladder.init_state.rot = _quat_z_deg(ladder_yaw)
+    # Dynamic ladder (this preset only): tipping/falling is a scored physical event.
+    scene.ladder.spawn.rigid_props = sim_utils.RigidBodyPropertiesCfg(
+        kinematic_enabled=False,
+        solver_position_iteration_count=16,
+        solver_velocity_iteration_count=8,
+        max_depenetration_velocity=1.0,
+    )
+    scene.ladder.spawn.mass_props = sim_utils.MassPropertiesCfg(mass=LADDER_MASS_KG)
 
-    if bulb_state == "remove":
-        seat_w = tuple(
-            f + o for f, o in zip(fixture_pos, _rotate_vec(fixture_quat, SOCKET_SEAT_OFFSET))
-        )
-        scene.bulb.init_state.pos = tuple(
-            s - o for s, o in zip(seat_w, _rotate_vec(fixture_quat, BULB_PLUG_OFFSET))
-        )
-        scene.bulb.init_state.rot = fixture_quat
-        scene.bulb.spawn.rigid_props.kinematic_enabled = True
+    # Old bulb: seated in the fixture (kinematic "screwed in" stand-in).
+    seat_w = tuple(
+        f + o for f, o in zip(fixture_pos, _rotate_vec(fixture_quat, SOCKET_SEAT_OFFSET))
+    )
+    old_bulb_pos = tuple(
+        s - o for s, o in zip(seat_w, _rotate_vec(fixture_quat, BULB_PLUG_OFFSET))
+    )
+    scene.old_bulb = RigidObjectCfg(
+        prim_path="{ENV_REGEX_NS}/OldBulb",
+        spawn=sim_utils.UsdFileCfg(
+            usd_path=BULB_USD,
+            func=spawn_b1k_single_body,
+            rigid_props=sim_utils.RigidBodyPropertiesCfg(kinematic_enabled=True),
+            articulation_props=sim_utils.ArticulationRootPropertiesCfg(articulation_enabled=False),
+        ),
+        init_state=RigidObjectCfg.InitialStateCfg(pos=old_bulb_pos, rot=fixture_quat),
+    )
+
+    # Disposal crate: the old bulb's destination, in its own sampled zone. A kinematic
+    # RigidObjectCfg (not AssetBaseCfg like the bench presets' bin) so rewards and the
+    # privileged obs group can read its pose; the crate USD authors colliders but no
+    # RigidBodyAPI, hence the SimReady spawn helper.
+    scene.bin = RigidObjectCfg(
+        prim_path="{ENV_REGEX_NS}/Bin",
+        spawn=sim_utils.UsdFileCfg(
+            usd_path=CRATE_USD,
+            func=_spawn_usd_as_rigid_body,
+            rigid_props=sim_utils.RigidBodyPropertiesCfg(kinematic_enabled=True),
+        ),
+        init_state=RigidObjectCfg.InitialStateCfg(
+            pos=(disposal_center[0], disposal_center[1], BIN_POSITION[2])
+        ),
+    )

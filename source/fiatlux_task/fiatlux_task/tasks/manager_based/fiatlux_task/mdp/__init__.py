@@ -41,20 +41,36 @@ from isaaclab.envs.mdp import (  # noqa: F401
 )
 
 from .events import randomize_light_properties  # noqa: F401
-from .observations import contact_net_forces, root_pose_w  # noqa: F401
+from .observations import (  # noqa: F401
+    contact_net_forces,
+    replace_score_distances,
+    root_pose_w,
+)
 from .rewards import (  # noqa: F401
+    bulb_fixture_distance,
     bulb_seated,
     climb_height_progress,
     climbed_to_target,
     com_sway_l2,
+    completion_bonus,
+    distance_progress,
     fall_terminated,
+    full_replacement_success,
     hand_contact_force_l2,
     joint_acc_l2,
     joint_pos_limits,
     ladder_contact_fraction,
+    ladder_fixture_distance,
+    ladder_ready,
+    ladder_tipped,
     object_dropped,
     object_socket_distance,
     object_socket_distance_exp,
     object_socket_distance_tanh,
     object_socket_orientation_tanh,
+    old_bulb_disposal_distance,
+    old_bulb_disposed,
+    old_bulb_dropped,
+    old_bulb_fixture_clearance,
+    old_bulb_removed,
 )

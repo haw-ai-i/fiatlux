@@ -18,6 +18,14 @@ Ladder climb (``FIATLUX-Climb-v0``) — ascent terms:
 - a limb-on-ladder contact fraction (filtered contact sensor),
 - a whole-body CoM sway penalty,
 - an at-the-top success predicate (also the success termination).
+
+Full replacement (``FIATLUX-Replace-v0``) — the scored full task:
+- named distance channels (ladder top → fixture, fresh bulb → fixture, old bulb clearance
+  from the fixture, old bulb → disposal crate),
+- a generic normalized-progress term (``(d0 - d) / d0`` clamped to [0, 1], so randomized
+  spawn distances cannot dominate the score),
+- sparse completion predicates (ladder in range, old bulb removed / disposed, full success),
+- a ladder-tipped predicate (penalty + termination for the dynamic ladder).
 """
 
 from __future__ import annotations
@@ -31,10 +39,10 @@ from isaaclab.managers import ManagerTermBase, SceneEntityCfg
 from isaaclab.sensors import ContactSensor
 from isaaclab.utils.math import quat_apply, quat_error_magnitude
 
-from fiatlux_task.assets import BULB_PLUG_OFFSET, SOCKET_SEAT_OFFSET
+from fiatlux_task.assets import BULB_PLUG_OFFSET, SOCKET_SEAT_OFFSET, STEP_LADDER_TOP_OFFSET
 
 if TYPE_CHECKING:
-    from collections.abc import Sequence
+    from collections.abc import Callable, Sequence
 
     from isaaclab.envs import ManagerBasedRLEnv
     from isaaclab.managers import RewardTermCfg
@@ -289,3 +297,191 @@ def climbed_to_target(
     near = (dx.square() + dy.square()) < xy_radius**2
     calm = asset.data.root_lin_vel_w.norm(dim=-1) < max_speed
     return high & near & calm
+
+
+# ---------------------------------------------------------------------------
+# Full replacement task (FIATLUX-Replace-v0)
+# ---------------------------------------------------------------------------
+#
+# Distance channels are module-level named functions (not lambdas/closures) so env cfgs can
+# reference them in ``RewardTermCfg.params`` and stay serializable.
+
+
+def _ladder_top_point_w(env: ManagerBasedRLEnv) -> torch.Tensor:
+    """World position of the step ladder's top platform (STEP_LADDER_TOP_OFFSET)."""
+    ladder: RigidObject = env.scene["ladder"]
+    offset = torch.tensor(STEP_LADDER_TOP_OFFSET, device=env.device).expand(env.num_envs, 3)
+    return ladder.data.root_pos_w + quat_apply(ladder.data.root_quat_w, offset)
+
+
+def _old_bulb_plug_point_w(env: ManagerBasedRLEnv) -> torch.Tensor:
+    """World position of the old bulb's plug (bulblampM metalink)."""
+    old_bulb: RigidObject = env.scene["old_bulb"]
+    offset = torch.tensor(BULB_PLUG_OFFSET, device=env.device).expand(env.num_envs, 3)
+    return old_bulb.data.root_pos_w + quat_apply(old_bulb.data.root_quat_w, offset)
+
+
+def ladder_fixture_distance(env: ManagerBasedRLEnv) -> torch.Tensor:
+    """Distance (m) from the ladder's top platform to the fixture's socket seat."""
+    return torch.norm(_ladder_top_point_w(env) - _seat_point_w(env), dim=1)
+
+
+def bulb_fixture_distance(env: ManagerBasedRLEnv) -> torch.Tensor:
+    """Distance (m) from the fresh bulb's plug to the fixture's socket seat."""
+    return _bulb_socket_pos_error(env)
+
+
+def old_bulb_fixture_clearance(env: ManagerBasedRLEnv) -> torch.Tensor:
+    """Distance (m) of the old bulb's plug from the fixture's socket seat (0 = still seated)."""
+    return torch.norm(_old_bulb_plug_point_w(env) - _seat_point_w(env), dim=1)
+
+
+def old_bulb_disposal_distance(env: ManagerBasedRLEnv) -> torch.Tensor:
+    """Distance (m) from the old bulb to the disposal crate's origin."""
+    old_bulb: RigidObject = env.scene["old_bulb"]
+    crate: RigidObject = env.scene["bin"]
+    return torch.norm(old_bulb.data.root_pos_w - crate.data.root_pos_w, dim=1)
+
+
+class distance_progress(ManagerTermBase):
+    """Normalized distance progress, paid as increments of the episode's best (each once).
+
+    Progress is ``(d0 - d) / d0`` clamped to [0, 1], with ``d0`` the term's ``distance_fn``
+    captured at episode reset (event-manager reset terms run before the reward-manager
+    reset, so this reads the post-randomization state). Normalizing by the *episode's own*
+    start distance means a lucky spawn that starts close cannot outscore an unlucky far
+    one -- both saturate at 1.0 on arrival -- the full-task plan's randomization-fairness
+    requirement.
+
+    With ``away_threshold`` set, the channel measures progress *away* from a point
+    instead: ``d / away_threshold`` clamped to [0, 1]. The d0 normalization cannot apply
+    there (the old bulb starts *at* the fixture, d0 ~ 0), so an absolute clearance
+    threshold bounds it.
+
+    Paying best-progress increments (the ``climb_height_progress`` scheme) rather than the
+    level keeps the episode total equal to the final achieved progress: loitering at high
+    progress earns nothing, and ``Episode_Reward/<term>`` reads directly as achieved
+    normalized progress (times weight, per unit episode time).
+    """
+
+    def __init__(self, cfg: RewardTermCfg, env: ManagerBasedRLEnv):
+        super().__init__(cfg, env)
+        self._initial = torch.ones(env.num_envs, device=env.device)
+        self._best = torch.zeros(env.num_envs, device=env.device)
+
+    def reset(self, env_ids: Sequence[int] | None = None) -> None:
+        ids = slice(None) if env_ids is None else env_ids
+        fn: Callable[[ManagerBasedRLEnv], torch.Tensor] = self.cfg.params["distance_fn"]
+        d = fn(self._env)[ids]
+        # floor d0: a spawn already at the target must read "done" (1.0), not divide by ~0
+        self._initial[ids] = d.clamp_min(1e-3)
+        away = self.cfg.params.get("away_threshold")
+        # seed best with the spawn's own progress so reset state never pays
+        self._best[ids] = 0.0 if away is None else (d / away).clamp(0.0, 1.0)
+
+    def __call__(
+        self,
+        env: ManagerBasedRLEnv,
+        distance_fn: Callable[[ManagerBasedRLEnv], torch.Tensor],
+        away_threshold: float | None = None,
+    ) -> torch.Tensor:
+        d = distance_fn(env)
+        if away_threshold is None:
+            progress = ((self._initial - d) / self._initial).clamp(0.0, 1.0)
+        else:
+            progress = (d / away_threshold).clamp(0.0, 1.0)
+        gain = (progress - self._best).clamp(min=0.0)
+        self._best = torch.maximum(self._best, progress)
+        return gain
+
+
+class completion_bonus(ManagerTermBase):
+    """Pay 1.0 on the first step ``predicate_fn`` is true each episode (sparse completion).
+
+    A completion state persists (a seated bulb stays seated), so paying the raw predicate
+    per step would reward milking an achieved state until timeout instead of finishing;
+    one-shot pay keeps ``Episode_Reward/<term>`` a clean did-it-happen flag.
+    """
+
+    def __init__(self, cfg: RewardTermCfg, env: ManagerBasedRLEnv):
+        super().__init__(cfg, env)
+        self._paid = torch.zeros(env.num_envs, dtype=torch.bool, device=env.device)
+
+    def reset(self, env_ids: Sequence[int] | None = None) -> None:
+        ids = slice(None) if env_ids is None else env_ids
+        self._paid[ids] = False
+
+    def __call__(
+        self,
+        env: ManagerBasedRLEnv,
+        predicate_fn: Callable[..., torch.Tensor],
+        predicate_params: dict | None = None,
+    ) -> torch.Tensor:
+        pred = predicate_fn(env, **(predicate_params or {}))
+        fire = pred & ~self._paid
+        self._paid |= pred
+        return fire.float()
+
+
+def ladder_ready(env: ManagerBasedRLEnv, xy_radius: float, tilt_limit: float) -> torch.Tensor:
+    """True where the (upright) ladder's top is horizontally within reach of the fixture."""
+    delta = _ladder_top_point_w(env) - _seat_point_w(env)
+    near = torch.norm(delta[:, :2], dim=1) < xy_radius
+    return near & ~ladder_tipped(env, tilt_limit)
+
+
+def old_bulb_removed(env: ManagerBasedRLEnv, clearance_threshold: float) -> torch.Tensor:
+    """True where the old bulb has cleared the fixture's socket by ``clearance_threshold``."""
+    return old_bulb_fixture_clearance(env) > clearance_threshold
+
+
+def old_bulb_disposed(env: ManagerBasedRLEnv, distance_threshold: float) -> torch.Tensor:
+    """True where the old bulb rests within ``distance_threshold`` of the disposal crate."""
+    return old_bulb_disposal_distance(env) < distance_threshold
+
+
+def old_bulb_dropped(
+    env: ManagerBasedRLEnv, min_height: float, disposal_threshold: float
+) -> torch.Tensor:
+    """True where the old bulb lies at floor level *away* from the disposal crate.
+
+    A plain height gate cannot work here: legitimately disposing the bulb also ends near
+    the floor (resting inside the crate), so "dropped" additionally requires being outside
+    the crate's ``disposal_threshold``.
+    """
+    old_bulb: RigidObject = env.scene["old_bulb"]
+    below = old_bulb.data.root_pos_w[:, 2] < min_height
+    return below & ~old_bulb_disposed(env, disposal_threshold)
+
+
+def full_replacement_success(
+    env: ManagerBasedRLEnv,
+    pos_threshold: float = 0.015,
+    ori_threshold: float = 0.2,
+    disposal_threshold: float = 0.25,
+) -> torch.Tensor:
+    """True where the fresh bulb is seated AND the old bulb is in the disposal crate.
+
+    Disposal implies removal, so the removed predicate is not re-checked. Also the
+    ``success`` termination.
+    """
+    return bulb_seated(env, pos_threshold, ori_threshold) & old_bulb_disposed(
+        env, disposal_threshold
+    )
+
+
+def ladder_tipped(
+    env: ManagerBasedRLEnv,
+    tilt_limit: float,
+    asset_cfg: SceneEntityCfg = SceneEntityCfg("ladder"),
+) -> torch.Tensor:
+    """True where the (dynamic) ladder's local up-axis tilts beyond ``tilt_limit`` (rad).
+
+    Penalty + termination for the replace task; the episode ends on the tipping step, so
+    (like ``fall_terminated``) the penalty fires once per tip.
+    """
+    ladder: RigidObject = env.scene[asset_cfg.name]
+    up = torch.zeros(env.num_envs, 3, device=env.device)
+    up[:, 2] = 1.0
+    up_w = quat_apply(ladder.data.root_quat_w, up)
+    return torch.acos(up_w[:, 2].clamp(-1.0, 1.0)) > tilt_limit

@@ -1,5 +1,99 @@
 # Task Specifications
 
+# `FIATLUX-Replace-v0` — the benchmark task
+
+Defined in
+`source/fiatlux_task/fiatlux_task/tasks/manager_based/fiatlux_task/replace_env_cfg.py`.
+The full light-bulb replacement, scored as **one flat RL episode** (no policy stitching
+or stage chaining — that is solution structure, not benchmark structure). Design record:
+`journal/specs/full-task-benchmark-plan.md`.
+
+## Scene (randomized per build)
+
+The **replace preset** of the shared family scene (`scene_cfg.apply_replace_preset`):
+robot, ladder, table (with the **fresh bulb** on it), and the **disposal crate** are each
+randomized into their own non-overlapping floor "safe zone"; the **fixture** (the
+validated BEHAVIOR-1K socket-lamp) mounts randomly on the ceiling or a wall with the
+**old bulb** seated in it. The layout is sampled once per scene build; per-episode resets
+return to it (plus the reset jitter below).
+
+- The **ladder is dynamic** (12 kg) — only in this preset — so knocking it over is a real,
+  penalized, episode-ending event. Ladder placement is *independent* of the fixture by
+  default; `ReplaceEnvCfg.couple_ladder_to_fixture = True` is an explicit debug/curriculum
+  opt-in that spawns it reachably near the fixture.
+- The **old bulb is kinematic**: the "screwed in" stand-in until the attach/detach
+  mechanic exists (unification spec Phase 4). Its removal/disposal channels are scored
+  and reported but not yet achievable by any policy — the same gap Remove/Install carry.
+
+## Goal
+
+Insert the fresh bulb into the fixture, remove the old bulb from the fixture, and place
+the old bulb in the disposal crate. Full success = fresh bulb seated **and** old bulb in
+the crate.
+
+## Actions
+
+Whole-body joint-position targets (all DoF incl. fingers, like Climb): the task spans
+locomotion, ladder work, and manipulation.
+
+## Observations — `standard` vs `cheatcode` modes
+
+Two groups (named `policy`/`privileged` for rsl_rl's routing; the benchmark calls the
+modes **standard** and **cheatcode**):
+
+- **`policy` = standard mode** (sensor-realizable only): IMU (base angular velocity,
+  projected gravity), estimated base height + linear velocity (the documented
+  estimator-realizable exception, as in Climb), joint pos/vel, hand contact forces,
+  **torso-mounted RGB camera features** (needs `--enable_cameras`), last action.
+  Corruption enabled.
+- **`privileged` = cheatcode mode** (exact simulator state): world poses of the robot,
+  ladder, fixture, fresh bulb, old bulb, and disposal crate, plus the four score-relevant
+  distances (`replace_score_distances`). Critic-only during RL
+  (`ReplacePPORunnerCfg.obs_groups`); a cheatcode policy may consume it directly.
+
+Smoke-test policies (`fiatlux_task/policy.py`): `basic_standard` consumes only the
+standard group and holds posture; `basic_cheatcode` additionally asserts and reads the
+privileged group. Both prove the episode/scoring loop end-to-end; neither solves the task.
+
+## Rewards (the score breakdown)
+
+Every channel is its own named term, so `Episode_Reward/<term>` sums **are** the score
+breakdown. Dense terms pay *increments of the episode's best normalized progress* —
+`(d0 − d) / d0` clamped to [0, 1] with `d0` captured at reset — so randomized spawn
+distances cannot dominate the score (a lucky close spawn and an unlucky far one both cap
+at 1.0). Completion bonuses pay once per episode.
+
+| Term | Kind | Purpose |
+| --- | --- | --- |
+| `ladder_progress` (+) | dense | ladder top → fixture, normalized progress |
+| `fresh_bulb_progress` (+) | dense | fresh-bulb plug → fixture seat, normalized progress |
+| `old_bulb_removal` (+) | dense | old-bulb clearance from the seat vs an absolute 0.10 m threshold (its d0 ≈ 0, so toward-style normalization can't apply) |
+| `old_bulb_disposal_progress` (+) | dense | old bulb → disposal crate, normalized progress |
+| `ladder_ready` (+) | completion | upright ladder top horizontally within 0.9 m of the fixture |
+| `fresh_bulb_inserted` (+) | completion | fresh bulb seated (Insert's 1.5 cm / 0.2 rad tolerances) |
+| `old_bulb_removed` (+) | completion | old bulb cleared the seat by 0.10 m |
+| `old_bulb_disposed` (+) | completion | old bulb within 0.25 m of the crate |
+| `success_bonus` (+) | sparse | full replacement (fires on the terminating step) |
+| `robot_fall`, `ladder_tipped`, `fresh_bulb_dropped`, `old_bulb_dropped` (−) | penalty | each fires once — the same predicate also terminates |
+| `contact_penalty` (−) | penalty | hand contact force (fragile-handling proxy) |
+| `com_sway`, `ang_vel_xy`, `action_rate`, `joint_acc`, ankle limits, waist/finger deviation (−) | shaping | stability / smoothness |
+
+## Success & termination
+
+- **Success** (`full_replacement_success`): fresh bulb seated **and** old bulb within
+  0.25 m of the disposal crate.
+- **Robot fall**: root below 0.35 m or tilt beyond 1.0 rad (family thresholds).
+- **Ladder tipped**: ladder up-axis beyond 0.6 rad from vertical.
+- **Fresh bulb dropped**: below 0.4 m. **Old bulb dropped**: below 0.15 m *and* away
+  from the crate (a disposed bulb legitimately rests near the floor inside it).
+- **Timeout**: `episode_length_s = 40 s` (the full approach → ladder → insert → dispose
+  horizon).
+
+## Randomization
+
+Scene layout (zones, fixture mount, ladder yaw, robot yaw) per scene build; robot root
+xy (±5 cm) / yaw (±0.1 rad), joints (±0.05 rad), and light intensities per reset.
+
 # `FIATLUX-Insert-v0`
 
 Defined in

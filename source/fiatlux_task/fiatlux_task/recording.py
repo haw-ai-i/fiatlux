@@ -59,13 +59,14 @@ def _np(t: torch.Tensor) -> np.ndarray:
     return t.detach().to("cpu").numpy()
 
 
-def _term_flag(env, name: str, n: int, device) -> torch.Tensor:
+def term_flag(env, name: str, n: int, device) -> torch.Tensor:
     """Read a termination term flag for the current step (False vector if absent).
 
     The term flags reflect the step that triggered the done and survive the
     in-``step`` auto-reset, so they are the correct source for "did this episode
     end in success / a drop". We try the public accessor first, then the manager's
-    internal store for cross-version robustness.
+    internal store for cross-version robustness. Shared with ``scripts/eval.py``,
+    which reads the ``success`` term through it.
     """
     tm = env.termination_manager
     getter = getattr(tm, "get_term", None)
@@ -130,9 +131,9 @@ class TrajectoryRecorder:
             "terminated": terminated,
             "truncated": truncated,
             "done": done,
-            "success_term": _term_flag(env, "success", self.n, self.device),
-            "dropped_term": _term_flag(env, "bulb_dropped", self.n, self.device),
-            "timeout_term": _term_flag(env, "time_out", self.n, self.device),
+            "success_term": term_flag(env, "success", self.n, self.device),
+            "dropped_term": term_flag(env, "bulb_dropped", self.n, self.device),
+            "timeout_term": term_flag(env, "time_out", self.n, self.device),
         }
         for key, value in step.items():
             self._buf.setdefault(key, []).append(_np(value))

@@ -70,6 +70,11 @@ STEP_LADDER_USD = os.path.join(
     "HeavyDutyFiberglassStepLadder_A01_PR_NVD_01_collision.usd",
 )
 
+# The step ladder's top-platform point in its base_link frame (metres, after the 0.01 spawn
+# scale; the asset is 1.75 m tall with its base authored at z=0, the top step sits slightly
+# below the rail top). Used by the replace task's ladder-progress scoring.
+STEP_LADDER_TOP_OFFSET = (0.0, 0.0, 1.70)
+
 # Elevated fixture for the at-height task presets (climb/descend/remove/install): a
 # BEHAVIOR-1K ceiling chandelier standing in as the socket the ladder leads to. One
 # deterministic model (``qghfol``); 3 more chandelier ids are local for variety.
