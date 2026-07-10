@@ -58,3 +58,17 @@ class ClimbPPORunnerCfg(PPORunnerCfg):
     save_interval = 100
     experiment_name = "fiatlux_climb"
     obs_groups = {"policy": ["policy"], "critic": ["policy", "privileged"]}
+
+
+@configclass
+class ReplacePPORunnerCfg(PPORunnerCfg):
+    """PPO runner for the full replacement task (same explicit obs-group routing as Climb:
+    the standard/``policy`` group feeds the actor, the cheatcode/``privileged`` group is
+    critic-only). The budget is aspirational -- the flat full task is far past what PPO
+    from scratch solves; this config exists so the train/play/eval tooling runs end-to-end.
+    """
+
+    max_iterations = 5000
+    save_interval = 100
+    experiment_name = "fiatlux_replace"
+    obs_groups = {"policy": ["policy"], "critic": ["policy", "privileged"]}

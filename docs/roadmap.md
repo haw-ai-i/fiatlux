@@ -1,8 +1,9 @@
 # Roadmap
 
-The functional benchmark today is the **insertion** subtask (`FIATLUX-Insert-v0`)
-plus the **climbing** subtask (`FIATLUX-Climb-v0`). Everything below is planned,
-not implemented — listed so the extension seams are intentional.
+The scored benchmark is the **full replacement task** (`FIATLUX-Replace-v0`); the
+**insertion** (`FIATLUX-Insert-v0`) and **climbing** (`FIATLUX-Climb-v0`) subtasks
+remain as functional development environments, not benchmark targets. Unfinished
+items below are listed so the extension seams are intentional.
 
 ## 1. Climbing subtask — `FIATLUX-Climb-v0` — ✅ DONE (2026-07-06)
 
@@ -23,18 +24,26 @@ Remaining polish for later: a start-state curriculum (mounted poses from
 `fiatlux_task/poses.py`), and the phase-handoff state bank (unification spec
 Phase 5).
 
-## 2. Combined task — `FIATLUX-Replace-v0`
+## 2. Full task — `FIATLUX-Replace-v0` — ✅ PRIMARY BENCHMARK (2026-07-09)
 
-Descoped by the issue's own author comment: policy stitching/staged-curriculum chaining
-is "structurally not part of the benchmark, but of solution" and stays off the roadmap
-indefinitely, not just deferred.
+Promoted from scene-only scaffold to the scored full-task RL environment per
+`journal/specs/full-task-benchmark-plan.md` (this deliberately reverses the earlier
+"stays off the roadmap" call for the *task itself*; the policy-stitching part of that
+descoping still stands — it is one flat RL episode, chaining is solution structure).
 
 - ~~Build and verify the full combined-family scene: robot, ladder, table+bulb, and the
   elevated fixture together, each randomized into its own non-overlapping floor "safe
   zone" per scene build, fixture randomly ceiling- or wall-mounted.~~ DONE (2026-07-07):
-  non-RL scaffold, `scene_cfg.apply_replace_preset`.
-- Reward/termination logic and end-to-end approach → climb → insert → verify chaining:
-  not planned.
+  `scene_cfg.apply_replace_preset`.
+- ~~Reward/termination logic: normalized-progress scoring (spawn-distance fair), sparse
+  completions, fall/tip/drop penalties, full-success termination; `standard` (sensor) vs
+  `cheatcode` (privileged) observation modes; `basic_standard`/`basic_cheatcode`
+  smoke-test policies.~~ DONE (2026-07-09): `replace_env_cfg.py`, see
+  `docs/task_spec.md` / `docs/scoring.md`.
+- Policy stitching / staged-curriculum chaining: not planned (solution structure).
+- Old-bulb attach/detach mechanic (screw joint or make/break attach): still deferred
+  (unification spec Phase 4). Until it lands the old bulb is kinematic — its removal
+  and disposal score channels are wired and reported but not yet achievable.
 
 ## 3. Learned-policy support
 

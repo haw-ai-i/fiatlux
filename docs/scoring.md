@@ -1,11 +1,14 @@
 # Scoring & Evaluation Protocol
 
-Evaluation is a single command, `scripts/eval.py`, run from a fixed seed for a
-fixed number of episodes. Same `--task`, `--seed`, `--policy` (and checkpoint)
-→ same numbers.
+The scored benchmark task is **`FIATLUX-Replace-v0`** (the full replacement; see
+`docs/task_spec.md`). The subtask envs remain evaluable with the same tooling as
+development aids. Evaluation is a single command, `scripts/eval.py`, run from a
+fixed seed for a fixed number of episodes. Same `--task`, `--seed`, `--policy`
+(and checkpoint) → same numbers.
 
 ```bash
-python scripts/eval.py --task FIATLUX-Insert-v0 --policy random --episodes 20 --seed 0
+python scripts/eval.py --task FIATLUX-Replace-v0 --policy basic_standard \
+    --episodes 20 --seed 0 --enable_cameras
 python scripts/eval.py --task FIATLUX-Insert-v0 --policy rsl_rl --checkpoint <model.pt> \
     --episodes 50 --seed 0 --output results.json
 ```
@@ -14,15 +17,25 @@ python scripts/eval.py --task FIATLUX-Insert-v0 --policy rsl_rl --checkpoint <mo
 
 | Metric | Meaning | Primary? |
 | --- | --- | --- |
-| `success_rate` | fraction of episodes ending with the bulb seated | ✅ headline |
+| `success_rate` | fraction of episodes ending in the task's `success` termination | ✅ headline |
+| `score_breakdown` | per-term episode means from the env's reward/termination managers | ✅ the breakdown |
 | `mean_episode_length` | avg steps per episode | |
-| `mean_final_pos_error` | avg bulb→socket distance at episode end (m) | |
 | `mean_control_effort` | avg Σ(action²) per step | |
 | `peak_contact_force` | max net hand contact force (N) | safety |
 
+`score_breakdown` reports every named reward term (`Episode_Reward/<term>`: the
+episodic sum averaged per second of episode time) and termination term
+(`Episode_Termination/<term>`: the fraction of episodes that term ended). For
+`FIATLUX-Replace-v0` this is the benchmark's score breakdown by construction —
+dense normalized progress per subgoal, sparse completions, penalties, and full
+success are all separate named channels, so partial progress maps onto the
+subtasks without making the subtasks separate benchmark targets. The dense terms
+use per-episode normalized progress (`(d0 − d) / d0`, clamped to [0, 1]), so
+randomized spawn distances do not skew scores.
+
 The benchmark is **multi-dimensional on purpose**: report success rate alongside
-control effort and peak contact force — a policy that succeeds by slamming the
-bulb in is not a good policy.
+the breakdown, control effort, and peak contact force — a policy that succeeds
+by slamming the bulb in is not a good policy.
 
 ## Reporting convention
 
@@ -30,10 +43,49 @@ bulb in is not a good policy.
 - Report all five metrics, the policy type, and the checkpoint.
 - For learned policies, also report seeds `0,1,2` and their mean ± std.
 
+## Telemetry (Weights & Biases)
+
+The benchmark ships its own logging abstraction (`fiatlux_task.telemetry.ScoreLogger`,
+issue #16): pass `--wandb` to `scripts/eval.py` or `scripts/record_run.py` to stream
+the score breakdown live — one wandb chart per named channel (`Episode_Reward/<term>`,
+`Episode_Termination/<term>`) plus the running `success_rate`, x-axis = completed
+episodes. `record_run.py --wandb` also attaches the rollout MP4 to the run, and the
+final aggregate results land in the run summary.
+
+```bash
+python scripts/eval.py --task FIATLUX-Replace-v0 --policy basic_standard \
+    --episodes 20 --seed 0 --enable_cameras --wandb --wandb_project fiatlux
+```
+
+This is *benchmark-side* telemetry: the channels are defined by the task's own
+reward/termination managers, so every submission logs the same channel names no
+matter how the policy was produced. Use `WANDB_MODE=offline` without an account;
+`--wandb_entity/--wandb_project/--wandb_run_name` control the destination.
+*Training-side* telemetry is a policy concern and already has a path — e.g.
+`scripts/rsl_rl/train.py --logger wandb` for the RSL-RL baseline.
+
+Extending it: all metric definitions live in one module,
+`fiatlux_task/telemetry.py` — new channels go in `ScoreLogger.step`/`results`
+(they then appear in wandb, the run summary, and `eval.py`'s JSON at once), new
+backends implement the small `Sink` protocol next to `WandbSink`. Policies may
+optionally expose per-step diagnostics (e.g. a critic value estimate) via an
+`info` dict attribute; these stream as running means under the `policy/`
+namespace, kept apart from the score channels (see `fiatlux_task/policy.py`).
+
+Determinism note: the replace preset's room layout is drawn at scene-build time from
+the global `random` stream, which `eval.py`/`record_run.py` seed from `--seed` — so
+the same-seed-same-numbers contract covers the layout too.
+
 ## Baselines
 
 - `zero` — no action (sanity floor).
 - `random` — uniform random actions (sanity floor).
+- `basic_standard` — zero-action smoke test bound to the **standard** observation
+  mode (the sensor-realizable `policy` group only; never touches privileged
+  state). Its acceptance bar is valid episode execution + score artifact
+  generation, not task success.
+- `basic_cheatcode` — the same, but additionally asserts and reads the
+  **cheatcode** (`privileged`) observation group every step.
 - `rsl_rl` — a trained PPO checkpoint (`scripts/rsl_rl/train.py`).
 
 ## Offline scoring (`scripts/score.py`)

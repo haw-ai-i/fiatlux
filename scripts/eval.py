@@ -8,17 +8,27 @@
 Runs a policy for a fixed number of episodes from a fixed seed and reports the
 benchmark metrics as JSON:
 
-- ``success_rate``        : fraction of episodes where the bulb ends seated.
+- ``success_rate``        : fraction of episodes ending in the task's ``success``
+                            termination (task-agnostic: whatever the env defines).
 - ``mean_episode_length`` : average steps per episode.
-- ``mean_final_pos_error``: average bulb->socket distance at episode end (m).
 - ``mean_control_effort`` : average sum-of-squared actions per step.
 - ``peak_contact_force``  : max net hand contact force seen (N).
+- ``score_breakdown``     : per-term episode means from the env's own reward /
+                            termination managers (``Episode_Reward/<term>`` is the
+                            episodic sum averaged per second; ``Episode_Termination/
+                            <term>`` is the fraction of episodes that term ended).
+                            For ``FIATLUX-Replace-v0`` this is the benchmark's score
+                            breakdown: dense normalized progress, sparse completions,
+                            penalties, and full success as separate named channels.
 
 Determinism: same ``--task``, ``--seed`` and ``--policy`` give the same numbers.
 
 Examples:
     python scripts/eval.py --task FIATLUX-Insert-v0 --policy zero --episodes 20
-    python scripts/eval.py --task FIATLUX-Insert-v0 --policy random --episodes 20
+    python scripts/eval.py --task FIATLUX-Replace-v0 --policy basic_standard \
+        --episodes 2 --enable_cameras
+    python scripts/eval.py --task FIATLUX-Replace-v0 --policy basic_cheatcode \
+        --episodes 2 --enable_cameras
     python scripts/eval.py --task FIATLUX-Insert-v0 --policy rsl_rl \
         --checkpoint logs/rsl_rl/fiatlux_task/<run>/model_*.pt
 """
@@ -47,10 +57,19 @@ parser.add_argument("--output", type=str, default=None, help="Optional JSON outp
 parser.add_argument(
     "--disable_fabric", action="store_true", default=False, help="Use USD I/O."
 )
+# Benchmark telemetry flags (--wandb, --wandb_project, ...); mirrors fiatlux_task.telemetry.
+parser.add_argument("--wandb", action="store_true", default=False, help="Stream the score breakdown to wandb.")
+parser.add_argument("--wandb_project", type=str, default="fiatlux", help="wandb project name.")
+parser.add_argument("--wandb_entity", type=str, default=None, help="wandb entity (team/user).")
+parser.add_argument("--wandb_run_name", type=str, default=None, help="wandb run name.")
 AppLauncher.add_app_launcher_args(parser)
 args_cli = parser.parse_args()
-# Evaluation is headless by default unless overridden.
-args_cli.headless = True if args_cli.headless is None else args_cli.headless
+# Evaluation is always headless. (AppLauncher's --headless is store_true with default
+# False -- never None -- so the old `if args_cli.headless is None` guard was dead code:
+# on a machine without a display the app then launched in GUI mode and Kit spun a CPU
+# core forever waiting on a window that cannot exist. For interactive viewing use
+# --livestream, which works alongside headless.)
+args_cli.headless = True
 
 app_launcher = AppLauncher(args_cli)
 simulation_app = app_launcher.app
@@ -59,18 +78,23 @@ simulation_app = app_launcher.app
 """Rest everything follows."""
 
 import json
+import random
 
 import fiatlux_task.tasks  # noqa: F401
 import gymnasium as gym
 import torch
 from fiatlux_task.policy import make_policy
-from fiatlux_task.tasks.manager_based.fiatlux_task.mdp import rewards as fiatlux_rewards
+from fiatlux_task.telemetry import ScoreLogger
 
 import isaaclab_tasks  # noqa: F401
 from isaaclab_tasks.utils import parse_env_cfg
 
 
 def main():
+    # Scene-build randomization (the replace preset's room layout) draws from the global
+    # `random` stream at cfg-build time; seed it here so the benchmark's determinism
+    # contract (same --task/--seed/--policy -> same numbers) covers the layout too.
+    random.seed(args_cli.seed)
     env_cfg = parse_env_cfg(
         args_cli.task,
         device=args_cli.device,
@@ -81,57 +105,34 @@ def main():
     env = gym.make(args_cli.task, cfg=env_cfg).unwrapped
 
     policy = make_policy(args_cli.policy, env, checkpoint=args_cli.checkpoint)
-
-    successes = 0
-    episodes_done = 0
-    ep_lengths: list[int] = []
-    final_pos_errors: list[float] = []
-    control_efforts: list[float] = []
-    peak_contact = 0.0
+    # All metric definitions (success, episode stats, score breakdown) live in
+    # fiatlux_task.telemetry; this loop only feeds it raw step artifacts.
+    score_logger = ScoreLogger.from_args(args_cli)
 
     obs, _ = env.reset(seed=args_cli.seed)
     step_in_ep = torch.zeros(env.num_envs, device=env.device)
 
     target = args_cli.episodes
     with torch.inference_mode():
-        while episodes_done < target:
+        while score_logger.episodes_done < target:
             actions = policy(obs)
-            obs, _, terminated, truncated, _ = env.step(actions)
+            obs, _, terminated, truncated, extras = env.step(actions)
             done = terminated | truncated
             step_in_ep += 1
+            score_logger.step(
+                env,
+                extras,
+                done,
+                episode_lengths=step_in_ep,
+                actions=actions,
+                max_episodes=target,
+                # Optional policy-side diagnostics (a policy may refresh `policy.info`
+                # per call, e.g. a critic value estimate); never required.
+                policy_info=getattr(policy, "info", None),
+            )
+            step_in_ep[done] = 0
 
-            control_efforts.append(float(torch.mean(torch.sum(actions**2, dim=-1))))
-            if "hand_contact" in env.scene.sensors:
-                f = env.scene.sensors["hand_contact"].data.net_forces_w
-                peak_contact = max(peak_contact, float(torch.norm(f, dim=-1).max()))
-
-            done_ids = torch.nonzero(done, as_tuple=False).flatten()
-            if len(done_ids) > 0:
-                seated = fiatlux_rewards.bulb_seated(env)
-                pos_err = fiatlux_rewards._bulb_socket_pos_error(env)
-                for i in done_ids.tolist():
-                    if episodes_done >= target:
-                        break
-                    successes += int(bool(seated[i].item()))
-                    final_pos_errors.append(float(pos_err[i].item()))
-                    ep_lengths.append(int(step_in_ep[i].item()))
-                    episodes_done += 1
-                step_in_ep[done_ids] = 0
-
-    def _mean(xs):
-        return float(sum(xs) / len(xs)) if xs else 0.0
-
-    results = {
-        "task": args_cli.task,
-        "policy": args_cli.policy,
-        "seed": args_cli.seed,
-        "episodes": episodes_done,
-        "success_rate": successes / max(episodes_done, 1),
-        "mean_episode_length": _mean(ep_lengths),
-        "mean_final_pos_error": _mean(final_pos_errors),
-        "mean_control_effort": _mean(control_efforts),
-        "peak_contact_force": peak_contact,
-    }
+    results = score_logger.close()
     print(json.dumps(results, indent=2))
     if args_cli.output:
         with open(args_cli.output, "w") as fh:

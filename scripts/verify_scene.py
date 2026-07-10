@@ -12,8 +12,8 @@ contact/penetration.
 It covers the whole task family: the entity list is derived from the task's scene cfg, so
 presets that drop entities (tabletop has no ladder, workshop has no table) verify with the
 same tool. RL members work too -- their step returns are ignored and mid-run auto-resets do
-not disturb the checks. ``FIATLUX-Insert-v0`` carries a wrist-camera sensor, so verifying it
-needs ``--enable_cameras``.
+not disturb the checks. ``FIATLUX-Insert-v0`` (wrist camera) and ``FIATLUX-Replace-v0``
+(torso camera) carry camera sensors, so verifying them needs ``--enable_cameras``.
 
 Examples
 --------
@@ -105,7 +105,7 @@ from isaaclab_tasks.utils import parse_env_cfg
 # task's scene cfg, so this one verifier covers every family preset: the tabletop preset
 # has no ladder, the workshop presets have no table, dressing cfgs may drop the fixture.
 GLOBAL_CANDIDATES = ["ground", "dome_light", "key_light", "room"]
-TRACKED_CANDIDATES = ["robot", "ladder", "lamp", "socket", "bulb", "table", "bin"]
+TRACKED_CANDIDATES = ["robot", "ladder", "lamp", "socket", "bulb", "old_bulb", "table", "bin"]
 
 # Presence expectations per scene preset (env cfg attr `scene_preset`): entities that MUST
 # be present / MUST be absent. Layout *positions* are covered generically by the
@@ -118,7 +118,7 @@ PRESET_PRESENCE = {
     "descend": ({"ladder"}, {"table"}),
     "remove": ({"table", "bin"}, {"ladder"}),
     "install": ({"table", "bin"}, {"ladder"}),
-    "replace": ({"table", "ladder"}, {"bin"}),
+    "replace": ({"table", "ladder", "bin", "old_bulb"}, set()),
 }
 
 # where --record writes MP4s (repo-root logs/ dir, next to the RL runs; gitignored)
@@ -217,12 +217,20 @@ def main() -> int:
         if getattr(env_cfg.scene, n, None) is not None
     }
     tracked = [n for n in TRACKED_CANDIDATES if getattr(env_cfg.scene, n, None) is not None]
-    # kinematic set-dressing props (RigidObjects only; the dynamic bulb and the robot are
-    # checked separately, AssetBase entities have no physics state to assert on)
-    kinematic_props = [
+    # Rigid props split by the cfg's own kinematic flag: kinematic ones must hold still,
+    # dynamic ones (the bulb everywhere, the ladder in the replace preset) get the
+    # settles check instead. The robot is checked separately; AssetBase entities have no
+    # physics state to assert on.
+    def is_kinematic(name: str) -> bool:
+        rigid = getattr(getattr(env_cfg.scene, name).spawn, "rigid_props", None)
+        return bool(rigid is not None and rigid.kinematic_enabled)
+
+    rigid_tracked = [
         n for n in tracked
-        if n not in ("robot", "bulb") and isinstance(getattr(env_cfg.scene, n), RigidObjectCfg)
+        if n != "robot" and isinstance(getattr(env_cfg.scene, n), RigidObjectCfg)
     ]
+    kinematic_props = [n for n in rigid_tracked if is_kinematic(n)]
+    dynamic_props = [n for n in rigid_tracked if not is_kinematic(n)]
     robot = base.scene["robot"]
 
     # =========================== 1. ASSETS PRESENT ===========================
@@ -277,7 +285,6 @@ def main() -> int:
     # ----- record initial state, then roll out under zero (hold-default) actions -----
     actions = torch.zeros((base.num_envs, action_dim), device=device)
     init_root_z = robot.data.root_pos_w[:, 2].clone()
-    init_bulb_p = base.scene["bulb"].data.root_pos_w.clone()
     step1_root = None
     nan_seen = False
     min_z_seen, max_z_seen, max_speed_seen = float("inf"), float("-inf"), 0.0
@@ -341,17 +348,27 @@ def main() -> int:
         f"max tilt={tilt:.0f} deg, final |v|={final_lin:.2f} m/s (sagging/tipping is expected without a policy)"
     )
 
-    # props rest stably: kinematic props must not move; the dynamic bulb must settle near where it
-    # started (its init pose is an estimate above the floor, so allow a small drop -- what this
-    # catches is falling through the floor, being launched, or exploding).
+    # props rest stably: kinematic props must not move; dynamic props (the bulb, the
+    # replace preset's ladder) must stay in the world -- not through the floor, not
+    # launched, not exploded. A distance-from-init check would be wrong for them: the
+    # uncontrolled falling robot may legitimately knock a dynamic prop around.
     for n in kinematic_props:
         record(
             f"{n}:static",
             max_kin_move[n] < 1e-2,
             f"max within-episode move={max_kin_move[n] * 1000:.2f} mm (kinematic)",
         )
-    bulb_move = (base.scene["bulb"].data.root_pos_w[:, 2] - init_bulb_p[:, 2]).abs().max().item()
-    record("bulb:settles", (bulb_move < 0.15) and not nan_seen, f"vertical move from init = {bulb_move * 1000:.1f} mm")
+    # Lower bound -0.2: a knocked-over prop resting on its side can carry its origin
+    # slightly below the floor plane (the replace ladder's origin is its base plane);
+    # genuine fall-through reads metres negative within a few steps.
+    for n in dynamic_props:
+        z = base.scene[n].data.root_pos_w[:, 2]
+        zmin, zmax = z.min().item(), z.max().item()
+        record(
+            f"{n}:bounded",
+            (zmin > -0.2) and (zmax < 2.6) and not nan_seen,
+            f"final root z in [{zmin:.2f}, {zmax:.2f}] m",
+        )
 
     # =========================== 4. COLLISION COVERAGE ===========================
     # Imported USD assets (robot and BEHAVIOR-1K props alike) may split visual meshes from

@@ -5,16 +5,20 @@ G1 robot inserts a light bulb into a socket. It is a plain Python / Isaac Lab
 extension — no ROS, no distributed harness — so it plugs into the standard
 `train` / `play` / `teleop` / `eval` scripts.
 
-> **Status (honest):** the **insertion** (`FIATLUX-Insert-v0`) and **climbing**
-> (`FIATLUX-Climb-v0`) subtasks are functional RL tasks. The rest of the ladder
-> family (base scene + carry / descend / remove / install) exists as loadable
-> non-RL scene **scaffolds** — no rewards or training yet. The combined
-> **replace** task is still roadmap. See [docs/roadmap.md](docs/roadmap.md).
+> **Status (honest):** the **full replacement** (`FIATLUX-Replace-v0`) is the scored
+> benchmark task — randomized room layout, normalized-progress scoring,
+> standard/cheatcode observation modes. The **insertion** (`FIATLUX-Insert-v0`) and
+> **climbing** (`FIATLUX-Climb-v0`) subtasks are functional RL tasks kept as
+> development aids; the rest of the family exists as loadable non-RL scene
+> **scaffolds**. The old bulb's unscrew mechanic is still a kinematic stand-in, so
+> Replace's removal/disposal score channels are wired but not yet achievable. See
+> [docs/roadmap.md](docs/roadmap.md).
 
 ## Task hierarchy
 
 | Env id | Description | Status |
 | --- | --- | --- |
+| `FIATLUX-Replace-v0` | **the benchmark**: full replacement — insert fresh bulb, remove old bulb, dispose of it (randomized room) | ✅ functional |
 | `FIATLUX-Insert-v0` | G1 seats a bulb into a socket (tabletop manipulation) | ✅ functional |
 | `FIATLUX-Climb-v0` | G1 climbs the step ladder to the fixture height (whole-body RL) | ✅ functional |
 | `FIATLUX-Base-v0` | shared G1 + ladder + lamp + bulb scene, no task logic | 🧱 scaffold (non-RL) |
@@ -22,7 +26,6 @@ extension — no ROS, no distributed harness — so it plugs into the standard
 | `FIATLUX-Descend-v0` | bipedal ladder descent | 🧱 scaffold (non-RL) |
 | `FIATLUX-Remove-v0` | unscrew / remove the seated bulb | 🧱 scaffold (non-RL) |
 | `FIATLUX-Install-v0` | seat a new bulb at the fixture (the at-fixture counterpart of `Insert`) | 🧱 scaffold (non-RL) |
-| `FIATLUX-Replace-v0` | end-to-end climb + insert | 🚧 roadmap |
 
 All seven ids are members of **one task family** backed by **one scene** with preset
 layouts; the scaffolds share a non-RL base env (observation/action/event managers only).

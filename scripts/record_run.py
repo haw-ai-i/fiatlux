@@ -67,6 +67,11 @@ parser.add_argument(
 parser.add_argument(
     "--disable_fabric", action="store_true", default=False, help="Use USD I/O."
 )
+# Benchmark telemetry flags (--wandb, --wandb_project, ...); mirrors fiatlux_task.telemetry.
+parser.add_argument("--wandb", action="store_true", default=False, help="Stream the score breakdown to wandb.")
+parser.add_argument("--wandb_project", type=str, default="fiatlux", help="wandb project name.")
+parser.add_argument("--wandb_entity", type=str, default=None, help="wandb entity (team/user).")
+parser.add_argument("--wandb_run_name", type=str, default=None, help="wandb run name.")
 AppLauncher.add_app_launcher_args(parser)
 args_cli = parser.parse_args()
 
@@ -75,8 +80,10 @@ want_bag = args_cli.record in ("bag", "both")
 # Cameras are required to render video frames.
 if want_video:
     args_cli.enable_cameras = True
-# Headless by default (video still renders via enable_cameras).
-args_cli.headless = True if args_cli.headless is None else args_cli.headless
+# Always headless (video still renders via enable_cameras). AppLauncher's --headless is
+# store_true default False -- never None -- so the old None-guard was dead code and a
+# displayless machine wedged in GUI mode; use --livestream for interactive viewing.
+args_cli.headless = True
 
 app_launcher = AppLauncher(args_cli)
 simulation_app = app_launcher.app
@@ -85,28 +92,43 @@ simulation_app = app_launcher.app
 """Rest everything follows."""
 
 import os
+import random
 
 import fiatlux_task.tasks  # noqa: F401
 import gymnasium as gym
 import torch
 from fiatlux_task.policy import make_policy
 from fiatlux_task.recording import TrajectoryRecorder
+from fiatlux_task.telemetry import ScoreLogger
 from fiatlux_task.viz import VideoRecorder, make_video_camera_cfg, orbit_pose
 
 import isaaclab_tasks  # noqa: F401
 from isaaclab_tasks.utils import parse_env_cfg
 
-# Camera pose per captured frame ``(i, n_frames) -> (eye, lookat)``, framing the Insert
-# scene's table area. ``orbit`` turntables around it (radius must stay well inside the
-# Simple Room, whose wall sits ~4.5 m out).
-_CAM_POSES = {
-    "third_person": lambda i, n: ((2.0, 2.0, 2.0), (0.45, 0.0, 1.1)),
-    "closeup": lambda i, n: ((0.9, 0.8, 1.4), (0.45, 0.0, 1.15)),
-    "orbit": lambda i, n: orbit_pose(i, n, center=(0.45, 0.0, 1.1), radius=2.6, height=2.0),
-}
+
+def _cam_pose_fn(kind: str, env_cfg):
+    """Camera pose per captured frame ``(i, n_frames) -> (eye, lookat)``.
+
+    ``third_person`` frames the task cfg's own viewer eye/lookat; ``orbit`` turntables
+    around the cfg's orbit fields (the same framing verify_scene --record uses), so every
+    task -- bench-scale Insert or room-scale Replace -- records its own layout. ``closeup``
+    stays the Insert bench's fixed close view.
+    """
+    if kind == "third_person":
+        eye, lookat = tuple(env_cfg.viewer.eye), tuple(env_cfg.viewer.lookat)
+        return lambda i, n: (eye, lookat)
+    if kind == "closeup":
+        return lambda i, n: ((0.9, 0.8, 1.4), (0.45, 0.0, 1.15))
+    center = getattr(env_cfg, "orbit_center", (0.45, 0.0, 1.1))
+    radius = getattr(env_cfg, "orbit_radius", 2.6)
+    height = getattr(env_cfg, "orbit_height", 2.0)
+    return lambda i, n: orbit_pose(i, n, center=center, radius=radius, height=height)
 
 
 def main():
+    # Seed the global stream: the replace preset's room layout draws from it at cfg-build
+    # time (same determinism contract as eval.py).
+    random.seed(args_cli.seed)
     env_cfg = parse_env_cfg(
         args_cli.task,
         device=args_cli.device,
@@ -122,7 +144,7 @@ def main():
     base_env = env.unwrapped
 
     video = None
-    pose_fn = _CAM_POSES[args_cli.cam]
+    pose_fn = _cam_pose_fn(args_cli.cam, env_cfg)
     if want_video:
         video_path = os.path.join(args_cli.out, "video", "run.mp4")
         video = VideoRecorder(base_env, base_env.scene["video_cam"], video_path)
@@ -139,25 +161,30 @@ def main():
         if want_bag
         else None
     )
+    # All metric definitions live in fiatlux_task.telemetry; this loop feeds it raw
+    # step artifacts (sink-less when --wandb is off; aggregation still runs).
+    score_logger = ScoreLogger.from_args(args_cli, extra_config={"record": args_cli.record})
 
     obs, _ = env.reset(seed=args_cli.seed)
-    episodes_done = 0
     with torch.inference_mode():
-        while episodes_done < args_cli.episodes:
+        while score_logger.episodes_done < args_cli.episodes:
             actions = policy(obs)
-            obs, reward, terminated, truncated, _ = env.step(actions)
+            obs, reward, terminated, truncated, extras = env.step(actions)
             if video is not None and len(video) < args_cli.video_length:
                 video.capture(pose_fn(len(video), args_cli.video_length))
             if recorder is not None:
                 recorder.record_step(obs, actions, reward, terminated, truncated)
-            episodes_done += int((terminated | truncated).sum().item())
+            score_logger.step(base_env, extras, terminated | truncated)
 
     if video is not None:
-        print(f"[INFO] wrote video {video.write()}")
+        video_file = video.write()
+        print(f"[INFO] wrote video {video_file}")
+        score_logger.video(video_file, caption=f"{args_cli.task} / {args_cli.policy}")
     if recorder is not None:
         info = recorder.write(args_cli.out, fmt=args_cli.format)
         print(f"[INFO] wrote bag {info['bag']} ({info['episodes']} episodes)")
         print(f"[INFO] wrote metadata {info['meta']}")
+    score_logger.close()
 
     env.close()
 

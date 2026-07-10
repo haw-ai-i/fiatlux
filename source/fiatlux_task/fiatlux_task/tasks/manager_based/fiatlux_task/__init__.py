@@ -9,13 +9,17 @@ Task hierarchy (see docs/roadmap.md):
 
 One family, one scene (``scene_cfg.G1ReplaceSceneCfg``), preset layouts per task:
 
+- ``FIATLUX-Replace-v0`` : THE BENCHMARK -- the full light-bulb replacement (randomized
+  room layout, normalized-progress scoring, standard/cheatcode observation modes; see
+  ``journal/specs/full-task-benchmark-plan.md``). FUNCTIONAL, RL.
 - ``FIATLUX-Insert-v0``  : G1 seats a bulb into a socket (manipulation, *tabletop* preset).
   FUNCTIONAL, RL.
 - ``FIATLUX-Climb-v0``   : G1 climbs the step ladder to the fixture height (*at-height*
   preset, whole-body RL). FUNCTIONAL, RL.
 - Workshop-preset scaffolds: G1 + ladder + socket-lamp + bulb on the floor. The five share
   the **non-RL** :class:`base_env_cfg.FamilyBaseEnvCfg` base (observation / action / event
-  managers only -- no rewards, terminations, or training code yet):
+  managers only -- no rewards, terminations, or training code yet). They remain as
+  development aids, not benchmark targets:
 
   - ``FIATLUX-Base-v0``    : the shared base scene, no task logic (verify_scene.py's default).
   - ``FIATLUX-Carry-v0``   : grab and position the ladder.
@@ -23,15 +27,11 @@ One family, one scene (``scene_cfg.G1ReplaceSceneCfg``), preset layouts per task
   - ``FIATLUX-Remove-v0``  : unscrew / remove the seated bulb.
   - ``FIATLUX-Install-v0`` : seat a new bulb at the fixture (the at-fixture counterpart of
     the tabletop ``FIATLUX-Insert-v0`` manipulation task).
-  - ``FIATLUX-Replace-v0`` : the whole family world at once (issue #20) -- robot, ladder,
-    table+bulb, and the elevated fixture, each randomized into its own non-overlapping floor
-    "safe zone", fixture randomly ceiling- or wall-mounted. Scene-only: no reward/termination
-    or policy-chaining logic (that stays on the roadmap; see the issue's own descoping
-    comment).
 
 The scaffolds register the non-RL ``isaaclab.envs:ManagerBasedEnv`` entry point; the
 train / eval / teleop scripts assume RL envs and only apply to the RL members.
-``scripts/verify_scene.py`` covers every family member (Insert needs ``--enable_cameras``).
+``scripts/verify_scene.py`` covers every family member (Insert and Replace need
+``--enable_cameras`` for their camera sensors).
 
 Registration is deliberately lazy (string entry points only, no eager cfg imports):
 ``fiatlux_task.tasks`` swallows import errors during its auto-import walk, so an eagerly
@@ -105,15 +105,22 @@ gym.register(
     kwargs={"env_cfg_entry_point": f"{__name__}.install_env_cfg:InstallEnvCfg"},
 )
 
+##
+# The full-task benchmark (RL).
+##
+
 gym.register(
     id="FIATLUX-Replace-v0",
-    entry_point="isaaclab.envs:ManagerBasedEnv",
+    entry_point="isaaclab.envs:ManagerBasedRLEnv",
     disable_env_checker=True,
-    kwargs={"env_cfg_entry_point": f"{__name__}.replace_env_cfg:ReplaceEnvCfg"},
+    kwargs={
+        "env_cfg_entry_point": f"{__name__}.replace_env_cfg:ReplaceEnvCfg",
+        "rsl_rl_cfg_entry_point": f"{agents.__name__}.rsl_rl_ppo_cfg:ReplacePPORunnerCfg",
+    },
 )
 
-# Convenience list for scripts/tests that iterate the ladder family (Climb is the
-# family's RL member; the rest are non-RL scaffolds).
+# Convenience list for scripts/tests that iterate the ladder family (Climb and Replace
+# are the family's RL members; the rest are non-RL scaffolds).
 TASK_IDS = [
     "FIATLUX-Base-v0",
     "FIATLUX-Carry-v0",

@@ -34,6 +34,29 @@ def root_pose_w(
     return torch.cat([asset.data.root_pos_w, asset.data.root_quat_w], dim=-1)
 
 
+def replace_score_distances(env: ManagerBasedRLEnv) -> torch.Tensor:
+    """The replace task's four score-relevant distances, for the privileged group.
+
+    Columns: ladder top -> fixture seat, fresh-bulb plug -> fixture seat, old-bulb plug
+    clearance from the fixture seat, old bulb -> disposal crate. Exactly the channels the
+    reward terms normalize -- exposed so a cheatcode policy can read the score geometry.
+
+    Returns:
+        Tensor of shape (num_envs, 4).
+    """
+    from . import rewards
+
+    return torch.stack(
+        [
+            rewards.ladder_fixture_distance(env),
+            rewards.bulb_fixture_distance(env),
+            rewards.old_bulb_fixture_clearance(env),
+            rewards.old_bulb_disposal_distance(env),
+        ],
+        dim=1,
+    )
+
+
 def contact_net_forces(
     env: ManagerBasedRLEnv,
     sensor_cfg: SceneEntityCfg,
