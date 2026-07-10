@@ -443,6 +443,9 @@ def _add_parts_bin(scene: G1ReplaceSceneCfg, position: Vec3 = BIN_POSITION) -> N
         init_state=AssetBaseCfg.InitialStateCfg(pos=position),
         spawn=sim_utils.UsdFileCfg(
             usd_path=CRATE_USD,
+            # cm-authored prop (real crate 0.60 x 0.40 x 0.17 m); unscaled it spawns as a
+            # 60 m colossus filling the whole room.
+            scale=(0.01, 0.01, 0.01),
             rigid_props=sim_utils.RigidBodyPropertiesCfg(kinematic_enabled=True),
         ),
     )
@@ -689,6 +692,9 @@ def apply_replace_preset(
         spawn=sim_utils.UsdFileCfg(
             usd_path=CRATE_USD,
             func=_spawn_usd_as_rigid_body,
+            # cm-authored (real crate 0.60 x 0.40 x 0.17 m); unscaled it spawns as a 60 m
+            # colossus whose colliders blanket the entire room.
+            scale=(0.01, 0.01, 0.01),
             rigid_props=sim_utils.RigidBodyPropertiesCfg(kinematic_enabled=True),
         ),
         init_state=RigidObjectCfg.InitialStateCfg(
