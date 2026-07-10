@@ -43,6 +43,39 @@ by slamming the bulb in is not a good policy.
 - Report all five metrics, the policy type, and the checkpoint.
 - For learned policies, also report seeds `0,1,2` and their mean ± std.
 
+## Telemetry (Weights & Biases)
+
+The benchmark ships its own logging abstraction (`fiatlux_task.telemetry.ScoreLogger`,
+issue #16): pass `--wandb` to `scripts/eval.py` or `scripts/record_run.py` to stream
+the score breakdown live — one wandb chart per named channel (`Episode_Reward/<term>`,
+`Episode_Termination/<term>`) plus the running `success_rate`, x-axis = completed
+episodes. `record_run.py --wandb` also attaches the rollout MP4 to the run, and the
+final aggregate results land in the run summary.
+
+```bash
+python scripts/eval.py --task FIATLUX-Replace-v0 --policy basic_standard \
+    --episodes 20 --seed 0 --enable_cameras --wandb --wandb_project fiatlux
+```
+
+This is *benchmark-side* telemetry: the channels are defined by the task's own
+reward/termination managers, so every submission logs the same channel names no
+matter how the policy was produced. Use `WANDB_MODE=offline` without an account;
+`--wandb_entity/--wandb_project/--wandb_run_name` control the destination.
+*Training-side* telemetry is a policy concern and already has a path — e.g.
+`scripts/rsl_rl/train.py --logger wandb` for the RSL-RL baseline.
+
+Extending it: all metric definitions live in one module,
+`fiatlux_task/telemetry.py` — new channels go in `ScoreLogger.step`/`results`
+(they then appear in wandb, the run summary, and `eval.py`'s JSON at once), new
+backends implement the small `Sink` protocol next to `WandbSink`. Policies may
+optionally expose per-step diagnostics (e.g. a critic value estimate) via an
+`info` dict attribute; these stream as running means under the `policy/`
+namespace, kept apart from the score channels (see `fiatlux_task/policy.py`).
+
+Determinism note: the replace preset's room layout is drawn at scene-build time from
+the global `random` stream, which `eval.py`/`record_run.py` seed from `--seed` — so
+the same-seed-same-numbers contract covers the layout too.
+
 ## Baselines
 
 - `zero` — no action (sanity floor).

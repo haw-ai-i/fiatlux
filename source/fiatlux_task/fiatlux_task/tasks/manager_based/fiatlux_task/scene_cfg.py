@@ -590,7 +590,10 @@ def apply_replace_preset(
             instead of sampling it fully independently. Off by default -- positioning the
             ladder is part of the task; coupling is a debug/curriculum aid only.
     """
-    rng = rng or random.Random()
+    # Default rng derives from the (seedable) global stream: scripts that call
+    # `random.seed(seed)` before cfg construction (eval.py, record_run.py) get a
+    # deterministic layout -- the benchmark's same-seed-same-numbers contract.
+    rng = rng or random.Random(random.getrandbits(64))
 
     # Table: holds the fresh bulb. No separate tabletop socket -- the elevated fixture is the
     # real insertion target in this scene.

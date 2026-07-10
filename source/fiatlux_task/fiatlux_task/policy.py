@@ -9,6 +9,12 @@ A *policy* is just a callable ``policy(obs) -> actions`` returning a
 ``(num_envs, action_dim)`` tensor. The benchmark never inspects how a policy was
 produced -- RL, imitation, scripted, or a hand-written baseline all plug in here.
 
+Optional telemetry hook: a policy MAY carry an ``info`` attribute -- a
+``dict[str, float]`` it refreshes on each call (e.g. a critic value estimate,
+action log-prob). The evaluation scripts forward it to the benchmark telemetry
+(``fiatlux_task.telemetry``), which streams running means under the ``policy/``
+namespace, kept apart from the score channels. Policies without it pay nothing.
+
 Supported specs (``make_policy(spec, env)``):
 
 - ``"zero"``            -- no action (sanity floor).

@@ -28,6 +28,8 @@ dependencies = [
     # scripts/verify_scene.py --record renders MP4s (libx264 via the ffmpeg plugin).
     "imageio",
     "imageio-ffmpeg",
+    # Benchmark telemetry (fiatlux_task.telemetry; imported lazily behind --wandb).
+    "wandb",
     # The benchmark task package itself (editable, see [tool.uv.sources]).
     "fiatlux_task",
 ]
