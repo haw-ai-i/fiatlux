@@ -2,8 +2,8 @@
 
 The scored benchmark is the **full replacement task** (`FIATLUX-Replace-v0`); the
 **insertion** (`FIATLUX-Insert-v0`), **climbing** (`FIATLUX-Climb-v0`), and
-**ladder-positioning** (`FIATLUX-Carry-v0`: grasp the ladder and plant it upright at a
-target — arm+hand manipulation RL, `carry_env_cfg.py`) subtasks remain as functional
+**ladder-positioning** (`FIATLUX-Carry-v0`: walk to the ladder, grasp it, and carry it
+upright to a target — whole-body RL, `carry_env_cfg.py`) subtasks remain as functional
 development environments, not benchmark targets. Unfinished items below are listed so the
 extension seams are intentional.
 

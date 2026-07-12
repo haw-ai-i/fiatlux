@@ -12,14 +12,14 @@ deliverables:
 
 ## Scope (locked decisions)
 
-- **Approach + grasp + position** — the robot stands a short distance **back** from the
-  ladder; it approaches, grasps, and carries the ladder to the target under the light. Built
-  on the stationary arm+hand Insert template (arm + Inspire hand actions). **Caveat:** the
-  ladder now starts ~2 m out (well beyond the ~0.7 m arm reach), so *executing* the approach needs
-  the base to translate — the current arm-only action space cannot walk. Options for the
-  training phase: add leg/locomotion actions (whole-body, like Climb), or stage the base
-  closer at reset. This issue delivers the environment (assets, layout, grasp affordance,
-  rewards, success criteria); wiring locomotion is a follow-up.
+- **Approach + grasp + position (whole-body)** — the ladder starts ~2 m out in front; the
+  robot **walks to it**, grasps a rail, and carries it upright to the target under the light.
+  Uses a **whole-body** action space (`joint_names=[".*"]` — legs + torso + arms + Inspire
+  hands, exactly like the full Replace task), so locomotion and manipulation are both
+  available. **Note:** whole-body locomotion + manipulation from scratch is hard to train (the
+  same difficulty class as the flat Replace task); this issue delivers the *environment*
+  (assets, layout, grasp affordance, whole-body obs/rewards, success criteria), not a converged
+  policy.
 - **Physics friction grasp** via the Inspire right hand (no attach/weld) — the env provides
   the affordance (a high-friction material on a dynamic ladder body); the policy learns to grip.
 
@@ -33,7 +33,7 @@ Referenced by constant in `source/fiatlux_task/fiatlux_task/assets.py`. Binary U
 | **Ladder** (graspable manipuland) | `STEP_LADDER_RIGID_USD` | `omniverse_ladder/HeavyDutyFRPStep_A/HeavyDutyFiberglassStepLadder_A01_PR_NVD_01_collision_rigid.usd` | The orange fiberglass **A-frame step ladder** — the **preconfigured `_collision_rigid` overlay** (sublayers the `_collision` variant's meshes + colliders and pre-applies a single **dynamic `RigidBodyAPI` + `MassAPI`**). cm-authored → spawn scale `0.01`, base at z=0. The Carry spawner tunes its props (solver/sleep; mass → `LADDER_MASS` = 3 kg) and binds a high-friction grip material. (Base/Climb use the plain `STEP_LADDER_USD` `_collision` variant, made kinematic.) |
 | **Fixture — socket** | `SOCKET_USD` | `behavior1k_lamp/ehjsdz/ehjsdz.usd` | The **same BEHAVIOR-1K lamp** the Insert/Replace tasks use (the validated `bulblampF` socket). Spawned via `spawn_b1k_single_body`, kinematic. |
 | **Fixture — bulb** | `BULB_USD` | `behavior1k_bulb/kfmkwd/kfmkwd.usd` | The **same BEHAVIOR-1K bulb** the Insert/Replace tasks use (the validated `bulblampM` plug). Spawned via `spawn_b1k_single_body`; made kinematic here (overhead context, not the manipuland). |
-| **Robot** | `G1_INSPIRE_CFG` (`fiatlux_task.robots.g1`) | `unitree_g1/wholebody_inspire/...` | Free legged base; only the right **arm** (`G1_ARM_JOINTS`) + **Inspire hand** (`G1_HAND_JOINTS`) are actioned; legs hold standing via PD. |
+| **Robot** | `G1_INSPIRE_CFG` (`fiatlux_task.robots.g1`) | `unitree_g1/wholebody_inspire/...` | **Whole-body** control — all joints actioned (`joint_names=[".*"]`: legs + torso + arms + Inspire hands), like the full Replace task, so the robot can walk to the ladder and carry it. |
 
 The light fixture the positioned ladder leads to is the **same `SOCKET_USD` + `BULB_USD` lamp
 pair the Insert and Replace tasks use** (not a Carry-specific asset) — **mounted on the ceiling
@@ -62,9 +62,10 @@ approach/locomotion caveat in **Scope**).
     obs + compliance penalty (no ladder force-matrix filter).
   - Constants: `POSITION_ROBOT_POSITION`, `POSITION_LADDER_START_POS/_YAW`,
     `TARGET_LADDER_POSITION`, `LADDER_MASS`.
-- **Env** — `carry_env_cfg.py` → `CarryEnvCfg(ManagerBasedRLEnvCfg)`, mirroring
-  `g1_bulb_env_cfg.py`: arm+hand actions; policy obs (proprio + eef pose + hand contact) +
-  privileged obs (ladder pose); reset events; rewards + terminations (below).
+- **Env** — `carry_env_cfg.py` → `CarryEnvCfg(ManagerBasedRLEnvCfg)`, mirroring the full
+  Replace task's whole-body recipe: whole-body actions (`joint_names=[".*"]`); policy obs
+  (IMU + estimator + full proprio + hand contact) + privileged obs (robot / ladder / fixture
+  poses); reset events; rewards + terminations (below).
 - **MDP terms** — Carry **reuses the full Replace task's ladder scoring** (no Carry-specific
   reward code; the functions ship in `mdp/rewards.py` from issue #20):
   - `distance_progress(ladder_fixture_distance)` — dense, randomization-fair progress of the
@@ -93,5 +94,6 @@ python scripts/rsl_rl/train.py --task FIATLUX-Carry-v0 --num_envs 32 --max_itera
 ```
 
 Verified: **30/30** verify checks, ruff-clean, **no regression** (Climb 30/30, Replace 42/42,
-Insert unchanged), random-policy rollout writes a bag, and the PPO smoke iterates with the **9
-reused reward terms** and the critic receiving the privileged ladder-pose group.
+Insert unchanged), and the PPO smoke iterates with the **whole-body action space (53 DoF)**,
+the reused ladder scoring + Climb/Replace stability shaping, and the critic receiving the
+privileged robot/ladder/fixture poses.

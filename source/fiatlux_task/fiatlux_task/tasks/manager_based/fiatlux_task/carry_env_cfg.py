@@ -6,15 +6,15 @@
 """``FIATLUX-Carry-v0`` -- the G1 grasps a ladder and positions it upright at a target.
 
 The ladder-handling / positioning subtask: a **dynamic, high-friction** ladder starts out in
-front of the G1; the robot grasps a rail (physics friction, no weld) and positions it upright
-beneath the ceiling light fixture. Built as a standard ``ManagerBasedRLEnvCfg`` (like the
-Insert task) so it slots into train / play / eval.
+front of the G1; the robot **walks to it**, grasps a rail (physics friction, no weld), and
+carries it upright to beneath the ceiling light fixture. **Whole-body** control (`joint_names=
+[".*"]`, like the full Replace task) so locomotion + manipulation are both available. Built as a
+standard ``ManagerBasedRLEnvCfg`` so it slots into train / play / eval.
 
 Scoring **reuses the full Replace task's ladder terms** (one shared source of truth):
 ``ladder_fixture_distance`` progress + the ``ladder_ready`` completion/success predicate
 (ladder top horizontally within reach of the fixture, upright) + a ``ladder_tipped`` penalty,
-plus a hand↔ladder grasp-contact bootstrap and the standard fall / smoothness shaping. Actions
-are the right arm + Inspire hand; the free legged base holds the standing pose via PD.
+plus fall + the Climb/Replace whole-body stability shaping (CoM sway, ankle limits, ...).
 """
 
 from isaaclab.envs import ManagerBasedRLEnvCfg
@@ -27,7 +27,7 @@ from isaaclab.managers import TerminationTermCfg as DoneTerm
 from isaaclab.utils import configclass
 from isaaclab.utils.noise import AdditiveUniformNoiseCfg as Unoise
 
-from fiatlux_task.robots.g1 import G1_ARM_JOINTS, G1_EE_BODY, G1_HAND_JOINTS
+from fiatlux_task.robots.g1 import G1_FINGER_JOINT_PATTERNS, G1_WAIST_JOINT_PATTERNS
 
 from . import mdp
 from .scene_cfg import (
@@ -50,13 +50,11 @@ FALL_TILT_LIMIT = 1.0  # rad
 
 @configclass
 class ActionsCfg:
-    """Joint-position targets on the G1 right arm + Inspire hand (base held by PD)."""
+    """Whole-body joint-position targets: the task spans locomotion + manipulation (the robot
+    walks to the ladder, then grasps and carries it), mirroring the full Replace task."""
 
-    arm_action = mdp.JointPositionActionCfg(
-        asset_name="robot", joint_names=G1_ARM_JOINTS, scale=0.5, use_default_offset=True
-    )
-    hand_action = mdp.JointPositionActionCfg(
-        asset_name="robot", joint_names=G1_HAND_JOINTS, scale=0.5, use_default_offset=True
+    joint_pos = mdp.JointPositionActionCfg(
+        asset_name="robot", joint_names=[".*"], scale=0.5, use_default_offset=True
     )
 
 
@@ -66,23 +64,15 @@ class ObservationsCfg:
 
     @configclass
     class PolicyCfg(ObsGroup):
-        """Sensor-realizable observations (available on the real robot)."""
+        """Sensor-realizable whole-body observations (IMU + estimator + proprioception),
+        mirroring the Climb / Replace locomotion recipe."""
 
-        joint_pos = ObsTerm(
-            func=mdp.joint_pos_rel,
-            params={"asset_cfg": SceneEntityCfg("robot", joint_names=G1_ARM_JOINTS + G1_HAND_JOINTS)},
-            noise=Unoise(n_min=-0.01, n_max=0.01),
-        )
-        joint_vel = ObsTerm(
-            func=mdp.joint_vel_rel,
-            params={"asset_cfg": SceneEntityCfg("robot", joint_names=G1_ARM_JOINTS + G1_HAND_JOINTS)},
-            noise=Unoise(n_min=-0.01, n_max=0.01),
-        )
-        eef_pose = ObsTerm(
-            func=mdp.body_pose_w,
-            params={"asset_cfg": SceneEntityCfg("robot", body_names=G1_EE_BODY)},
-            noise=Unoise(n_min=-0.001, n_max=0.001),
-        )
+        base_ang_vel = ObsTerm(func=mdp.base_ang_vel, noise=Unoise(n_min=-0.2, n_max=0.2))
+        projected_gravity = ObsTerm(func=mdp.projected_gravity, noise=Unoise(n_min=-0.05, n_max=0.05))
+        base_lin_vel = ObsTerm(func=mdp.base_lin_vel, noise=Unoise(n_min=-0.1, n_max=0.1))
+        base_height = ObsTerm(func=mdp.base_pos_z, noise=Unoise(n_min=-0.05, n_max=0.05))
+        joint_pos = ObsTerm(func=mdp.joint_pos_rel, noise=Unoise(n_min=-0.01, n_max=0.01))
+        joint_vel = ObsTerm(func=mdp.joint_vel_rel, noise=Unoise(n_min=-1.5, n_max=1.5))
         hand_contact = ObsTerm(
             func=mdp.contact_net_forces,
             scale=0.1,
@@ -96,9 +86,11 @@ class ObservationsCfg:
 
     @configclass
     class PrivilegedCfg(ObsGroup):
-        """Ground-truth ("cheat") observations for the critic / scripted baselines."""
+        """Ground-truth ("cheat") observations for the critic: exact robot / ladder / fixture poses."""
 
+        robot_pose = ObsTerm(func=mdp.root_pose_w, params={"asset_cfg": SceneEntityCfg("robot")})
         ladder_pose = ObsTerm(func=mdp.root_pose_w, params={"asset_cfg": SceneEntityCfg("ladder")})
+        fixture_pose = ObsTerm(func=mdp.root_pose_w, params={"asset_cfg": SceneEntityCfg("socket")})
 
         def __post_init__(self):
             self.enable_corruption = False
@@ -134,8 +126,8 @@ class EventCfg:
 class RewardsCfg:
     """Score channels -- reuse the full Replace task's ladder scoring: dense normalized
     progress of the ladder toward the fixture, a sparse 'ladder positioned upright within
-    reach' completion bonus, and a tip penalty; plus a grasp-contact bootstrap and the
-    standard compliance / smoothness / fall shaping."""
+    reach' completion bonus, and a tip penalty; plus fall + the Climb/Replace whole-body
+    stability / smoothness shaping (the robot must stay balanced while walking + carrying)."""
 
     # -- dense normalized progress: ladder top -> fixture socket seat (randomization-fair) --
     ladder_progress = RewTerm(
@@ -164,19 +156,36 @@ class RewardsCfg:
         weight=-200.0,
         params={"minimum_height": FALL_MIN_HEIGHT, "limit_angle": FALL_TILT_LIMIT},
     )
-    # -- compliance / smoothness --
     contact_penalty = RewTerm(
         func=mdp.hand_contact_force_l2, weight=-1.0e-4, params={"sensor_cfg": SceneEntityCfg("hand_contact")}
     )
-    action_rate = RewTerm(func=mdp.action_rate_l2, weight=-1.0e-4)
-    joint_vel = RewTerm(
-        func=mdp.joint_vel_l2, weight=-1.0e-4, params={"asset_cfg": SceneEntityCfg("robot", joint_names=G1_ARM_JOINTS)}
-    )
+    # -- whole-body stability / smoothness shaping (Climb / Replace recipe: walking sways) --
+    com_sway = RewTerm(func=mdp.com_sway_l2, weight=-0.1)
+    ang_vel_xy = RewTerm(func=mdp.ang_vel_xy_l2, weight=-0.05)
+    action_rate = RewTerm(func=mdp.action_rate_l2, weight=-0.005)
     joint_acc = RewTerm(
-        func=mdp.joint_acc_l2, weight=-1.0e-7, params={"asset_cfg": SceneEntityCfg("robot", joint_names=G1_ARM_JOINTS)}
+        func=mdp.joint_acc_l2,
+        weight=-1.25e-7,
+        params={"asset_cfg": SceneEntityCfg("robot", joint_names=[".*_hip_.*", ".*_knee_joint"])},
     )
-    joint_pos_limits = RewTerm(
-        func=mdp.joint_pos_limits, weight=-0.1, params={"asset_cfg": SceneEntityCfg("robot", joint_names=G1_ARM_JOINTS)}
+    ankle_pos_limits = RewTerm(
+        func=mdp.joint_pos_limits,
+        weight=-1.0,
+        params={
+            "asset_cfg": SceneEntityCfg(
+                "robot", joint_names=[".*_ankle_pitch_joint", ".*_ankle_roll_joint"]
+            )
+        },
+    )
+    joint_deviation_waist = RewTerm(
+        func=mdp.joint_deviation_l1,
+        weight=-0.1,
+        params={"asset_cfg": SceneEntityCfg("robot", joint_names=G1_WAIST_JOINT_PATTERNS)},
+    )
+    joint_deviation_fingers = RewTerm(
+        func=mdp.joint_deviation_l1,
+        weight=-0.05,
+        params={"asset_cfg": SceneEntityCfg("robot", joint_names=G1_FINGER_JOINT_PATTERNS)},
     )
 
 

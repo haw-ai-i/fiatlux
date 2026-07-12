@@ -22,7 +22,7 @@ extension — no ROS, no distributed harness — so it plugs into the standard
 | `FIATLUX-Insert-v0` | G1 seats a bulb into a socket (tabletop manipulation) | ✅ functional |
 | `FIATLUX-Climb-v0` | G1 climbs the step ladder to the fixture height (whole-body RL) | ✅ functional |
 | `FIATLUX-Base-v0` | shared G1 + ladder + lamp + bulb scene, no task logic | 🧱 scaffold (non-RL) |
-| `FIATLUX-Carry-v0` | G1 grasps a ladder and positions it upright at a target (arm+hand manipulation RL) | ✅ functional |
+| `FIATLUX-Carry-v0` | G1 walks to a ladder, grasps it, and carries it upright to a target (whole-body RL) | ✅ functional |
 | `FIATLUX-Descend-v0` | bipedal ladder descent | 🧱 scaffold (non-RL) |
 | `FIATLUX-Remove-v0` | unscrew / remove the seated bulb | 🧱 scaffold (non-RL) |
 | `FIATLUX-Install-v0` | seat a new bulb at the fixture (the at-fixture counterpart of `Insert`) | 🧱 scaffold (non-RL) |
