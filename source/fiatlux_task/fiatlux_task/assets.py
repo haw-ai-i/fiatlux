@@ -69,6 +69,16 @@ STEP_LADDER_USD = os.path.join(
     "HeavyDutyFRPStep_A",
     "HeavyDutyFiberglassStepLadder_A01_PR_NVD_01_collision.usd",
 )
+# The same ladder's ``_collision_rigid`` overlay: it sublayers the ``_collision`` variant
+# (render meshes + colliders) and pre-applies a single DYNAMIC ``RigidBodyAPI`` + ``MassAPI``
+# (authored mass ~7.3 kg). Used by FIATLUX-Carry-v0 so the graspable ladder does not need the
+# rigid body stamped in code -- the spawner only tunes props + binds the grip material.
+STEP_LADDER_RIGID_USD = os.path.join(
+    FIATLUX_ASSETS_DIR,
+    "omniverse_ladder",
+    "HeavyDutyFRPStep_A",
+    "HeavyDutyFiberglassStepLadder_A01_PR_NVD_01_collision_rigid.usd",
+)
 
 # The step ladder's top-platform point in its base_link frame (metres, after the 0.01 spawn
 # scale; the asset is 1.75 m tall with its base authored at z=0, the top step sits slightly
