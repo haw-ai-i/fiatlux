@@ -118,10 +118,9 @@ G1_INSPIRE_CFG = ArticulationCfg(
         ),
         activate_contact_sensors=True,
     ),
-    # Spawn standing (matching Unitree's reference init): pelvis at ~0.75 m with the
-    # legs slightly bent so the feet rest on the ground.
+    # Spawn standing (feet on the floor at the bent-knee pose; settled height 0.787 m).
     init_state=ArticulationCfg.InitialStateCfg(
-        pos=(0.0, 0.0, 0.75),
+        pos=(0.0, 0.0, 0.79),
         # Only the bent leg joints are listed; every other joint defaults to 0.0.
         # (A ``".*"`` catch-all here would also match these and trip Isaac Lab's
         # one-regex-per-joint resolver in ``resolve_matching_names_values``.)
