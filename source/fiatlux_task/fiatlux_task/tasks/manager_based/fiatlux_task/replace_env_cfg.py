@@ -254,18 +254,21 @@ class RewardsCfg:
         weight=500.0,
         params={"distance_fn": mdp.bulb_fixture_distance},
     )
+    # Attach-aware old-bulb channels (issue #54): terminations/rewards run before the
+    # interval event re-seats a held bulb, so the raw-geometry channels could latch a
+    # transient mid-step shove of the attached bulb as permanent progress.
     old_bulb_removal = RewTerm(
         func=mdp.distance_progress,
         weight=250.0,
         params={
-            "distance_fn": mdp.old_bulb_fixture_clearance,
+            "distance_fn": mdp.old_bulb_release_clearance,
             "away_threshold": REMOVAL_CLEARANCE,
         },
     )
     old_bulb_disposal_progress = RewTerm(
         func=mdp.distance_progress,
         weight=500.0,
-        params={"distance_fn": mdp.old_bulb_disposal_distance},
+        params={"distance_fn": mdp.old_bulb_disposal_distance_pinned},
     )
     # -- sparse completions (each pays once per episode; see mdp.completion_bonus) --
     ladder_ready = RewTerm(
@@ -290,7 +293,7 @@ class RewardsCfg:
         func=mdp.completion_bonus,
         weight=150.0,
         params={
-            "predicate_fn": mdp.old_bulb_removed,
+            "predicate_fn": mdp.old_bulb_removed_after_release,
             "predicate_params": {"clearance_threshold": REMOVAL_CLEARANCE},
         },
     )
@@ -325,7 +328,7 @@ class RewardsCfg:
         params={"asset_cfg": SceneEntityCfg("bulb"), "min_height": FRESH_BULB_DROP_HEIGHT},
     )
     old_bulb_dropped = RewTerm(
-        func=mdp.old_bulb_dropped,
+        func=mdp.old_bulb_dropped_after_release,
         weight=-100.0,
         params={
             "min_height": OLD_BULB_DROP_HEIGHT,
@@ -377,7 +380,7 @@ class TerminationsCfg:
         params={"asset_cfg": SceneEntityCfg("bulb"), "min_height": FRESH_BULB_DROP_HEIGHT},
     )
     old_bulb_dropped = DoneTerm(
-        func=mdp.old_bulb_dropped,
+        func=mdp.old_bulb_dropped_after_release,
         params={"min_height": OLD_BULB_DROP_HEIGHT, "disposal_threshold": DISPOSAL_THRESHOLD},
     )
     # Contract name: recording.py / score.py / eval.py read the `success` term. The pos/ori

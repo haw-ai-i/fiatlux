@@ -45,6 +45,10 @@ from .attach import (  # noqa: F401
     bulb_attachment,
     fresh_bulb_attached,
     old_bulb_attached,
+    old_bulb_disposal_distance_pinned,
+    old_bulb_dropped_after_release,
+    old_bulb_release_clearance,
+    old_bulb_removed_after_release,
 )
 from .events import (  # noqa: F401
     hand_grip_material_event,

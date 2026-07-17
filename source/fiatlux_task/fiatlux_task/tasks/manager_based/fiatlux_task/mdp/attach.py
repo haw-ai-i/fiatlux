@@ -39,6 +39,17 @@ itself has no screwing; aligned bulbs snap instantly):
 The event term must run every env step (it both integrates the wrist-roll signal and
 holds attached bulbs seated), so wire it with ``mode="interval"`` and
 ``interval_range_s=(0.0, 0.0)``.
+
+One ordering caveat shapes the score-channel functions below: ``ManagerBasedRLEnv.step``
+computes terminations and rewards *before* it applies interval events, so those managers
+see the bulb wherever that step's physics left it -- the corrective seat-pose write lands
+afterwards. A held bulb is dynamic between writes, so a hard shove can transiently carry
+it past the 0.10 m removal clearance within one step, and the best-progress /
+paid-once latches in ``distance_progress`` / ``completion_bonus`` would make that
+transient permanent. The ``old_bulb_*`` channel functions here therefore report the bulb
+*at the seat pose* while it is attached (being held IS the task state; the displacement
+is solver noise), and the raw-geometry terms in ``rewards.py`` stay for the tasks without
+an attachment manager.
 """
 
 from __future__ import annotations
@@ -54,7 +65,14 @@ from isaaclab.utils.math import quat_apply
 
 from fiatlux_task.assets import BULB_PLUG_OFFSET, SOCKET_SEAT_OFFSET
 
-from .rewards import _bulb_socket_ori_error, _bulb_socket_pos_error, old_bulb_disposed
+from .rewards import (
+    _bulb_socket_ori_error,
+    _bulb_socket_pos_error,
+    old_bulb_disposal_distance,
+    old_bulb_disposed,
+    old_bulb_dropped,
+    old_bulb_fixture_clearance,
+)
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
@@ -65,6 +83,16 @@ if TYPE_CHECKING:
 # The manager registers itself on the env so the predicate terms below can reach its
 # state without knowing the event-term name it was wired under.
 _ENV_ATTR = "_fiatlux_bulb_attachment"
+
+
+def _seated_bulb_root_pose_w(env: ManagerBasedEnv) -> tuple[torch.Tensor, torch.Tensor]:
+    """Root pose a bulb has when seated in the fixture, from the *live* socket pose."""
+    socket: RigidObject = env.scene["socket"]
+    quat = socket.data.root_quat_w
+    seat = torch.tensor(SOCKET_SEAT_OFFSET, device=env.device).expand(env.num_envs, 3)
+    plug = torch.tensor(BULB_PLUG_OFFSET, device=env.device).expand(env.num_envs, 3)
+    pos = socket.data.root_pos_w + quat_apply(quat, seat) - quat_apply(quat, plug)
+    return pos, quat
 
 
 class bulb_attachment(ManagerTermBase):
@@ -90,8 +118,6 @@ class bulb_attachment(ManagerTermBase):
         self._palm_id = palm_ids[0]
         self._wrist_id = wrist_ids[0]
         n, dev = env.num_envs, env.device
-        self._seat_offset = torch.tensor(SOCKET_SEAT_OFFSET, device=dev).expand(n, 3)
-        self._plug_offset = torch.tensor(BULB_PLUG_OFFSET, device=dev).expand(n, 3)
         self._old_attached = torch.ones(n, dtype=torch.bool, device=dev)
         self._fresh_attached = torch.zeros(n, dtype=torch.bool, device=dev)
         self._unscrew_accum = torch.zeros(n, device=dev)
@@ -156,13 +182,7 @@ class bulb_attachment(ManagerTermBase):
         # -- hold attached bulbs seated (pose derived from the live socket pose; the
         #    write also snaps a just-attached fresh bulb from within-tolerance to exact,
         #    mirroring B1K's teleport-on-attach)
-        socket: RigidObject = env.scene["socket"]
-        quat = socket.data.root_quat_w
-        pos = (
-            socket.data.root_pos_w
-            + quat_apply(quat, self._seat_offset)
-            - quat_apply(quat, self._plug_offset)
-        )
+        pos, quat = _seated_bulb_root_pose_w(env)
         for bulb, attached in (
             (old_bulb, self._old_attached),
             (fresh_bulb, self._fresh_attached),
@@ -200,6 +220,49 @@ def fresh_bulb_attached(env: ManagerBasedRLEnv) -> torch.Tensor:
     the success zone (or knocked back out of it) no longer scores.
     """
     return _attachment(env)._fresh_attached
+
+
+def old_bulb_release_clearance(env: ManagerBasedRLEnv) -> torch.Tensor:
+    """Old-bulb fixture clearance (m) that reads 0 while the bulb is still screwed in.
+
+    Attach-aware ``old_bulb_fixture_clearance``: terminations/rewards run before the
+    interval event re-seats a held bulb (see module docstring), so the raw clearance can
+    transiently exceed the removal threshold while attached and latch a false
+    removal-progress/removed payout. Held means seated, by definition.
+    """
+    clearance = old_bulb_fixture_clearance(env)
+    return torch.where(old_bulb_attached(env), torch.zeros_like(clearance), clearance)
+
+
+def old_bulb_removed_after_release(
+    env: ManagerBasedRLEnv, clearance_threshold: float
+) -> torch.Tensor:
+    """Attach-aware ``old_bulb_removed``: only a *released* bulb can count as removed."""
+    return old_bulb_release_clearance(env) > clearance_threshold
+
+
+def old_bulb_disposal_distance_pinned(env: ManagerBasedRLEnv) -> torch.Tensor:
+    """Old-bulb -> disposal-crate distance (m), pinned to the seat pose while attached.
+
+    Attach-aware ``old_bulb_disposal_distance``: a transient shove of a held bulb toward
+    the crate must not pay disposal progress (the best-progress latch would keep it).
+    """
+    d = old_bulb_disposal_distance(env)
+    seat_pos, _ = _seated_bulb_root_pose_w(env)
+    crate: RigidObject = env.scene["bin"]
+    d_held = torch.norm(seat_pos - crate.data.root_pos_w, dim=1)
+    return torch.where(old_bulb_attached(env), d_held, d)
+
+
+def old_bulb_dropped_after_release(
+    env: ManagerBasedRLEnv, min_height: float, disposal_threshold: float
+) -> torch.Tensor:
+    """Attach-aware ``old_bulb_dropped``: a bulb still screwed in cannot be "dropped".
+
+    Guards the drop penalty/termination against transient displacement of the held bulb
+    (relevant for low wall mounts) before the interval event re-seats it.
+    """
+    return old_bulb_dropped(env, min_height, disposal_threshold) & ~old_bulb_attached(env)
 
 
 def attached_replacement_success(

@@ -39,6 +39,13 @@ Design deltas from §5 as-specced, made during implementation:
   bulb; also prevents slaving both bulbs into the same pose).
 - Single hand (right palm body + right wrist-roll joint, configurable) rather than
   either-hand: the `hand_contact` sensor is already right-hand-only.
+- Post-review fix (Codex review, 2026-07-17, verified against the v2.3.2 source):
+  `ManagerBasedRLEnv.step` computes terminations/rewards *before* interval events, so the
+  managers see a held bulb wherever that step's physics left it — a hard mid-step shove
+  could latch false removal/disposal progress before the seat-pose write corrected it.
+  The old-bulb score channels are now attach-aware (`old_bulb_release_clearance`,
+  `old_bulb_removed_after_release`, `old_bulb_disposal_distance_pinned`,
+  `old_bulb_dropped_after_release`): a held bulb reads as seated, by definition.
 - Not yet run on GPU (no Isaac Sim on the dev machine). First-run checklist:
   `verify_scene.py` for the replace preset; watch for seated-bulb jitter against the
   socket colliders (the slaved dynamic bulb may interpenetrate where the kinematic one
