@@ -184,13 +184,10 @@ response `[action, info]`. `{"endpoint": "ping"}` for liveness,
 | `groot` (zero-shot, Inspire) | 1975.4 | 0 | time_out 95%, fell_over 5% |
 | `groot --robot dex3` (zero-shot, exact REAL_G1 embodiment) | 1983.8 | 0 | time_out 95%, fell_over 5% |
 
-`groot` diagnostics: server latency ≈ 123 ms/chunk, `nav_cmd_norm` ≈ 0.046,
-`base_height_cmd` ≈ 0.73. The VLA balances for the full episode and never attempts the
-task: every progress channel is 0 and the navigation command stays at the Balance
-threshold regardless of the instruction ("walk forward" 0.28 m displacement over 500
-steps vs "stand still" 0.57 m — no separation). Consistent with published zero-shot
-GR00T results on unseen G1 tasks. Artifacts: `logs/runs/groot-replace-seed0/`
-(eval.json + video/run.mp4).
+Both `groot` rows are pre-facing-fix (task objects out of the camera frustum);
+post-fix re-run pending. `groot` diagnostics: server latency ≈ 123 ms/chunk,
+`nav_cmd_norm` ≈ 0.046, `base_height_cmd` ≈ 0.73. Artifacts:
+`logs/runs/groot-replace-seed0/`, `logs/runs/groot-replace-dex3-seed0/`.
 
 Plumbing probes (same observation, repeated queries = the sampling-noise floor):
 - The torso camera's offset must use `convention="world"` (identity rot = parent +X,
@@ -204,4 +201,13 @@ Plumbing probes (same observation, repeated queries = the sampling-noise floor):
   does nothing and between-prompt distances only marginally clear the sampling-noise
   floor (3.3–4.1 vs 3.3–3.6). Steering the task zero-shot is not viable; fine-tuning on
   demos is the path.
+- The base REAL_G1 head does not do commanded locomotion: `navigate_command` in its own
+  training statistics is mean ≈ 0, std [0.08, 0.05, 0.17] on ±0.5/±0.5/±1.0 ranges —
+  the data is stationary manipulation with occasional small repositioning, and the
+  language annotations are manipulation task descriptions. Closed loop, "walk forward"
+  vs "stand still" produce indistinguishable displacement (0.28 vs 0.57 m / 500 steps).
+- Tabletop start (robot at the table edge, bulb in view and reach, Dex3): the VLA
+  engages zero-shot — bimanual reach over the table, 1.6 rad arm excursion, wrist to
+  0.53 m from the bulb — but no visual servo onto the bulb and no grasp closure (hands
+  0.15 rad, bulb displaced 9 mm). Scratchpad `tabletop_probe.py`, frames in the run log.
 - ONNX decode cost is negligible on CPU (SONIC decoder 0.36 ms; WBC nets are 1.9 MB).

@@ -508,7 +508,10 @@ DEFAULT_INSTRUCTION = (
 # The REAL_G1 embodiment: two ego frames 0.4 s apart in, 40-step action chunks
 # out. A fresh chunk is fetched every 20 env steps (the sim clock stops while
 # the request blocks, so no latency compensation is needed).
-_QUERY_INTERVAL = 20
+# Execute the full chunk before re-querying: the sim pauses during inference, so a
+# shorter interval would always execute the chunk prefix and discard the rest -- and
+# the model schedules stand-to-walk transitions in the second half of its 0.8 s plan.
+_QUERY_INTERVAL = 40
 _CHUNK_LEN = 40
 _FRAME_LOOKBACK = 20
 
