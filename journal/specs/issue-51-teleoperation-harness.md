@@ -62,16 +62,3 @@ stays in view. These made it *drivable*, but the core conclusion holds:
 > **use VR to move** — your hands drive the robot's hands directly (all axes at once), so it moves the
 > way you expect — which is also the right path for collecting clean manipulation demos.
 
-## 3. What this validated about the physics
-
-Driving by hand did its job — it surfaced real, attributable scene issues that a trained policy would
-have hit silently: the bulb needed a rigid body to be graspable; the hand's self-collision was
-unstable; and the **fixed-base arm's reach is too limited** for comfortable tabletop manipulation
-(which is exactly what motivated the walking add-on — let the robot reposition instead of over-reach).
-
-## 4. Next
-
-- **Use VR to move** the hands directly, so manipulation feels natural (the keyboard-difficulty fix).
-- Instrumentation: on-screen contact-force / grasp-success readouts so a teleop pass is a recorded
-  pass/fail, not just "looked right."
-- LeRobot-format recording so a validated session doubles as imitation-training data.
