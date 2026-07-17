@@ -14,7 +14,8 @@ A single rollout produces both artifacts so they describe the *same* run:
   score the run offline (see ``scripts/score.py``). ``--format npz`` for a flat fallback.
 
 The policy is anything ``make_policy`` accepts (``zero`` / ``random`` / a TorchScript
-``.pt`` / ``rsl_rl[:<ckpt>]``) -- the recorder is policy-agnostic.
+``.pt`` / ``rsl_rl[:<ckpt>]`` / ``sonic_stand`` / ``groot``) -- the recorder is
+policy-agnostic.
 
 Examples:
     python scripts/record_run.py --task FIATLUX-Insert-v0 --policy random \
@@ -66,6 +67,14 @@ parser.add_argument(
 )
 parser.add_argument(
     "--disable_fabric", action="store_true", default=False, help="Use USD I/O."
+)
+parser.add_argument(
+    "--instruction", type=str, default=None,
+    help="Language instruction for VLA policies (groot); default: the task's canonical sentence.",
+)
+parser.add_argument(
+    "--robot", type=str, default="inspire", choices=["inspire", "dex3"],
+    help="G1 hand variant. dex3 matches GR00T's REAL_G1 embodiment.",
 )
 # Benchmark telemetry flags (--wandb, --wandb_project, ...); mirrors fiatlux_task.telemetry.
 parser.add_argument("--wandb", action="store_true", default=False, help="Stream the score breakdown to wandb.")
@@ -136,6 +145,10 @@ def main():
         use_fabric=not args_cli.disable_fabric,
     )
     env_cfg.seed = args_cli.seed
+    if args_cli.robot != "inspire":
+        from fiatlux_task.robots.g1 import swap_robot_variant
+
+        swap_robot_variant(env_cfg, args_cli.robot)
     if want_video:
         # RTX sensor camera for the video (fiatlux_task.viz), posed per frame from --cam.
         env_cfg.scene.video_cam = make_video_camera_cfg()
@@ -150,7 +163,9 @@ def main():
         video = VideoRecorder(base_env, base_env.scene["video_cam"], video_path)
         print(f"[INFO] recording video to {video_path}")
 
-    policy = make_policy(args_cli.policy, base_env, checkpoint=args_cli.checkpoint)
+    policy = make_policy(
+        args_cli.policy, base_env, checkpoint=args_cli.checkpoint, instruction=args_cli.instruction
+    )
     recorder = (
         TrajectoryRecorder(
             base_env,
@@ -172,6 +187,8 @@ def main():
             obs, reward, terminated, truncated, extras = env.step(actions)
             if video is not None and len(video) < args_cli.video_length:
                 video.capture(pose_fn(len(video), args_cli.video_length))
+            if video is not None and recorder is None and len(video) >= args_cli.video_length:
+                break
             if recorder is not None:
                 recorder.record_step(obs, actions, reward, terminated, truncated)
             score_logger.step(base_env, extras, terminated | truncated)

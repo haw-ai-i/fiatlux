@@ -72,7 +72,8 @@ from fiatlux_task.scenes import DressedSceneCfg, spawn_b1k_single_body
 #    entity's init_state). BEHAVIOR-1K USDs are authored with the origin near the bbox
 #    center, so a prop resting on the floor sits at roughly half its height. Tuned against
 #    scripts/verify_scene.py --record orbit videos; adjust the same way. --
-ROBOT_POSITION = (0.0, 0.0, 0.75)  # G1_INSPIRE_CFG's standing pelvis height
+_ROBOT_Z = G1_INSPIRE_CFG.init_state.pos[2]  # standing pelvis height (feet on the floor)
+ROBOT_POSITION = (0.0, 0.0, _ROBOT_Z)
 # Work-site step ladder (STEP_LADDER_USD, probe: 0.68 wide x 1.11 deep x 1.75 tall, base
 # authored at z=0). Yawed 90 deg so its steps face -x (toward the robot's approach).
 LADDER_POSITION = (1.6, 0.0, 0.0)
@@ -87,7 +88,7 @@ FIXTURE_POSITION = (0.0, 0.0, 2.45)  # hangs overhead in the record camera's fra
 #    so a robot standing inside that footprint spawns with its legs among the
 #    frame members (kN solver wedges the moment anything touches). --
 TABLE_POSITION = (0.40, -0.10, 0.0)  # authored tabletop surface is ~1.0 m above the origin
-TABLETOP_ROBOT_POSITION = (0.60, 0.58, 0.75)
+TABLETOP_ROBOT_POSITION = (0.60, 0.58, _ROBOT_Z)
 TABLETOP_ROBOT_YAW_DEG = -90.0
 # ehjsdz base_link origin sits 0.48 m above the lamp's feet, so z=1.47 rests it on the
 # ~0.99 m tabletop; the bulblampF socket seat is then ~1.50 m (base_link + 3.3 cm).
@@ -98,7 +99,7 @@ TABLETOP_BULB_POSITION = (0.30, 0.18, 1.05)
 #    authored lying/leaning pose (probe: 2.41 long x 1.67 high, bbox bottom at -0.47 ->
 #    pivot z=+0.47 rests it on the floor), robot beside it, work area across the room --
 CARRY_LADDER_POSITION = (-3.2, 1.8, 0.47)  # near the Simple Room wall (~4.5 m out)
-CARRY_ROBOT_POSITION = (-2.4, 1.8, 0.75)  # standing next to the stored ladder
+CARRY_ROBOT_POSITION = (-2.4, 1.8, _ROBOT_Z)  # standing next to the stored ladder
 CARRY_LADDER_YAW_DEG = 90.0  # parallel to the wall
 
 # -- position (ladder-handling) subtask: FIATLUX-Carry-v0. The ladder is the free-standing
@@ -126,7 +127,7 @@ LADDER_MASS = 3.0  # modest, so one arm can move it (real step ladders are heavi
 #    chandelier hangs above/behind the ladder's top; positions are tuned against
 #    verify_scene --record orbit videos, same as the floor layout. --
 ELEVATED_SOCKET_POSITION = (1.9, 0.0, 2.80)  # cage bottom clears the at-top robot's head
-CLIMB_ROBOT_POSITION = (0.75, 0.0, 0.75)  # at the step ladder's base, ready to ascend
+CLIMB_ROBOT_POSITION = (0.75, 0.0, _ROBOT_Z)  # at the step ladder's base, ready to ascend
 TOP_ROBOT_POSITION = (1.35, 0.0, 1.85)  # pelvis at the upper steps (descend)
 PARKED_BULB_POSITION = (0.5, -0.6, 0.05)  # out of the way on the floor
 
@@ -744,7 +745,13 @@ def apply_replace_preset(
     )
 
     scene.robot.init_state.pos = (robot_center[0], robot_center[1], ROBOT_POSITION[2])
-    scene.robot.init_state.rot = _quat_z_deg(rng.uniform(0.0, 360.0))
+    # Face the table (the task's first target), +/- a small jitter: the ego camera's
+    # 50 deg frustum must contain the work area or the standard observation mode
+    # cannot see the task at all.
+    facing = math.degrees(
+        math.atan2(table_center[1] - robot_center[1], table_center[0] - robot_center[0])
+    )
+    scene.robot.init_state.rot = _quat_z_deg(facing + rng.uniform(-15.0, 15.0))
     scene.table.init_state.pos = (table_center[0], table_center[1], TABLE_POSITION[2])
     bulb_local_offset = tuple(b - t for b, t in zip(TABLETOP_BULB_POSITION, TABLE_POSITION))
     scene.bulb.init_state.pos = (

@@ -87,6 +87,20 @@ the same-seed-same-numbers contract covers the layout too.
 - `basic_cheatcode` — the same, but additionally asserts and reads the
   **cheatcode** (`privileged`) observation group every step.
 - `rsl_rl` — a trained PPO checkpoint (`scripts/rsl_rl/train.py`).
+- `wbc_stand` / `sonic_stand` — the decoupled GEAR whole-body controller holding
+  zero commands, and the GEAR-SONIC controller holding its standing latent (no
+  VLA in either): the sim2sim stand gates for the model baselines and a "can
+  anything keep this robot upright" reference (`fiatlux_task/groot.py`).
+- `groot` — **the reference model baseline**: zero-shot NVIDIA GR00T N1.7 (base
+  checkpoint, `REAL_G1` embodiment) + the decoupled GEAR WBC, standard mode only
+  (torso RGB + proprioception + a language instruction, set via
+  `--instruction`; the default is the task's canonical sentence in
+  `fiatlux_task/groot.py`). Requires the external PolicyServer:
+  `scripts/groot/serve.sh` (setup: `journal/specs/groot-sonic-baseline.md`).
+  Fine-tuned GR00T submissions evaluate through the same spec — point the
+  server at the fine-tuned checkpoint (`GROOT_MODEL=<path> GROOT_EMBODIMENT=<tag>
+  scripts/groot/serve.sh`); a `UNITREE_G1_SONIC` finetune plugs into the
+  ready `SonicDecoder` path.
 
 ## Offline scoring (`scripts/score.py`)
 

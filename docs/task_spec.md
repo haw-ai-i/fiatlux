@@ -55,6 +55,20 @@ Smoke-test policies (`fiatlux_task/policy.py`): `basic_standard` consumes only t
 standard group and holds posture; `basic_cheatcode` additionally asserts and reads the
 privileged group. Both prove the episode/scoring loop end-to-end; neither solves the task.
 
+Standard mode admits *raw* sensor access too: a policy may read the torso camera frames
+and proprioception directly from the scene (rather than the flattened, corrupted,
+feature-extracted `policy` group) as long as it touches nothing privileged — that is how
+the `groot` VLA baseline consumes the same sensors (`fiatlux_task/groot.py`).
+
+## Language instruction
+
+VLA-style policies receive the task as a natural-language instruction
+(`--instruction` on `eval.py` / `record_run.py`). The canonical sentence
+(`fiatlux_task.groot.DEFAULT_INSTRUCTION`):
+
+> Replace the light bulb: take the fresh bulb from the table, insert it into the light
+> fixture, then put the old bulb in the yellow crate.
+
 ## Rewards (the score breakdown)
 
 Every channel is its own named term, so `Episode_Reward/<term>` sums **are** the score

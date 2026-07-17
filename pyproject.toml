@@ -34,9 +34,20 @@ dependencies = [
     "fiatlux_task",
 ]
 
+[project.optional-dependencies]
+# GR00T+SONIC baseline adapter (fiatlux_task.groot, imported lazily by the
+# "groot"/"sonic_stand" policy specs): in-process SONIC/WBC ONNX decoding and
+# the ZMQ+msgpack client for NVIDIA's Isaac-GR00T PolicyServer.
+groot = [
+    "onnxruntime",
+    "pyzmq",
+    "msgpack-numpy",
+]
+
 [tool.uv]
 # Root is a managed environment, not a distributable package.
 package = false
+environments = ["sys_platform != 'darwin'"]
 # Stop Isaac Sim / Isaac Lab from resolving a different torch than the cu128 build.
 override-dependencies = ["torch==2.7.0", "torchvision==0.22.0"]
 
@@ -185,15 +196,17 @@ extend_exclude = ["source/fiatlux_task/setup.py"]
 
 [tool.deptry.package_module_name_map]
 "rsl-rl-lib" = "rsl_rl"
+"pyzmq" = "zmq"
 
 [tool.deptry.per_rule_ignores]
 # All transitive through the single isaaclab[isaacsim,all] dependency (gymnasium, isaaclab_rl,
-# isaaclab_tasks, isaacsim, numpy, omni, carb, pxr, yaml), or intentionally-optional imports
+# isaaclab_tasks, isaacsim, numpy, omni, carb, pxr, yaml) or msgpack-numpy (msgpack), or
+# intentionally-optional imports
 # gated behind their own runtime/CLI opt-in (huggingface_hub, pinocchio), or a sibling script
 # resolved via the launcher's own sys.path convention, not a package (cli_args).
 DEP001 = [
     "carb", "cli_args", "gymnasium", "huggingface_hub", "isaaclab_rl", "isaaclab_tasks",
-    "isaacsim", "numpy", "omni", "pinocchio", "pxr", "yaml",
+    "isaacsim", "msgpack", "numpy", "omni", "pinocchio", "pxr", "yaml",
 ]
 # Each declared for a reason that isn't a direct import: torchvision/psutil pin an exact
 # version isaaclab needs without importing them ourselves; imageio-ffmpeg is a plugin backend
@@ -205,7 +218,7 @@ DEP003 = ["packaging", "tomli"]
 skip = '*.usd,*.usda,*.usdz,*.svg,*.png,_isaac_sim*,*.bib,*.css,*/_build'
 quiet-level = 0
 # the world list should always have words in lower case
-ignore-words-list = "haa,slq,collapsable,buss,reacher,thirdparty"
+ignore-words-list = "haa,slq,collapsable,buss,reacher,thirdparty,retuned"
 
 
 [tool.pytest.ini_options]

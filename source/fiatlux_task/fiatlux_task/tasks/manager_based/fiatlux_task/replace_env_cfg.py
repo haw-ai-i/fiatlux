@@ -408,8 +408,9 @@ class ReplaceEnvCfg(ManagerBasedRLEnvCfg):
             height=224,
             width=224,
             data_types=["rgb"],
+            # "world" convention: identity rot looks along the torso's +X (forward).
             offset=TiledCameraCfg.OffsetCfg(
-                pos=(0.08, 0.0, 0.42), rot=(1.0, 0.0, 0.0, 0.0), convention="ros"
+                pos=(0.08, 0.0, 0.42), rot=(1.0, 0.0, 0.0, 0.0), convention="world"
             ),
         )
 
@@ -428,5 +429,6 @@ class ReplaceEnvCfg(ManagerBasedRLEnvCfg):
         self.sim.physx.bounce_threshold_velocity = 0.2
         self.sim.physx.enable_stabilization = True
 
-        self.viewer.eye = (4.5, 4.5, 3.0)
+        # Must stay inside the Simple Room shell (walls x=±4.52, y=[-3.4, 4.86], ceiling ~3 m).
+        self.viewer.eye = (3.6, 3.8, 2.4)
         self.viewer.lookat = (0.0, 0.7, 1.0)
