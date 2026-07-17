@@ -86,6 +86,7 @@ simulation_app = app_launcher.app
 """Rest everything follows."""
 
 import json
+import os
 import random
 
 import fiatlux_task.tasks  # noqa: F401
@@ -149,6 +150,7 @@ def main():
     results = score_logger.close()
     print(json.dumps(results, indent=2))
     if args_cli.output:
+        os.makedirs(os.path.dirname(args_cli.output) or ".", exist_ok=True)
         with open(args_cli.output, "w") as fh:
             json.dump(results, fh, indent=2)
         print(f"[INFO] wrote {args_cli.output}")

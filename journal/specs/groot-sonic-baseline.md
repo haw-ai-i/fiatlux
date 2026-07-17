@@ -181,7 +181,8 @@ response `[action, info]`. `{"endpoint": "ping"}` for liveness,
 | `zero` / `basic_standard` | 54.8 | 0 | fell_over 100% |
 | `wbc_stand` (gate, 4 eps) | 2000.0 | — | time_out 100% |
 | `sonic_stand` (gate, 4 eps) | 2000.0 | — | time_out 100% |
-| `groot` (zero-shot) | 1975.4 | 0 | time_out 95%, fell_over 5% |
+| `groot` (zero-shot, Inspire) | 1975.4 | 0 | time_out 95%, fell_over 5% |
+| `groot --robot dex3` (zero-shot, exact REAL_G1 embodiment) | 1983.8 | 0 | time_out 95%, fell_over 5% |
 
 `groot` diagnostics: server latency ≈ 123 ms/chunk, `nav_cmd_norm` ≈ 0.046,
 `base_height_cmd` ≈ 0.73. The VLA balances for the full episode and never attempts the
