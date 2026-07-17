@@ -745,7 +745,13 @@ def apply_replace_preset(
     )
 
     scene.robot.init_state.pos = (robot_center[0], robot_center[1], ROBOT_POSITION[2])
-    scene.robot.init_state.rot = _quat_z_deg(rng.uniform(0.0, 360.0))
+    # Face the table (the task's first target), +/- a small jitter: the ego camera's
+    # 50 deg frustum must contain the work area or the standard observation mode
+    # cannot see the task at all.
+    facing = math.degrees(
+        math.atan2(table_center[1] - robot_center[1], table_center[0] - robot_center[0])
+    )
+    scene.robot.init_state.rot = _quat_z_deg(facing + rng.uniform(-15.0, 15.0))
     scene.table.init_state.pos = (table_center[0], table_center[1], TABLE_POSITION[2])
     bulb_local_offset = tuple(b - t for b, t in zip(TABLETOP_BULB_POSITION, TABLE_POSITION))
     scene.bulb.init_state.pos = (
