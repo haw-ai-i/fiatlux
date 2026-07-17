@@ -557,7 +557,10 @@ class GrootPolicy:
     targets, waist targets, ``navigate_command`` and ``base_height_command``.
     Every 50 Hz step the chunk's navigation/height/torso commands drive
     :class:`GearWbcDecoder` (legs + waist) while the arm targets apply
-    directly; hands stay at defaults (Dex3 channel, Inspire robot).
+    directly. On the Dex3 robot (``--robot dex3``, the exact REAL_G1
+    embodiment) hand state/actions pass through in GR00T's hand-channel
+    order; on the Inspire robot the hand channels are zeros and the fingers
+    hold their defaults.
 
     Exposes the optional ``info`` telemetry dict (``policy/`` namespace):
     server round-trip and the current chunk's command magnitudes.
@@ -583,6 +586,14 @@ class GrootPolicy:
         )
         assert list(wrist_names) == ["left_wrist_yaw_link", "right_wrist_yaw_link"]
         self._wrist_ids = wrist_ids
+
+        from .robots.g1 import G1_DEX3_LEFT_HAND_JOINTS, G1_DEX3_RIGHT_HAND_JOINTS
+
+        dex3_names = G1_DEX3_LEFT_HAND_JOINTS + G1_DEX3_RIGHT_HAND_JOINTS
+        self._hand_ids: torch.Tensor | None = None
+        if set(dex3_names) <= set(self.robot.joint_names):
+            hand_ids, _ = self.robot.find_joints(dex3_names, preserve_order=True)
+            self._hand_ids = torch.tensor(hand_ids, dtype=torch.long, device=device)
 
         self._blend = _StartupBlend(
             env, self._wbc.robot, self._wbc.lower_ids, self._wbc.lower_defaults, self._wbc.action_scale
@@ -633,13 +644,18 @@ class GrootPolicy:
         def joints(ids) -> np.ndarray:
             return q[:, ids][0].cpu().numpy().astype(np.float32)[None, None]
 
+        if self._hand_ids is not None:
+            left_hand = joints(self._hand_ids[:7])
+            right_hand = joints(self._hand_ids[7:])
+        else:
+            # Dex3 hand-state channels; the Inspire robot sends neutral (open) hands.
+            left_hand = np.zeros((1, 1, 7), dtype=np.float32)
+            right_hand = np.zeros((1, 1, 7), dtype=np.float32)
         state = {
             "left_wrist_eef_9d": self._wrist_eef_9d(self._wrist_ids[0])[None, None],
             "right_wrist_eef_9d": self._wrist_eef_9d(self._wrist_ids[1])[None, None],
-            # Dex3 hand-state channels; this robot has Inspire hands, so the VLA
-            # sees neutral (open) hands.
-            "left_hand": np.zeros((1, 1, 7), dtype=np.float32),
-            "right_hand": np.zeros((1, 1, 7), dtype=np.float32),
+            "left_hand": left_hand,
+            "right_hand": right_hand,
             "left_arm": joints(self._arm_ids[:7]),
             "right_arm": joints(self._arm_ids[7:]),
             "waist": joints(self._waist_ids),
@@ -668,6 +684,9 @@ class GrootPolicy:
             "navigate_command": chunk("navigate_command", 3),
             "base_height_command": chunk("base_height_command", 1),
         }
+        if self._hand_ids is not None:
+            self._chunk["left_hand"] = chunk("left_hand", 7)
+            self._chunk["right_hand"] = chunk("right_hand", 7)
         self._chunk_step = 0
         self.info = {
             "server_latency_ms": latency_ms,
@@ -710,12 +729,21 @@ class GrootPolicy:
                 np.concatenate([self._chunk["left_arm"][k], self._chunk["right_arm"][k]])
             ).to(device)
             arm_action = (arm_targets - self.robot.data.default_joint_pos[0, self._arm_ids]) / self._wbc.action_scale
+            if self._hand_ids is not None:
+                hand_targets = torch.from_numpy(
+                    np.concatenate([self._chunk["left_hand"][k], self._chunk["right_hand"][k]])
+                ).to(device)
+                hand_action = (
+                    hand_targets - self.robot.data.default_joint_pos[0, self._hand_ids]
+                ) / self._wbc.action_scale
             self._chunk_step += 1
             self._steps_since_query += 1
 
         action = self._wbc.step(env, self._cmd, self._height, self._rpy)
         if arm_action is not None:
             action[:, self._arm_ids] = arm_action
+            if self._hand_ids is not None:
+                action[:, self._hand_ids] = hand_action
         return self._blend.override(env, action, blend_mask)
 
 

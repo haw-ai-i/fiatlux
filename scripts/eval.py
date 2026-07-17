@@ -54,6 +54,10 @@ parser.add_argument(
     "--instruction", type=str, default=None,
     help="Language instruction for VLA policies (groot); default: the task's canonical sentence.",
 )
+parser.add_argument(
+    "--robot", type=str, default="inspire", choices=["inspire", "dex3"],
+    help="G1 hand variant. dex3 matches GR00T's REAL_G1 embodiment.",
+)
 parser.add_argument("--episodes", type=int, default=20, help="Episodes to evaluate.")
 parser.add_argument("--num_envs", type=int, default=None, help="Parallel envs.")
 parser.add_argument("--seed", type=int, default=0, help="Evaluation seed.")
@@ -106,6 +110,10 @@ def main():
         use_fabric=not args_cli.disable_fabric,
     )
     env_cfg.seed = args_cli.seed
+    if args_cli.robot != "inspire":
+        from fiatlux_task.robots.g1 import swap_robot_variant
+
+        swap_robot_variant(env_cfg, args_cli.robot)
     env = gym.make(args_cli.task, cfg=env_cfg).unwrapped
 
     policy = make_policy(

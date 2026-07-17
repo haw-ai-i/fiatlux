@@ -21,7 +21,7 @@ from isaaclab.assets import ArticulationCfg
 from isaaclab.sim.spawners.from_files.from_files import _spawn_from_usd_file
 from isaaclab.sim.utils import clone
 
-from ..assets import G1_USD
+from ..assets import G1_DEX3_USD, G1_USD
 
 # The Inspire hand is authored with collision meshes that interpenetrate their
 # non-joint-connected neighbors at the default pose (PhysX adjacency filtering
@@ -221,3 +221,64 @@ G1_INSPIRE_CFG = ArticulationCfg(
         ),
     },
 )
+
+
+# ---------------------------------------------------------------------------
+# Articulation config (legged / free base, Dex3 hand)
+# ---------------------------------------------------------------------------
+
+# Dex3 finger joints per hand, in GR00T's REAL_G1 hand-channel order
+# (GR00T-WholeBodyControl ``g1_supplemental_info.py`` ``joint_groups``).
+_DEX3_HAND_ORDER = [
+    "hand_index_0_joint",
+    "hand_index_1_joint",
+    "hand_middle_0_joint",
+    "hand_middle_1_joint",
+    "hand_thumb_0_joint",
+    "hand_thumb_1_joint",
+    "hand_thumb_2_joint",
+]
+G1_DEX3_LEFT_HAND_JOINTS = [f"left_{j}" for j in _DEX3_HAND_ORDER]
+G1_DEX3_RIGHT_HAND_JOINTS = [f"right_{j}" for j in _DEX3_HAND_ORDER]
+G1_DEX3_FINGER_JOINT_PATTERNS = [".*_hand_(thumb|index|middle)_._joint"]
+
+G1_DEX3_CFG = G1_INSPIRE_CFG.replace(
+    spawn=G1_INSPIRE_CFG.spawn.replace(usd_path=G1_DEX3_USD, func=sim_utils.spawn_from_usd),
+    actuators={
+        **{k: v for k, v in G1_INSPIRE_CFG.actuators.items() if k != "hands"},
+        # Unitree Dex3 driver gains (gear_sonic_deploy ``dex3_hands.hpp``); torque
+        # limits come from the URDF/USD.
+        "hands": ImplicitActuatorCfg(
+            joint_names_expr=G1_DEX3_FINGER_JOINT_PATTERNS,
+            stiffness=1.5,
+            damping=0.1,
+        ),
+    },
+)
+
+G1_VARIANTS = {"inspire": G1_INSPIRE_CFG, "dex3": G1_DEX3_CFG}
+_FINGER_PATTERNS_BY_VARIANT = {
+    "inspire": G1_FINGER_JOINT_PATTERNS,
+    "dex3": G1_DEX3_FINGER_JOINT_PATTERNS,
+}
+
+
+def swap_robot_variant(env_cfg, variant: str) -> None:
+    """Swap the scene's G1 hand variant in a parsed env cfg, keeping its placement.
+
+    Reward/termination terms that scope finger joints are re-pointed at the
+    variant's joint names (a regex that matches no joint raises in Isaac Lab's
+    name resolver).
+    """
+    robot = env_cfg.scene.robot
+    env_cfg.scene.robot = G1_VARIANTS[variant].replace(prim_path=robot.prim_path, init_state=robot.init_state)
+    patterns = _FINGER_PATTERNS_BY_VARIANT[variant]
+    for manager_name in ("rewards", "terminations", "events"):
+        manager = getattr(env_cfg, manager_name, None)
+        if manager is None:
+            continue
+        for term_name in dir(manager):
+            term = getattr(manager, term_name)
+            asset_cfg = getattr(term, "params", {}).get("asset_cfg") if hasattr(term, "params") else None
+            if asset_cfg is not None and list(asset_cfg.joint_names or []) == list(G1_FINGER_JOINT_PATTERNS):
+                asset_cfg.joint_names = list(patterns)

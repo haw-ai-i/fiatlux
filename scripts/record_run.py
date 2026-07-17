@@ -72,6 +72,10 @@ parser.add_argument(
     "--instruction", type=str, default=None,
     help="Language instruction for VLA policies (groot); default: the task's canonical sentence.",
 )
+parser.add_argument(
+    "--robot", type=str, default="inspire", choices=["inspire", "dex3"],
+    help="G1 hand variant. dex3 matches GR00T's REAL_G1 embodiment.",
+)
 # Benchmark telemetry flags (--wandb, --wandb_project, ...); mirrors fiatlux_task.telemetry.
 parser.add_argument("--wandb", action="store_true", default=False, help="Stream the score breakdown to wandb.")
 parser.add_argument("--wandb_project", type=str, default="fiatlux", help="wandb project name.")
@@ -141,6 +145,10 @@ def main():
         use_fabric=not args_cli.disable_fabric,
     )
     env_cfg.seed = args_cli.seed
+    if args_cli.robot != "inspire":
+        from fiatlux_task.robots.g1 import swap_robot_variant
+
+        swap_robot_variant(env_cfg, args_cli.robot)
     if want_video:
         # RTX sensor camera for the video (fiatlux_task.viz), posed per frame from --cam.
         env_cfg.scene.video_cam = make_video_camera_cfg()
