@@ -14,7 +14,8 @@ A single rollout produces both artifacts so they describe the *same* run:
   score the run offline (see ``scripts/score.py``). ``--format npz`` for a flat fallback.
 
 The policy is anything ``make_policy`` accepts (``zero`` / ``random`` / a TorchScript
-``.pt`` / ``rsl_rl[:<ckpt>]``) -- the recorder is policy-agnostic.
+``.pt`` / ``rsl_rl[:<ckpt>]`` / ``sonic_stand`` / ``groot``) -- the recorder is
+policy-agnostic.
 
 Examples:
     python scripts/record_run.py --task FIATLUX-Insert-v0 --policy random \
@@ -66,6 +67,10 @@ parser.add_argument(
 )
 parser.add_argument(
     "--disable_fabric", action="store_true", default=False, help="Use USD I/O."
+)
+parser.add_argument(
+    "--instruction", type=str, default=None,
+    help="Language instruction for VLA policies (groot); default: the task's canonical sentence.",
 )
 # Benchmark telemetry flags (--wandb, --wandb_project, ...); mirrors fiatlux_task.telemetry.
 parser.add_argument("--wandb", action="store_true", default=False, help="Stream the score breakdown to wandb.")
@@ -150,7 +155,9 @@ def main():
         video = VideoRecorder(base_env, base_env.scene["video_cam"], video_path)
         print(f"[INFO] recording video to {video_path}")
 
-    policy = make_policy(args_cli.policy, base_env, checkpoint=args_cli.checkpoint)
+    policy = make_policy(
+        args_cli.policy, base_env, checkpoint=args_cli.checkpoint, instruction=args_cli.instruction
+    )
     recorder = (
         TrajectoryRecorder(
             base_env,

@@ -50,6 +50,10 @@ parser.add_argument(
 parser.add_argument(
     "--checkpoint", type=str, default=None, help="Checkpoint path for rsl_rl policies."
 )
+parser.add_argument(
+    "--instruction", type=str, default=None,
+    help="Language instruction for VLA policies (groot); default: the task's canonical sentence.",
+)
 parser.add_argument("--episodes", type=int, default=20, help="Episodes to evaluate.")
 parser.add_argument("--num_envs", type=int, default=None, help="Parallel envs.")
 parser.add_argument("--seed", type=int, default=0, help="Evaluation seed.")
@@ -104,7 +108,9 @@ def main():
     env_cfg.seed = args_cli.seed
     env = gym.make(args_cli.task, cfg=env_cfg).unwrapped
 
-    policy = make_policy(args_cli.policy, env, checkpoint=args_cli.checkpoint)
+    policy = make_policy(
+        args_cli.policy, env, checkpoint=args_cli.checkpoint, instruction=args_cli.instruction
+    )
     # All metric definitions (success, episode stats, score breakdown) live in
     # fiatlux_task.telemetry; this loop only feeds it raw step artifacts.
     score_logger = ScoreLogger.from_args(args_cli)

@@ -36,9 +36,19 @@ Supported specs (``make_policy(spec, env)``):
                            already exports to ``.../exported/policy.pt``.
 - ``"rsl_rl[:<ckpt>]"`` -- convenience loader for an RSL-RL ``OnPolicyRunner``
                            checkpoint (one example training backend, not required).
+- ``"sonic_stand"``     -- the GEAR-SONIC whole-body controller holding its standing
+                           latent (no VLA); the SONIC stack's sim2sim stand gate
+                           (see ``fiatlux_task.groot``).
+- ``"wbc_stand"``       -- the decoupled GEAR WBC holding zero commands (no VLA);
+                           the stand gate for the ``groot`` baseline's lower body.
+- ``"groot[:<host:port>]"`` -- the GR00T N1.7 baseline: queries a running
+                           Isaac-GR00T PolicyServer (external process, ``REAL_G1``
+                           embodiment) and decodes its navigation/height/arm
+                           chunks through the decoupled WBC in-process.
+                           ``instruction`` sets the language prompt.
 
-The ``rsl_rl`` and TorchScript loaders are imported lazily so the baselines work
-without those dependencies installed.
+The ``rsl_rl``, TorchScript, and GR00T/SONIC loaders are imported lazily so the
+baselines work without those dependencies installed.
 """
 
 from __future__ import annotations
@@ -61,15 +71,19 @@ def make_policy(
     *,
     checkpoint: str | None = None,
     device: str | None = None,
+    instruction: str | None = None,
 ) -> Callable:
     """Return a callable ``policy(obs) -> actions`` for ``spec``.
 
     Args:
         spec: One of ``"zero"``, ``"random"``, ``"basic_standard"``, ``"basic_cheatcode"``,
-            a TorchScript ``.pt`` path, or ``"rsl_rl"`` / ``"rsl_rl:<checkpoint>"``.
+            a TorchScript ``.pt`` path, ``"rsl_rl"`` / ``"rsl_rl:<checkpoint>"``,
+            ``"sonic_stand"``, or ``"groot"`` / ``"groot:<host:port>"``.
         env: The (unwrapped) environment; used for ``num_envs``/``action_space``/``device``.
         checkpoint: Checkpoint path for ``"rsl_rl"`` (alternative to the ``rsl_rl:`` suffix).
         device: Override device; defaults to ``env.device``.
+        instruction: Language prompt for ``"groot"`` (the task description the VLA
+            conditions on); ignored by every other spec.
     """
     device = device or env.device
     action_shape = (env.num_envs, env.action_space.shape[-1])
@@ -107,6 +121,21 @@ def make_policy(
             return torch.zeros(action_shape, device=device)
 
         return basic_cheatcode
+
+    # GR00T N1.7 whole-body baseline (fiatlux_task.groot; lazy heavy deps).
+    if spec == "sonic_stand":
+        from .groot import make_sonic_stand_policy
+
+        return make_sonic_stand_policy(env)
+    if spec == "wbc_stand":
+        from .groot import make_wbc_stand_policy
+
+        return make_wbc_stand_policy(env)
+    if spec == "groot" or spec.startswith("groot:"):
+        from .groot import make_groot_policy
+
+        endpoint = spec.split(":", 1)[1] if ":" in spec else None
+        return make_groot_policy(env, endpoint=endpoint, instruction=instruction)
 
     # RSL-RL convenience loader: "rsl_rl" (+ checkpoint) or "rsl_rl:<path>".
     if spec == "rsl_rl" or spec.startswith("rsl_rl:"):

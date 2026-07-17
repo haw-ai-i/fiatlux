@@ -30,6 +30,12 @@ dependencies = [
     "imageio-ffmpeg",
     # Benchmark telemetry (fiatlux_task.telemetry; imported lazily behind --wandb).
     "wandb",
+    # GR00T+SONIC baseline adapter (fiatlux_task.groot, imported lazily by the
+    # "groot"/"sonic_stand" policy specs): in-process SONIC WBC ONNX decoding and the
+    # ZMQ+msgpack client for NVIDIA's Isaac-GR00T PolicyServer.
+    "onnxruntime",
+    "pyzmq",
+    "msgpack-numpy",
     # The benchmark task package itself (editable, see [tool.uv.sources]).
     "fiatlux_task",
 ]
