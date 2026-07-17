@@ -173,15 +173,22 @@ response `[action, info]`. `{"endpoint": "ping"}` for liveness,
 | `zero` / `basic_standard` | 62.0 | 0 | fell_over 100% |
 | `wbc_stand` (gate, 4 eps) | 2000.0 | — | time_out 100% |
 | `sonic_stand` (gate, 4 eps) | 1068.25 | — | time_out 50% |
-| `groot` (zero-shot) | 990.4 | 0 | time_out 20%, fell_over 55%, fell_below 40% |
+| `groot` (zero-shot) | 1081.5 | 0 | time_out 15%, fell_over 70%, fell_below 25% |
 
-`groot` diagnostics: server latency ≈ 118 ms/chunk, `nav_cmd_norm` ≈ 0.05 (the VLA
+`groot` diagnostics: server latency ≈ 117 ms/chunk, `nav_cmd_norm` ≈ 0.05 (the VLA
 holds position rather than walking — zero-shot, all progress channels 0). Artifacts:
 `logs/runs/groot-replace-seed0/` (eval.json + video/run.mp4).
 
-Instruction-following probe (same live frame, eight prompts from the canonical task
-sentence to atomic "walk forward" / "turn left" / "crouch down"): commanded velocities
-stay in a 0.015–0.07 noise band and the height command never moves — the base
-checkpoint's behavior in this domain is language-invariant. Steering it at the ladder
-requires fine-tuning on task demos, not prompt engineering.
+Plumbing probes (same observation, repeated queries = the sampling-noise floor):
+- The torso camera's offset must use `convention="world"` (identity rot = parent +X,
+  forward). Under `"ros"` the identity rot points the optical axis along +Z — straight
+  at the ceiling. Caught by dumping the exact frames sent to the VLA; with the fix, the
+  model's output distribution responds to real-vs-blank imagery. The Insert wrist
+  camera uses the same identity-`"ros"` offset and needs the same audit (follow-up).
+- Instruction following (eight prompts, same live frame): weak, unreliable grounding.
+  "walk forward" commands |nav| 0.34 (as a turn), "crouch down" gives the lowest height
+  command (0.696), "pick up the light bulb" the largest arm excursion — but "turn left"
+  does nothing and between-prompt distances only marginally clear the sampling-noise
+  floor (3.3–4.1 vs 3.3–3.6). Steering the task zero-shot is not viable; fine-tuning on
+  demos is the path.
 - ONNX decode cost is negligible on CPU (SONIC decoder 0.36 ms; WBC nets are 1.9 MB).
