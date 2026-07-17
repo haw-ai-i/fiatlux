@@ -181,12 +181,16 @@ response `[action, info]`. `{"endpoint": "ping"}` for liveness,
 | `zero` / `basic_standard` | 54.8 | 0 | fell_over 100% |
 | `wbc_stand` (gate, 4 eps) | 2000.0 | — | time_out 100% |
 | `sonic_stand` (gate, 4 eps) | 2000.0 | — | time_out 100% |
-| `groot` (zero-shot, Inspire) | 1975.4 | 0 | time_out 95%, fell_over 5% |
-| `groot --robot dex3` (zero-shot, exact REAL_G1 embodiment) | 1983.8 | 0 | time_out 95%, fell_over 5% |
+| `groot` (zero-shot, Inspire, pre-facing/half-chunk) | 1975.4 | 0 | time_out 95%, fell_over 5% |
+| `groot --robot dex3` (zero-shot, pre-facing/half-chunk) | 1983.8 | 0 | time_out 95%, fell_over 5% |
+| **`groot --robot dex3` (zero-shot, final)** | **2000.0** | 0 | time_out 100% |
 
-Both `groot` rows are pre-facing-fix (task objects out of the camera frustum);
-post-fix re-run pending. `groot` diagnostics: server latency ≈ 123 ms/chunk,
-`nav_cmd_norm` ≈ 0.046, `base_height_cmd` ≈ 0.73. Artifacts:
+The final row is the shipped baseline: exact REAL_G1 embodiment, spawn facing the
+table, full-chunk execution. The robot walks toward the table under the canonical
+instruction (closed loop: 3.46 m -> 2.30 m before wandering; video
+`logs/runs/groot-approach-dex3/video/run.mp4`) and never falls, but stalls beyond
+progress range — all progress channels 0. Diagnostics: server latency ≈ 117 ms/chunk,
+`nav_cmd_norm` ≈ 0.052, `base_height_cmd` ≈ 0.73. Artifacts:
 `logs/runs/groot-replace-seed0/`, `logs/runs/groot-replace-dex3-seed0/`.
 
 Plumbing probes (same observation, repeated queries = the sampling-noise floor):
