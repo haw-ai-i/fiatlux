@@ -357,8 +357,6 @@ DEFAULT_WBC_DIR = os.path.expanduser(
 _WBC_BALANCE = "GR00T-WholeBodyControl-Balance.onnx"
 _WBC_WALK = "GR00T-WholeBodyControl-Walk.onnx"
 _WBC_LOWER_DEFAULTS = [-0.1, 0.0, 0.0, 0.3, -0.2, 0.0] * 2 + [0.0, 0.0, 0.0]
-_WBC_KP = [150.0, 150.0, 150.0, 200.0, 40.0, 40.0] * 2 + [250.0, 250.0, 250.0]
-_WBC_KD = [2.0, 2.0, 2.0, 4.0, 2.0, 2.0] * 2 + [5.0, 5.0, 5.0]
 _WBC_ACTION_SCALE = 0.25
 _WBC_CMD_SCALE = (2.0, 2.0, 0.5)
 _WBC_ANG_VEL_SCALE = 0.5
@@ -408,8 +406,6 @@ class GearWbcDecoder:
         # reference pads with zeros for the arms).
         self._defaults29 = torch.zeros(29, device=device)
         self._defaults29[:15] = self.lower_defaults
-        self._kp_wbc = torch.tensor(_WBC_KP, device=device)
-        self._kd_wbc = torch.tensor(_WBC_KD, device=device)
         self._cmd_scale = torch.tensor(_WBC_CMD_SCALE, device=device)
 
         action_cfg = env.cfg.actions.joint_pos
@@ -473,20 +469,13 @@ class GearWbcDecoder:
         act_t = torch.from_numpy(act).to(q29.device)
         self._last_action[:] = act_t
 
-        # The WBC's intended torque, retargeted through the env's own PD gains.
-        q15 = q29[:, :15]
-        dq15 = dq29[:, :15]
         q_des = self.lower_defaults + act_t * _WBC_ACTION_SCALE
-        tau = self._kp_wbc * (q_des - q15) - self._kd_wbc * dq15
-        kp_ours = data.joint_stiffness[:, self.lower_ids].clamp_min(1e-6)
-        kd_ours = data.joint_damping[:, self.lower_ids]
-        q_t = q15 + (tau + kd_ours * dq15) / kp_ours
         limits = data.soft_joint_pos_limits[:, self.lower_ids]
-        q_t = q_t.clamp(limits[..., 0], limits[..., 1])
+        q_des = q_des.clamp(limits[..., 0], limits[..., 1])
 
         env_action = torch.zeros(env.num_envs, self.robot.num_joints, device=q29.device)
         default_ours = data.default_joint_pos[:, self.lower_ids]
-        env_action[:, self.lower_ids] = (q_t - default_ours) / self.action_scale
+        env_action[:, self.lower_ids] = (q_des - default_ours) / self.action_scale
         return env_action
 
 

@@ -46,13 +46,12 @@ def _spawn_g1_with_filtered_hand_mounts(prim_path, cfg, translation=None, orient
     for side in ("left", "right"):
         fmt = {"side": side, "S": side[0].upper()}
         for body, targets in _G1_FILTERED_PAIRS.items():
-            api = UsdPhysics.FilteredPairsAPI.Apply(
-                stage.GetPrimAtPath(f"{prim_path}/{body.format(**fmt)}")
-            )
+            api = UsdPhysics.FilteredPairsAPI.Apply(stage.GetPrimAtPath(f"{prim_path}/{body.format(**fmt)}"))
             rel = api.GetFilteredPairsRel()
             for target in targets:
                 rel.AddTarget(f"{prim_path}/{target.format(**fmt)}")
     return prim
+
 
 # ---------------------------------------------------------------------------
 # Joint / body names (standard Unitree G1 naming)
@@ -99,6 +98,59 @@ G1_FINGER_JOINT_PATTERNS = ["[LR]_.*_joint"]
 
 
 # ---------------------------------------------------------------------------
+# Actuator model
+# ---------------------------------------------------------------------------
+
+# Rotor inertia reflected through the gearbox, per Unitree motor type.
+ARMATURE_5020 = 0.003609725
+ARMATURE_7520_14 = 0.010177520
+ARMATURE_7520_22 = 0.025101925
+ARMATURE_4010 = 0.00425
+
+_LEG_STIFFNESS = {".*_hip_.*_joint": 150.0, ".*_knee_joint": 200.0, ".*_ankle_.*_joint": 40.0}
+_LEG_DAMPING = {".*_hip_.*_joint": 2.0, ".*_knee_joint": 4.0, ".*_ankle_.*_joint": 2.0}
+_LEG_EFFORT = {
+    ".*_hip_yaw_joint": 88.0,
+    ".*_hip_roll_joint": 139.0,
+    ".*_hip_pitch_joint": 139.0,
+    ".*_knee_joint": 139.0,
+    ".*_ankle_.*_joint": 50.0,
+}
+_LEG_ARMATURE = {
+    ".*_hip_yaw_joint": ARMATURE_7520_14,
+    ".*_hip_roll_joint": ARMATURE_7520_22,
+    ".*_hip_pitch_joint": ARMATURE_7520_22,
+    ".*_knee_joint": ARMATURE_7520_22,
+    ".*_ankle_.*_joint": 2.0 * ARMATURE_5020,
+}
+_ARM_STIFFNESS = {
+    ".*_shoulder_pitch_joint": 100.0,
+    ".*_shoulder_roll_joint": 100.0,
+    ".*_shoulder_yaw_joint": 50.0,
+    ".*_elbow_joint": 50.0,
+    ".*_wrist_.*_joint": 20.0,
+}
+_ARM_DAMPING = {
+    ".*_shoulder_.*_joint": 2.0,
+    ".*_elbow_joint": 2.0,
+    ".*_wrist_.*_joint": 1.0,
+}
+_ARM_EFFORT = {
+    ".*_shoulder_.*_joint": 25.0,
+    ".*_elbow_joint": 25.0,
+    ".*_wrist_roll_joint": 25.0,
+    ".*_wrist_pitch_joint": 5.0,
+    ".*_wrist_yaw_joint": 5.0,
+}
+_ARM_ARMATURE = {
+    ".*_shoulder_.*_joint": ARMATURE_5020,
+    ".*_elbow_joint": ARMATURE_5020,
+    ".*_wrist_roll_joint": ARMATURE_5020,
+    ".*_wrist_pitch_joint": ARMATURE_4010,
+    ".*_wrist_yaw_joint": ARMATURE_4010,
+}
+
+# ---------------------------------------------------------------------------
 # Articulation config (legged / free base, Inspire hand)
 # ---------------------------------------------------------------------------
 
@@ -130,34 +182,33 @@ G1_INSPIRE_CFG = ArticulationCfg(
             ".*_ankle_pitch_joint": -0.15,
         },
     ),
-    # Disjoint actuator groups covering every joint. Only the right arm + right hand
-    # are driven by policy actions; the rest hold their standing pose. NOTE the arm
-    # regex is anchored to shoulder/elbow/wrist so it does not also grab the right
-    # *leg* joints (which also start with ``right_``).
+    # Disjoint actuator groups covering every joint. NOTE the arm regex is anchored to
+    # shoulder/elbow/wrist so it does not also grab the *leg* joints (which share the
+    # left_/right_ prefix).
     actuators={
         "legs": ImplicitActuatorCfg(
             joint_names_expr=[".*_hip_.*_joint", ".*_knee_joint", ".*_ankle_.*_joint"],
-            effort_limit_sim=300.0,
-            stiffness=200.0,
-            damping=10.0,
+            effort_limit_sim=_LEG_EFFORT,
+            stiffness=_LEG_STIFFNESS,
+            damping=_LEG_DAMPING,
+            armature=_LEG_ARMATURE,
         ),
         "waist": ImplicitActuatorCfg(
             joint_names_expr=["waist_.*_joint"],
-            effort_limit_sim=200.0,
-            stiffness=200.0,
-            damping=10.0,
-        ),
-        "left_arm": ImplicitActuatorCfg(
-            joint_names_expr=["left_(shoulder|elbow|wrist).*_joint"],
-            effort_limit_sim=88.0,
-            stiffness=40.0,
-            damping=2.0,
-        ),
-        "arm": ImplicitActuatorCfg(
-            joint_names_expr=["right_(shoulder|elbow|wrist).*_joint"],
-            effort_limit_sim=88.0,
-            stiffness=150.0,
+            effort_limit_sim={"waist_yaw_joint": 88.0, "waist_(roll|pitch)_joint": 50.0},
+            stiffness=250.0,
             damping=5.0,
+            armature={
+                "waist_yaw_joint": ARMATURE_7520_14,
+                "waist_(roll|pitch)_joint": 2.0 * ARMATURE_5020,
+            },
+        ),
+        "arms": ImplicitActuatorCfg(
+            joint_names_expr=[".*_(shoulder|elbow|wrist).*_joint"],
+            effort_limit_sim=_ARM_EFFORT,
+            stiffness=_ARM_STIFFNESS,
+            damping=_ARM_DAMPING,
+            armature=_ARM_ARMATURE,
         ),
         "hands": ImplicitActuatorCfg(
             joint_names_expr=["[LR]_.*_joint"],

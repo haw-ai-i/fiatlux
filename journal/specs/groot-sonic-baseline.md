@@ -165,19 +165,31 @@ response `[action, info]`. `{"endpoint": "ping"}` for liveness,
 - The startup blend window must be ≤ 1 control step: the spawn pose is not statically
   stable (passive tip-over by ~1.3 s), so the balancer has to own the robot from the
   first tick. Swept 0.02/0.2/0.5/1.0 s; only the 1-step handover gives full stands.
+- The robot's leg/waist PD gains are part of the controller contract: the GEAR WBC's
+  joint targets assume its training gains (`g1_gear_wbc.yaml` — hip 150, knee 200,
+  ankle 40; kd 2/4/2; waist 250, kd 5), so `robots/g1.py` carries them and the targets
+  are applied directly. Arm gains are Unitree's `arm_waist_kps` (`unitree_rl_gym`
+  `g1.yaml`), symmetric across sides; armature is per motor type.
+- The lower-body stand gate is zero-command `wbc_stand` **displacement** (0.21 m spawn
+  settle, then static), not survival: an upright robot can still skate metres per
+  episode.
 
 ## Results (seed 0, 20 episodes, protocol runs)
 
 | policy | mean episode len | success | terminations |
 | --- | --- | --- | --- |
-| `zero` / `basic_standard` | 62.0 | 0 | fell_over 100% |
+| `zero` / `basic_standard` | 54.8 | 0 | fell_over 100% |
 | `wbc_stand` (gate, 4 eps) | 2000.0 | — | time_out 100% |
-| `sonic_stand` (gate, 4 eps) | 1068.25 | — | time_out 50% |
-| `groot` (zero-shot) | 1081.5 | 0 | time_out 15%, fell_over 70%, fell_below 25% |
+| `sonic_stand` (gate, 4 eps) | 2000.0 | — | time_out 100% |
+| `groot` (zero-shot) | 1975.4 | 0 | time_out 95%, fell_over 5% |
 
-`groot` diagnostics: server latency ≈ 117 ms/chunk, `nav_cmd_norm` ≈ 0.05 (the VLA
-holds position rather than walking — zero-shot, all progress channels 0). Artifacts:
-`logs/runs/groot-replace-seed0/` (eval.json + video/run.mp4).
+`groot` diagnostics: server latency ≈ 123 ms/chunk, `nav_cmd_norm` ≈ 0.046,
+`base_height_cmd` ≈ 0.73. The VLA balances for the full episode and never attempts the
+task: every progress channel is 0 and the navigation command stays at the Balance
+threshold regardless of the instruction ("walk forward" 0.28 m displacement over 500
+steps vs "stand still" 0.57 m — no separation). Consistent with published zero-shot
+GR00T results on unseen G1 tasks. Artifacts: `logs/runs/groot-replace-seed0/`
+(eval.json + video/run.mp4).
 
 Plumbing probes (same observation, repeated queries = the sampling-noise floor):
 - The torso camera's offset must use `convention="world"` (identity rot = parent +X,
