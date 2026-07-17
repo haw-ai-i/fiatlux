@@ -550,6 +550,7 @@ class _Gr00tClient:
         return action
 
 
+
 class GrootPolicy:
     """GR00T N1.7 base model (``REAL_G1`` embodiment) + decoupled whole-body control.
 
@@ -616,8 +617,8 @@ class GrootPolicy:
             self._client.call("ping")
         except Exception as exc:
             raise RuntimeError(
-                f"no Isaac-GR00T PolicyServer reachable at {endpoint_str}; start it with "
-                "scripts/groot/serve.sh (see journal/specs/groot-sonic-baseline.md)"
+                f"no Isaac-GR00T PolicyServer reachable at {endpoint_str}; "
+                "start it with scripts/groot/serve.sh (see journal/specs/groot-sonic-baseline.md)"
             ) from exc
 
     def _capture_frame(self) -> None:
@@ -630,11 +631,11 @@ class GrootPolicy:
 
     def _wrist_eef_9d(self, wrist_id: int) -> np.ndarray:
         """Wrist pose in the pelvis frame: xyz + rot6d (first two rotation columns)."""
-        from isaaclab.utils.math import matrix_from_quat, quat_inv, quat_mul, quat_rotate
+        from isaaclab.utils.math import matrix_from_quat, quat_apply, quat_inv, quat_mul
 
         data = self.robot.data
         root_q = data.root_quat_w
-        rel_pos = quat_rotate(quat_inv(root_q), data.body_pos_w[:, wrist_id] - data.root_pos_w)
+        rel_pos = quat_apply(quat_inv(root_q), data.body_pos_w[:, wrist_id] - data.root_pos_w)
         rel_rot = matrix_from_quat(quat_mul(quat_inv(root_q), data.body_quat_w[:, wrist_id]))
         rot6d = rel_rot[:, :, :2].transpose(1, 2).flatten(1)  # columns, flattened
         return torch.cat([rel_pos, rot6d], dim=1)[0].cpu().numpy().astype(np.float32)
@@ -678,7 +679,7 @@ class GrootPolicy:
 
         def chunk(key: str, dim: int) -> np.ndarray:
             value = action.get(key, action.get(f"action.{key}"))
-            return np.asarray(value, dtype=np.float32).reshape(-1, dim)
+            return np.array(value, dtype=np.float32, copy=True).reshape(-1, dim)
 
         self._chunk = {
             "left_arm": chunk("left_arm", 7),

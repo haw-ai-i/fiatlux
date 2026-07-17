@@ -187,6 +187,8 @@ def main():
             obs, reward, terminated, truncated, extras = env.step(actions)
             if video is not None and len(video) < args_cli.video_length:
                 video.capture(pose_fn(len(video), args_cli.video_length))
+            if video is not None and recorder is None and len(video) >= args_cli.video_length:
+                break
             if recorder is not None:
                 recorder.record_step(obs, actions, reward, terminated, truncated)
             score_logger.step(base_env, extras, terminated | truncated)

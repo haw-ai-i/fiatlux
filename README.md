@@ -90,6 +90,7 @@ uv run python scripts/rsl_rl/train.py --task FIATLUX-Climb-v0
 
 # 7. Run the GR00T N1.7 model baseline on the benchmark (needs the external
 #    PolicyServer -- setup in journal/specs/groot-sonic-baseline.md):
+uv sync --extra groot
 scripts/groot/serve.sh &   # terminal 1: the VLA server (own venv, HF token required)
 uv run python scripts/eval.py --task FIATLUX-Replace-v0 --policy groot \
     --episodes 20 --seed 0 --enable_cameras
