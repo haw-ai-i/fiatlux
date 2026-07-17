@@ -408,8 +408,9 @@ class ReplaceEnvCfg(ManagerBasedRLEnvCfg):
             height=224,
             width=224,
             data_types=["rgb"],
+            # "world" convention: identity rot looks along the torso's +X (forward).
             offset=TiledCameraCfg.OffsetCfg(
-                pos=(0.08, 0.0, 0.42), rot=(1.0, 0.0, 0.0, 0.0), convention="ros"
+                pos=(0.08, 0.0, 0.42), rot=(1.0, 0.0, 0.0, 0.0), convention="world"
             ),
         )
 
