@@ -29,10 +29,19 @@ Design notes (full-task benchmark plan, ``journal/specs/full-task-benchmark-plan
   ``privileged`` because rsl_rl's ``obs_groups`` routing is keyed to them (see
   ``ClimbPPORunnerCfg``); the benchmark docs map standard->policy, cheatcode->privileged.
 - **The ladder is dynamic** (only here): knocking it over is a real, penalized, episode-
-  ending physical event. **The old bulb is dynamic too**, seated in the fixture by contact
-  rather than pinned kinematic, so removal and disposal are real physical events. Retention
-  in an inverted fixture is owned by the bulb-insertion-physics work, not by this cfg.
+  ending physical event. **Both bulbs are dynamic**, seated in the fixture by contact rather
+  than pinned kinematic, so removal and disposal are real physical events. Retention in an
+  INVERTED fixture -- which contact alone cannot provide, since the socket then opens
+  downward -- is owned by the ``mdp.bulb_attachment`` state machine (unification spec
+  Phase 4, issue #54): the old bulb starts held at the seat pose and is freed by the unscrew
+  gate (palm proximity + accumulated wrist roll), the fresh bulb becomes held once the
+  screw-in gate fires (seated + palm proximity + wrist roll into an empty socket).
+  ``fresh_bulb_inserted`` and ``success`` read the attachment state, not the raw seating
+  geometry, so every score channel is genuinely achievable. Remove/Install still carry the
+  older kinematic stand-in gap.
 """
+
+import math
 
 from isaaclab.envs import ManagerBasedRLEnvCfg
 from isaaclab.managers import EventTermCfg as EventTerm
@@ -71,6 +80,8 @@ SEAT_POS_THRESHOLD = 0.015  # m; fresh-bulb seating tolerance (Insert's validate
 SEAT_ORI_THRESHOLD = 0.2  # rad
 FRESH_BULB_DROP_HEIGHT = 0.4  # m; the fresh bulb's working heights are table (~1.0) and up
 OLD_BULB_DROP_HEIGHT = 0.15  # m; must clear a bulb resting *inside* the floor crate (~0.1)
+GRASP_RADIUS = 0.12  # m; palm-to-bulb distance that counts as gripping for the screw gates
+SCREW_ANGLE = math.pi  # rad of ratcheted wrist roll to (un)screw a bulb (~2 strokes)
 
 ##
 # MDP settings
@@ -159,6 +170,21 @@ class ObservationsCfg:
 class EventCfg:
     """Reset-time randomization (the room layout itself randomizes per scene build)."""
 
+    # The attach/detach state machine (issue #54): integrates the wrist-roll screw gates
+    # and holds attached bulbs at the fixture's seat pose. Zero interval -> every env step
+    # (its accumulators are only correct when integrated every step).
+    bulb_attachment = EventTerm(
+        func=mdp.bulb_attachment,
+        mode="interval",
+        interval_range_s=(0.0, 0.0),
+        params={
+            "grasp_radius": GRASP_RADIUS,
+            "screw_angle": SCREW_ANGLE,
+            "unscrew_sign": -1.0,
+            "pos_threshold": SEAT_POS_THRESHOLD,
+            "ori_threshold": SEAT_ORI_THRESHOLD,
+        },
+    )
     reset_all = EventTerm(func=mdp.reset_scene_to_default, mode="reset")
     reset_robot_joints = EventTerm(
         func=mdp.reset_joints_by_offset,
@@ -253,16 +279,12 @@ class RewardsCfg:
             },
         },
     )
+    # Attach-aware (issue #54): pays on the screw-in gate, not on transiting the geometric
+    # success zone (the seating tolerances are enforced inside the gate).
     fresh_bulb_inserted = RewTerm(
         func=mdp.completion_bonus,
         weight=250.0,
-        params={
-            "predicate_fn": mdp.bulb_seated,
-            "predicate_params": {
-                "pos_threshold": SEAT_POS_THRESHOLD,
-                "ori_threshold": SEAT_ORI_THRESHOLD,
-            },
-        },
+        params={"predicate_fn": mdp.fresh_bulb_attached},
     )
     old_bulb_removed = RewTerm(
         func=mdp.completion_bonus,
@@ -282,7 +304,7 @@ class RewardsCfg:
     )
     # Full success terminates the episode on the same step, so the raw predicate pays once.
     success_bonus = RewTerm(
-        func=mdp.full_replacement_success,
+        func=mdp.attached_replacement_success,
         weight=500.0,
         params={
             "pos_threshold": SEAT_POS_THRESHOLD,
@@ -358,9 +380,10 @@ class TerminationsCfg:
         func=mdp.old_bulb_dropped,
         params={"min_height": OLD_BULB_DROP_HEIGHT, "disposal_threshold": DISPOSAL_THRESHOLD},
     )
-    # Contract name: recording.py / score.py / eval.py read the `success` term.
+    # Contract name: recording.py / score.py / eval.py read the `success` term. The pos/ori
+    # params stay for the meta.json contract; the attach gate is what enforces them.
     success = DoneTerm(
-        func=mdp.full_replacement_success,
+        func=mdp.attached_replacement_success,
         params={
             "pos_threshold": SEAT_POS_THRESHOLD,
             "ori_threshold": SEAT_ORI_THRESHOLD,

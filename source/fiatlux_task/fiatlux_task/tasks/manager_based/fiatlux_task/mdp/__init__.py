@@ -40,6 +40,12 @@ from isaaclab.envs.mdp import (  # noqa: F401
     time_out,
 )
 
+from .attach import (  # noqa: F401
+    attached_replacement_success,
+    bulb_attachment,
+    fresh_bulb_attached,
+    old_bulb_attached,
+)
 from .events import (  # noqa: F401
     hand_grip_material_event,
     randomize_light_properties,

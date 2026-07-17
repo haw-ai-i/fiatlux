@@ -21,9 +21,13 @@ return to it (plus the reset jitter below).
   penalized, episode-ending event. Ladder placement is *independent* of the fixture by
   default; `ReplaceEnvCfg.couple_ladder_to_fixture = True` is an explicit debug/curriculum
   opt-in that spawns it reachably near the fixture.
-- The **old bulb is kinematic**: the "screwed in" stand-in until the attach/detach
-  mechanic exists (unification spec Phase 4). Its removal/disposal channels are scored
-  and reported but not yet achievable by any policy — the same gap Remove/Install carry.
+- **Both bulbs are dynamic**, governed by the `mdp.bulb_attachment` state machine
+  (unification spec Phase 4, issue #54): the old bulb starts held at the seat pose and is
+  freed by the unscrew gate (palm within grasp radius + accumulated wrist roll); the fresh
+  bulb becomes held once the screw-in gate fires (seated within tolerance + palm proximity
+  + wrist roll, into an empty socket). `fresh_bulb_inserted` and `success` read the
+  attachment state, so every score channel is achievable. Remove/Install still carry the
+  older kinematic stand-in.
 
 ## Goal
 

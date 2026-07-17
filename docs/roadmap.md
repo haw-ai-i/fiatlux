@@ -43,9 +43,13 @@ descoping still stands — it is one flat RL episode, chaining is solution struc
   smoke-test policies.~~ DONE (2026-07-09): `replace_env_cfg.py`, see
   `docs/task_spec.md` / `docs/scoring.md`.
 - Policy stitching / staged-curriculum chaining: not planned (solution structure).
-- Old-bulb attach/detach mechanic (screw joint or make/break attach): still deferred
-  (unification spec Phase 4). Until it lands the old bulb is kinematic — its removal
-  and disposal score channels are wired and reported but not yet achievable.
+- Old-bulb attach/detach mechanic (unification spec Phase 4): LANDED for Replace
+  (issue #54, 2026-07-17) as the `mdp.bulb_attachment` state machine — per-env boolean
+  attachment + seated-pose slaving, gated by palm proximity and accumulated wrist roll
+  (see `journal/specs/issue-54-bulb-attach-detach.md`). All Replace score channels are
+  now achievable. Follow-ups: the physical D6-joint backend (spec Approach A, needs an
+  on-GPU spike), and promoting Remove/Install off their kinematic stand-ins onto the
+  same mechanic.
 
 ## 3. Learned-policy support
 

@@ -1,8 +1,49 @@
 # Issue #54 — Bulb Attachment/Detachment Mechanics (Phase 4)
 
-Status: DRAFT spec — findings from a three-agent investigation (codebase survey, Isaac Lab
-/ PhysX platform research, BEHAVIOR-1K reference research), 2026-07-17. Branch:
-`54-bulb-attach-detach-mechanics`. Issue: https://github.com/haw-ai-i/fiatlux/issues/54.
+Status: IMPLEMENTED for Replace (2026-07-17) — see §0. Findings from a three-agent
+investigation (codebase survey, Isaac Lab / PhysX platform research, BEHAVIOR-1K reference
+research), 2026-07-17. Branch: `54-bulb-attach-detach-mechanics`. Issue:
+https://github.com/haw-ai-i/fiatlux/issues/54.
+
+## 0. Resolution (what actually landed)
+
+**Approach B (boolean attach + pose slaving) was implemented first**, not Approach A. The
+deciding constraint: A's load-bearing unknown (spike 3 — whether Isaac Lab 2.3.2 exposes
+per-env drive-gain tensors for a non-articulation D6 between two `RigidObject`s) can only
+be resolved on a GPU box with Isaac Sim, and B uses exclusively documented, known-working
+tensorized APIs (`write_root_pose_to_sim` / `write_root_velocity_to_sim` on dynamic
+bodies — the same calls episode resets use). A remains the follow-up once its spike runs.
+
+Landed in:
+
+- `mdp/attach.py` (new) — `bulb_attachment` every-step event term (FSM + accumulators +
+  pose slaving) and the attach-aware predicates `old_bulb_attached`,
+  `fresh_bulb_attached`, `attached_replacement_success`.
+- `replace_env_cfg.py` — event term wired (`mode="interval"`,
+  `interval_range_s=(0.0, 0.0)` = every step); `fresh_bulb_inserted` and
+  `success`/`success_bonus` now read attachment state (`GRASP_RADIUS = 0.12` m,
+  `SCREW_ANGLE = π` rad, ratcheted, `unscrew_sign = -1.0`).
+- `scene_cfg.py` — the replace preset's old bulb spawns dynamic (fresh bulb's solver
+  tuning) instead of `kinematic_enabled=True`.
+- `scripts/verify_scene.py` — the old bulb moved from the kinematic-props static check to
+  the dynamic-props bounds check; its z-bound allows the 3.0 m ceiling mount.
+- `docs/task_spec.md`, `docs/roadmap.md` — stand-in caveats replaced.
+
+Design deltas from §5 as-specced, made during implementation:
+
+- The screw gates ratchet (only strokes in the screw direction count) rather than
+  accumulate net signed roll — return strokes during re-gripping must not cancel
+  progress. Wiggling can farm the accumulator without net bulb rotation; accepted for
+  v0 (strictly harder than B1K's zero-screw model) and noted in the module docstring.
+- Fresh-bulb attach additionally requires the old bulb to be detached (one socket, one
+  bulb; also prevents slaving both bulbs into the same pose).
+- Single hand (right palm body + right wrist-roll joint, configurable) rather than
+  either-hand: the `hand_contact` sensor is already right-hand-only.
+- Not yet run on GPU (no Isaac Sim on the dev machine). First-run checklist:
+  `verify_scene.py` for the replace preset; watch for seated-bulb jitter against the
+  socket colliders (the slaved dynamic bulb may interpenetrate where the kinematic one
+  sat passively — `max_depenetration_velocity=1.0` caps ejection); confirm the
+  `(0.0, 0.0)` interval fires every step; scripted-unscrew sanity run for the gates.
 
 ## 1. Problem statement
 
