@@ -178,4 +178,10 @@ response `[action, info]`. `{"endpoint": "ping"}` for liveness,
 `groot` diagnostics: server latency ≈ 118 ms/chunk, `nav_cmd_norm` ≈ 0.05 (the VLA
 holds position rather than walking — zero-shot, all progress channels 0). Artifacts:
 `logs/runs/groot-replace-seed0/` (eval.json + video/run.mp4).
+
+Instruction-following probe (same live frame, eight prompts from the canonical task
+sentence to atomic "walk forward" / "turn left" / "crouch down"): commanded velocities
+stay in a 0.015–0.07 noise band and the height command never moves — the base
+checkpoint's behavior in this domain is language-invariant. Steering it at the ladder
+requires fine-tuning on task demos, not prompt engineering.
 - ONNX decode cost is negligible on CPU (SONIC decoder 0.36 ms; WBC nets are 1.9 MB).
