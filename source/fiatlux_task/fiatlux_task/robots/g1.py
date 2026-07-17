@@ -83,6 +83,24 @@ G1_HAND_JOINTS = [
     "R_thumb_intermediate_joint",
     "R_thumb_distal_joint",
 ]
+# Inspire-hand open / power-grasp finger presets (rad). Open = fingers extended (0). Grasp curls
+# the four fingers near their +1.7 limit and opposes the thumb (pitch caps at +0.6). Used by the
+# teleop harness's binary grip; probed from the soft joint-position limits.
+G1_HAND_OPEN = dict.fromkeys(G1_HAND_JOINTS, 0.0)
+G1_HAND_GRASP = {
+    "R_index_proximal_joint": 1.5,
+    "R_index_intermediate_joint": 1.5,
+    "R_middle_proximal_joint": 1.5,
+    "R_middle_intermediate_joint": 1.5,
+    "R_pinky_proximal_joint": 1.5,
+    "R_pinky_intermediate_joint": 1.5,
+    "R_ring_proximal_joint": 1.5,
+    "R_ring_intermediate_joint": 1.5,
+    "R_thumb_proximal_yaw_joint": 1.0,
+    "R_thumb_proximal_pitch_joint": 0.5,
+    "R_thumb_intermediate_joint": 0.6,
+    "R_thumb_distal_joint": 0.9,
+}
 # End-effector body the wrist camera mounts on / eef pose is read from (exists in
 # all G1 variants). The Inspire hand links hang off this via right_hand_palm_link.
 G1_EE_BODY = "right_wrist_yaw_link"

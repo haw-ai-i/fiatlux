@@ -184,6 +184,12 @@ def _quat_z_deg(angle_deg: float) -> tuple[float, float, float, float]:
     return (math.cos(half), 0.0, 0.0, math.sin(half))
 
 
+def _quat_x_deg(angle_deg: float) -> tuple[float, float, float, float]:
+    """(w, x, y, z) quaternion for a rotation about +X, in degrees (Y-up -> Z-up assets)."""
+    half = math.radians(angle_deg) / 2.0
+    return (math.cos(half), math.sin(half), 0.0, 0.0)
+
+
 Quat = tuple[float, float, float, float]
 Vec3 = tuple[float, float, float]
 

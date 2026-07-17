@@ -45,6 +45,12 @@ G1_DEX3_USD = os.path.join(
 BULB_USD = os.path.join(FIATLUX_ASSETS_DIR, "behavior1k_bulb", "kfmkwd", "kfmkwd.usd")
 SOCKET_USD = os.path.join(FIATLUX_ASSETS_DIR, "behavior1k_lamp", "ehjsdz", "ehjsdz.usd")
 
+# Curated Omniverse LightBulb split into a graspable bulb + its socket base (Y-up, cm-authored ->
+# spawn scale + an X rotation). Clean-rendering (unlike the flat-texpath B1K lamp); used by the
+# teleop bench (FIATLUX-Insert-Teleop-v0).
+OMNI_BULB_USD = os.path.join(FIATLUX_ASSETS_DIR, "omniverse_bulb", "LightBulb_bulb.usda")
+OMNI_SOCKET_USD = os.path.join(FIATLUX_ASSETS_DIR, "omniverse_bulb", "LightBulb_socket.usda")
+
 # Attachment-metalink offsets (metres, in each object's base_link frame; both assets are
 # Z-up, metersPerUnit=1.0). The bulb is "seated" when the bulb's plug point coincides with
 # the lamp's socket point. Read once from the ``meta__*_attachment_*_joint`` localPos0 in

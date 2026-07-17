@@ -56,6 +56,18 @@ gym.register(
     },
 )
 
+# Teleoperation variant of Insert (issue #51, Phase 1): arm differential-IK + binary grip,
+# driven by scripts/insert_teleop.py. Same scene/obs/rewards as Insert-v0; only the action interface
+# differs (see insert_teleop_env_cfg).
+gym.register(
+    id="FIATLUX-Insert-Teleop-v0",
+    entry_point="isaaclab.envs:ManagerBasedRLEnv",
+    disable_env_checker=True,
+    kwargs={
+        "env_cfg_entry_point": f"{__name__}.insert_teleop_env_cfg:G1BulbInsertTeleopEnvCfg",
+    },
+)
+
 gym.register(
     id="FIATLUX-Climb-v0",
     entry_point="isaaclab.envs:ManagerBasedRLEnv",
