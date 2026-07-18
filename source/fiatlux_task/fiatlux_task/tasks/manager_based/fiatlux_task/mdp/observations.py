@@ -57,6 +57,26 @@ def replace_score_distances(env: ManagerBasedRLEnv) -> torch.Tensor:
     )
 
 
+def lidar_ranges(
+    env: ManagerBasedRLEnv,
+    sensor_cfg: SceneEntityCfg,
+) -> torch.Tensor:
+    """Per-ray hit distance from a ``MultiMeshRayCasterCfg``/``RayCasterCfg`` lidar.
+
+    Misses report ``inf`` in ``ray_hits_w`` (no intersection within ``max_distance``);
+    clamped to the sensor's own ``max_distance`` so the observation stays finite (a raw
+    ``inf`` would poison downstream normalization/concatenation).
+
+    Returns:
+        Tensor of shape (num_envs, num_rays).
+    """
+    from isaaclab.sensors.ray_caster import RayCaster
+
+    sensor: RayCaster = env.scene.sensors[sensor_cfg.name]
+    ranges = torch.linalg.norm(sensor.data.ray_hits_w - sensor.data.pos_w.unsqueeze(1), dim=-1)
+    return torch.nan_to_num(ranges, posinf=sensor.cfg.max_distance).clamp(max=sensor.cfg.max_distance)
+
+
 def contact_net_forces(
     env: ManagerBasedRLEnv,
     sensor_cfg: SceneEntityCfg,

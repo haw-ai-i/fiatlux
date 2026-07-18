@@ -43,6 +43,7 @@ from isaaclab.envs.mdp import (  # noqa: F401
 from .events import randomize_light_properties  # noqa: F401
 from .observations import (  # noqa: F401
     contact_net_forces,
+    lidar_ranges,
     replace_score_distances,
     root_pose_w,
 )

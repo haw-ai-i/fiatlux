@@ -44,8 +44,8 @@ modes **standard** and **cheatcode**):
 - **`policy` = standard mode** (sensor-realizable only): IMU (base angular velocity,
   projected gravity), estimated base height + linear velocity (the documented
   estimator-realizable exception, as in Climb), joint pos/vel, hand contact forces,
-  **torso-mounted RGB camera features** (needs `--enable_cameras`), last action.
-  Corruption enabled.
+  **head-mounted (`d435_link`) RGB camera features** and **head-mounted (`mid360_link`)
+  lidar ranges** (camera needs `--enable_cameras`), last action. Corruption enabled.
 - **`privileged` = cheatcode mode** (exact simulator state): world poses of the robot,
   ladder, fixture, fresh bulb, old bulb, and disposal crate, plus the four score-relevant
   distances (`replace_score_distances`). Critic-only during RL
@@ -55,7 +55,7 @@ Smoke-test policies (`fiatlux_task/policy.py`): `basic_standard` consumes only t
 standard group and holds posture; `basic_cheatcode` additionally asserts and reads the
 privileged group. Both prove the episode/scoring loop end-to-end; neither solves the task.
 
-Standard mode admits *raw* sensor access too: a policy may read the torso camera frames
+Standard mode admits *raw* sensor access too: a policy may read the `ego_camera` frames
 and proprioception directly from the scene (rather than the flattened, corrupted,
 feature-extracted `policy` group) as long as it touches nothing privileged — that is how
 the `groot` VLA baseline consumes the same sensors (`fiatlux_task/groot.py`).
@@ -195,7 +195,9 @@ Two groups:
   height and linear velocity** — a documented *estimator-realizable exception* to the
   sensor-only contract: the real G1 publishes both from its kinematic-inertial state
   estimator (the same argument Isaac Lab's velocity tasks make) — joint pos/vel, per-limb
-  ladder contact forces (feet + palms), last action. Corruption enabled.
+  ladder contact forces (feet + palms), a head-mounted (`d435_link`) RGB camera, a
+  head-mounted (`mid360_link`) lidar (ground + ladder ranges), last action. Corruption
+  enabled; camera needs `--enable_cameras`.
 - **`privileged`** (critic / scripted baselines only): robot root pose + linear velocity,
   ladder pose. Routed to the critic via `ClimbPPORunnerCfg.obs_groups` (rsl_rl does not
   auto-route a group named `privileged`).

@@ -23,7 +23,7 @@ Design notes (full-task benchmark plan, ``journal/specs/full-task-benchmark-plan
   tipping, and bulb drops. Every channel is its own named reward/termination term, so the
   per-term episode sums in ``extras['log']`` *are* the score breakdown.
 - **Observation modes**: the ``policy`` group is the *standard* (sensor-realizable) mode --
-  IMU, estimated base state, proprioception, hand contact, a torso RGB camera, previous
+  IMU, estimated base state, proprioception, hand contact, a head-mounted RGB camera, previous
   action. The ``privileged`` group is the *cheatcode* mode -- exact robot/object/fixture/
   target poses and the score-relevant distances. The group names stay ``policy``/
   ``privileged`` because rsl_rl's ``obs_groups`` routing is keyed to them (see
@@ -34,7 +34,6 @@ Design notes (full-task benchmark plan, ``journal/specs/full-task-benchmark-plan
   terms are scored-but-not-yet-achievable, the same gap Remove/Install carry.
 """
 
-import isaaclab.sim as sim_utils
 from isaaclab.envs import ManagerBasedRLEnvCfg
 from isaaclab.managers import EventTermCfg as EventTerm
 from isaaclab.managers import ObservationGroupCfg as ObsGroup
@@ -42,19 +41,17 @@ from isaaclab.managers import ObservationTermCfg as ObsTerm
 from isaaclab.managers import RewardTermCfg as RewTerm
 from isaaclab.managers import SceneEntityCfg
 from isaaclab.managers import TerminationTermCfg as DoneTerm
-from isaaclab.sensors import TiledCameraCfg
 from isaaclab.utils import configclass
 from isaaclab.utils.noise import AdditiveUniformNoiseCfg as Unoise
 
 from fiatlux_task.robots.g1 import (
     G1_FINGER_JOINT_PATTERNS,
-    G1_TORSO_BODY,
     G1_WAIST_JOINT_PATTERNS,
 )
 
 from . import mdp
 from .climb_env_cfg import FALL_MIN_HEIGHT, FALL_TILT_LIMIT
-from .scene_cfg import G1ReplaceSceneCfg, apply_replace_preset
+from .scene_cfg import G1ReplaceSceneCfg, add_ego_camera, add_mid360_lidar, apply_replace_preset
 
 ##
 # Task thresholds
@@ -93,7 +90,7 @@ class ObservationsCfg:
 
     @configclass
     class PolicyCfg(ObsGroup):
-        """Standard mode: IMU + estimator + proprioception + hand contact + torso RGB."""
+        """Standard mode: IMU + estimator + proprioception + hand contact + ego RGB."""
 
         # IMU-realizable
         base_ang_vel = ObsTerm(func=mdp.base_ang_vel, noise=Unoise(n_min=-0.2, n_max=0.2))
@@ -113,14 +110,20 @@ class ObservationsCfg:
             scale=0.1,
             params={"sensor_cfg": SceneEntityCfg("hand_contact")},
         )
-        # Camera-derived features (torso-mounted RGB; requires --enable_cameras).
-        torso_rgb = ObsTerm(
+        # Camera-derived features (head-mounted RGB; requires --enable_cameras).
+        ego_rgb = ObsTerm(
             func=mdp.image_features,
             params={
-                "sensor_cfg": SceneEntityCfg("torso_camera"),
+                "sensor_cfg": SceneEntityCfg("ego_camera"),
                 "data_type": "rgb",
                 "model_name": "resnet18",
             },
+        )
+        # Head lidar ranges (ground + the dynamic ladder; see fiatlux_task.sensors).
+        lidar_ranges = ObsTerm(
+            func=mdp.lidar_ranges,
+            scale=0.1,
+            params={"sensor_cfg": SceneEntityCfg("mid360_lidar")},
         )
         actions = ObsTerm(func=mdp.last_action)
 
@@ -396,23 +399,10 @@ class ReplaceEnvCfg(ManagerBasedRLEnvCfg):
             self.scene, couple_ladder_to_fixture=self.couple_ladder_to_fixture
         )
 
-        # Torso-mounted RGB camera (the standard mode's exteroception; --enable_cameras).
-        # Same pinhole spawn as Insert's wrist camera, longer clip for room-scale views.
-        self.scene.torso_camera = TiledCameraCfg(
-            prim_path="{ENV_REGEX_NS}/Robot/" + G1_TORSO_BODY + "/torso_camera",
-            spawn=sim_utils.PinholeCameraCfg(
-                focal_length=22.48,
-                horizontal_aperture=20.955,
-                clipping_range=(0.05, 20.0),
-            ),
-            height=224,
-            width=224,
-            data_types=["rgb"],
-            # "world" convention: identity rot looks along the torso's +X (forward).
-            offset=TiledCameraCfg.OffsetCfg(
-                pos=(0.08, 0.0, 0.42), rot=(1.0, 0.0, 0.0, 0.0), convention="world"
-            ),
-        )
+        # Torso-mounted RGB camera + lidar (the standard mode's exteroception; the camera
+        # needs --enable_cameras, the lidar does not -- it's warp raycasting, not render).
+        add_ego_camera(self.scene)
+        add_mid360_lidar(self.scene)
 
         # family control rate (50 Hz); a longer horizon than any subtask -- the episode
         # spans approach + ladder work + insert + removal + disposal

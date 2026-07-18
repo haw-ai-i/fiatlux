@@ -28,7 +28,6 @@ now; they get factored into shared manipulation blocks when the at-fixture
 Install task becomes their second consumer (unification spec, Phase 4).
 """
 
-import isaaclab.sim as sim_utils
 from isaaclab.envs import ManagerBasedRLEnvCfg
 from isaaclab.managers import EventTermCfg as EventTerm
 from isaaclab.managers import ObservationGroupCfg as ObsGroup
@@ -36,7 +35,6 @@ from isaaclab.managers import ObservationTermCfg as ObsTerm
 from isaaclab.managers import RewardTermCfg as RewTerm
 from isaaclab.managers import SceneEntityCfg
 from isaaclab.managers import TerminationTermCfg as DoneTerm
-from isaaclab.sensors import TiledCameraCfg
 from isaaclab.utils import configclass
 from isaaclab.utils.noise import AdditiveUniformNoiseCfg as Unoise
 
@@ -47,7 +45,7 @@ from fiatlux_task.robots.g1 import (
 )
 
 from . import mdp
-from .scene_cfg import G1ReplaceSceneCfg, apply_tabletop_preset
+from .scene_cfg import G1ReplaceSceneCfg, add_wrist_camera, apply_tabletop_preset
 
 ##
 # MDP settings
@@ -289,20 +287,7 @@ class G1BulbInsertEnvCfg(ManagerBasedRLEnvCfg):
 
         # Wrist-mounted RGB camera (sensor-realizable observation). Requires launching
         # with --enable_cameras.
-        self.scene.wrist_camera = TiledCameraCfg(
-            prim_path="{ENV_REGEX_NS}/Robot/" + G1_EE_BODY + "/wrist_camera",
-            spawn=sim_utils.PinholeCameraCfg(
-                focal_length=22.48,
-                horizontal_aperture=20.955,
-                clipping_range=(0.05, 5.0),
-            ),
-            height=224,
-            width=224,
-            data_types=["rgb"],
-            offset=TiledCameraCfg.OffsetCfg(
-                pos=(0.05, 0.0, 0.0), rot=(1.0, 0.0, 0.0, 0.0), convention="ros"
-            ),
-        )
+        add_wrist_camera(self.scene)
 
         self.decimation = 4
         self.sim.render_interval = self.decimation

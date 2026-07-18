@@ -67,6 +67,7 @@ from fiatlux_task.assets import (
 )
 from fiatlux_task.robots.g1 import G1_INSPIRE_CFG
 from fiatlux_task.scenes import DressedSceneCfg, spawn_b1k_single_body
+from fiatlux_task.sensors import ego_camera_cfg, mid360_lidar_cfg, wrist_camera_cfg
 
 # -- default (workshop) placement (module constants, not scene fields; override via each
 #    entity's init_state). BEHAVIOR-1K USDs are authored with the origin near the bbox
@@ -279,6 +280,24 @@ def _spawn_usd_as_rigid_body_frictional(prim_path, cfg, translation=None, orient
     return prim
 
 
+def _spawn_invisible_ground_plane(prim_path, cfg, translation=None, orientation=None):
+    """The stock ``GroundPlaneCfg`` for its physics collider only.
+
+    ``spawn_ground_plane`` always renders Isaac Sim's generic grid-texture mesh
+    (``.../Environments/Grid/default_environment.usd``, tinted by ``cfg.color``); with the
+    Simple Room backdrop's own floor also in the scene, that grid sits on top of and hides
+    it. Hide the mesh here so the room's floor is what's actually visible; the plane prim
+    still carries the collider the family relies on for floor physics.
+    """
+    from pxr import UsdGeom
+
+    prim = sim_utils.spawn_ground_plane(prim_path, cfg, translation, orientation)
+    env_prim = prim.GetStage().GetPrimAtPath(f"{prim_path}/Environment")
+    if env_prim.IsValid():
+        UsdGeom.Imageable(env_prim).MakeInvisible()
+    return prim
+
+
 @configclass
 class G1ReplaceSceneCfg(DressedSceneCfg):
     """The G1 light-bulb-replacement world (see module docstring for the preset layouts)."""
@@ -287,6 +306,7 @@ class G1ReplaceSceneCfg(DressedSceneCfg):
     ground: AssetBaseCfg = AssetBaseCfg(
         prim_path="/World/ground",
         spawn=sim_utils.GroundPlaneCfg(
+            func=_spawn_invisible_ground_plane,
             size=(100.0, 100.0),
             physics_material=sim_utils.RigidBodyMaterialCfg(
                 static_friction=1.0, dynamic_friction=1.0, restitution=0.0
@@ -531,6 +551,22 @@ def add_ladder_contact_sensor(scene: G1ReplaceSceneCfg) -> None:
         history_length=1,
         track_air_time=False,
     )
+
+
+def add_wrist_camera(scene: G1ReplaceSceneCfg) -> None:
+    """Attach the standard wrist-mounted RGB camera (manipulation subtasks)."""
+    scene.wrist_camera = wrist_camera_cfg()
+
+
+def add_ego_camera(scene: G1ReplaceSceneCfg) -> None:
+    """Attach the standard head-mounted RGB camera (whole-body subtasks; GR00T's ego view)."""
+    scene.ego_camera = ego_camera_cfg()
+
+
+def add_mid360_lidar(scene: G1ReplaceSceneCfg) -> None:
+    """Attach the standard head-mounted lidar, ray-casting the ground and the ladder
+    (when this preset has one -- the tabletop preset drops ``scene.ladder``)."""
+    scene.mid360_lidar = mid360_lidar_cfg(include_ladder=scene.ladder is not None)
 
 
 def _add_parts_bin(scene: G1ReplaceSceneCfg, position: Vec3 = BIN_POSITION) -> None:

@@ -32,6 +32,8 @@ from fiatlux_task.robots.g1 import G1_FINGER_JOINT_PATTERNS, G1_WAIST_JOINT_PATT
 from . import mdp
 from .scene_cfg import (
     G1ReplaceSceneCfg,
+    add_ego_camera,
+    add_mid360_lidar,
     apply_position_preset,
 )
 
@@ -77,6 +79,21 @@ class ObservationsCfg:
             func=mdp.contact_net_forces,
             scale=0.1,
             params={"sensor_cfg": SceneEntityCfg("hand_contact")},
+        )
+        # Exteroception: ego RGB (features) + head lidar ranges (the ladder being
+        # carried is the salient thing to range). Requires --enable_cameras.
+        ego_rgb = ObsTerm(
+            func=mdp.image_features,
+            params={
+                "sensor_cfg": SceneEntityCfg("ego_camera"),
+                "data_type": "rgb",
+                "model_name": "resnet18",
+            },
+        )
+        lidar_ranges = ObsTerm(
+            func=mdp.lidar_ranges,
+            scale=0.1,
+            params={"sensor_cfg": SceneEntityCfg("mid360_lidar")},
         )
         actions = ObsTerm(func=mdp.last_action)
 
@@ -234,6 +251,8 @@ class CarryEnvCfg(ManagerBasedRLEnvCfg):
         super().__post_init__()
 
         apply_position_preset(self.scene)
+        add_ego_camera(self.scene)
+        add_mid360_lidar(self.scene)
 
         self.decimation = 4
         self.sim.render_interval = self.decimation

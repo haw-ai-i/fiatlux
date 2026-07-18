@@ -15,12 +15,14 @@ Design notes (mirrors ``g1_bulb_env_cfg`` where the tasks overlap):
 - **Actions** are whole-body joint-position targets (all ~53 DoF incl. fingers; the
   per-phase action-space split is a family decision, see the unification spec).
 - **Observations**: the ``policy`` group holds IMU terms, proprioception, last
-  action, and the limb-on-ladder contact forces. Estimated base height and linear
-  velocity are included as a documented *estimator-realizable* exception to the
-  sensor-only contract -- the real G1 publishes both from its kinematic-inertial
-  estimator (the same argument Isaac Lab's velocity tasks make). Ground-truth
-  poses (robot root, ladder) stay in the ``privileged`` group, which reaches only
-  the critic (see ``ClimbPPORunnerCfg.obs_groups``).
+  action, the limb-on-ladder contact forces, a head-mounted RGB camera, and a
+  head-mounted lidar (ground + ladder ranges) -- the family's standard whole-body sensor suite
+  (``fiatlux_task.sensors``), the same one Carry/Replace attach. Estimated base
+  height and linear velocity are included as a documented *estimator-realizable*
+  exception to the sensor-only contract -- the real G1 publishes both from its
+  kinematic-inertial estimator (the same argument Isaac Lab's velocity tasks make).
+  Ground-truth poses (robot root, ladder) stay in the ``privileged`` group, which
+  reaches only the critic (see ``ClimbPPORunnerCfg.obs_groups``).
 - **Rewards** pay progressive height gain (each centimetre once) plus a small
   limb-on-ladder contact bootstrap, and penalize CoM sway, wobble, falls, and the
   usual smoothness/limit terms. ``flat_orientation_l2`` is deliberately absent:
@@ -51,7 +53,9 @@ from . import mdp
 from .scene_cfg import (
     TOP_ROBOT_POSITION,
     G1ReplaceSceneCfg,
+    add_ego_camera,
     add_ladder_contact_sensor,
+    add_mid360_lidar,
     apply_at_height_preset,
 )
 
@@ -114,6 +118,21 @@ class ObservationsCfg:
             func=mdp.contact_net_forces,
             scale=0.1,
             params={"sensor_cfg": SceneEntityCfg("ladder_contact")},
+        )
+        # Exteroception: ego RGB (features) + head lidar ranges. Requires
+        # launching with --enable_cameras.
+        ego_rgb = ObsTerm(
+            func=mdp.image_features,
+            params={
+                "sensor_cfg": SceneEntityCfg("ego_camera"),
+                "data_type": "rgb",
+                "model_name": "resnet18",
+            },
+        )
+        lidar_ranges = ObsTerm(
+            func=mdp.lidar_ranges,
+            scale=0.1,
+            params={"sensor_cfg": SceneEntityCfg("mid360_lidar")},
         )
         actions = ObsTerm(func=mdp.last_action)
 
@@ -294,6 +313,8 @@ class ClimbEnvCfg(ManagerBasedRLEnvCfg):
         super().__post_init__()
         apply_at_height_preset(self.scene, robot_at="base")
         add_ladder_contact_sensor(self.scene)
+        add_ego_camera(self.scene)
+        add_mid360_lidar(self.scene)
 
         # family control rate (50 Hz), unlike Insert's deliberate 30 Hz
         self.decimation = 4
