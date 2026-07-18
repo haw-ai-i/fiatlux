@@ -208,7 +208,7 @@ class RewardsCfg:
 
 @configclass
 class TerminationsCfg:
-    """Horizon, success (ladder positioned upright within reach), and fall/tip/drop violations."""
+    """Horizon, success (ladder positioned upright within reach), and fall/tip violations."""
 
     time_out = DoneTerm(func=mdp.time_out, time_out=True)
     # success: the Replace task's ladder-ready predicate (xy within reach + upright)
@@ -217,9 +217,12 @@ class TerminationsCfg:
         params={"xy_radius": LADDER_READY_XY_RADIUS, "tilt_limit": LADDER_TILT_LIMIT},
     )
     ladder_tipped = DoneTerm(func=mdp.ladder_tipped, params={"tilt_limit": LADDER_TILT_LIMIT})
-    ladder_dropped = DoneTerm(
-        func=mdp.object_dropped, params={"asset_cfg": SceneEntityCfg("ladder"), "min_height": 0.2}
-    )
+    # No height-gate "dropped" check here (unlike the bulb terms in Replace): this ladder's
+    # root frame sits at ~0 m when resting upright on the floor (verified via a live probe --
+    # see the groot-scoring debug notes), the same as its correctly-resting state, so any
+    # min_height threshold above 0 trips on step 1 of every episode regardless of policy.
+    # Replace's own ladder handling relies on orientation alone (`ladder_tipped`) for exactly
+    # this reason; Carry follows suit.
     # robot fall detection (built-in bool terms; end solver-kick episodes immediately)
     fell_below = DoneTerm(func=mdp.root_height_below_minimum, params={"minimum_height": FALL_MIN_HEIGHT})
     fell_over = DoneTerm(func=mdp.bad_orientation, params={"limit_angle": FALL_TILT_LIMIT})

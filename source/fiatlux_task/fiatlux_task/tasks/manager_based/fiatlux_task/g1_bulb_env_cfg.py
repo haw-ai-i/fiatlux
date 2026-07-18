@@ -16,8 +16,12 @@ ladder. Dressing randomization is off here -- homogeneous envs keep
 ``replicate_physics=True`` for training scale.
 
 Design notes (kept deliberately simple and hardware-minded for later sim-to-real):
-- **Actions** are joint-position targets on the G1 arm (optionally hand), which
-  map directly onto commands the Unitree SDK can consume on the real robot.
+- **Actions** are a single whole-body joint-position term (all DoF, like
+  Climb/Carry/Replace) so any policy artifact -- including the GR00T baseline's
+  ``GearWbcDecoder``, which assumes one ``joint_pos`` action term sized to
+  ``robot.num_joints`` -- runs unmodified across the whole task family. The task
+  itself only rewards/observes the arm+hand joints; the legs have nothing driving
+  them off their spawn default unless a policy (or the WBC) chooses to move them.
 - **Observations** are split into a default *sensor-realizable* ``policy`` group
   (proprioception + wrist camera + contact forces) and a separate *privileged*
   group (ground-truth bulb/socket pose) used only by the critic and scripted
@@ -45,27 +49,33 @@ from fiatlux_task.robots.g1 import (
 )
 
 from . import mdp
-from .scene_cfg import G1ReplaceSceneCfg, add_wrist_camera, apply_tabletop_preset
+from .scene_cfg import G1ReplaceSceneCfg, add_ego_camera, add_wrist_camera, apply_tabletop_preset
 
 ##
 # MDP settings
 ##
 
+# Fall thresholds (mirrors Climb/Carry/Replace's mdp.root_height_below_minimum /
+# mdp.bad_orientation gate): standing pelvis is 0.75 m, a deep crouch stays > 0.45 m, a
+# collapsed robot reads < 0.30 m. Needed now that actions are whole-body -- confirmed via
+# a groot-policy recording that the robot can crouch/collapse against the (immovable)
+# table with no termination catching it, driving contact force far above any insertion-
+# related contact for the rest of the episode.
+FALL_MIN_HEIGHT = 0.35  # m, world frame (the floor is flat)
+FALL_TILT_LIMIT = 1.0  # rad
+
 
 @configclass
 class ActionsCfg:
-    """Joint-position targets on the G1 arm (hardware-realizable for sim-to-real)."""
+    """Whole-body joint-position targets (hardware-realizable for sim-to-real).
 
-    arm_action = mdp.JointPositionActionCfg(
+    Matches the ``[".*"]`` convention Climb/Carry/Replace use -- one action term
+    covering every joint -- so the family shares a single action-space contract.
+    """
+
+    joint_pos = mdp.JointPositionActionCfg(
         asset_name="robot",
-        joint_names=G1_ARM_JOINTS,
-        scale=0.5,
-        use_default_offset=True,
-    )
-    # Right Inspire-hand finger targets, so the policy can grasp/release the bulb.
-    hand_action = mdp.JointPositionActionCfg(
-        asset_name="robot",
-        joint_names=G1_HAND_JOINTS,
+        joint_names=[".*"],
         scale=0.5,
         use_default_offset=True,
     )
@@ -212,6 +222,12 @@ class RewardsCfg:
         weight=-1.0e-3,
         params={"sensor_cfg": SceneEntityCfg("hand_contact")},
     )
+    # -- penalty for the fall itself (fires once; see fell_below/fell_over above) --
+    robot_fall = RewTerm(
+        func=mdp.fall_terminated,
+        weight=-200.0,
+        params={"minimum_height": FALL_MIN_HEIGHT, "limit_angle": FALL_TILT_LIMIT},
+    )
     # -- Smoothness / safety --
     action_rate = RewTerm(func=mdp.action_rate_l2, weight=-1.0e-4)
     joint_vel = RewTerm(
@@ -244,10 +260,11 @@ class TerminationsCfg:
         func=mdp.object_dropped,
         params={"asset_cfg": SceneEntityCfg("bulb"), "min_height": 0.4},
     )
-    # TODO(RL gate): add a robot-fell termination (base height/tilt threshold). KNOWN
-    # ISSUE (unification spec): a collapsed free-base G1 draped over the kinematic table
-    # accumulates violent PD-vs-contact solver kicks if episodes linger in that state --
-    # ending them immediately is the proper fix (plus possibly compliant gains).
+    # Robot fall detection (built-in bool terms; end solver-kick episodes immediately
+    # instead of letting a collapsed robot grind against the kinematic table for the rest
+    # of the episode -- see FALL_MIN_HEIGHT's docstring above).
+    fell_below = DoneTerm(func=mdp.root_height_below_minimum, params={"minimum_height": FALL_MIN_HEIGHT})
+    fell_over = DoneTerm(func=mdp.bad_orientation, params={"limit_angle": FALL_TILT_LIMIT})
 
 
 ##
@@ -288,6 +305,10 @@ class G1BulbInsertEnvCfg(ManagerBasedRLEnvCfg):
         # Wrist-mounted RGB camera (sensor-realizable observation). Requires launching
         # with --enable_cameras.
         add_wrist_camera(self.scene)
+        # Head-mounted RGB camera, unused by this task's own reward/observation terms but
+        # needed by any whole-body/VLA policy (GR00T's ego view) run across the family --
+        # GrootPolicy looks up ``scene["ego_camera"]`` unconditionally.
+        add_ego_camera(self.scene)
 
         self.decimation = 4
         self.sim.render_interval = self.decimation
