@@ -9,7 +9,9 @@ A single rollout produces both artifacts so they describe the *same* run:
 
 - ``video/`` : an MP4 of the run plus a poster PNG, captured by an RTX sensor camera
   (``fiatlux_task.viz``) posed by ``--cam``: fixed ``third_person`` / ``closeup``
-  viewpoints, or a 360-degree ``orbit`` of the scene.
+  viewpoints, a 360-degree ``orbit`` of the scene, or ``ego`` -- the robot's own
+  head-mounted ``ego_camera`` sensor (Climb/Carry/Replace only), unposed since it
+  already moves with the robot.
 - ``run.h5`` + ``meta.json`` : the experiment bag -- every per-step signal needed to
   score the run offline (see ``scripts/score.py``). ``--format npz`` for a flat fallback.
 
@@ -59,8 +61,9 @@ parser.add_argument(
     "--cam",
     type=str,
     default="third_person",
-    choices=["third_person", "closeup", "orbit"],
-    help="Camera pose for the video: fixed presets or a 360-degree scene orbit.",
+    choices=["third_person", "closeup", "orbit", "ego"],
+    help="Camera pose for the video: fixed presets, a 360-degree scene orbit, or the "
+    "robot's own ego_camera sensor.",
 )
 parser.add_argument(
     "--video_length", type=int, default=600, help="Video length (env steps)."
@@ -149,7 +152,13 @@ def main():
         from fiatlux_task.robots.g1 import swap_robot_variant
 
         swap_robot_variant(env_cfg, args_cli.robot)
-    if want_video:
+    if want_video and args_cli.cam == "ego":
+        if getattr(env_cfg.scene, "ego_camera", None) is None:
+            raise ValueError(
+                f"--cam ego needs an ego_camera sensor; {args_cli.task} has none "
+                "(only Climb/Carry/Replace attach one)."
+            )
+    elif want_video:
         # RTX sensor camera for the video (fiatlux_task.viz), posed per frame from --cam.
         env_cfg.scene.video_cam = make_video_camera_cfg()
 
@@ -157,10 +166,12 @@ def main():
     base_env = env.unwrapped
 
     video = None
-    pose_fn = _cam_pose_fn(args_cli.cam, env_cfg)
+    # ego_camera is body-attached and moves with the robot; nothing to pose per frame.
+    pose_fn = None if args_cli.cam == "ego" else _cam_pose_fn(args_cli.cam, env_cfg)
     if want_video:
         video_path = os.path.join(args_cli.out, "video", "run.mp4")
-        video = VideoRecorder(base_env, base_env.scene["video_cam"], video_path)
+        cam_name = "ego_camera" if args_cli.cam == "ego" else "video_cam"
+        video = VideoRecorder(base_env, base_env.scene[cam_name], video_path)
         print(f"[INFO] recording video to {video_path}")
 
     policy = make_policy(
@@ -186,7 +197,8 @@ def main():
             actions = policy(obs)
             obs, reward, terminated, truncated, extras = env.step(actions)
             if video is not None and len(video) < args_cli.video_length:
-                video.capture(pose_fn(len(video), args_cli.video_length))
+                pose = pose_fn(len(video), args_cli.video_length) if pose_fn is not None else None
+                video.capture(pose)
             if video is not None and recorder is None and len(video) >= args_cli.video_length:
                 break
             if recorder is not None:
