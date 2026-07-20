@@ -32,5 +32,7 @@ class RemoveEnvCfg(FamilyBaseEnvCfg):
     def __post_init__(self) -> None:
         super().__post_init__()
         apply_remove_preset(self.scene)
+        # Tabletop preset has no ladder; the top-level SceneEntityCfg would fail to resolve.
+        self.events.randomize_ladder_scale = None
         # TODO(task phase): create a bulb<->socket joint at the seat pose (revolute/screw or a
         #   fixed joint broken by rotation), add a grasp/attach action, and a removal reward.

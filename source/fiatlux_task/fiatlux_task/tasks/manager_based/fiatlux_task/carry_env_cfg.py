@@ -108,7 +108,26 @@ class EventCfg:
     randomize_sky_intensity = EventTerm(
         func=mdp.randomize_light_properties,
         mode="reset",
-        params={"asset_cfg": SceneEntityCfg("dome_light"), "intensity_range": (600.0, 1400.0)},
+        params={
+            "asset_cfg": SceneEntityCfg("dome_light"),
+            "intensity_range": (600.0, 1400.0),
+            "rotation_range_deg": {"yaw": (0.0, 360.0)},
+        },
+    )
+    # Replicate-safe visual DR: key-light direction (orientation only -- Carry never
+    # randomized key intensity) and a global albedo tint on the shared room.
+    randomize_key_light = EventTerm(
+        func=mdp.randomize_light_properties,
+        mode="reset",
+        params={
+            "asset_cfg": SceneEntityCfg("key_light"),
+            "rotation_range_deg": {"pitch": (-15.0, 15.0), "yaw": (-30.0, 30.0)},
+        },
+    )
+    randomize_material_tint = EventTerm(
+        func=mdp.randomize_material_tint,
+        mode="reset",
+        params={"asset_cfgs": [SceneEntityCfg("room")]},
     )
     # small start-pose DR on the ladder (position + yaw) for robustness
     reset_ladder = EventTerm(
