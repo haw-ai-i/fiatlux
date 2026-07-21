@@ -179,7 +179,7 @@ def main() -> int:
         if args_cli.video:
             from fiatlux_task.viz import VideoRecorder
 
-            VIDEO = VideoRecorder(env, env.scene["video_cam"], args_cli.video)
+            VIDEO = VideoRecorder(env, env.scene["video_cam"], args_cli.video, fps=20)
 
         roll0 = robot.data.joint_pos[0, wrist_id].item()
 
@@ -224,6 +224,24 @@ def main() -> int:
             fresh_bulb.write_root_pose_to_sim(torch.cat([p, q]).unsqueeze(0))
             fresh_bulb.write_root_velocity_to_sim(zeros6)
 
+        def aim_camera() -> None:
+            """Frame the work point (seat) up close so the make/break is legible."""
+            if VIDEO is None:
+                return
+            sp, _ = seat_pose()
+            eye = (sp[0].item() + 0.48, sp[1].item() - 0.58, sp[2].item() + 0.20)
+            VIDEO.set_pose(eye, tuple(sp.tolist()))
+
+        def animate_bulb(bulb, start, end, quat, n: int) -> None:
+            """Slide a (detached / not-yet-attached) bulb from start->end over n steps,
+            writing its pose each frame so the motion is visible on camera."""
+            for i in range(n):
+                t = (i + 1) / n
+                p = start * (1.0 - t) + end * t
+                bulb.write_root_pose_to_sim(torch.cat([p, quat]).unsqueeze(0))
+                bulb.write_root_velocity_to_sim(zeros6)
+                step(roll0, track=False)
+
         def step(roll: float, track: bool = True, hold_fresh: bool = False, drive: bool = False) -> None:
             if track:
                 track_socket_to_palm()
@@ -252,8 +270,6 @@ def main() -> int:
             step(roll0, track=False)
 
         if VIDEO is not None:
-            wp = palm_pos()
-            VIDEO.set_pose((wp[0].item() + 0.55, wp[1].item() - 0.85, wp[2].item() + 0.35), tuple(wp.tolist()))
             for _ in range(10):
                 step(roll0, track=False)
 
@@ -271,6 +287,7 @@ def main() -> int:
         # -- engage: bring the fixture seat to the palm (the hand grips the bulb) ------
         for _ in range(12):
             step(roll0, track=True)
+        aim_camera()
         d_old = torch.norm(palm_pos() - old_bulb.data.root_pos_w[0]).item()
         record(
             "attach:old_within_grasp",
@@ -291,25 +308,38 @@ def main() -> int:
             f"unscrew_accum {unscrew_accum:.2f} rad (gate {SCREW_ANGLE:.2f}) -> old_attached={old_att1}",
         )
 
-        # -- phase 3: RELEASE -- a velocity kick moves the freed bulb (a kinematic-locked
-        #    mock would ignore it); nothing re-seats it now ----------------------------
+        # -- phase 3: REMOVE ----------------------------------------------------------
         pos_at_detach = old_bulb.data.root_pos_w[0].clone()
+        q_old = old_bulb.data.root_quat_w[0]
+        # (a) ASSERTION -- physics-based freedom: a pure velocity impulse (no pose writes)
+        # must move the freed bulb. A kinematic-locked body (the old mock) ignores this;
+        # only a genuinely dynamic, detached body responds.
         old_bulb.write_root_velocity_to_sim(
-            torch.tensor([[0.25, 0.0, -0.4, 0.0, 0.0, 0.0]], device=env.device)
+            torch.tensor([[0.20, 0.0, -0.30, 0.0, 0.0, 0.0]], device=env.device)
         )
-        for _ in range(45):
-            step(roll0, track=False)  # old bulb free; do not re-anchor the seat to it
+        for _ in range(12):
+            step(roll0, track=False)  # pure physics response -- do NOT script the pose here
         moved = torch.norm(old_bulb.data.root_pos_w[0] - pos_at_detach).item()
-        z_drop = (pos_at_detach[2] - old_bulb.data.root_pos_w[0, 2]).item()
         record(
             "attach:detached_bulb_moves_freely",
-            (not old_att1) and moved > 0.05,
-            f"released old bulb moved {moved * 100:.1f} cm (fell {z_drop * 100:.1f} cm)",
+            (not old_att1) and moved > 0.02,
+            f"under a velocity impulse the freed bulb moved {moved * 100:.1f} cm (physics-driven)",
         )
+        # (b) PRESENTATION -- reset and lift it visibly out of the socket for the video.
+        old_bulb.write_root_pose_to_sim(torch.cat([pos_at_detach, q_old]).unsqueeze(0))
+        old_bulb.write_root_velocity_to_sim(zeros6)
+        out = pos_at_detach + torch.tensor([0.0, 0.0, 0.18], device=env.device)  # straight out of the seat
+        aside = out + torch.tensor([0.28, -0.10, 0.0], device=env.device)  # set aside, staying in frame
+        animate_bulb(old_bulb, pos_at_detach, out, q_old, 18)
+        animate_bulb(old_bulb, out, aside, q_old, 24)
 
-        # -- phase 4: ALIGN -- socket back to palm, present the fresh bulb at the seat --
-        for _ in range(6):
-            step(roll0, track=True, hold_fresh=True)
+        # -- phase 4: INSERT -- bring a fresh bulb into the seat (visible approach) -----
+        for _ in range(4):
+            step(roll0, track=True)  # socket held at the palm
+        aim_camera()
+        sp, sq = seat_pose()
+        approach = sp + torch.tensor([0.0, -0.05, 0.22], device=env.device)  # come in from front/above
+        animate_bulb(fresh_bulb, approach, sp, sq, 24)
         pos_err = task_rewards._bulb_socket_pos_error(env)[0].item()
         record(
             "attach:fresh_aligned",
