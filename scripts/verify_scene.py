@@ -66,6 +66,15 @@ parser.add_argument(
     help="Headlessly render an orbiting MP4 of the scene to logs/verify/ (no streaming needed). "
     "Auto-enables camera rendering; pair with --hold_base --headless for a clean standing G1.",
 )
+parser.add_argument(
+    "--record_view",
+    type=str,
+    default="scene",
+    choices=["scene", "fixture"],
+    help="What --record frames: 'scene' orbits the preset layout at floor/bench level; 'fixture' "
+    "orbits low and looks UP at the mounted fixture -- the only view that shows an overhead mount "
+    "at all (the scene orbit tops out below it).",
+)
 parser.add_argument("--record_steps", type=int, default=240, help="Frames to record (240 ~= one full 360 orbit).")
 parser.add_argument("--record_fps", type=int, default=30, help="Frames-per-second of the output MP4.")
 # AppLauncher contributes --headless, --livestream, --device, --enable_cameras, ...
@@ -90,7 +99,7 @@ import gymnasium as gym
 import torch
 from fiatlux_task.assets import BULB_STAND_Z_OFFSET
 from fiatlux_task.tasks.manager_based.fiatlux_task.scene_cfg import CEILING_FIXTURE_Z
-from fiatlux_task.viz import make_video_camera_cfg, record_orbit
+from fiatlux_task.viz import fixture_orbit, make_video_camera_cfg, record_orbit
 from prettytable import PrettyTable
 
 import isaacsim.core.utils.prims as prim_utils
@@ -179,6 +188,43 @@ def maybe_enable_collider_drawing() -> None:
 # lives in fiatlux_task.viz.
 ORBIT_CENTER = (0.1, 0.0, 1.3)
 ORBIT_RADIUS, ORBIT_HEIGHT = 4.0, 2.8
+
+
+def write_orbit_video(base, env_cfg, actions) -> str:
+    """Render the ``--record`` orbit and return the MP4 path.
+
+    Two framings: ``scene`` orbits the preset layout from above it, ``fixture`` orbits low
+    and looks up at the mount (see ``viz.fixture_orbit`` -- the scene orbit cannot see an
+    overhead fixture at all).
+    """
+    import time
+
+    suffix = "" if args_cli.record_view == "scene" else f"_{args_cli.record_view}"
+    out_path = os.path.join(OUT_DIR, f"{args_cli.task}{suffix}_{time.strftime('%Y%m%d_%H%M%S')}.mp4")
+    if args_cli.record_view == "fixture":
+        orbit = fixture_orbit(env_cfg)
+    else:
+        orbit = {
+            "center": tuple(getattr(env_cfg, "orbit_center", ORBIT_CENTER)),
+            "radius": float(getattr(env_cfg, "orbit_radius", ORBIT_RADIUS)),
+            "height": float(getattr(env_cfg, "orbit_height", ORBIT_HEIGHT)),
+        }
+    print(
+        f"\n[verify] --record ({args_cli.record_view}): orbiting camera for {args_cli.record_steps} "
+        f"frames, {orbit.get('sweep_deg', 360.0):.0f} deg about "
+        f"{tuple(round(c, 2) for c in orbit['center'])} -> {out_path}"
+    )
+    record_orbit(
+        base,
+        base.scene["video_cam"],
+        actions,
+        n_steps=args_cli.record_steps,
+        fps=args_cli.record_fps,
+        out_path=out_path,
+        **orbit,
+    )
+    print(f"[verify] wrote video: {out_path}")
+    return out_path
 
 
 def main() -> int:
@@ -423,22 +469,7 @@ def main() -> int:
 
     # optional: render an orbiting MP4 of the scene -- the reliable way to "see it" on a headless box
     if args_cli.record:
-        import time
-
-        out_path = os.path.join(OUT_DIR, f"{args_cli.task}_{time.strftime('%Y%m%d_%H%M%S')}.mp4")
-        print(f"\n[verify] --record: orbiting camera for {args_cli.record_steps} frames -> {out_path}")
-        record_orbit(
-            base,
-            base.scene["video_cam"],
-            actions,
-            n_steps=args_cli.record_steps,
-            fps=args_cli.record_fps,
-            out_path=out_path,
-            center=tuple(getattr(env_cfg, "orbit_center", ORBIT_CENTER)),
-            radius=float(getattr(env_cfg, "orbit_radius", ORBIT_RADIUS)),
-            height=float(getattr(env_cfg, "orbit_height", ORBIT_HEIGHT)),
-        )
-        print(f"[verify] wrote video: {out_path}")
+        write_orbit_video(base, env_cfg, actions)
 
     # optional: hold the scene open so it can be inspected live (livestream client or GUI).
     # NOTE: AppLauncher forces headless=True whenever livestreaming, so gate on the --keep_alive

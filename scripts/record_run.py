@@ -63,8 +63,9 @@ parser.add_argument(
     "--cam",
     type=str,
     default="third_person",
-    choices=["third_person", "closeup", "orbit", "ego"],
-    help="Camera pose for the video: fixed presets, a 360-degree scene orbit, or the robot's own ego_camera sensor.",
+    choices=["third_person", "closeup", "orbit", "fixture", "ego"],
+    help="Camera pose for the video: fixed presets, a 360-degree scene orbit, a low orbit looking UP "
+    "at the mounted fixture, or the robot's own ego_camera sensor.",
 )
 parser.add_argument("--video_length", type=int, default=600, help="Video length (env steps).")
 parser.add_argument("--disable_fabric", action="store_true", default=False, help="Use USD I/O.")
@@ -116,7 +117,7 @@ import torch
 from fiatlux_task.policy import make_policy
 from fiatlux_task.recording import TrajectoryRecorder
 from fiatlux_task.telemetry import ScoreLogger
-from fiatlux_task.viz import VideoRecorder, make_video_camera_cfg, orbit_pose
+from fiatlux_task.viz import VideoRecorder, fixture_orbit, make_video_camera_cfg, orbit_pose
 
 import isaaclab_tasks  # noqa: F401
 from isaaclab_tasks.utils import parse_env_cfg
@@ -128,13 +129,18 @@ def _cam_pose_fn(kind: str, env_cfg):
     ``third_person`` frames the task cfg's own viewer eye/lookat; ``orbit`` turntables
     around the cfg's orbit fields (the same framing verify_scene --record uses), so every
     task -- bench-scale Insert or room-scale Replace -- records its own layout. ``closeup``
-    stays the Insert bench's fixed close view.
+    stays the Insert bench's fixed close view. ``fixture`` orbits below the mount looking up,
+    the only framing here that shows an overhead fixture (every other one points at the
+    floor and the bench).
     """
     if kind == "third_person":
         eye, lookat = tuple(env_cfg.viewer.eye), tuple(env_cfg.viewer.lookat)
         return lambda i, n: (eye, lookat)
     if kind == "closeup":
         return lambda i, n: ((0.9, 0.8, 1.4), (0.45, 0.0, 1.15))
+    if kind == "fixture":
+        orbit = fixture_orbit(env_cfg)
+        return lambda i, n: orbit_pose(i, n, **orbit)
     center = getattr(env_cfg, "orbit_center", (0.45, 0.0, 1.1))
     radius = getattr(env_cfg, "orbit_radius", 2.6)
     height = getattr(env_cfg, "orbit_height", 2.0)
