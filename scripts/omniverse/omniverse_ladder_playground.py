@@ -21,6 +21,7 @@ Run:  DISPLAY=:1001 python scripts/omniverse/omniverse_ladder_playground.py
 Visual tool only -- physics plays automatically; you judge it by eye (a headless
 pass/fail on "did a box rest on an open ladder" is too noisy to be meaningful).
 """
+
 import math
 import os
 
@@ -39,16 +40,18 @@ from pxr import Gf, PhysxSchema, Usd, UsdGeom, UsdLux, UsdPhysics  # noqa: E402
 LADDER_DIR = os.environ.get(
     "FIATLUX_LADDER_DIR",
     # this script lives in scripts/omniverse/, so climb 3 levels: omniverse -> scripts -> repo
-    os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
-                 "assets", "omniverse_ladder"))
+    os.path.join(
+        os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), "assets", "omniverse_ladder"
+    ),
+)
 ROOTS = [LADDER_DIR]
 SPACING = 1.8
 ROW_Y_COLLISION = -2.5
 ROW_Y_RIGID = 2.5
-BOX = 0.10               # box edge (m)
-DROP_ABOVE = 0.05        # how far above each step the box starts (small = less bounce)
-DROP_SZ = 0.15           # drop-box cube edge (m)
-DROP_H = 0.6             # height a drop-box starts above the ladder top (m)
+BOX = 0.10  # box edge (m)
+DROP_ABOVE = 0.05  # how far above each step the box starts (small = less bounce)
+DROP_SZ = 0.15  # drop-box cube edge (m)
+DROP_H = 0.6  # height a drop-box starts above the ladder top (m)
 
 
 def bbox_dims(usd):
@@ -64,8 +67,11 @@ def bbox_range(usd):
     """(ymin, ymax, zmin, zmax) of the asset in metres."""
     s = Usd.Stage.Open(usd)
     mpu = UsdGeom.GetStageMetersPerUnit(s)
-    r = UsdGeom.BBoxCache(Usd.TimeCode.Default(), [UsdGeom.Tokens.default_]).ComputeWorldBound(
-        s.GetPseudoRoot()).ComputeAlignedRange()
+    r = (
+        UsdGeom.BBoxCache(Usd.TimeCode.Default(), [UsdGeom.Tokens.default_])
+        .ComputeWorldBound(s.GetPseudoRoot())
+        .ComputeAlignedRange()
+    )
     return r.GetMin()[1] * mpu, r.GetMax()[1] * mpu, r.GetMin()[2] * mpu, r.GetMax()[2] * mpu
 
 
@@ -74,7 +80,7 @@ def footprint(usd):
     return min(dx, dy)
 
 
-FOLDED_FOOT = 0.35       # min horizontal footprint below this = folded/thin (leans on a wall)
+FOLDED_FOOT = 0.35  # min horizontal footprint below this = folded/thin (leans on a wall)
 
 
 def is_leaning(usd):
@@ -97,8 +103,7 @@ def make_wall(st, path, x, y_face, height, width=0.9):
     width = max(float(width), 0.05)
     w = UsdGeom.Cube.Define(st, path)
     w.CreateSizeAttr(1.0)
-    w.AddXformOp(UsdGeom.XformOp.TypeTranslate).Set(
-        Gf.Vec3d(x, y_face - thick / 2, height / 2))
+    w.AddXformOp(UsdGeom.XformOp.TypeTranslate).Set(Gf.Vec3d(x, y_face - thick / 2, height / 2))
     w.AddXformOp(UsdGeom.XformOp.TypeScale).Set(Gf.Vec3f(width, thick, height))
     w.CreateDisplayColorAttr([(0.72, 0.72, 0.75)])
     UsdPhysics.CollisionAPI.Apply(w.GetPrim())
@@ -114,7 +119,7 @@ def gather_items():
             continue
         for design in sorted(os.listdir(root)):
             dd = os.path.join(root, design)
-            if not os.path.isdir(dd) or design.startswith("."):   # skip .SubUSDs/.thumbs stub folders
+            if not os.path.isdir(dd) or design.startswith("."):  # skip .SubUSDs/.thumbs stub folders
                 continue
             rigids = sorted(f for f in os.listdir(dd) if f.endswith("_collision_rigid.usd"))
             if not rigids:
@@ -126,15 +131,17 @@ def gather_items():
                     (opens if os.path.exists(orig) and footprint(orig) >= FOLDED_FOOT else foldeds).append(r)
                 except Exception:
                     opens.append(r)
+
             def entry(r, label, folded):
                 rigid = os.path.join(dd, r)
                 coll = os.path.join(dd, r.replace("_collision_rigid.usd", "_collision.usd"))
                 return (label, coll, rigid, folded)
+
             if opens:
                 items.append(entry(opens[0], design, False))
             elif foldeds:
                 items.append(entry(foldeds[0], design, True))
-            if opens and foldeds:                       # also show the folded one, leaned on a wall
+            if opens and foldeds:  # also show the folded one, leaned on a wall
                 items.append(entry(foldeds[0], design + " (folded)", True))
     return items
 
@@ -164,14 +171,16 @@ def detect_steps(usd_path, max_steps=8):
     nb = max(12, int(h / 0.02))
     hist, edges = np.histogram(z, bins=nb)
     centers = (edges[:-1] + edges[1:]) / 2
-    lo, hi = zmin + 0.10 * h, zmax        # include the very top (platform/step-stand surface)
+    lo, hi = zmin + 0.10 * h, zmax  # include the very top (platform/step-stand surface)
     thr = hist.mean()
-    peaks = [(centers[i], hist[i]) for i in range(1, len(hist) - 1)
-             if lo <= centers[i] <= hi and hist[i] >= hist[i - 1]
-             and hist[i] >= hist[i + 1] and hist[i] > thr]
+    peaks = [
+        (centers[i], hist[i])
+        for i in range(1, len(hist) - 1)
+        if lo <= centers[i] <= hi and hist[i] >= hist[i - 1] and hist[i] >= hist[i + 1] and hist[i] > thr
+    ]
     peaks.sort()
     merged = []
-    for zc, cnt in peaks:                      # merge peaks within 8 cm (same tread)
+    for zc, cnt in peaks:  # merge peaks within 8 cm (same tread)
         if merged and zc - merged[-1][0] < 0.08:
             if cnt > merged[-1][1]:
                 merged[-1] = (zc, cnt)
@@ -182,7 +191,7 @@ def detect_steps(usd_path, max_steps=8):
     steps = []
     cell = 0.04
     for zc, _ in merged:
-        near = A[np.abs(A[:, 2] - zc) < 0.02]     # just the top surface at this height
+        near = A[np.abs(A[:, 2] - zc) < 0.02]  # just the top surface at this height
         if len(near) < 10:
             continue
         # A flat TREAD is a SOLID horizontal patch (wide AND deep). A round rung is a
@@ -192,30 +201,31 @@ def detect_steps(usd_path, max_steps=8):
         x0, y0 = xs.min(), ys.min()
         nx = int((xs.max() - x0) / cell) + 1
         ny = int((ys.max() - y0) / cell) + 1
-        if nx < 3 or ny < 3:                       # too thin in a direction -> not a tread
+        if nx < 3 or ny < 3:  # too thin in a direction -> not a tread
             continue
         occ = np.zeros((nx, ny), bool)
         occ[((xs - x0) / cell).astype(int), ((ys - y0) / cell).astype(int)] = True
         best = None
         for a in range(nx - 2):
             for b in range(ny - 2):
-                fill = int(occ[a:a + 3, b:b + 3].sum())
+                fill = int(occ[a : a + 3, b : b + 3].sum())
                 if best is None or fill > best[0]:
                     best = (fill, a, b)
-        if best is None or best[0] < 6:            # need a mostly-solid 3x3 patch
+        if best is None or best[0] < 6:  # need a mostly-solid 3x3 patch
             continue
         _, a, b = best
         mx = x0 + (a + 1.5) * cell
         my = y0 + (b + 1.5) * cell
         # the solid patch sits at ~zc; that's the surface to rest a box on
         steps.append((float(mx), float(my), float(zc)))
-    if not steps:                              # fallback: one box on the top
+    if not steps:  # fallback: one box on the top
         steps = [(float(np.median(A[:, 0])), float(np.median(A[:, 1])), zmax)]
     return steps
 
 
 def make_box(st, path, pos, mat=None, color=(1.0, 0.55, 0.1)):
     from pxr import UsdShade
+
     c = UsdGeom.Cube.Define(st, path)
     c.CreateSizeAttr(BOX)
     c.AddXformOp(UsdGeom.XformOp.TypeTranslate).Set(Gf.Vec3d(*pos))
@@ -223,9 +233,8 @@ def make_box(st, path, pos, mat=None, color=(1.0, 0.55, 0.1)):
     UsdPhysics.CollisionAPI.Apply(c.GetPrim())
     UsdPhysics.RigidBodyAPI.Apply(c.GetPrim())
     UsdPhysics.MassAPI.Apply(c.GetPrim()).CreateMassAttr(0.15)
-    if mat is not None:                       # grip so it doesn't slide off the tread
-        UsdShade.MaterialBindingAPI.Apply(c.GetPrim()).Bind(
-            mat, UsdShade.Tokens.weakerThanDescendants, "physics")
+    if mat is not None:  # grip so it doesn't slide off the tread
+        UsdShade.MaterialBindingAPI.Apply(c.GetPrim()).Bind(mat, UsdShade.Tokens.weakerThanDescendants, "physics")
     return c
 
 
@@ -234,6 +243,7 @@ def make_dropbox(st, path, pos, mat=None, color=(0.9, 0.15, 0.15)):
     On play it falls onto the ladder; a solid collider catches it, no collider
     lets it fall through to the floor."""
     from pxr import UsdShade
+
     c = UsdGeom.Cube.Define(st, path)
     c.CreateSizeAttr(DROP_SZ)
     c.AddXformOp(UsdGeom.XformOp.TypeTranslate).Set(Gf.Vec3d(*pos))
@@ -243,8 +253,7 @@ def make_dropbox(st, path, pos, mat=None, color=(0.9, 0.15, 0.15)):
     PhysxSchema.PhysxRigidBodyAPI.Apply(c.GetPrim()).CreateEnableCCDAttr(True)  # don't tunnel thin rungs
     UsdPhysics.MassAPI.Apply(c.GetPrim()).CreateMassAttr(0.5)
     if mat is not None:
-        UsdShade.MaterialBindingAPI.Apply(c.GetPrim()).Bind(
-            mat, UsdShade.Tokens.weakerThanDescendants, "physics")
+        UsdShade.MaterialBindingAPI.Apply(c.GetPrim()).Bind(mat, UsdShade.Tokens.weakerThanDescendants, "physics")
     return c
 
 
@@ -265,6 +274,7 @@ def build(st):
     UsdPhysics.CollisionAPI.Apply(g.GetPrim())
 
     from pxr import UsdShade
+
     bmat = UsdShade.Material.Define(st, "/World/BoxFriction")
     bpm = UsdPhysics.MaterialAPI.Apply(bmat.GetPrim())
     bpm.CreateStaticFrictionAttr(1.0)
@@ -274,15 +284,15 @@ def build(st):
     items = gather_items()
     n = len(items)
     x0 = -(n - 1) * SPACING / 2.0
-    boxes = []    # (prim_path, target_step_z)  -- box dropped on each step
-    drops = []    # (prim_path, label, top_z)   -- a box hovering above each ladder top
-    rigids = []   # (label, prim_path, start_z) -- free-standing rigid ladders (should fall)
+    boxes = []  # (prim_path, target_step_z)  -- box dropped on each step
+    drops = []  # (prim_path, label, top_z)   -- a box hovering above each ladder top
+    rigids = []  # (label, prim_path, start_z) -- free-standing rigid ladders (should fall)
     leaners = []  # (label, prim_path)          -- leaned rigid ladders (should STAY up)
     for i, (design, coll, rigid, folded) in enumerate(items):
         x = x0 + i * SPACING
         mpu = UsdGeom.GetStageMetersPerUnit(Usd.Stage.Open(coll))
         dx, dy, dz = bbox_dims(coll)
-        lean = folded or is_leaning(coll)     # folded ladders always lean on a wall
+        lean = folded or is_leaning(coll)  # folded ladders always lean on a wall
 
         if lean:
             # Rotate about +X: the top tips toward -y; the wall sits at the RESTING lean
@@ -298,10 +308,9 @@ def build(st):
             wall_lean = start_lean + 8.0
             sw, cw = math.sin(math.radians(wall_lean)), math.cos(math.radians(wall_lean))
             ymn, ymx, zmn, zmx = bbox_range(coll)
-            ext = ymn * cw - zmx * sw                        # world -y of the tipped-top corner
+            ext = ymn * cw - zmx * sw  # world -y of the tipped-top corner
             wall_h = zmx * cw + ymx * sw + 0.3
-            for row, tag, ref, ang in ((ROW_Y_COLLISION, "C", coll, wall_lean),
-                                       (ROW_Y_RIGID, "R", rigid, start_lean)):
+            for row, tag, ref, ang in ((ROW_Y_COLLISION, "C", coll, wall_lean), (ROW_Y_RIGID, "R", rigid, start_lean)):
                 slot = UsdGeom.Xform.Define(st, f"/World/{tag}_{i}")
                 slot.AddXformOp(UsdGeom.XformOp.TypeTranslate).Set(Gf.Vec3d(x, row, 0.02))
                 slot.AddXformOp(UsdGeom.XformOp.TypeRotateXYZ).Set(Gf.Vec3f(ang, 0, 0))
@@ -310,7 +319,8 @@ def build(st):
                 make_wall(st, f"/World/wall_{tag}_{i}", x, row + ext - 0.01, wall_h)
             # gentle nudge toward the wall so it topples that way promptly (deg/s about +X)
             UsdPhysics.RigidBodyAPI.Apply(st.GetPrimAtPath(f"/World/R_{i}/a")).CreateAngularVelocityAttr(
-                Gf.Vec3f(6.0, 0.0, 0.0))
+                Gf.Vec3f(6.0, 0.0, 0.0)
+            )
             # a box dropped onto the (static) collision ladder as it leans on its wall
             cxm, cym, czm = bbox_center(coll)
             a = math.radians(wall_lean)
@@ -355,8 +365,11 @@ def bbox_center_top(usd):
     """(cx, cy, top_z) of the asset in metres -- where to hover a drop-box above it."""
     s = Usd.Stage.Open(usd)
     mpu = UsdGeom.GetStageMetersPerUnit(s)
-    r = UsdGeom.BBoxCache(Usd.TimeCode.Default(), [UsdGeom.Tokens.default_]).ComputeWorldBound(
-        s.GetPseudoRoot()).ComputeAlignedRange()
+    r = (
+        UsdGeom.BBoxCache(Usd.TimeCode.Default(), [UsdGeom.Tokens.default_])
+        .ComputeWorldBound(s.GetPseudoRoot())
+        .ComputeAlignedRange()
+    )
     cx = (r.GetMin()[0] + r.GetMax()[0]) / 2 * mpu
     cy = (r.GetMin()[1] + r.GetMax()[1]) / 2 * mpu
     return cx, cy, r.GetMax()[2] * mpu
@@ -366,8 +379,11 @@ def bbox_center(usd):
     """(cx, cy, cz) centre of the asset in metres."""
     s = Usd.Stage.Open(usd)
     mpu = UsdGeom.GetStageMetersPerUnit(s)
-    r = UsdGeom.BBoxCache(Usd.TimeCode.Default(), [UsdGeom.Tokens.default_]).ComputeWorldBound(
-        s.GetPseudoRoot()).ComputeAlignedRange()
+    r = (
+        UsdGeom.BBoxCache(Usd.TimeCode.Default(), [UsdGeom.Tokens.default_])
+        .ComputeWorldBound(s.GetPseudoRoot())
+        .ComputeAlignedRange()
+    )
     return tuple((r.GetMin()[k] + r.GetMax()[k]) / 2 * mpu for k in range(3))
 
 
@@ -377,14 +393,18 @@ def main():
     ctx.new_stage()
     st = ctx.get_stage()
     items, boxes, drops, rigids, leaners = build(st)
-    print(f"\n[{len(items)} ladders.  FRONT=collision ({len(boxes)} step boxes + {len(drops)} "
-          f"drop-boxes above the tops) | BACK=collision+rigid (topple on play).  {len(leaners)} "
-          f"lean-type on walls.]\n", flush=True)
+    print(
+        f"\n[{len(items)} ladders.  FRONT=collision ({len(boxes)} step boxes + {len(drops)} "
+        f"drop-boxes above the tops) | BACK=collision+rigid (topple on play).  {len(leaners)} "
+        f"lean-type on walls.]\n",
+        flush=True,
+    )
 
     from isaacsim.core.api import SimulationContext
+
     sim = SimulationContext(physics_dt=1 / 120, rendering_dt=1 / 120, stage_units_in_meters=1.0)
     sim.reset()
-    while simulation_app.is_running():   # physics runs live: boxes drop, rigids topple, leaners hold
+    while simulation_app.is_running():  # physics runs live: boxes drop, rigids topple, leaners hold
         sim.step(render=True)
     simulation_app.close()
 

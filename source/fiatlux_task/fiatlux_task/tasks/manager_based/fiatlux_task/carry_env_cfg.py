@@ -31,6 +31,7 @@ from fiatlux_task.robots.g1 import G1_FINGER_JOINT_PATTERNS, G1_WAIST_JOINT_PATT
 
 from . import mdp
 from .scene_cfg import (
+    ROOM_ENV_SPACING,
     G1ReplaceSceneCfg,
     add_ego_camera,
     add_mid360_lidar,
@@ -55,9 +56,7 @@ class ActionsCfg:
     """Whole-body joint-position targets: the task spans locomotion + manipulation (the robot
     walks to the ladder, then grasps and carries it), mirroring the full Replace task."""
 
-    joint_pos = mdp.JointPositionActionCfg(
-        asset_name="robot", joint_names=[".*"], scale=0.5, use_default_offset=True
-    )
+    joint_pos = mdp.JointPositionActionCfg(asset_name="robot", joint_names=[".*"], scale=0.5, use_default_offset=True)
 
 
 @configclass
@@ -165,9 +164,7 @@ class RewardsCfg:
         },
     )
     # -- penalties (each predicate also terminates -> fires once) --
-    ladder_tipped = RewTerm(
-        func=mdp.ladder_tipped, weight=-200.0, params={"tilt_limit": LADDER_TILT_LIMIT}
-    )
+    ladder_tipped = RewTerm(func=mdp.ladder_tipped, weight=-200.0, params={"tilt_limit": LADDER_TILT_LIMIT})
     robot_fall = RewTerm(
         func=mdp.fall_terminated,
         weight=-200.0,
@@ -188,11 +185,7 @@ class RewardsCfg:
     ankle_pos_limits = RewTerm(
         func=mdp.joint_pos_limits,
         weight=-1.0,
-        params={
-            "asset_cfg": SceneEntityCfg(
-                "robot", joint_names=[".*_ankle_pitch_joint", ".*_ankle_roll_joint"]
-            )
-        },
+        params={"asset_cfg": SceneEntityCfg("robot", joint_names=[".*_ankle_pitch_joint", ".*_ankle_roll_joint"])},
     )
     joint_deviation_waist = RewTerm(
         func=mdp.joint_deviation_l1,
@@ -242,7 +235,7 @@ class CarryEnvCfg(ManagerBasedRLEnvCfg):
     # Homogeneous envs -> replicated physics for training scale (USD cloning, not fabric, so
     # the hand_contact sensor's PhysX contact-reporter attaches; same as Insert).
     scene: G1ReplaceSceneCfg = G1ReplaceSceneCfg(
-        num_envs=1, env_spacing=6.0, replicate_physics=True, clone_in_fabric=False
+        num_envs=1, env_spacing=ROOM_ENV_SPACING, replicate_physics=True, clone_in_fabric=False
     )
     observations: ObservationsCfg = ObservationsCfg()
     actions: ActionsCfg = ActionsCfg()
@@ -260,7 +253,8 @@ class CarryEnvCfg(ManagerBasedRLEnvCfg):
         self.decimation = 4
         self.sim.render_interval = self.decimation
         self.episode_length_s = 20.0
-        self.sim.dt = 1.0 / 120.0
+        # family control rate (50 Hz; the GEAR-WBC decoders enforce it)
+        self.sim.dt = 1.0 / 200.0
         # PhysX solver floors + stabilization (uncontrolled free base against props; Insert finding)
         self.sim.physx.solver_type = 1
         self.sim.physx.min_position_iteration_count = 8
@@ -270,3 +264,12 @@ class CarryEnvCfg(ManagerBasedRLEnvCfg):
         self.sim.physx.enable_stabilization = True
         self.viewer.eye = (2.5, 2.5, 2.0)
         self.viewer.lookat = (0.5, 0.0, 0.9)
+
+    def disable_randomization(self) -> None:
+        """Deterministic canonical spawns (debug / basic testing; ``--no_randomize``).
+
+        Strips the reset-time randomization terms; ``reset_all`` stays -- restoring
+        default state between episodes is correctness, not noise.
+        """
+        self.events.reset_ladder = None
+        self.events.randomize_sky_intensity = None

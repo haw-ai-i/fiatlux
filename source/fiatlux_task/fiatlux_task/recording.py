@@ -96,9 +96,7 @@ class TrajectoryRecorder:
         self._ee_id = self._ee_ids[0]
 
         self._buf: dict[str, list[np.ndarray]] = {}
-        self._meta = self._build_meta(
-            policy_spec=policy_spec, seed=seed, checkpoint=checkpoint, ee_name=ee_names[0]
-        )
+        self._meta = self._build_meta(policy_spec=policy_spec, seed=seed, checkpoint=checkpoint, ee_name=ee_names[0])
 
     # -- capture ---------------------------------------------------------------
     def record_step(self, obs, actions, reward, terminated, truncated) -> None:
@@ -152,9 +150,7 @@ class TrajectoryRecorder:
             start = 0
             for t in range(t_steps):
                 if done[t, e]:
-                    episodes.append(
-                        {k: v[start : t + 1, e] for k, v in stacked.items()}
-                    )
+                    episodes.append({k: v[start : t + 1, e] for k, v in stacked.items()})
                     start = t + 1
         return episodes
 

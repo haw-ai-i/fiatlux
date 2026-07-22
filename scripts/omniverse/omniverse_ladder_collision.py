@@ -10,6 +10,7 @@ on every mesh, binds a high-friction physics material, and stays static.
 
 Usage: python scripts/omniverse/omniverse_ladder_collision.py <dir> [<dir> ...]
 """
+
 import os
 import sys
 
@@ -81,10 +82,8 @@ def author(src):
             continue
         over = stage.OverridePrim(p.GetPath())
         UsdPhysics.CollisionAPI.Apply(over)
-        UsdPhysics.MeshCollisionAPI.Apply(over).CreateApproximationAttr(
-            UsdPhysics.Tokens.convexDecomposition)
-        UsdShade.MaterialBindingAPI.Apply(over).Bind(
-            mat, UsdShade.Tokens.weakerThanDescendants, "physics")
+        UsdPhysics.MeshCollisionAPI.Apply(over).CreateApproximationAttr(UsdPhysics.Tokens.convexDecomposition)
+        UsdShade.MaterialBindingAPI.Apply(over).Bind(mat, UsdShade.Tokens.weakerThanDescendants, "physics")
         nmesh += 1
 
     stage.SetDefaultPrim(stage.GetPrimAtPath(default.GetPath()))

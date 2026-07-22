@@ -22,10 +22,19 @@ import os
 REPO = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 ASSETS = os.path.join(REPO, "assets")
 GROUPS = [
-    "behavior1k_bulb", "behavior1k_bulb_broken", "behavior1k_lamp", "behavior1k_floor_lamp",
-    "behavior1k_chandelier", "behavior1k_lampshade", "behavior1k_paper_lantern",
-    "behavior1k_downlight", "behavior1k_spotlight", "behavior1k_square_light",
-    "behavior1k_rectangular_light", "behavior1k_track_light", "behavior1k_wall_mounted_light",
+    "behavior1k_bulb",
+    "behavior1k_bulb_broken",
+    "behavior1k_lamp",
+    "behavior1k_floor_lamp",
+    "behavior1k_chandelier",
+    "behavior1k_lampshade",
+    "behavior1k_paper_lantern",
+    "behavior1k_downlight",
+    "behavior1k_spotlight",
+    "behavior1k_square_light",
+    "behavior1k_rectangular_light",
+    "behavior1k_track_light",
+    "behavior1k_wall_mounted_light",
     "behavior1k_room_light",
 ]
 COLS = 14
@@ -63,8 +72,11 @@ def main():
         os.environ["MDL_USER_PATH"] = os.path.abspath(args.mdl_path)
         print(f"[MDL_USER_PATH = {os.environ['MDL_USER_PATH']}]", flush=True)
     else:
-        print(f"[warn] mdl path not found: {args.mdl_path} -> assets will render RED "
-              "until the OmniGibson vray mdls are on the path", flush=True)
+        print(
+            f"[warn] mdl path not found: {args.mdl_path} -> assets will render RED "
+            "until the OmniGibson vray mdls are on the path",
+            flush=True,
+        )
 
     from isaacsim import SimulationApp
 
@@ -116,11 +128,13 @@ def main():
             rep.orchestrator.step(rt_subframes=16)
             app.update()
         import imageio.v2 as imageio
+
         imageio.imwrite(args.render, np.asarray(annot.get_data())[..., :3].astype(np.uint8))
         print(f"[saved -> {args.render}]", flush=True)
     else:
         try:
             from isaacsim.core.utils.viewports import set_camera_view
+
             set_camera_view(eye=[cx, cy - (gd + 10), gd * 0.9 + 6], target=[cx, cy, 0.2])
         except Exception as e:
             print(f"[camera preset skipped: {e}; press F to frame]", flush=True)

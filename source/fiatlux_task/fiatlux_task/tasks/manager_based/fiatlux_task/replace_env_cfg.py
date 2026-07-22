@@ -29,9 +29,9 @@ Design notes (full-task benchmark plan, ``journal/specs/full-task-benchmark-plan
   ``privileged`` because rsl_rl's ``obs_groups`` routing is keyed to them (see
   ``ClimbPPORunnerCfg``); the benchmark docs map standard->policy, cheatcode->privileged.
 - **The ladder is dynamic** (only here): knocking it over is a real, penalized, episode-
-  ending physical event. **The old bulb is kinematic** -- the "screwed in" stand-in until
-  the attach/detach mechanic exists (unification spec Phase 4), so its removal/disposal
-  terms are scored-but-not-yet-achievable, the same gap Remove/Install carry.
+  ending physical event. **The old bulb is dynamic too**, seated in the fixture by contact
+  rather than pinned kinematic, so removal and disposal are real physical events. Retention
+  in an inverted fixture is owned by the bulb-insertion-physics work, not by this cfg.
 """
 
 from isaaclab.envs import ManagerBasedRLEnvCfg
@@ -51,7 +51,13 @@ from fiatlux_task.robots.g1 import (
 
 from . import mdp
 from .climb_env_cfg import FALL_MIN_HEIGHT, FALL_TILT_LIMIT
-from .scene_cfg import G1ReplaceSceneCfg, add_ego_camera, add_mid360_lidar, apply_replace_preset
+from .scene_cfg import (
+    ROOM_ENV_SPACING,
+    G1ReplaceSceneCfg,
+    add_ego_camera,
+    add_mid360_lidar,
+    apply_replace_preset,
+)
 
 ##
 # Task thresholds
@@ -94,9 +100,7 @@ class ObservationsCfg:
 
         # IMU-realizable
         base_ang_vel = ObsTerm(func=mdp.base_ang_vel, noise=Unoise(n_min=-0.2, n_max=0.2))
-        projected_gravity = ObsTerm(
-            func=mdp.projected_gravity, noise=Unoise(n_min=-0.05, n_max=0.05)
-        )
+        projected_gravity = ObsTerm(func=mdp.projected_gravity, noise=Unoise(n_min=-0.05, n_max=0.05))
         # Estimator-realizable exceptions (kinematic-inertial state estimate; the same
         # documented exception Climb makes).
         base_lin_vel = ObsTerm(func=mdp.base_lin_vel, noise=Unoise(n_min=-0.1, n_max=0.1))
@@ -137,15 +141,9 @@ class ObservationsCfg:
 
         robot_pose = ObsTerm(func=mdp.root_pose_w, params={"asset_cfg": SceneEntityCfg("robot")})
         ladder_pose = ObsTerm(func=mdp.root_pose_w, params={"asset_cfg": SceneEntityCfg("ladder")})
-        fixture_pose = ObsTerm(
-            func=mdp.root_pose_w, params={"asset_cfg": SceneEntityCfg("socket")}
-        )
-        fresh_bulb_pose = ObsTerm(
-            func=mdp.root_pose_w, params={"asset_cfg": SceneEntityCfg("bulb")}
-        )
-        old_bulb_pose = ObsTerm(
-            func=mdp.root_pose_w, params={"asset_cfg": SceneEntityCfg("old_bulb")}
-        )
+        fixture_pose = ObsTerm(func=mdp.root_pose_w, params={"asset_cfg": SceneEntityCfg("socket")})
+        fresh_bulb_pose = ObsTerm(func=mdp.root_pose_w, params={"asset_cfg": SceneEntityCfg("bulb")})
+        old_bulb_pose = ObsTerm(func=mdp.root_pose_w, params={"asset_cfg": SceneEntityCfg("old_bulb")})
         disposal_pose = ObsTerm(func=mdp.root_pose_w, params={"asset_cfg": SceneEntityCfg("bin")})
         score_distances = ObsTerm(func=mdp.replace_score_distances)
 
@@ -276,9 +274,7 @@ class RewardsCfg:
         weight=-200.0,
         params={"minimum_height": FALL_MIN_HEIGHT, "limit_angle": FALL_TILT_LIMIT},
     )
-    ladder_tipped = RewTerm(
-        func=mdp.ladder_tipped, weight=-200.0, params={"tilt_limit": LADDER_TILT_LIMIT}
-    )
+    ladder_tipped = RewTerm(func=mdp.ladder_tipped, weight=-200.0, params={"tilt_limit": LADDER_TILT_LIMIT})
     fresh_bulb_dropped = RewTerm(
         func=mdp.object_dropped,
         weight=-100.0,
@@ -309,11 +305,7 @@ class RewardsCfg:
     ankle_pos_limits = RewTerm(
         func=mdp.joint_pos_limits,
         weight=-1.0,
-        params={
-            "asset_cfg": SceneEntityCfg(
-                "robot", joint_names=[".*_ankle_pitch_joint", ".*_ankle_roll_joint"]
-            )
-        },
+        params={"asset_cfg": SceneEntityCfg("robot", joint_names=[".*_ankle_pitch_joint", ".*_ankle_roll_joint"])},
     )
     joint_deviation_waist = RewTerm(
         func=mdp.joint_deviation_l1,
@@ -333,9 +325,7 @@ class TerminationsCfg:
 
     time_out = DoneTerm(func=mdp.time_out, time_out=True)
     # Fall detection (the family RL gate; thresholds shared with the fall penalty).
-    fell_below = DoneTerm(
-        func=mdp.root_height_below_minimum, params={"minimum_height": FALL_MIN_HEIGHT}
-    )
+    fell_below = DoneTerm(func=mdp.root_height_below_minimum, params={"minimum_height": FALL_MIN_HEIGHT})
     fell_over = DoneTerm(func=mdp.bad_orientation, params={"limit_angle": FALL_TILT_LIMIT})
     ladder_tipped = DoneTerm(func=mdp.ladder_tipped, params={"tilt_limit": LADDER_TILT_LIMIT})
     fresh_bulb_dropped = DoneTerm(
@@ -384,7 +374,7 @@ class ReplaceEnvCfg(ManagerBasedRLEnvCfg):
     # replication is safe at training scale. USD cloning (not fabric) keeps the
     # hand_contact PhysX contact reporters attachable.
     scene: G1ReplaceSceneCfg = G1ReplaceSceneCfg(
-        num_envs=1, env_spacing=4.0, replicate_physics=True, clone_in_fabric=False
+        num_envs=1, env_spacing=ROOM_ENV_SPACING, replicate_physics=True, clone_in_fabric=False
     )
 
     observations: ObservationsCfg = ObservationsCfg()
@@ -395,9 +385,7 @@ class ReplaceEnvCfg(ManagerBasedRLEnvCfg):
 
     def __post_init__(self) -> None:
         super().__post_init__()
-        apply_replace_preset(
-            self.scene, couple_ladder_to_fixture=self.couple_ladder_to_fixture
-        )
+        apply_replace_preset(self.scene, couple_ladder_to_fixture=self.couple_ladder_to_fixture)
 
         # Torso-mounted RGB camera + lidar (the standard mode's exteroception; the camera
         # needs --enable_cameras, the lidar does not -- it's warp raycasting, not render).
@@ -415,10 +403,25 @@ class ReplaceEnvCfg(ManagerBasedRLEnvCfg):
         # anywhere: an uncontrolled G1, kinematic furniture, AND a dynamic ladder)
         self.sim.physx.solver_type = 1
         self.sim.physx.min_position_iteration_count = 8
-        self.sim.physx.min_velocity_iteration_count = 4
+        self.sim.physx.min_velocity_iteration_count = 4  # floor, not a target:
+        # per-body counts above it are kept; see FamilyBaseEnvCfg.solver_velocity_iterations
         self.sim.physx.bounce_threshold_velocity = 0.2
         self.sim.physx.enable_stabilization = True
 
-        # Must stay inside the Simple Room shell (walls x=±4.52, y=[-3.4, 4.86], ceiling ~3 m).
+        # Must stay inside the Simple Room shell: walls x=±4.52, y=[-3.4, 4.86], floor 0 to
+        # ceiling 4.18 (measured post-alignment; see the height table in scene_cfg).
         self.viewer.eye = (3.6, 3.8, 2.4)
         self.viewer.lookat = (0.0, 0.7, 1.0)
+
+    def disable_randomization(self) -> None:
+        """Deterministic canonical spawns (debug / basic testing; ``--no_randomize``).
+
+        Strips the reset-time randomization terms; ``reset_all`` stays -- restoring
+        default state between episodes is correctness, not noise. The room *layout*
+        randomization happens at cfg-build time and is already deterministic per
+        ``--seed`` (same seed -> same layout).
+        """
+        self.events.reset_robot_joints = None
+        self.events.reset_robot_root = None
+        self.events.randomize_sky_intensity = None
+        self.events.randomize_key_light = None

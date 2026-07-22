@@ -70,9 +70,10 @@ def test_retarget_reproduces_intended_torque_under_different_gains():
 
 
 def test_gear_wbc_gains_match_reference_yaml():
-    """robots/g1.py's leg+waist gains -- which is what lets GearWbcDecoder use
-    them for retargeting -- must equal g1_gear_wbc.yaml's kps/kds exactly, not
-    approximately. Golden values transcribed directly from that file."""
+    """GearWbcDecoder's transcription of the WBC's training-time gains -- the ones
+    its torque intent is computed with before retargeting through the env's own PD
+    gains -- must equal g1_gear_wbc.yaml's kps/kds exactly, not approximately.
+    Golden values transcribed directly from that file."""
     from fiatlux_task.groot import _WBC_KD_LOWER, _WBC_KP_LOWER, _WBC_LOWER_DEFAULTS, WBC_HEIGHT_INIT
 
     golden_kp = [150.0, 150.0, 150.0, 200.0, 40.0, 40.0] * 2 + [250.0, 250.0, 250.0]

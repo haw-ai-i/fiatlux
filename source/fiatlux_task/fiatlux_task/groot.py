@@ -119,8 +119,22 @@ assert sorted(_ISAAC_ORDER_MUJOCO_IDX) == list(range(29))
 SONIC_JOINT_NAMES = [_SONIC_JOINTS_MUJOCO[i][0] for i in _ISAAC_ORDER_MUJOCO_IDX]
 """The 29 SONIC body joints in the policy's (IsaacLab) order."""
 
+_CONTROL_DT = 0.02  # s; the GEAR controllers' training-time control rate (50 Hz)
 _HISTORY_LEN = 10  # frames, oldest first, sampled at the 50 Hz control rate
 _TOKEN_DIM = 64
+
+
+def _require_control_rate(env, decoder: type) -> None:
+    """The released GEAR ONNX controllers are 50 Hz policies: their observation
+    histories, action scales, and (for GR00T) the frame-lookback/chunk timing all
+    assume ``env.step_dt == 0.02``. Running off-rate does not crash -- it silently
+    degrades the controller -- so the contract is enforced, not assumed."""
+    assert abs(env.step_dt - _CONTROL_DT) < 1e-6, (
+        f"{decoder.__name__} is a {1.0 / _CONTROL_DT:.0f} Hz controller; this env steps at "
+        f"{env.step_dt:.6f} s (sim.dt * decimation) -- fix the task cfg's control rate"
+    )
+
+
 SONIC_OBS_DIM = _TOKEN_DIM + _HISTORY_LEN * (3 + 29 + 29 + 29 + 3)  # = 994
 
 DEFAULT_SONIC_ONNX = os.path.expanduser("~/tools/sonic_models/policy/release/model_decoder.onnx")
@@ -194,6 +208,7 @@ class SonicDecoder:
     def __init__(self, env, onnx_path: str | None = None):
         import onnxruntime as ort
 
+        _require_control_rate(env, type(self))
         onnx_path = onnx_path or DEFAULT_SONIC_ONNX
         if not os.path.isfile(onnx_path):
             raise FileNotFoundError(
@@ -383,11 +398,10 @@ _WBC_DOF_VEL_SCALE = 0.05
 _WBC_HIST = 6
 _WBC_OBS_DIM = 86  # 3 cmd + 1 height + 3 rpy + 3 ang vel + 3 gravity + 29 q + 29 dq + 15 act
 WBC_HEIGHT_INIT = 0.74
-# g1_gear_wbc.yaml's own kps/kds (legs x2 + waist, matching _WBC_LOWER_DEFAULTS' order).
-# Our robot's leg/waist gains (robots/g1.py) were tuned to equal these exactly, which is
-# what lets GearWbcDecoder use q_des directly below instead of retargeting through
-# retarget_torque_to_position -- kept here so that equivalence is checked, not assumed
-# (see tests/test_groot_adapter.py::test_gear_wbc_gains_match_reference_yaml).
+# g1_gear_wbc.yaml's own kps/kds (legs x2 + waist, matching _WBC_LOWER_DEFAULTS' order):
+# the WBC's training-time gains, used to compute its intended torque before that torque
+# is retargeted through the env's own PD gains (retarget_torque_to_position). Pinned to
+# the yaml by tests/test_groot_adapter.py::test_gear_wbc_gains_match_reference_yaml.
 _WBC_KP_LOWER = [150.0, 150.0, 150.0, 200.0, 40.0, 40.0] * 2 + [250.0, 250.0, 250.0]
 _WBC_KD_LOWER = [2.0, 2.0, 2.0, 4.0, 2.0, 2.0] * 2 + [5.0, 5.0, 5.0]
 
@@ -409,6 +423,7 @@ class GearWbcDecoder:
     def __init__(self, env, model_dir: str | None = None):
         import onnxruntime as ort
 
+        _require_control_rate(env, type(self))
         model_dir = model_dir or DEFAULT_WBC_DIR
         paths = [os.path.join(model_dir, name) for name in (_WBC_BALANCE, _WBC_WALK)]
         for path in paths:
@@ -600,7 +615,6 @@ class _Gr00tClient:
         return action
 
 
-
 class GrootPolicy:
     """GR00T N1.7 base model (``REAL_G1`` embodiment) + decoupled whole-body control.
 
@@ -744,9 +758,7 @@ class GrootPolicy:
             # (N, dim); pin N to _CHUNK_LEN too, or a truncated/duplicated response
             # would pass the reshape and only surface as a chunk-index-out-of-range
             # bug much later (or not at all, since __call__ clamps the index).
-            assert arr.shape == (_CHUNK_LEN, dim), (
-                f"server action.{key} must be ({_CHUNK_LEN}, {dim}); got {arr.shape}"
-            )
+            assert arr.shape == (_CHUNK_LEN, dim), f"server action.{key} must be ({_CHUNK_LEN}, {dim}); got {arr.shape}"
             return arr
 
         self._chunk = {
@@ -784,6 +796,7 @@ class GrootPolicy:
         blending = bool(blend_mask.any())
         device = env.device
         arm_action: torch.Tensor | None = None
+        hand_action: torch.Tensor | None = None
         if not blending:
             if self._steps_since_query >= _QUERY_INTERVAL:
                 self._steps_since_query = 0
@@ -814,8 +827,8 @@ class GrootPolicy:
         action = self._wbc.step(env, self._cmd, self._height, self._rpy)
         if arm_action is not None:
             action[:, self._arm_ids] = arm_action
-            if self._hand_ids is not None:
-                action[:, self._hand_ids] = hand_action
+        if hand_action is not None:
+            action[:, self._hand_ids] = hand_action
         return self._blend.override(env, action, blend_mask)
 
 

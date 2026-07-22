@@ -26,7 +26,13 @@ from isaaclab.managers import SceneEntityCfg
 from isaaclab.utils import configclass
 
 from . import mdp
-from .scene_cfg import FIXTURE_USDS, G1ReplaceSceneCfg, apply_workshop_preset
+from .scene_cfg import (
+    FIXTURE_USDS,
+    ROOM_ENV_SPACING,
+    G1ReplaceSceneCfg,
+    add_ego_camera,
+    apply_workshop_preset,
+)
 
 ##
 # Observations -- generic G1 proprioception (no task-specific terms yet).
@@ -171,6 +177,11 @@ class FamilyBaseEnvCfg(ManagerBasedEnvCfg):
     control_decimation: int = 4  # -> 50 Hz control
     gravity: tuple[float, float, float] = (0.0, 0.0, -9.81)
     solver_position_iterations: int = 8
+    # PhysX applies this as a FLOOR over every actor, not a default: at 4 it silently
+    # overrode the per-body ``solver_velocity_iteration_count=1`` on the bulb, the old bulb
+    # and the carried ladder, which are set to 1 because high velocity-iteration counts make
+    # the TGS solver inject energy into resting contacts. Bodies asking for MORE keep it
+    # (robot 8, replace-preset ladder 8), so this only stops the floor from overriding down.
     solver_velocity_iterations: int = 4
     episode_length_s: float = 20.0
     """Nominal episode length. NOTE: ManagerBasedEnv (non-RL) has no episode horizon; this is a
@@ -193,7 +204,7 @@ class FamilyBaseEnvCfg(ManagerBasedEnvCfg):
 
     # -- scene + managers --
     scene: G1ReplaceSceneCfg = G1ReplaceSceneCfg(
-        num_envs=4, env_spacing=4.0, replicate_physics=False, clone_in_fabric=False
+        num_envs=4, env_spacing=ROOM_ENV_SPACING, replicate_physics=False, clone_in_fabric=False
     )
     observations: ObservationsCfg = ObservationsCfg()
     actions: ActionsCfg = ActionsCfg()
@@ -201,6 +212,9 @@ class FamilyBaseEnvCfg(ManagerBasedEnvCfg):
 
     def __post_init__(self) -> None:
         apply_workshop_preset(self.scene)
+        # GrootPolicy looks up ``scene["ego_camera"]`` unconditionally (same gap g1_bulb_env_cfg
+        # had before it was fixed): every family member needs the sensor, not just the RL ones.
+        add_ego_camera(self.scene)
         # Dressing randomization: drop the fixture when disabled, or when its (opt-in)
         # assets are not downloaded (`download_assets.sh --scene-dressing`) so the env
         # still loads from a clean clone.
@@ -226,6 +240,16 @@ class FamilyBaseEnvCfg(ManagerBasedEnvCfg):
         # default viewer framing
         self.viewer.eye = (4.5, 4.5, 3.0)
         self.viewer.lookat = (0.0, 0.0, 1.0)
+
+    def disable_randomization(self) -> None:
+        """Deterministic canonical spawns (debug / basic testing; ``--no_randomize``).
+
+        Strips the reset-time randomization terms; ``reset_all`` stays -- restoring
+        default state between episodes is correctness, not noise. RL subclasses with
+        their own task-specific reset terms override this rather than call it.
+        """
+        self.events.randomize_sky_intensity = None
+        self.events.randomize_key_light = None
 
 
 # Backwards-compat alias (pre-unification name).

@@ -66,9 +66,7 @@ parser.add_argument(
     help="Headlessly render an orbiting MP4 of the scene to logs/verify/ (no streaming needed). "
     "Auto-enables camera rendering; pair with --hold_base --headless for a clean standing G1.",
 )
-parser.add_argument(
-    "--record_steps", type=int, default=240, help="Frames to record (240 ~= one full 360 orbit)."
-)
+parser.add_argument("--record_steps", type=int, default=240, help="Frames to record (240 ~= one full 360 orbit).")
 parser.add_argument("--record_fps", type=int, default=30, help="Frames-per-second of the output MP4.")
 # AppLauncher contributes --headless, --livestream, --device, --enable_cameras, ...
 AppLauncher.add_app_launcher_args(parser)
@@ -90,6 +88,8 @@ import math
 import fiatlux_task.tasks  # noqa: F401  -- registers the FIATLUX Gym environments
 import gymnasium as gym
 import torch
+from fiatlux_task.assets import BULB_STAND_Z_OFFSET
+from fiatlux_task.tasks.manager_based.fiatlux_task.scene_cfg import CEILING_FIXTURE_Z
 from fiatlux_task.viz import make_video_camera_cfg, record_orbit
 from prettytable import PrettyTable
 
@@ -104,8 +104,10 @@ from isaaclab_tasks.utils import parse_env_cfg
 # Candidate scene entities; each is checked only when it exists (and is not None) on the
 # task's scene cfg, so this one verifier covers every family preset: the tabletop preset
 # has no ladder, the workshop presets have no table, dressing cfgs may drop the fixture.
-GLOBAL_CANDIDATES = ["ground", "dome_light", "key_light", "room"]
-TRACKED_CANDIDATES = ["robot", "ladder", "lamp", "socket", "bulb", "old_bulb", "table", "bin"]
+# ``room`` and ``pendant`` are per-env (each env owns a colliding room), so they belong to
+# the tracked list -- their prim paths carry {ENV_REGEX_NS} and only resolve under env_0.
+GLOBAL_CANDIDATES = ["ground", "dome_light", "key_light"]
+TRACKED_CANDIDATES = ["robot", "ladder", "lamp", "socket", "bulb", "old_bulb", "table", "bin", "room", "pendant"]
 
 # Presence expectations per scene preset (env cfg attr `scene_preset`): entities that MUST
 # be present / MUST be absent. Layout *positions* are covered generically by the
@@ -212,11 +214,10 @@ def main() -> int:
     # Prim paths come from the *cfg* -- AssetBaseCfg entities (table, lights) are bare
     # XFormPrims at runtime with no `.cfg` attribute.
     global_prims = {
-        n: getattr(env_cfg.scene, n).prim_path
-        for n in GLOBAL_CANDIDATES
-        if getattr(env_cfg.scene, n, None) is not None
+        n: getattr(env_cfg.scene, n).prim_path for n in GLOBAL_CANDIDATES if getattr(env_cfg.scene, n, None) is not None
     }
     tracked = [n for n in TRACKED_CANDIDATES if getattr(env_cfg.scene, n, None) is not None]
+
     # Rigid props split by the cfg's own kinematic flag: kinematic ones must hold still,
     # dynamic ones (the bulb everywhere, the ladder in the replace preset) get the
     # settles check instead. The robot is checked separately; AssetBase entities have no
@@ -225,10 +226,7 @@ def main() -> int:
         rigid = getattr(getattr(env_cfg.scene, name).spawn, "rigid_props", None)
         return bool(rigid is not None and rigid.kinematic_enabled)
 
-    rigid_tracked = [
-        n for n in tracked
-        if n != "robot" and isinstance(getattr(env_cfg.scene, n), RigidObjectCfg)
-    ]
+    rigid_tracked = [n for n in tracked if n != "robot" and isinstance(getattr(env_cfg.scene, n), RigidObjectCfg)]
     kinematic_props = [n for n in rigid_tracked if is_kinematic(n)]
     dynamic_props = [n for n in rigid_tracked if not is_kinematic(n)]
     robot = base.scene["robot"]
@@ -361,13 +359,19 @@ def main() -> int:
     # Lower bound -0.2: a knocked-over prop resting on its side can carry its origin
     # slightly below the floor plane (the replace ladder's origin is its base plane);
     # genuine fall-through reads metres negative within a few steps.
+    # Ceiling: a prop may legitimately sit as high as an overhead fixture (the replace preset
+    # seats the old bulb in one at CEILING_FIXTURE_Z), so bound against that rather than the
+    # old flat 2.6 m, which predated anything being mounted up there. NOT against the room's
+    # actual ceiling (ROOM_CEILING_Z, 4.18 m) -- fixtures hang below it on a pendant, so a
+    # prop up at the slab itself is a bug, not a layout.
+    prop_ceiling = CEILING_FIXTURE_Z + 0.2
     for n in dynamic_props:
         z = base.scene[n].data.root_pos_w[:, 2]
         zmin, zmax = z.min().item(), z.max().item()
         record(
             f"{n}:bounded",
-            (zmin > -0.2) and (zmax < 2.6) and not nan_seen,
-            f"final root z in [{zmin:.2f}, {zmax:.2f}] m",
+            (zmin > -0.2) and (zmax < prop_ceiling) and not nan_seen,
+            f"final root z in [{zmin:.2f}, {zmax:.2f}] m (ceiling {prop_ceiling:.2f})",
         )
 
     # =========================== 4. COLLISION COVERAGE ===========================
@@ -384,12 +388,16 @@ def main() -> int:
     print("\n[verify] (5) Contact / penetration")
     # robot never sank through the floor at any point in the run (negative pelvis z == fell through)
     record("robot:above_floor", min_z_seen > -0.05 and not nan_seen, f"min root z over run={min_z_seen:.3f} m")
-    # bulb did not sink through the ground plane
+    # bulb did not sink through the ground plane. Measured at its LOWEST GEOMETRY, not its
+    # root: the bulb asset's origin sits BULB_STAND_Z_OFFSET *below* its own screw cap, so a
+    # bulb legitimately standing on the floor reads a negative root z and a root-based test
+    # would fail every time.
     bulb_z = base.scene["bulb"].data.root_pos_w[:, 2]
+    bulb_bottom = bulb_z + BULB_STAND_Z_OFFSET
     record(
         "bulb:above_floor",
-        bool((bulb_z > -0.02).all()) and not nan_seen,
-        f"min bulb z={bulb_z.min().item():.3f} m",
+        bool((bulb_bottom > -0.02).all()) and not nan_seen,
+        f"min bulb bottom z={bulb_bottom.min().item():.3f} m (root {bulb_z.min().item():.3f})",
     )
     # no large depenetration kick on the very first step (sign of initial interpenetration)
     first_kick = (step1_root[:, 2] - init_root_z).abs().max().item() if step1_root is not None else 0.0

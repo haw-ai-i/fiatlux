@@ -49,7 +49,13 @@ from fiatlux_task.robots.g1 import (
 )
 
 from . import mdp
-from .scene_cfg import G1ReplaceSceneCfg, add_ego_camera, add_wrist_camera, apply_tabletop_preset
+from .scene_cfg import (
+    ROOM_ENV_SPACING,
+    G1ReplaceSceneCfg,
+    add_ego_camera,
+    add_wrist_camera,
+    apply_tabletop_preset,
+)
 
 ##
 # MDP settings
@@ -91,20 +97,12 @@ class ObservationsCfg:
 
         joint_pos = ObsTerm(
             func=mdp.joint_pos_rel,
-            params={
-                "asset_cfg": SceneEntityCfg(
-                    "robot", joint_names=G1_ARM_JOINTS + G1_HAND_JOINTS
-                )
-            },
+            params={"asset_cfg": SceneEntityCfg("robot", joint_names=G1_ARM_JOINTS + G1_HAND_JOINTS)},
             noise=Unoise(n_min=-0.01, n_max=0.01),
         )
         joint_vel = ObsTerm(
             func=mdp.joint_vel_rel,
-            params={
-                "asset_cfg": SceneEntityCfg(
-                    "robot", joint_names=G1_ARM_JOINTS + G1_HAND_JOINTS
-                )
-            },
+            params={"asset_cfg": SceneEntityCfg("robot", joint_names=G1_ARM_JOINTS + G1_HAND_JOINTS)},
             noise=Unoise(n_min=-0.01, n_max=0.01),
         )
         eef_pose = ObsTerm(
@@ -135,12 +133,8 @@ class ObservationsCfg:
     class PrivilegedCfg(ObsGroup):
         """Ground-truth ("cheat") observations for the critic / scripted baselines."""
 
-        bulb_pose = ObsTerm(
-            func=mdp.root_pose_w, params={"asset_cfg": SceneEntityCfg("bulb")}
-        )
-        socket_pose = ObsTerm(
-            func=mdp.root_pose_w, params={"asset_cfg": SceneEntityCfg("socket")}
-        )
+        bulb_pose = ObsTerm(func=mdp.root_pose_w, params={"asset_cfg": SceneEntityCfg("bulb")})
+        socket_pose = ObsTerm(func=mdp.root_pose_w, params={"asset_cfg": SceneEntityCfg("socket")})
 
         def __post_init__(self):
             self.enable_corruption = False
@@ -152,7 +146,16 @@ class ObservationsCfg:
 
 @configclass
 class EventCfg:
-    """Reset-time randomization."""
+    """Reset-time randomization.
+
+    ``reset_all`` restores every asset's default state first (cfg order) -- without it
+    the robot's *root* pose is never reset (only its joints), so any episode ending in
+    a fall leaves the next episode starting with the robot already on the floor. The
+    randomizing terms below then re-pose their own assets on top of the defaults, the
+    same layering Climb/Carry/Replace use.
+    """
+
+    reset_all = EventTerm(func=mdp.reset_scene_to_default, mode="reset")
 
     reset_robot_joints = EventTerm(
         func=mdp.reset_joints_by_offset,
@@ -198,17 +201,24 @@ class RewardsCfg:
 
     # -- Bulb -> socket position tracking (coarse / fine / sharp) --
     align_position = RewTerm(
-        func=mdp.object_socket_distance, weight=-1.0,
+        func=mdp.object_socket_distance,
+        weight=-1.0,
     )
     align_position_tanh = RewTerm(
-        func=mdp.object_socket_distance_tanh, weight=0.5, params={"std": 0.1},
+        func=mdp.object_socket_distance_tanh,
+        weight=0.5,
+        params={"std": 0.1},
     )
     seat_position_exp = RewTerm(
-        func=mdp.object_socket_distance_exp, weight=1.0, params={"sigma": 0.02},
+        func=mdp.object_socket_distance_exp,
+        weight=1.0,
+        params={"sigma": 0.02},
     )
     # -- Orientation alignment (bulb axis vs socket axis) --
     align_orientation = RewTerm(
-        func=mdp.object_socket_orientation_tanh, weight=0.3, params={"std": 0.3},
+        func=mdp.object_socket_orientation_tanh,
+        weight=0.3,
+        params={"std": 0.3},
     )
     # -- Sparse seated bonus --
     seated_bonus = RewTerm(
@@ -286,7 +296,7 @@ class G1BulbInsertEnvCfg(ManagerBasedRLEnvCfg):
     # training scale. Cloning stays in USD (not fabric): the hand_contact sensor's PhysX
     # contact-reporter API cannot attach to fabric-cloned env prims.
     scene: G1ReplaceSceneCfg = G1ReplaceSceneCfg(
-        num_envs=1, env_spacing=4.0, replicate_physics=True, clone_in_fabric=False
+        num_envs=1, env_spacing=ROOM_ENV_SPACING, replicate_physics=True, clone_in_fabric=False
     )
     observations: ObservationsCfg = ObservationsCfg()
     actions: ActionsCfg = ActionsCfg()
@@ -313,17 +323,28 @@ class G1BulbInsertEnvCfg(ManagerBasedRLEnvCfg):
         self.decimation = 4
         self.sim.render_interval = self.decimation
         self.episode_length_s = 15.0
-        # Control-rate parity with the pre-unification env (30 Hz); the family base runs
-        # 50 Hz -- reconciling is a deliberate, separate decision (unification spec).
-        self.sim.dt = 1.0 / 120.0
+        # family control rate (50 Hz; the GEAR-WBC decoders enforce it)
+        self.sim.dt = 1.0 / 200.0
         # PhysX solver floors from the family base: without them the uncontrolled robot
         # picks up multi-hundred-m/s kicks against the kinematic table (verify_scene
         # finding, Phase 0). Stabilization further damps the PD-vs-table wedge impulses
         # when the robot lies collapsed against the furniture.
         self.sim.physx.solver_type = 1
         self.sim.physx.min_position_iteration_count = 8
-        self.sim.physx.min_velocity_iteration_count = 4
+        self.sim.physx.min_velocity_iteration_count = 4  # floor, not a target:
+        # per-body counts above it are kept; see FamilyBaseEnvCfg.solver_velocity_iterations
         self.sim.physx.bounce_threshold_velocity = 0.2
         self.sim.physx.enable_stabilization = True
         self.viewer.eye = (2.0, 2.0, 2.0)
         self.viewer.lookat = (0.45, 0.0, 1.1)
+
+    def disable_randomization(self) -> None:
+        """Deterministic canonical spawns (debug / basic testing; ``--no_randomize``).
+
+        Strips the reset-time randomization terms; ``reset_all`` stays -- restoring
+        default state between episodes is correctness, not noise.
+        """
+        self.events.reset_robot_joints = None
+        self.events.reset_socket = None
+        self.events.reset_bulb = None
+        self.events.randomize_light = None

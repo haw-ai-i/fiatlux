@@ -151,7 +151,7 @@ MAX_SPEED = 25.0  # m/s
 MAX_ROOT_Z = 2.6  # m
 MIN_ROOT_Z = -0.05  # m
 
-STEPS_PER_SECOND = 30  # sim.dt=1/120 * decimation=4 (g1_bulb_env_cfg)
+STEPS_PER_SECOND = 50  # sim.dt=1/200 * decimation=4 (the family control rate)
 
 
 # --------------------------------------------------------------------------- #
@@ -278,12 +278,7 @@ class Monitor:
         self.max_z = max(self.max_z, z.max().item())
 
     def bounded(self) -> tuple[bool, str]:
-        ok = (
-            not self.nan
-            and self.max_speed < MAX_SPEED
-            and self.max_z < MAX_ROOT_Z
-            and self.min_z > MIN_ROOT_Z
-        )
+        ok = not self.nan and self.max_speed < MAX_SPEED and self.max_z < MAX_ROOT_Z and self.min_z > MIN_ROOT_Z
         detail = (
             "NaN in states"
             if self.nan
@@ -401,8 +396,7 @@ def scenario_socket():
         record(
             "socket:success_pose_attainable",
             (not mon.nan) and seated and speed < 0.05,
-            f"after 4 s at the success pose: pos_error {err * 100:.1f} cm, "
-            f"bulb_seated={seated}, speed {speed:.3f} m/s",
+            f"after 4 s at the success pose: pos_error {err * 100:.1f} cm, bulb_seated={seated}, speed {speed:.3f} m/s",
         )
     finally:
         env.close()
@@ -484,11 +478,7 @@ def touching_bodies(env) -> str:
     """Names of robot bodies (scene-wide hand_contact sensor) with contact force."""
     sensor = env.scene.sensors["hand_contact"]
     norms = sensor.data.net_forces_w[0].norm(dim=-1)
-    pairs = [
-        f"{name}={norms[i].item():.2f}N"
-        for i, name in enumerate(sensor.body_names)
-        if norms[i].item() > 0.05
-    ]
+    pairs = [f"{name}={norms[i].item():.2f}N" for i, name in enumerate(sensor.body_names) if norms[i].item() > 0.05]
     return ", ".join(pairs) if pairs else "none"
 
 
@@ -555,8 +545,7 @@ def scenario_hand(probe: bool = False):
         record(
             "hand:hover_bulb_at_rest",
             (not mon.nan) and 0.95 < bulb_z0 < 1.25 and bulb_speed < 0.05 and hover_f < 10.0,
-            f"bulb resting at z={bulb_z0:.3f} m, speed {bulb_speed:.3f} m/s, "
-            f"hand force {hover_f:.1f} N",
+            f"bulb resting at z={bulb_z0:.3f} m, speed {bulb_speed:.3f} m/s, hand force {hover_f:.1f} N",
         )
 
         # --- (b) press: lower the palm onto the bulb, hold gently ------------------
@@ -641,9 +630,7 @@ def scenario_fragility():
     cfg.episode_length_s = 6.0  # short episodes; time_out truncates each phase
     env = make_env("FIATLUX-Insert-v0", cfg)
     try:
-        recorder = TrajectoryRecorder(
-            env, policy_spec="scripted:verify_interactions", seed=args_cli.seed
-        )
+        recorder = TrajectoryRecorder(env, policy_spec="scripted:verify_interactions", seed=args_cli.seed)
         zero = torch.zeros((env.num_envs, env.action_manager.total_action_dim), device=env.device)
         gentle_press = targets_to_actions(env, {**ARM_PRESS_DOWN, **HAND_FLAT})
         # wedges the bulb between palm and kinematic table: sustained force spans many
@@ -708,8 +695,7 @@ def scenario_fragility():
     margin_ok = crush["peak_contact_force"] > 2 * gentle["peak_contact_force"] + 1.0
     record(
         "fragility:threshold_separates_regimes",
-        gentle["peak_contact_force"] < score_cfg.fragility_threshold < crush["peak_contact_force"]
-        and margin_ok,
+        gentle["peak_contact_force"] < score_cfg.fragility_threshold < crush["peak_contact_force"] and margin_ok,
         f"gentle {gentle['peak_contact_force']:.1f} N << {score_cfg.fragility_threshold:.0f} N "
         f"<< crush {crush['peak_contact_force']:.1f} N",
     )
@@ -785,9 +771,7 @@ def scenario_ladder(probe: bool = False):
         run_steps(env, zero, n_meas, mon, per_step=track)
         mean_forces = (force_sums / n_meas).tolist()
         total = sum(mean_forces)
-        touching = ", ".join(
-            f"{n}={f:.1f}N" for n, f in zip(sensor.body_names, mean_forces) if f > 1.0
-        )
+        touching = ", ".join(f"{n}={f:.1f}N" for n, f in zip(sensor.body_names, mean_forces) if f > 1.0)
         ok, detail = mon.bounded()
         record("ladder:no_explosion", ok, detail)
         # sustained lean contact at body-weight scale (a kN total means bodies are

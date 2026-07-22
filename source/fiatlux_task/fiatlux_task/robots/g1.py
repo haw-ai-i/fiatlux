@@ -266,9 +266,7 @@ G1_DEX3_RIGHT_HAND_JOINTS = [f"right_{j}" for j in _DEX3_HAND_ORDER]
 G1_DEX3_FINGER_JOINT_PATTERNS = [".*_hand_(thumb|index|middle)_._joint"]
 
 G1_DEX3_CFG = G1_INSPIRE_CFG.replace(
-    spawn=G1_INSPIRE_CFG.spawn.replace(
-        usd_path=G1_DEX3_USD, func=_spawn_g1_dex3_with_filtered_hand_mounts
-    ),
+    spawn=G1_INSPIRE_CFG.spawn.replace(usd_path=G1_DEX3_USD, func=_spawn_g1_dex3_with_filtered_hand_mounts),
     actuators={
         **{k: v for k, v in G1_INSPIRE_CFG.actuators.items() if k != "hands"},
         # Unitree Dex3 driver gains (gear_sonic_deploy ``dex3_hands.hpp``); torque

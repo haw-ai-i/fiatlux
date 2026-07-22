@@ -31,10 +31,9 @@ Design notes (mirrors ``g1_bulb_env_cfg`` where the tasks overlap):
   tilt thresholds end solver-kick episodes immediately) and a ``success`` term
   (name consumed by ``recording.py``/``score.py``).
 
-The env runs at the family control rate (50 Hz), unlike Insert's deliberate
-30 Hz. A shared RL family base becomes worthwhile once Descend upgrades (second
-RL member at the family rate); factoring now would need per-task dt
-parametrization (unification spec, Phase 4).
+The env runs at the family control rate (50 Hz, like every task in the family --
+the GEAR-WBC decoders enforce it). A shared RL family base becomes worthwhile
+once Descend upgrades to a second RL member (unification spec, Phase 4).
 """
 
 from isaaclab.envs import ManagerBasedRLEnvCfg
@@ -51,6 +50,7 @@ from fiatlux_task.robots.g1 import G1_FINGER_JOINT_PATTERNS, G1_WAIST_JOINT_PATT
 
 from . import mdp
 from .scene_cfg import (
+    ROOM_ENV_SPACING,
     TOP_ROBOT_POSITION,
     G1ReplaceSceneCfg,
     add_ego_camera,
@@ -104,9 +104,7 @@ class ObservationsCfg:
 
         # IMU-realizable
         base_ang_vel = ObsTerm(func=mdp.base_ang_vel, noise=Unoise(n_min=-0.2, n_max=0.2))
-        projected_gravity = ObsTerm(
-            func=mdp.projected_gravity, noise=Unoise(n_min=-0.05, n_max=0.05)
-        )
+        projected_gravity = ObsTerm(func=mdp.projected_gravity, noise=Unoise(n_min=-0.05, n_max=0.05))
         # Estimator-realizable exceptions (kinematic-inertial state estimate).
         base_lin_vel = ObsTerm(func=mdp.base_lin_vel, noise=Unoise(n_min=-0.1, n_max=0.1))
         base_height = ObsTerm(func=mdp.base_pos_z, noise=Unoise(n_min=-0.05, n_max=0.05))
@@ -149,9 +147,7 @@ class ObservationsCfg:
         """
 
         root_pose = ObsTerm(func=mdp.root_pose_w, params={"asset_cfg": SceneEntityCfg("robot")})
-        root_lin_vel = ObsTerm(
-            func=mdp.root_lin_vel_w, params={"asset_cfg": SceneEntityCfg("robot")}
-        )
+        root_lin_vel = ObsTerm(func=mdp.root_lin_vel_w, params={"asset_cfg": SceneEntityCfg("robot")})
         ladder_pose = ObsTerm(func=mdp.root_pose_w, params={"asset_cfg": SceneEntityCfg("ladder")})
 
         def __post_init__(self) -> None:
@@ -240,11 +236,7 @@ class RewardsCfg:
     ankle_pos_limits = RewTerm(
         func=mdp.joint_pos_limits,
         weight=-1.0,
-        params={
-            "asset_cfg": SceneEntityCfg(
-                "robot", joint_names=[".*_ankle_pitch_joint", ".*_ankle_roll_joint"]
-            )
-        },
+        params={"asset_cfg": SceneEntityCfg("robot", joint_names=[".*_ankle_pitch_joint", ".*_ankle_roll_joint"])},
     )
     joint_deviation_waist = RewTerm(
         func=mdp.joint_deviation_l1,
@@ -265,9 +257,7 @@ class TerminationsCfg:
     time_out = DoneTerm(func=mdp.time_out, time_out=True)
     # Fall detection (the family RL gate: end solver-kick episodes immediately).
     # Thresholds shared with the fall penalty; rationale at FALL_* above.
-    fell_below = DoneTerm(
-        func=mdp.root_height_below_minimum, params={"minimum_height": FALL_MIN_HEIGHT}
-    )
+    fell_below = DoneTerm(func=mdp.root_height_below_minimum, params={"minimum_height": FALL_MIN_HEIGHT})
     fell_over = DoneTerm(func=mdp.bad_orientation, params={"limit_angle": FALL_TILT_LIMIT})
     # Contract name: recording.py / score.py read the `success` term.
     success = DoneTerm(
@@ -300,7 +290,7 @@ class ClimbEnvCfg(ManagerBasedRLEnvCfg):
     # itself, so physics replication is safe for training scale. USD cloning (not
     # fabric) keeps the PhysX contact reporters attachable.
     scene: G1ReplaceSceneCfg = G1ReplaceSceneCfg(
-        num_envs=1, env_spacing=4.0, replicate_physics=True, clone_in_fabric=False
+        num_envs=1, env_spacing=ROOM_ENV_SPACING, replicate_physics=True, clone_in_fabric=False
     )
 
     observations: ObservationsCfg = ObservationsCfg()
@@ -316,7 +306,7 @@ class ClimbEnvCfg(ManagerBasedRLEnvCfg):
         add_ego_camera(self.scene)
         add_mid360_lidar(self.scene)
 
-        # family control rate (50 Hz), unlike Insert's deliberate 30 Hz
+        # family control rate (50 Hz)
         self.decimation = 4
         self.sim.dt = 1.0 / 200.0
         self.sim.render_interval = self.decimation
@@ -326,9 +316,21 @@ class ClimbEnvCfg(ManagerBasedRLEnvCfg):
         # against kinematic furniture accumulates solver kicks; see unification spec)
         self.sim.physx.solver_type = 1
         self.sim.physx.min_position_iteration_count = 8
-        self.sim.physx.min_velocity_iteration_count = 4
+        self.sim.physx.min_velocity_iteration_count = 4  # floor, not a target:
+        # per-body counts above it are kept; see FamilyBaseEnvCfg.solver_velocity_iterations
         self.sim.physx.bounce_threshold_velocity = 0.2
         self.sim.physx.enable_stabilization = True
 
         self.viewer.eye = (3.5, 3.5, 2.5)
         self.viewer.lookat = (1.4, 0.0, 1.2)
+
+    def disable_randomization(self) -> None:
+        """Deterministic canonical spawns (debug / basic testing; ``--no_randomize``).
+
+        Strips the reset-time randomization terms; ``reset_all`` stays -- restoring
+        default state between episodes is correctness, not noise.
+        """
+        self.events.reset_robot_joints = None
+        self.events.reset_robot_root = None
+        self.events.randomize_sky_intensity = None
+        self.events.randomize_key_light = None

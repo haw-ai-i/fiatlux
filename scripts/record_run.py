@@ -10,8 +10,8 @@ A single rollout produces both artifacts so they describe the *same* run:
 - ``video/`` : an MP4 of the run plus a poster PNG, captured by an RTX sensor camera
   (``fiatlux_task.viz``) posed by ``--cam``: fixed ``third_person`` / ``closeup``
   viewpoints, a 360-degree ``orbit`` of the scene, or ``ego`` -- the robot's own
-  head-mounted ``ego_camera`` sensor (Climb/Carry/Replace only), unposed since it
-  already moves with the robot.
+  head-mounted ``ego_camera`` sensor (any task whose scene attaches one), unposed
+  since it already moves with the robot.
 - ``run.h5`` + ``meta.json`` : the experiment bag -- every per-step signal needed to
   score the run offline (see ``scripts/score.py``). ``--format npz`` for a flat fallback.
 
@@ -40,9 +40,7 @@ parser.add_argument(
     default="zero",
     help="Policy spec: zero | random | <path>.pt | rsl_rl[:<ckpt>].",
 )
-parser.add_argument(
-    "--checkpoint", type=str, default=None, help="Checkpoint path for rsl_rl policies."
-)
+parser.add_argument("--checkpoint", type=str, default=None, help="Checkpoint path for rsl_rl policies.")
 parser.add_argument(
     "--record",
     type=str,
@@ -50,33 +48,37 @@ parser.add_argument(
     choices=["video", "bag", "both"],
     help="Which artifacts to produce.",
 )
+parser.add_argument(
+    "--no_randomize",
+    action="store_true",
+    default=False,
+    help="Deterministic canonical spawns: strip the task's reset-time randomization terms.",
+)
 parser.add_argument("--episodes", type=int, default=1, help="Episodes to record.")
 parser.add_argument("--num_envs", type=int, default=1, help="Parallel envs (bag covers all).")
 parser.add_argument("--seed", type=int, default=0, help="Run seed.")
 parser.add_argument("--out", type=str, required=True, help="Output directory.")
-parser.add_argument(
-    "--format", type=str, default="hdf5", choices=["hdf5", "npz"], help="Bag file format."
-)
+parser.add_argument("--format", type=str, default="hdf5", choices=["hdf5", "npz"], help="Bag file format.")
 parser.add_argument(
     "--cam",
     type=str,
     default="third_person",
     choices=["third_person", "closeup", "orbit", "ego"],
-    help="Camera pose for the video: fixed presets, a 360-degree scene orbit, or the "
-    "robot's own ego_camera sensor.",
+    help="Camera pose for the video: fixed presets, a 360-degree scene orbit, or the robot's own ego_camera sensor.",
 )
+parser.add_argument("--video_length", type=int, default=600, help="Video length (env steps).")
+parser.add_argument("--disable_fabric", action="store_true", default=False, help="Use USD I/O.")
 parser.add_argument(
-    "--video_length", type=int, default=600, help="Video length (env steps)."
-)
-parser.add_argument(
-    "--disable_fabric", action="store_true", default=False, help="Use USD I/O."
-)
-parser.add_argument(
-    "--instruction", type=str, default=None,
+    "--instruction",
+    type=str,
+    default=None,
     help="Language instruction for VLA policies (groot); default: the task's canonical sentence.",
 )
 parser.add_argument(
-    "--robot", type=str, default="inspire", choices=["inspire", "dex3"],
+    "--robot",
+    type=str,
+    default="inspire",
+    choices=["inspire", "dex3"],
     help="G1 hand variant. dex3 matches GR00T's REAL_G1 embodiment.",
 )
 # Benchmark telemetry flags (--wandb, --wandb_project, ...); mirrors fiatlux_task.telemetry.
@@ -105,6 +107,8 @@ simulation_app = app_launcher.app
 
 import os
 import random
+import sys
+import traceback
 
 import fiatlux_task.tasks  # noqa: F401
 import gymnasium as gym
@@ -152,12 +156,11 @@ def main():
         from fiatlux_task.robots.g1 import swap_robot_variant
 
         swap_robot_variant(env_cfg, args_cli.robot)
+    if args_cli.no_randomize:
+        env_cfg.disable_randomization()
     if want_video and args_cli.cam == "ego":
         if getattr(env_cfg.scene, "ego_camera", None) is None:
-            raise ValueError(
-                f"--cam ego needs an ego_camera sensor; {args_cli.task} has none "
-                "(only Climb/Carry/Replace attach one)."
-            )
+            raise ValueError(f"--cam ego needs an ego_camera sensor; {args_cli.task}'s scene does not attach one.")
     elif want_video:
         # RTX sensor camera for the video (fiatlux_task.viz), posed per frame from --cam.
         env_cfg.scene.video_cam = make_video_camera_cfg()
@@ -174,9 +177,7 @@ def main():
         video = VideoRecorder(base_env, base_env.scene[cam_name], video_path)
         print(f"[INFO] recording video to {video_path}")
 
-    policy = make_policy(
-        args_cli.policy, base_env, checkpoint=args_cli.checkpoint, instruction=args_cli.instruction
-    )
+    policy = make_policy(args_cli.policy, base_env, checkpoint=args_cli.checkpoint, instruction=args_cli.instruction)
     recorder = (
         TrajectoryRecorder(
             base_env,
@@ -219,5 +220,17 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    # Kit runs non-daemon threads, so an uncaught exception leaves the process alive
+    # spinning at ~100% CPU instead of dying -- a crash then looks indistinguishable from
+    # a very slow run (a bad reward term once burned three hours that way). Closing the app
+    # in a `finally` is NOT enough: with the env left un-closed, simulation_app.close()
+    # itself blocks, so the interpreter never reaches the traceback. Print it first, then
+    # hard-exit past the hung threads. The success path closes normally.
+    try:
+        main()
+    except BaseException:
+        traceback.print_exc()
+        sys.stdout.flush()
+        sys.stderr.flush()
+        os._exit(1)
     simulation_app.close()

@@ -54,6 +54,8 @@ from .rewards import (  # noqa: F401
     climbed_to_target,
     com_sway_l2,
     completion_bonus,
+    descend_height_progress,
+    descended_to_target,
     distance_progress,
     fall_terminated,
     full_replacement_success,
@@ -74,4 +76,6 @@ from .rewards import (  # noqa: F401
     old_bulb_dropped,
     old_bulb_fixture_clearance,
     old_bulb_removed,
+    removal_bulb_disposal_distance,
+    removal_bulb_fixture_clearance,
 )
