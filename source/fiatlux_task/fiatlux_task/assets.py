@@ -60,12 +60,6 @@ SOCKET_BASE_Z_OFFSET = 0.0
 # Fixture insertion depth (cap bottom to fixture top) -- how far the bulb sinks when seated.
 SOCKET_INSERTION_DEPTH = 0.034226
 
-# Ladder for the climb-family tasks: ``shfvtl`` is the tall upright BEHAVIOR-1K
-# ladder (bbox_z=1.67 m) marked "primary ladder for G1 to climb" in
-# ``assets/behavior1k_uploaded_manifest.csv``. Synced with the other task assets
-# by ``download_assets.sh``; 97 more Omniverse ladders are staged for variety.
-LADDER_USD = os.path.join(FIATLUX_ASSETS_DIR, "behavior1k_ladder", "shfvtl", "usd", "shfvtl.usd")
-
 # Work-site step ladder: a deployed, free-standing A-frame from the Omniverse SimReady
 # pack (probe: 0.68 x 1.11 x 1.75 m deployed, cm-authored -> spawn scale 0.01, base at
 # z=0). The ``_collision`` variant carries BOTH the visible render meshes and the authored

@@ -58,14 +58,13 @@ from fiatlux_task.assets import (
     CRATE_USD,
     ELEVATED_SOCKET_USD,
     FIATLUX_ASSETS_DIR,
-    LADDER_USD,
     SOCKET_USD,
     STEP_LADDER_RIGID_USD,
     STEP_LADDER_USD,
     TABLE_USD,
 )
 from fiatlux_task.robots.g1 import G1_INSPIRE_CFG
-from fiatlux_task.scenes import DressedSceneCfg, spawn_b1k_single_body
+from fiatlux_task.scenes import DressedSceneCfg
 from fiatlux_task.sensors import ego_camera_cfg, mid360_lidar_cfg, wrist_camera_cfg
 
 # -- default (workshop) placement (module constants, not scene fields; override via each
@@ -107,13 +106,6 @@ TABLETOP_SOCKET_POSITION = (0.45, 0.10, TABLETOP_SURFACE_Z)
 # state. Note the asset's root origin sits BELOW its own geometry (the cap bottom is at
 # +BULB_STAND_Z_OFFSET in the root frame), so resting on a surface puts the root under it.
 TABLETOP_BULB_POSITION = (0.30, 0.18, TABLETOP_SURFACE_Z - BULB_STAND_Z_OFFSET)
-
-# -- carry preset: the B1K straight ladder (shfvtl) *stored* by the room wall in its
-#    authored lying/leaning pose (probe: 2.41 long x 1.67 high, bbox bottom at -0.47 ->
-#    pivot z=+0.47 rests it on the floor), robot beside it, work area across the room --
-CARRY_LADDER_POSITION = (-3.2, 1.8, 0.47)  # near the Simple Room wall (~4.5 m out)
-CARRY_ROBOT_POSITION = (-2.4, 1.8, _ROBOT_Z)  # standing next to the stored ladder
-CARRY_LADDER_YAW_DEG = 90.0  # parallel to the wall
 
 # -- position (ladder-handling) subtask: FIATLUX-Carry-v0. The ladder is the free-standing
 #    Omniverse A-frame step ladder (STEP_LADDER_USD), made DYNAMIC + high-friction + graspable.
@@ -511,25 +503,6 @@ def apply_tabletop_preset(scene: G1ReplaceSceneCfg) -> None:
     scene.robot.init_state.rot = _quat_z_deg(TABLETOP_ROBOT_YAW_DEG)
     scene.socket.init_state.pos = TABLETOP_SOCKET_POSITION
     scene.bulb.init_state.pos = TABLETOP_BULB_POSITION
-
-
-def apply_carry_preset(scene: G1ReplaceSceneCfg) -> None:
-    """Ladder-handling start: a straight ladder *stored* by the room wall, robot beside it.
-
-    The stored cargo is the B1K straight ladder (shfvtl) in its authored lying/leaning
-    pose -- the realistic start for "carry the ladder to the work site". The work area
-    (the floor socket-lamp) stays across the room.
-    """
-    scene.ladder.spawn = sim_utils.UsdFileCfg(
-        usd_path=LADDER_USD,
-        # Strip meta__ helper links so the B1K object resolves to one rigid body.
-        func=spawn_b1k_single_body,
-        rigid_props=sim_utils.RigidBodyPropertiesCfg(kinematic_enabled=True),
-        articulation_props=sim_utils.ArticulationRootPropertiesCfg(articulation_enabled=False),
-    )
-    scene.ladder.init_state.pos = CARRY_LADDER_POSITION
-    scene.ladder.init_state.rot = _quat_z_deg(CARRY_LADDER_YAW_DEG)
-    scene.robot.init_state.pos = CARRY_ROBOT_POSITION
 
 
 def apply_position_preset(scene: G1ReplaceSceneCfg) -> None:

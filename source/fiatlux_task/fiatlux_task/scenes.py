@@ -10,7 +10,6 @@ The Insert task scene (``g1_bulb_env_cfg``) and the ladder-family scene
 at-fixture task family -- but they describe the same world. This module holds the pieces
 that must stay literally identical across them:
 
-- :func:`spawn_b1k_single_body` -- the BEHAVIOR-1K multi-body workaround (issue #14),
 - :class:`DressedSceneCfg` -- the common room dressing (HDRI sky dome + Simple Room).
 
 Per-scene knobs that *differ on purpose* (ground friction, key light, sensors, task
@@ -27,27 +26,6 @@ from isaaclab.sim.utils import clone
 from isaaclab.utils import configclass
 
 from .assets import ROOM_USD, SKY_HDRI
-
-# --- BEHAVIOR-1K single-body workaround (issue #14, Option A) ------------------
-# BEHAVIOR-1K objects (lamp, ladder, ...) can carry ``meta__*`` helper links (light
-# source, toggle button) joined to ``base_link``; Fiatlux scenes model them as single
-# kinematic rigid bodies. This spawner deactivates the ``meta__*`` prims at spawn time so
-# the object resolves to just ``base_link`` -- leaving reward / observation / reset code
-# untouched. Decorated with Isaac Lab's ``clone`` (like the stock ``spawn_from_usd``) so
-# the source prim is stripped *before* it is replicated to the other envs, keeping every
-# env single-body. Interim fix; the eventual plan is to model the lamp as an articulation
-# (issue #14, Option C).
-
-
-@clone
-def spawn_b1k_single_body(prim_path, cfg, translation=None, orientation=None):
-    from pxr import Usd
-
-    prim = _spawn_from_usd_file(prim_path, cfg.usd_path, cfg, translation, orientation)
-    meta_prims = [p for p in Usd.PrimRange(prim) if p.GetName().startswith("meta__")]
-    for p in meta_prims:
-        p.SetActive(False)
-    return prim
 
 
 @clone

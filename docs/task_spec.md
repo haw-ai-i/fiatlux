@@ -119,13 +119,16 @@ The **tabletop preset** of the shared family scene (`scene_cfg.py: G1ReplaceScen
 
 - **Robot:** Unitree G1 (`assets/unitree_g1/wholebody_inspire/g1_29dof_with_inspire_rev_1_0.usd`),
   legged/free base, right arm + Inspire hand actuated.
-- **Bulb:** graspable rigid body, a BEHAVIOR-1K light bulb
-  (`assets/behavior1k_bulb/ymomhw/usd/ymomhw.usd`), at hand height on the table.
-- **Socket:** kinematic lamp/socket fixture on the table, a BEHAVIOR-1K table lamp
-  stripped to a single rigid body (`assets/behavior1k_lamp/bbentu/usd/bbentu.usd`; see
-  `fiatlux_task/scenes.py: spawn_b1k_single_body` / issue #14).
-- Packing table; ground plane; Simple Room backdrop + HDRI sky dome (randomized
-  intensity); no ladder (that's the workshop preset's business).
+- **Bulb:** graspable dynamic rigid body, the Omniverse A19 bulb
+  (`assets/omniverse_bulb/LightBulb_bulb_z_rigid.usda`, 0.035 kg), standing on its screw
+  cap at hand height on the table.
+- **Socket:** kinematic fixture on the table, the matching Omniverse socket
+  (`assets/omniverse_bulb/LightBulb_socket_z_static.usda`). Its screw hole is an exact
+  triangle-mesh collider, so a bulb genuinely enters and rests in it -- which also makes
+  the socket permanently ineligible to be dynamic (a PhysX rule). Both halves are authored
+  assembled at identity, so *seated* is exactly *bulb pose == socket pose*.
+- Packing table; ground plane; per-env Simple Room with real wall/ceiling colliders + HDRI
+  sky dome (randomized intensity); no ladder (that's the workshop preset's business).
 
 ## Actions
 
