@@ -40,7 +40,7 @@ from isaaclab.envs.mdp import (  # noqa: F401
     time_out,
 )
 
-from .events import randomize_light_properties  # noqa: F401
+from .events import hand_grip_material_event, randomize_light_properties  # noqa: F401
 from .observations import (  # noqa: F401
     contact_net_forces,
     lidar_ranges,

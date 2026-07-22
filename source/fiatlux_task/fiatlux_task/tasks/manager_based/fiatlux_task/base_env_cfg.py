@@ -107,6 +107,11 @@ class EventCfg:
         params={"asset_cfg": SceneEntityCfg("key_light"), "intensity_range": (800.0, 2200.0)},
     )
 
+    # -------- ENABLED: grip friction on the hands, at startup. Without it every grasp in the
+    # benchmark is made on the PhysX default 0.5/0.5. See mdp.hand_grip_material_event for why
+    # this is an event term and not a material bound in the robot spawner. --------
+    randomize_hand_material = mdp.hand_grip_material_event()
+
     # =====================================================================================
     #  DISABLED randomization scaffold -- uncomment + tune to enable. Built-in mdp terms are
     #  preferred; lighting uses the project stub mdp.randomize_light_properties. Each term is

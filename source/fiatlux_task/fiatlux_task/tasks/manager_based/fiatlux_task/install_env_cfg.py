@@ -163,6 +163,10 @@ class EventCfg:
         params={"asset_cfg": SceneEntityCfg("dome_light"), "intensity_range": (500.0, 2000.0)},
     )
 
+    # Grip friction for the hands (startup, through the PhysX view -- see
+    # mdp.hand_grip_material_event for why this cannot be a USD material bind).
+    randomize_hand_material = mdp.hand_grip_material_event()
+
 
 @configclass
 class RewardsCfg:

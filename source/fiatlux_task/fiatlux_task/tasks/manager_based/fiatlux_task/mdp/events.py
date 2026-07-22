@@ -19,7 +19,8 @@ import torch
 import omni.usd
 from pxr import Gf, UsdLux
 
-from isaaclab.managers import SceneEntityCfg
+from isaaclab.envs.mdp import randomize_rigid_body_material
+from isaaclab.managers import EventTermCfg, SceneEntityCfg
 
 if TYPE_CHECKING:
     from isaaclab.envs import ManagerBasedEnv
@@ -60,3 +61,41 @@ def randomize_light_properties(
         light.GetIntensityAttr().Set(intensity)
     if color is not None:
         light.GetColorAttr().Set(Gf.Vec3f(*color))
+
+
+# Hand collider shapes on both G1 variants: Inspire (``left_hand_base_link``,
+# ``L_index_proximal``, ``R_thumb_distal``, ...) and Dex3 (``left_hand_palm_link``,
+# ``right_hand_thumb_2_link``, ...). Verified against both USDs -- one expression matches every
+# hand body on either and nothing else, so ``swap_robot_variant`` has nothing to remap here.
+G1_HAND_BODY_EXPR = "(left|right)_hand.*|[LR]_(index|middle|pinky|ring|thumb).*"
+
+
+def hand_grip_material_event() -> EventTermCfg:
+    """Grip friction for the G1's hands, as a startup event term.
+
+    Every grasp in the benchmark is made with these shapes, and without this they run on the
+    PhysX default 0.5/0.5 -- bare steel on glass, which is not what a robot hand is.
+
+    Deliberately an EVENT rather than a material bound in the robot spawner:
+    ``bind_physics_material`` is ``apply_nested``-decorated and ``apply_nested`` SKIPS
+    INSTANCED PRIMS, while every G1 link's ``collisions`` child is authored instanceable. The
+    USD route therefore binds nothing and leaves the whole robot at 0.5/0.5 while reading as
+    applied. This term writes through the PhysX view, which has no notion of instancing.
+
+    Range: NVIDIA's own manipulation environments bracket it -- Factory/AutoMate fix 1.0/1.0
+    for insertion, Dexsuite randomizes the hand over [0.5, 1.0]. Centered on 1.0, with a band
+    wide enough to be real domain randomization. Returns a fresh cfg per call so each task's
+    ``EventCfg`` owns its own instance.
+    """
+    return EventTermCfg(
+        func=randomize_rigid_body_material,
+        mode="startup",
+        params={
+            "asset_cfg": SceneEntityCfg("robot", body_names=G1_HAND_BODY_EXPR),
+            "static_friction_range": (0.8, 1.2),
+            "dynamic_friction_range": (0.7, 1.1),
+            "restitution_range": (0.0, 0.0),
+            "num_buckets": 64,
+            "make_consistent": True,
+        },
+    )

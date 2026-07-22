@@ -137,6 +137,10 @@ class EventCfg:
         },
     )
 
+    # Grip friction for the hands (startup, through the PhysX view -- see
+    # mdp.hand_grip_material_event for why this cannot be a USD material bind).
+    randomize_hand_material = mdp.hand_grip_material_event()
+
 
 @configclass
 class RewardsCfg:
