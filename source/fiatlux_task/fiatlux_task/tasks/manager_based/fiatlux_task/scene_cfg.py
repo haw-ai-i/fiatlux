@@ -58,8 +58,10 @@ from fiatlux_task.assets import (
     CRATE_USD,
     ELEVATED_SOCKET_USD,
     FIATLUX_ASSETS_DIR,
+    G1_OVERHEAD_REACH,
     SOCKET_USD,
     STEP_LADDER_RIGID_USD,
+    STEP_LADDER_TOP_OFFSET,
     STEP_LADDER_USD,
     TABLE_USD,
 )
@@ -170,6 +172,17 @@ ROOM_CEILING_Z = 4.179
 ROOM_WALL_TOP_Z = 3.989
 CEILING_FIXTURE_Z = 3.0  # fixture height: reachable from the step ladder's top step
 WALL_MOUNT_Z = 2.2  # reach height for a wall-mounted fixture
+# Highest point a fixture may be mounted at and still be worked on: the ladder's top platform
+# plus the robot's measured overhead reach (3.074 m). Asserted at import rather than trusted,
+# because "reachable from the ladder" was previously only ever checked by eye -- and the
+# render looks identical whether the bulb is 5 cm inside reach or 5 cm outside it.
+MAX_REACHABLE_MOUNT_Z = STEP_LADDER_TOP_OFFSET[2] + G1_OVERHEAD_REACH
+if max(CEILING_FIXTURE_Z, WALL_MOUNT_Z) > MAX_REACHABLE_MOUNT_Z:
+    raise ValueError(
+        f"fixture mount heights (ceiling {CEILING_FIXTURE_Z} m, wall {WALL_MOUNT_Z} m) exceed the "
+        f"reach from the step ladder's top platform ({MAX_REACHABLE_MOUNT_Z:.3f} m): the Replace "
+        "task would be unsolvable by construction"
+    )
 # Env spacing must clear the room's own wall box (9.04 x 8.26 m) now that each env carries
 # its own colliding room. Overlap would be physically harmless -- filter_collisions=True
 # puts every env in its own collision group -- but it makes any render with num_envs > 1
@@ -240,6 +253,9 @@ def _quat_z_deg(angle_deg: float) -> tuple[float, float, float, float]:
 
 Quat = tuple[float, float, float, float]
 Vec3 = tuple[float, float, float]
+Vec2 = tuple[float, float]
+# (mount kind, fixture position, fixture orientation, inward wall normal, ladder anchor)
+FixtureMount = tuple[Literal["ceiling", "wall"], Vec3, Quat, Vec2 | None, Vec2]
 
 
 def _quat_mul(q1: Quat, q2: Quat) -> Quat:
@@ -687,37 +703,48 @@ _WALLS: dict[str, tuple[int, float, tuple[float, float], float]] = {
 }
 
 
-def _sample_fixture_mount(
-    rng: random.Random,
-) -> tuple[Literal["ceiling", "wall"], Vec3, Quat, tuple[float, float] | None]:
+class LayoutInfeasible(RuntimeError):
+    """No legal arrangement was found for a sampled layout. Retry with a fresh draw."""
+
+
+def _sample_fixture_mount(rng: random.Random) -> FixtureMount:
     """Randomly mount the fixture on the ceiling or a wall.
 
-    Returns ``(mount_kind, position, orientation, wall_inward_normal)`` -- the normal is
-    ``None`` for a ceiling mount (nothing to stand off from). ``ehjsdz`` is authored as an
-    upright desk lamp (socket opening up, base on a horizontal surface), so each mount kind
-    needs a reorienting rotation: ceiling flips it ~180 deg so the shade/socket point down
-    like a pendant light; wall rotates it ~90 deg so it projects outward from the wall face.
+    Returns ``(mount_kind, position, orientation, wall_inward_normal, ladder_anchor)`` -- the
+    normal is ``None`` for a ceiling mount (nothing to stand off from). The anchor is the
+    floor point the ladder has to be able to stand on for the fixture to be workable:
+    directly beneath a ceiling mount, or one ladder-zone + standoff out from a wall mount.
+    The mount is sampled so that the anchor's whole ladder zone fits inside the room, which
+    is why the inset is a ladder zone rather than a decorative half-metre -- a fixture in the
+    corner of the room has no floor under it to put a ladder on.
+
+    ``ehjsdz`` is authored as an upright desk lamp (socket opening up, base on a horizontal
+    surface), so each mount kind needs a reorienting rotation: ceiling flips it ~180 deg so
+    the shade/socket point down like a pendant light; wall rotates it ~90 deg so it projects
+    outward from the wall face.
     """
-    margin = 0.5
+    inset = LADDER_ZONE_HALF_SIZE
     if rng.random() < 0.5:
-        x = rng.uniform(ROOM_FLOOR_MIN[0] + margin, ROOM_FLOOR_MAX[0] - margin)
-        y = rng.uniform(ROOM_FLOOR_MIN[1] + margin, ROOM_FLOOR_MAX[1] - margin)
-        return "ceiling", (x, y, CEILING_FIXTURE_Z), _quat_y_deg(180.0), None
+        x = rng.uniform(ROOM_FLOOR_MIN[0] + inset, ROOM_FLOOR_MAX[0] - inset)
+        y = rng.uniform(ROOM_FLOOR_MIN[1] + inset, ROOM_FLOOR_MAX[1] - inset)
+        return "ceiling", (x, y, CEILING_FIXTURE_Z), _quat_y_deg(180.0), None, (x, y)
 
     wall_name = rng.choice(list(_WALLS))
     axis, value, normal, yaw = _WALLS[wall_name]
     if axis == 0:
-        along = rng.uniform(ROOM_FLOOR_MIN[1] + margin, ROOM_FLOOR_MAX[1] - margin)
+        along = rng.uniform(ROOM_FLOOR_MIN[1] + inset, ROOM_FLOOR_MAX[1] - inset)
         pos = (value, along, WALL_MOUNT_Z)
     else:
-        along = rng.uniform(ROOM_FLOOR_MIN[0] + margin, ROOM_FLOOR_MAX[0] - margin)
+        along = rng.uniform(ROOM_FLOOR_MIN[0] + inset, ROOM_FLOOR_MAX[0] - inset)
         pos = (along, value, WALL_MOUNT_Z)
+    standoff = LADDER_ZONE_HALF_SIZE + LADDER_WALL_STANDOFF
+    anchor = (pos[0] + normal[0] * standoff, pos[1] + normal[1] * standoff)
     # +90 (not -90): local +Z (the shade/socket opening) must map to local +X so the
     # per-wall yaw (chosen so "local +X faces inward") ends up pointing the shade into the
     # room. -90 was checked numerically and puts the shade dot(inward_normal) = -1.0 --
     # exactly backwards, facing into the wall with only the lamp's base in the room.
     quat = _quat_mul(_quat_z_deg(yaw), _quat_y_deg(90.0))
-    return "wall", pos, quat, normal
+    return "wall", pos, quat, normal, anchor
 
 
 def _sample_nonoverlapping_centers(
@@ -733,17 +760,33 @@ def _sample_nonoverlapping_centers(
     so every pair stays >= the sum of their half-sizes + ``margin`` apart on at least one
     axis (the bounding squares, plus margin, never overlap), each inset from the room bounds
     by its own half-size. ``fixed[i]``, if given, pins zone ``i`` to that center instead of
-    sampling it (used for the ladder in ``couple_ladder_to_fixture`` mode) -- other zones
-    are still sampled to avoid it. Runs once at cfg-build time (plain Python, no torch).
+    sampling it (the ladder in ``couple_ladder_to_fixture`` mode, and always the fixture's
+    reserved ladder footprint) -- other zones are still sampled to avoid it. Runs once at
+    cfg-build time (plain Python, no torch).
 
-    Free zones are placed largest-first (a fixed zone, e.g. a coupled ladder, still goes in
-    first regardless of size): stress-tested at 5000 random layouts against this room/these
-    zone sizes with ~0.1% placement failures, vs. ~1.3% with left-to-right order (small
-    zones sampled first can strand a later, larger one with nowhere left to fit).
+    Free zones are placed largest-first (a fixed zone still goes in first regardless of
+    size): stress-tested at 5000 random layouts against this room/these zone sizes with
+    ~0.1% placement failures, vs. ~1.3% with left-to-right order (small zones sampled first
+    can strand a later, larger one with nowhere left to fit).
+
+    Raises:
+        LayoutInfeasible: if any zone cannot be placed, or a pinned zone does not fit inside
+            the bounds. This used to accept the last (overlapping) sample instead, which
+            produced a scene where furniture interpenetrates and the episode is scored
+            normally -- a silent, unreproducible corruption of whatever ran on that seed.
+            The caller resamples the fixture and tries again.
     """
     n = len(half_sizes)
     centers: list[tuple[float, float] | None] = list(fixed) if fixed else [None] * n
     order = sorted((i for i in range(n) if centers[i] is None), key=lambda i: -half_sizes[i])
+
+    for i, pinned in enumerate(centers):
+        hs = half_sizes[i]
+        if pinned is not None and not (
+            bounds_min[0] + hs <= pinned[0] <= bounds_max[0] - hs
+            and bounds_min[1] + hs <= pinned[1] <= bounds_max[1] - hs
+        ):
+            raise LayoutInfeasible(f"pinned zone {i} at {pinned} (half-size {hs}) does not fit in the room")
 
     def overlaps(i: int, c: tuple[float, float]) -> bool:
         for j, other in enumerate(centers):
@@ -759,13 +802,67 @@ def _sample_nonoverlapping_centers(
         hs = half_sizes[i]
         lo_x, lo_y = bounds_min[0] + hs, bounds_min[1] + hs
         hi_x, hi_y = bounds_max[0] - hs, bounds_max[1] - hs
-        candidate = (rng.uniform(lo_x, hi_x), rng.uniform(lo_y, hi_y))
-        for _ in range(max_tries):
+        for attempt in range(max_tries):
             candidate = (rng.uniform(lo_x, hi_x), rng.uniform(lo_y, hi_y))
             if not overlaps(i, candidate):
+                centers[i] = candidate
                 break
-        centers[i] = candidate  # best-effort: accept the last sample rather than raise
+        else:
+            raise LayoutInfeasible(f"no free placement for zone {i} (half-size {hs}) in {max_tries} tries")
     return cast(list[tuple[float, float]], centers)  # every slot filled: fixed, or by the loop
+
+
+def _sample_replace_layout(
+    rng: random.Random,
+    couple_ladder_to_fixture: bool,
+    max_tries: int = 64,
+) -> tuple[FixtureMount, list[tuple[float, float]], float]:
+    """Draw a *feasible* Replace layout: fixture mount plus the four floor zone centers.
+
+    Fixture first, because it constrains the floor rather than the other way round: its
+    ladder anchor is reserved as a zone no other occupant may take, so wherever the fixture
+    landed there is always somewhere legal to stand the ladder. Sampling the two
+    independently -- the old behaviour -- let a ceiling fixture land directly over the table,
+    leaving the task unsolvable while looking perfectly normal in a render.
+
+    Returns ``(mount, [robot, table, ladder, disposal] centers, ladder_yaw_deg)``.
+
+    Raises:
+        RuntimeError: if no feasible layout is found. Every constant involved is fixed at
+            import time, so this is a statement about the room's geometry, not bad luck --
+            it means the zones no longer fit and one of them has to shrink.
+    """
+    last: LayoutInfeasible | None = None
+    for _ in range(max_tries):
+        mount = _sample_fixture_mount(rng)
+        _, _, _, wall_normal, ladder_anchor = mount
+        ladder_yaw = rng.uniform(0.0, 360.0)
+
+        half_sizes = [ROBOT_ZONE_HALF_SIZE, TABLE_ZONE_HALF_SIZE, LADDER_ZONE_HALF_SIZE, DISPOSAL_ZONE_HALF_SIZE]
+        fixed: list[tuple[float, float] | None] = [None, None, None, None]
+        if couple_ladder_to_fixture:
+            fixed[2] = ladder_anchor  # the ladder starts where it is needed
+            if wall_normal is not None:
+                ladder_yaw = math.degrees(math.atan2(-wall_normal[1], -wall_normal[0]))
+        else:
+            # The ladder starts elsewhere (moving it is the task), so the anchor is held as a
+            # fifth, occupant-less zone: it only has to stay CLEAR.
+            half_sizes.append(LADDER_ZONE_HALF_SIZE)
+            fixed.append(ladder_anchor)
+
+        try:
+            centers = _sample_nonoverlapping_centers(
+                rng,
+                half_sizes=half_sizes,
+                bounds_min=ROOM_FLOOR_MIN,
+                bounds_max=ROOM_FLOOR_MAX,
+                fixed=fixed,
+            )
+        except LayoutInfeasible as exc:
+            last = exc
+            continue
+        return mount, centers[:4], ladder_yaw
+    raise RuntimeError(f"no feasible Replace layout in {max_tries} draws; last failure: {last}")
 
 
 def apply_replace_preset(
@@ -810,42 +907,16 @@ def apply_replace_preset(
     )
     scene.fixture = None  # the task fixture owns the ceiling/wall in this scene
 
-    # Fixture mount (socket stays on its default SOCKET_USD -- the validated lamp).
-    mount_kind, fixture_pos, fixture_quat, wall_normal = _sample_fixture_mount(rng)
+    # Fixture and floor zones are drawn together: the fixture's ladder anchor is a reserved
+    # zone, so the layout is feasible by construction (socket stays on its default
+    # SOCKET_USD -- the validated lamp).
+    mount, centers, ladder_yaw = _sample_replace_layout(rng, couple_ladder_to_fixture)
+    mount_kind, fixture_pos, fixture_quat, _, _ = mount
+    robot_center, table_center, ladder_center, disposal_center = centers
     scene.socket.init_state.pos = fixture_pos
     scene.socket.init_state.rot = fixture_quat
     if mount_kind == "ceiling":
         add_ceiling_pendant(scene, fixture_pos[0], fixture_pos[1], fixture_pos[2])
-
-    # Ladder zone: independent by default; coupled (reachable from the fixture) as an
-    # explicit debug/curriculum opt-in.
-    fixed_ladder = None
-    ladder_yaw = rng.uniform(0.0, 360.0)
-    if couple_ladder_to_fixture:
-        if mount_kind == "ceiling":
-            fixed_ladder = (fixture_pos[0], fixture_pos[1])
-        else:
-            assert wall_normal is not None  # non-None on every non-ceiling mount
-            standoff = LADDER_ZONE_HALF_SIZE + LADDER_WALL_STANDOFF
-            fixed_ladder = (
-                fixture_pos[0] + wall_normal[0] * standoff,
-                fixture_pos[1] + wall_normal[1] * standoff,
-            )
-            # steps face back toward the wall/fixture
-            ladder_yaw = math.degrees(math.atan2(-wall_normal[1], -wall_normal[0]))
-
-    robot_center, table_center, ladder_center, disposal_center = _sample_nonoverlapping_centers(
-        rng,
-        half_sizes=[
-            ROBOT_ZONE_HALF_SIZE,
-            TABLE_ZONE_HALF_SIZE,
-            LADDER_ZONE_HALF_SIZE,
-            DISPOSAL_ZONE_HALF_SIZE,
-        ],
-        bounds_min=ROOM_FLOOR_MIN,
-        bounds_max=ROOM_FLOOR_MAX,
-        fixed=[None, None, fixed_ladder, None],
-    )
 
     scene.robot.init_state.pos = (robot_center[0], robot_center[1], ROBOT_POSITION[2])
     # Face the table (the task's first target), +/- a small jitter: the ego camera's

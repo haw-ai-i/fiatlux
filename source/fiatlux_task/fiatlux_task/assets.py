@@ -87,6 +87,14 @@ STEP_LADDER_RIGID_USD = os.path.join(
 # below the rail top). Used by the replace task's ladder-progress scoring.
 STEP_LADDER_TOP_OFFSET = (0.0, 0.0, 1.70)
 
+# How high above whatever surface the G1's feet are on its fingertips reach, arm raised
+# straight up. MEASURED by FK (right shoulder pitch at its -3.089 rad limit, every other arm
+# joint at 0): pelvis 0.790 m, highest finger body ``R_pinky_intermediate`` at 1.3738 m. Used
+# to assert that a randomly mounted fixture is reachable from the step ladder's top platform
+# -- ``STEP_LADDER_TOP_OFFSET[2] + G1_OVERHEAD_REACH`` = 3.074 m -- rather than merely
+# looking reachable in a render.
+G1_OVERHEAD_REACH = 1.3738
+
 # Elevated fixture for the at-height presets: the SAME socket half as the bench tasks, just
 # mounted inverted. It replaces the BEHAVIOR-1K chandelier (``qghfol``) that used to stand in
 # here -- that model is decorative and has no matching socket, so a bulb could never be
