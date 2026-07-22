@@ -20,6 +20,8 @@ actuator gains they were tuned against -- when either changes, re-run the probes
 Joint name sources: ``robots/g1.py`` (``G1_ARM_JOINTS``, ``G1_HAND_JOINTS``).
 """
 
+from .robots.g1 import G1_FINGER_JOINTS, G1_HAND_JOINTS, G1_THUMB_JOINTS
+
 # ---------------------------------------------------------------------------
 # Right arm, palm-down press poses over the bench table.
 # CALIBRATED 2026-07-04 against g1_29dof_with_inspire_rev_1_0 + arm gains
@@ -56,28 +58,31 @@ ARM_PRESS_CRUSH: dict[str, float] = {
 }
 
 # Fingers spread flat for the press (no curl -- the palm face does the work).
-HAND_FLAT: dict[str, float] = dict.fromkeys(
-    (
-        "R_index_proximal_joint",
-        "R_index_intermediate_joint",
-        "R_middle_proximal_joint",
-        "R_middle_intermediate_joint",
-        "R_ring_proximal_joint",
-        "R_ring_intermediate_joint",
-        "R_pinky_proximal_joint",
-        "R_pinky_intermediate_joint",
-        "R_thumb_proximal_yaw_joint",
-        "R_thumb_proximal_pitch_joint",
-        "R_thumb_intermediate_joint",
-        "R_thumb_distal_joint",
-    ),
-    0.0,
-)
+HAND_FLAT: dict[str, float] = dict.fromkeys(G1_HAND_JOINTS, 0.0)
+
+# Right arm/hand, palm-UP cradle: the bulb held IN the hand, not pressed against the
+# bench. CALIBRATED 2026-07-22 against the Omniverse bulb; re-probe if either changes.
+# Constraints the values sit inside:
+#   * wrist roll +1.57 faces the palm up (its surface is the hand link's local -x); the
+#     palm still sits 9-13 deg off level, which no wrist joint removes;
+#   * the hand must close around a bulb already in it -- an open palm holds nothing;
+#   * curl is bounded on BOTH sides: below ~1.0 the bulb slips, at 1.3 the grip exceeds
+#     the 50 N break threshold, and past 1.4 the closing fingers eject it;
+#   * measure grip only with the material pinned (it is a startup randomization).
+# The thumb tops out at 0.6 rad on its pitch joint, hence its own smaller target.
+ARM_CRADLE: dict[str, float] = {**ARM_PRESS_HOVER, "right_wrist_roll_joint": 1.57}
+HAND_CRADLE: dict[str, float] = {
+    **dict.fromkeys(G1_FINGER_JOINTS, 1.0),
+    **dict.fromkeys(G1_THUMB_JOINTS, 0.6),
+}
 
 # Bulb release orientation (w, x, y, z): lying on its side on the table (the
 # ymomhw bulb is an elongated ~25 cm body; upright it topples). Long axis along
 # world y so any settling roll runs along x, away from the near table edge.
 BULB_LYING_QUAT: tuple[float, float, float, float] = (0.7071068, 0.7071068, 0.0, 0.0)
+# Upright on its screw cap: the bulb's own stable axis, and the only orientation the hand
+# retains -- laid across the fingers it is pinched against the palm and squirts out.
+BULB_UPRIGHT_QUAT: tuple[float, float, float, float] = (1.0, 0.0, 0.0, 0.0)
 
 # ---------------------------------------------------------------------------
 # Ladder stance: FREE-root lean -- feet on the ground at the A-frame's base,

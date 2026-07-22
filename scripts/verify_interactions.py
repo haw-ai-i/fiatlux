@@ -18,9 +18,9 @@ Scenarios (``--scenario``):
                  classic PhysX blowup locus), the ``bulb_seated`` success pose is
                  physically attainable, and the stock robot carries no
                  self-collision force noise.
-- ``hand``     : palm-down press on the bulb lying on the bench: hover clear,
-                 sustained gentle contact under the fragility threshold, bulb stays
-                 put, and releasing does not launch it.
+- ``hand``     : the bulb held IN the hand: the fingers close around it, it survives
+                 on grip alone, the grip stays under the fragility threshold, and
+                 opening the hand releases it without throwing it.
 - ``fragility``: the sensor->recorder->scorer break/drop chain fires exactly when it
                  should: a gentle press scores unbroken, a hard wedge scores broken,
                  a free fall scores dropped (three recorded, offline-scored episodes).
@@ -118,16 +118,21 @@ import fiatlux_task.tasks  # noqa: F401  -- registers the FIATLUX Gym environmen
 import gymnasium as gym
 import torch
 from fiatlux_task.poses import (
+    ARM_CRADLE,
     ARM_PRESS_CRUSH,
     ARM_PRESS_DOWN,
     ARM_PRESS_HOVER,
     BULB_LYING_QUAT,
+    BULB_UPRIGHT_QUAT,
+    HAND_CRADLE,
     HAND_FLAT,
     LADDER_STANCE_JOINTS,
     LADDER_STANCE_ROOT_POS,
     LADDER_STANCE_ROOT_ROT,
 )
 from fiatlux_task.recording import TrajectoryRecorder
+from fiatlux_task.robots.g1 import G1_CUP_BODIES
+from fiatlux_task.tasks.manager_based.fiatlux_task import mdp
 from fiatlux_task.tasks.manager_based.fiatlux_task.mdp import rewards as task_rewards
 from prettytable import PrettyTable
 
@@ -151,6 +156,8 @@ MAX_ROOT_Z = 2.6  # m
 MIN_ROOT_Z = -0.05  # m
 
 STEPS_PER_SECOND = 50  # sim.dt=1/200 * decimation=4 (the family control rate)
+CONTACT_N = 0.05  # above sensor noise, below any force that means something
+MAX_SLIP_M = 0.06  # a grasp that lets the bulb travel further than this has lost it
 
 
 # --------------------------------------------------------------------------- #
@@ -181,6 +188,9 @@ def build_insert_cfg(num_envs: int = 1):
     # Deterministic resets: zero every randomization range, keep the reset terms so
     # each reset returns entities exactly to their (scenario-crafted) init_state.
     cfg.events.randomize_light = None
+    # Grip friction is a startup randomization; unpinned it makes every contact measurement
+    # here seed-dependent. The term stays, so the hands keep grip friction.
+    cfg.events.randomize_hand_material = mdp.hand_grip_material_event(randomize=False)
     cfg.events.reset_robot_joints.params["position_range"] = (0.0, 0.0)
     cfg.events.reset_socket.params["pose_range"] = {}
     cfg.events.reset_bulb.params["pose_range"] = {}
@@ -254,6 +264,7 @@ class Monitor:
         self.env = env
         self.nan = False
         self.max_speed = 0.0
+        self.max_bulb_speed = 0.0
         self.min_z = float("inf")
         self.max_z = float("-inf")
 
@@ -263,11 +274,9 @@ class Monitor:
         if torch.isnan(robot.data.root_pos_w).any() or torch.isnan(bulb.data.root_pos_w).any():
             self.nan = True
             return
-        self.max_speed = max(
-            self.max_speed,
-            robot.data.root_lin_vel_w.norm(dim=-1).max().item(),
-            bulb.data.root_lin_vel_w.norm(dim=-1).max().item(),
-        )
+        bulb_speed = bulb.data.root_lin_vel_w.norm(dim=-1).max().item()
+        self.max_bulb_speed = max(self.max_bulb_speed, bulb_speed)
+        self.max_speed = max(self.max_speed, robot.data.root_lin_vel_w.norm(dim=-1).max().item(), bulb_speed)
         z = robot.data.root_pos_w[:, 2]
         self.min_z = min(self.min_z, z.min().item())
         self.max_z = max(self.max_z, z.max().item())
@@ -282,9 +291,16 @@ class Monitor:
         return ok, detail
 
 
-def run_steps(env, actions, n, monitor=None, per_step=None):
-    """Step ``n`` env steps under fixed or callable actions."""
+def run_steps(env, actions, n, monitor=None, per_step=None, pre_step=None):
+    """Step ``n`` env steps under fixed or callable actions.
+
+    ``pre_step`` runs BEFORE each physics step, ``per_step`` after it. Anything that writes
+    asset state the step must honour (pinning a body in place) belongs in ``pre_step``;
+    from ``per_step`` it lands after the solver has already moved things.
+    """
     for i in range(n):
+        if pre_step is not None:
+            pre_step(i)
         act = actions(i) if callable(actions) else actions
         env_step(env, act)
         if monitor is not None:
@@ -293,6 +309,22 @@ def run_steps(env, actions, n, monitor=None, per_step=None):
                 break
         if per_step is not None:
             per_step(i)
+
+
+def teleport(asset, pos, quat=None) -> None:
+    """Move an asset to ``pos`` (and optionally ``quat``) and kill its velocity."""
+    n, device = pos.shape[0] if pos.dim() > 1 else 1, pos.device
+    pos = pos.reshape(-1, 3).expand(n, 3)
+    quat = asset.data.root_quat_w if quat is None else torch.as_tensor(quat, device=device).reshape(-1, 4).expand(n, 4)
+    asset.write_root_pose_to_sim(torch.cat([pos, quat], dim=-1))
+    asset.write_root_velocity_to_sim(torch.zeros((n, 6), device=device))
+
+
+def ramp(target: torch.Tensor, steps: int, out: bool = False):
+    """Per-frame action that eases into (or out of) ``target`` over ``steps``, then holds."""
+    if out:
+        return lambda i: max(1.0 - i / steps, 0.0) * target
+    return lambda i: min(i / steps, 1.0) * target
 
 
 def pairwise_force(sensor) -> torch.Tensor:
@@ -379,9 +411,7 @@ def scenario_socket():
         # bulb_seated() requires |bulb_origin - socket_origin| < 1.5 cm; teleport the
         # bulb exactly there and check physics tolerates it (rather than ejecting it).
         target = torch.tensor(TABLETOP_SOCKET_POSITION, device=env.device).unsqueeze(0)
-        pose = torch.cat([target, bulb.data.root_quat_w], dim=-1)
-        bulb.write_root_pose_to_sim(pose)
-        bulb.write_root_velocity_to_sim(torch.zeros((env.num_envs, 6), device=env.device))
+        teleport(bulb, target)
         mon = Monitor(env)
         run_steps(env, zero, 120, mon)
         err = task_rewards._bulb_socket_pos_error(env).item()
@@ -401,8 +431,12 @@ def scenario_socket():
 # --------------------------------------------------------------------------- #
 # Scenario: bulb in hand                                                       #
 # --------------------------------------------------------------------------- #
-def build_hand_cfg():
-    """Fixed-root G1, palm-down HOVER pose over the bench table as its default."""
+def build_hand_cfg(arm=ARM_PRESS_HOVER, hand=HAND_FLAT):
+    """Fixed-root G1 over the bench table, holding ``arm``/``hand`` as its DEFAULT pose.
+
+    The default matters beyond the spawn: zero action means exactly this pose, and the
+    scenarios ramp their actions from it.
+    """
     cfg = build_insert_cfg()
     cfg.scene.robot.spawn.articulation_props.fix_root_link = True
     # outside the table footprint (slab spans x[-0.82,1.62], y[-0.48,0.28]; the
@@ -419,11 +453,7 @@ def build_hand_cfg():
         from fiatlux_task.viz import make_video_camera_cfg
 
         cfg.scene.video_cam = make_video_camera_cfg()
-    cfg.scene.robot.init_state.joint_pos = {
-        **cfg.scene.robot.init_state.joint_pos,
-        **ARM_PRESS_HOVER,
-        **HAND_FLAT,
-    }
+    cfg.scene.robot.init_state.joint_pos = {**cfg.scene.robot.init_state.joint_pos, **arm, **hand}
     cfg.scene.bulb.spawn.activate_contact_sensors = True
     cfg.scene.hand_bulb_contact = ContactSensorCfg(
         prim_path="{ENV_REGEX_NS}/Robot/(right_hand_.*|right_wrist_yaw_link|R_.*)",
@@ -466,13 +496,10 @@ def place_bulb_under_palm(env, settle_steps: int = 30):
     from fiatlux_task.tasks.manager_based.fiatlux_task.scene_cfg import TABLETOP_SURFACE_Z
 
     drop = pressed_palm.clone()
-    # DERIVED from the bulb's own lying rest height, not a hardcoded 1.07 tuned against the
-    # BEHAVIOR-1K bulb: 1 cm of fall, so it settles without a depenetration kick and without
-    # being released inside the hovering palm.
+    # DERIVED from the bulb's own lying rest height: 1 cm of fall, so it settles without a
+    # depenetration kick and without being released inside the hovering palm.
     drop[:, 2] = TABLETOP_SURFACE_Z + BULB_LIE_Z_OFFSET + 0.01
-    quat = torch.tensor(BULB_LYING_QUAT, device=env.device).expand(env.num_envs, 4)
-    bulb.write_root_pose_to_sim(torch.cat([drop, quat], dim=-1))
-    bulb.write_root_velocity_to_sim(torch.zeros((env.num_envs, 6), device=env.device))
+    teleport(bulb, drop, BULB_LYING_QUAT)
     run_steps(env, zero, settle_steps)
 
 
@@ -484,9 +511,9 @@ def touching_bodies(env) -> str:
     return ", ".join(pairs) if pairs else "none"
 
 
-def probe_arm_grid(env):
-    """Calibration sweep: command a grid of arm poses and print, for each, the palm
-    world position and which palm-local axis points most nearly world-up."""
+def probe_arm_grid(env, base=ARM_PRESS_HOVER):
+    """Calibration sweep around ``base``: print each pose's palm world position and which
+    palm-local axis points most nearly world-up."""
     from isaaclab.utils.math import matrix_from_quat
 
     robot = env.scene["robot"]
@@ -494,7 +521,7 @@ def probe_arm_grid(env):
     axes = ("+x", "+y", "+z")
     for pitch in (-0.6, -1.0, -1.4):
         for roll in (0.0, 1.57, -1.57, 3.14):
-            targets = dict(ARM_PRESS_HOVER)
+            targets = dict(base)
             targets["right_shoulder_pitch_joint"] = pitch
             targets["right_wrist_roll_joint"] = roll
             run_steps(env, targets_to_actions(env, targets), 45)
@@ -511,101 +538,121 @@ def probe_arm_grid(env):
             )
 
 
+def cup_center(env) -> torch.Tensor:
+    """World centre of the closed hand's cup.
+
+    The palm LINK ORIGIN is not the palm surface -- a bulb aimed at it is aimed behind the
+    hand -- so the placement point is the centroid of the palm plus the finger links.
+    """
+    robot = env.scene["robot"]
+    ids, _ = robot.find_bodies(list(G1_CUP_BODIES), preserve_order=True)
+    return robot.data.body_pos_w[0, ids].mean(dim=0)
+
+
+def close_hand_on_bulb(env, closed: torch.Tensor, monitor=None, ramp_steps: int = 60) -> None:
+    """Pin the bulb in the cup while the fingers wrap it, then release the pin.
+
+    The hand closes around a bulb already in it; an open hand cannot catch one. The pin is
+    scaffolding for that starting state, so NOTHING here is graded: a pinned bulb is
+    infinitely stiff and the closing reaction (~80 N) is an artifact of the pin, not a force
+    the bulb feels. Grade the hold, after this returns.
+    """
+    bulb = env.scene["bulb"]
+    place = cup_center(env).clone()
+    run_steps(
+        env,
+        ramp(closed, ramp_steps),
+        ramp_steps + 15,
+        monitor,
+        pre_step=lambda _i: teleport(bulb, place, BULB_UPRIGHT_QUAT),
+    )
+
+
 def hand_bulb_force(env) -> float:
     return pairwise_force(env.scene.sensors["hand_bulb_contact"]).sum().item()
 
 
 def scenario_hand(probe: bool = False):
+    """Grasp the bulb IN the hand: close, hold on grip alone, release.
+
+    Replaces a palm-down press against the bench, which was calibrated to the BEHAVIOR-1K
+    bulb's geometry and stopped reaching the (shorter, self-righting) Omniverse bulb at all.
+    Holding it in the hand removes the bench from the test entirely -- no surface height, no
+    drop height, no dependence on which way the bulb settles -- and makes the graded quantity
+    the one the benchmark actually scores: grip force against retention.
+    """
     print("\n[verify] === scenario: bulb-in-hand ===")
-    cfg = build_hand_cfg()
+    cfg = build_hand_cfg(arm=ARM_CRADLE)
     env = make_env("FIATLUX-Insert-v0", cfg)
     try:
-        robot = env.scene["robot"]
-        attach_video(env, lookat=(0.44, -0.15, 1.10), eye=(1.05, -0.75, 1.45))
+        bulb = env.scene["bulb"]
+        attach_video(env, lookat=(0.44, 0.18, 1.12), eye=(1.05, -0.35, 1.45))
         zero = torch.zeros((env.num_envs, env.action_manager.total_action_dim), device=env.device)
 
-        # let the arm PD settle into the hover pose before placing the bulb
-        run_steps(env, zero, 30)
+        run_steps(env, zero, 60)  # let the arm PD settle into the open palm-up pose
         if probe:
+            robot = env.scene["robot"]
             palm = robot.data.body_state_w[0, palm_body_index(env), :7]
             print(f"  [PROBE] palm pose (world): {palm.tolist()}")
+            print(f"  [PROBE] cup centre: {cup_center(env).tolist()}")
             print(f"  [PROBE] initial contacts: {touching_bodies(env)}")
-            _print_prim_bboxes("/World/envs/env_0/Table", max_prims=3)
-            probe_arm_grid(env)
-            run_steps(env, zero, 45)  # back to the cfg hover pose
+            probe_arm_grid(env, ARM_CRADLE)  # palm-pose sweep for recalibrating ARM_CRADLE
+            run_steps(env, zero, 60)  # back to the open palm-up cradle
 
-        # --- (a) hover: palm above the bulb on the table, no contact yet -----------
-        place_bulb_under_palm(env)
-        bulb = env.scene["bulb"]
+        # --- (a) close the fingers around a bulb placed in the cup ------------------
+        hold = targets_to_actions(env, {**ARM_CRADLE, **HAND_CRADLE})
         mon = Monitor(env)
-        run_steps(env, zero, 60, mon)
-        hover_f = hand_bulb_force(env)
-        bulb_z0 = bulb.data.root_pos_w[0, 2].item()
-        bulb_speed = bulb.data.root_lin_vel_w.norm().item()
+        close_hand_on_bulb(env, hold, mon)
         ok, detail = mon.bounded()
-        record("hand:hover_no_explosion", ok, detail)
-        record(
-            "hand:hover_bulb_at_rest",
-            (not mon.nan) and 0.95 < bulb_z0 < 1.25 and bulb_speed < 0.05 and hover_f < 10.0,
-            f"bulb resting at z={bulb_z0:.3f} m, speed {bulb_speed:.3f} m/s, hand force {hover_f:.1f} N",
-        )
+        record("hand:grasp_no_explosion", ok, detail)
 
-        # --- (b) press: lower the palm onto the bulb, hold gently ------------------
-        press = targets_to_actions(env, {**ARM_PRESS_DOWN, **HAND_FLAT})
+        # --- (b) hold on grip alone: the pin is gone, only the fingers hold it ------
         mon = Monitor(env)
-        peak_f, contact_steps = 0.0, 0
-
-        def ramp_press(i):  # hover -> press over 45 steps, then hold
-            a = min(i / 45.0, 1.0)
-            return a * press  # zero action == hover (the cfg default pose)
+        peak_f, contact_steps, n_hold = 0.0, 0, 150
 
         def track(i):
             nonlocal peak_f, contact_steps
             f = hand_bulb_force(env)
             peak_f = max(peak_f, f)
-            contact_steps += int(f > 0.5)
+            contact_steps += int(f > CONTACT_N)
             if probe and i % 30 == 0:
-                print(
-                    f"  [PROBE] press t={i / STEPS_PER_SECOND:.1f}s hand-bulb force {f:.2f} N, "
-                    f"bulb z {bulb.data.root_pos_w[0, 2].item():.3f}, touching: {touching_bodies(env)}"
-                )
+                slip = (bulb.data.root_pos_w[0] - cup_center(env)).norm().item()
+                print(f"  [PROBE] hold t={i / STEPS_PER_SECOND:.1f}s force {f:.2f} N, slip {slip * 100:.1f} cm")
 
-        run_steps(env, ramp_press, 195, mon, per_step=track)  # 1.5 s ramp + 5 s hold
-        moved = abs(bulb.data.root_pos_w[0, 2].item() - bulb_z0)
+        run_steps(env, hold, n_hold, mon, per_step=track)
+        slip = (bulb.data.root_pos_w[0] - cup_center(env)).norm().item()
+        held_f = hand_bulb_force(env)
         ok, detail = mon.bounded()
-        record("hand:press_no_explosion", ok, detail)
+        record("hand:hold_no_explosion", ok, detail)
         record(
-            "hand:press_contact_sustained",
-            (not mon.nan) and contact_steps > 0.3 * 195,
-            f"contact in {contact_steps}/195 steps (palm on bulb on table)",
+            "hand:hold_retains_bulb",
+            (not mon.nan) and held_f > CONTACT_N and slip < MAX_SLIP_M,
+            f"after {n_hold / STEPS_PER_SECOND:.1f} s on grip alone: {slip * 100:.1f} cm from the cup, "
+            f"contact {held_f:.2f} N",
         )
         record(
-            "hand:press_gentle",
+            "hand:hold_contact_sustained",
+            contact_steps > 0.8 * n_hold,
+            f"contact in {contact_steps}/{n_hold} steps of the hold",
+        )
+        # the grip must not itself break the bulb: same 50 N threshold the scorer uses
+        record(
+            "hand:hold_gentle",
             0.0 < peak_f < 50.0,
-            f"peak press force {peak_f:.1f} N (fragility 50 N)",
-        )
-        record(
-            "hand:press_bulb_stays",
-            (not mon.nan) and moved < 0.08,
-            f"bulb vertical move {moved * 100:.1f} cm under press",
+            f"peak grip force {peak_f:.1f} N over the hold (fragility 50 N)",
         )
 
-        # --- (c) release: raise the palm, bulb must stay put (not launched) --------
+        # --- (c) open the hand: the bulb leaves without being thrown ---------------
         mon = Monitor(env)
-
-        def ramp_release(i):  # press -> hover over 45 steps, then hold
-            a = max(1.0 - i / 45.0, 0.0)
-            return a * press
-
-        run_steps(env, ramp_release, 105, mon)
-        bulb_speed = bulb.data.root_lin_vel_w.norm().item()
-        bulb_z = bulb.data.root_pos_w[0, 2].item()
+        run_steps(env, ramp(hold, 45, out=True), n_hold, mon)
+        end_speed = bulb.data.root_lin_vel_w.norm().item()
         ok, detail = mon.bounded()
         record("hand:release_no_explosion", ok, detail)
+        # ~1.5 m/s is free fall to the bench and fine; the fingers must not fling it.
         record(
             "hand:release_no_launch",
-            (not mon.nan) and bulb_speed < 0.3 and abs(bulb_z - bulb_z0) < 0.08,
-            f"after release: bulb z {bulb_z:.3f} m (rest {bulb_z0:.3f}), speed {bulb_speed:.2f} m/s",
+            (not mon.nan) and mon.max_bulb_speed < 2.5 and end_speed < 0.2,
+            f"after release: peak speed {mon.max_bulb_speed:.2f} m/s, at rest {end_speed:.3f} m/s",
         )
     finally:
         if VIDEO is not None:
@@ -642,11 +689,10 @@ def scenario_fragility():
         def drop_setup(env):
             bulb = env.scene["bulb"]
             spot = torch.tensor([[0.35, -1.2, 1.0]], device=env.device).expand(env.num_envs, 3)
-            bulb.write_root_pose_to_sim(torch.cat([spot, bulb.data.root_quat_w], dim=-1))
-            bulb.write_root_velocity_to_sim(torch.zeros((env.num_envs, 6), device=env.device))
+            teleport(bulb, spot)
 
         def press_ramp(target):
-            return lambda i: min(i / 45.0, 1.0) * target  # zero action == hover pose
+            return ramp(target, 45)  # zero action == hover pose
 
         phases = [
             ("gentle", place_bulb_under_palm, press_ramp(gentle_press)),

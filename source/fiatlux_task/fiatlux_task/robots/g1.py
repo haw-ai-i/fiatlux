@@ -85,8 +85,11 @@ G1_ARM_JOINTS = [
     "right_wrist_pitch_joint",
     "right_wrist_yaw_joint",
 ]
-# Right Inspire-hand finger joints (12 DoF) so the policy can actually grasp.
-G1_HAND_JOINTS = [
+# Right Inspire-hand joints (12 DoF) so the policy can actually grasp. Split four-fingers /
+# thumb because they curl to different targets -- the thumb's pitch joint tops out at 0.6 rad
+# where the fingers reach 1.7. ORDER IS LOAD-BEARING: it lays out the hand's slice of the
+# action vector, so append rather than rearrange.
+G1_FINGER_JOINTS = [
     "R_index_proximal_joint",
     "R_index_intermediate_joint",
     "R_middle_proximal_joint",
@@ -95,11 +98,14 @@ G1_HAND_JOINTS = [
     "R_pinky_intermediate_joint",
     "R_ring_proximal_joint",
     "R_ring_intermediate_joint",
+]
+G1_THUMB_JOINTS = [
     "R_thumb_proximal_yaw_joint",
     "R_thumb_proximal_pitch_joint",
     "R_thumb_intermediate_joint",
     "R_thumb_distal_joint",
 ]
+G1_HAND_JOINTS = G1_FINGER_JOINTS + G1_THUMB_JOINTS
 # End-effector body the wrist camera mounts on / eef pose is read from (exists in
 # all G1 variants). The Inspire hand links hang off this via right_hand_palm_link.
 G1_EE_BODY = "right_wrist_yaw_link"
@@ -109,6 +115,9 @@ G1_EE_BODY = "right_wrist_yaw_link"
 G1_FOOT_BODIES = ["left_ankle_roll_link", "right_ankle_roll_link"]
 # The Inspire palm body; its surface is the local -x side (see fiatlux_task/poses.py).
 G1_PALM_BODIES = ["left_hand_base_link", "right_hand_base_link"]
+# Bodies bounding the cup of the closed right hand. Their centroid is where a grasped object
+# sits; the palm link's own origin is behind the palm surface, not on it.
+G1_CUP_BODIES = ["right_hand_base_link", "R_index_intermediate", "R_middle_intermediate", "R_ring_intermediate"]
 G1_TORSO_BODY = "torso_link"
 # Real sensor-housing bodies authored on the USD (RealSense D435 + Livox Mid360,
 # fixed to the torso -- G1 has no neck joint). Verified by rendering each mount's
