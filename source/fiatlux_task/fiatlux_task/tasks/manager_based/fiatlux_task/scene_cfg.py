@@ -693,18 +693,43 @@ def apply_install_preset(scene: G1ReplaceSceneCfg) -> None:
 # Replace preset (issue #20): randomized full-scene layout.
 ##
 
-# Wall lookup for the fixture's random mount: name -> (fixed axis index (0=x, 1=y), the
-# fixed coordinate on that wall, its inward-facing unit normal, yaw so local +X faces inward).
-_WALLS: dict[str, tuple[int, float, tuple[float, float], float]] = {
-    "west": (0, ROOM_FLOOR_MIN[0], (1.0, 0.0), 0.0),
-    "east": (0, ROOM_FLOOR_MAX[0], (-1.0, 0.0), 180.0),
-    "south": (1, ROOM_FLOOR_MIN[1], (0.0, 1.0), 90.0),
-    "north": (1, ROOM_FLOOR_MAX[1], (0.0, -1.0), -90.0),
+# Wall lookup for the fixture's random mount: name -> (fixed axis index (0=x, 1=y), the wall's
+# INNER FACE on that axis, its inward-facing unit normal, yaw so local +X faces inward, and the
+# span of real wall panel along the other axis).
+#
+# MEASURED off the room asset (probe 2026-07-22: world bboxes of every ``Towel_Room01_wall_*`` /
+# ``wood_wall_*`` panel that exists at the WALL_MOUNT_Z height, corner blocks excluded).
+# These are NOT ROOM_FLOOR_MIN/MAX, which is what this table used to hold: those are the inset
+# FLOOR-placement bounds, 41 cm short of the side walls and 31 cm short of the back wall, so
+# every wall-mounted fixture hung that far out in mid-air -- visible the moment a camera was
+# finally pointed at one.
+#
+# There is no "north" entry because Simple_Room HAS NO +y WALL: the only geometry on that side
+# is two corner blocks at |x| > 3.723, and between them the room is open. A quarter of all wall
+# mounts were being placed on a wall that does not exist.
+_WALLS: dict[str, tuple[int, float, tuple[float, float], float, tuple[float, float]]] = {
+    "west": (0, -4.410, (1.0, 0.0), 0.0, (-2.622, 4.078)),
+    "east": (0, 4.410, (-1.0, 0.0), 180.0, (-2.622, 4.078)),
+    "south": (1, -3.309, (0.0, 1.0), 90.0, (-3.723, 3.723)),
 }
 
 
 class LayoutInfeasible(RuntimeError):
     """No legal arrangement was found for a sampled layout. Retry with a fresh draw."""
+
+
+def _clamp_to_floor(center: Vec2, half_size: float) -> Vec2:
+    """Pull a zone center inside the floor bounds so its whole square fits.
+
+    Only ever moves a zone FURTHER from the wall, which is always physically legal. Needed
+    because the wall planes are the real (measured) inner faces while the zone bounds are the
+    inset floor box: a standoff measured off the true wall can land a hair outside the floor
+    box, which would otherwise reject every side-wall mount as infeasible.
+    """
+    return (
+        min(max(center[0], ROOM_FLOOR_MIN[0] + half_size), ROOM_FLOOR_MAX[0] - half_size),
+        min(max(center[1], ROOM_FLOOR_MIN[1] + half_size), ROOM_FLOOR_MAX[1] - half_size),
+    )
 
 
 def _sample_fixture_mount(rng: random.Random) -> FixtureMount:
@@ -730,15 +755,12 @@ def _sample_fixture_mount(rng: random.Random) -> FixtureMount:
         return "ceiling", (x, y, CEILING_FIXTURE_Z), _quat_y_deg(180.0), None, (x, y)
 
     wall_name = rng.choice(list(_WALLS))
-    axis, value, normal, yaw = _WALLS[wall_name]
-    if axis == 0:
-        along = rng.uniform(ROOM_FLOOR_MIN[1] + inset, ROOM_FLOOR_MAX[1] - inset)
-        pos = (value, along, WALL_MOUNT_Z)
-    else:
-        along = rng.uniform(ROOM_FLOOR_MIN[0] + inset, ROOM_FLOOR_MAX[0] - inset)
-        pos = (along, value, WALL_MOUNT_Z)
+    axis, value, normal, yaw, (span_lo, span_hi) = _WALLS[wall_name]
+    # Sample along the REAL panel span, inset so the anchor's ladder zone stays in the room.
+    along = rng.uniform(span_lo + inset, span_hi - inset)
+    pos = (value, along, WALL_MOUNT_Z) if axis == 0 else (along, value, WALL_MOUNT_Z)
     standoff = LADDER_ZONE_HALF_SIZE + LADDER_WALL_STANDOFF
-    anchor = (pos[0] + normal[0] * standoff, pos[1] + normal[1] * standoff)
+    anchor = _clamp_to_floor((pos[0] + normal[0] * standoff, pos[1] + normal[1] * standoff), LADDER_ZONE_HALF_SIZE)
     # +90 (not -90): local +Z (the shade/socket opening) must map to local +X so the
     # per-wall yaw (chosen so "local +X faces inward") ends up pointing the shade into the
     # room. -90 was checked numerically and puts the shade dot(inward_normal) = -1.0 --
