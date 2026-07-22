@@ -70,7 +70,13 @@ def randomize_light_properties(
 G1_HAND_BODY_EXPR = "(left|right)_hand.*|[LR]_(index|middle|pinky|ring|thumb).*"
 
 
-def hand_grip_material_event() -> EventTermCfg:
+# Nominal grip friction (static, dynamic) and the half-width the randomized band spans
+# around it. One source for both, so pinning the term cannot drift outside its own range.
+HAND_GRIP_FRICTION = (1.0, 0.9)
+HAND_GRIP_FRICTION_SPREAD = 0.2
+
+
+def hand_grip_material_event(randomize: bool = True) -> EventTermCfg:
     """Grip friction for the G1's hands, as a startup event term.
 
     Every grasp in the benchmark is made with these shapes, and without this they run on the
@@ -83,19 +89,28 @@ def hand_grip_material_event() -> EventTermCfg:
     applied. This term writes through the PhysX view, which has no notion of instancing.
 
     Range: NVIDIA's own manipulation environments bracket it -- Factory/AutoMate fix 1.0/1.0
-    for insertion, Dexsuite randomizes the hand over [0.5, 1.0]. Centered on 1.0, with a band
-    wide enough to be real domain randomization. Returns a fresh cfg per call so each task's
-    ``EventCfg`` owns its own instance.
+    for insertion, Dexsuite randomizes the hand over [0.5, 1.0]. Centered on
+    ``HAND_GRIP_FRICTION``, with a band wide enough to be real domain randomization. Returns
+    a fresh cfg per call so each task's ``EventCfg`` owns its own instance.
+
+    Args:
+        randomize: when False the band collapses onto ``HAND_GRIP_FRICTION``. The term stays
+            -- the hands keep grip friction instead of falling back to the PhysX 0.5/0.5
+            default -- but every run measures the same contact. This is what
+            ``disable_randomization`` and the interaction scenarios want; anything that
+            measures a grasp force is otherwise seed-dependent.
     """
+    static, dynamic = HAND_GRIP_FRICTION
+    spread = HAND_GRIP_FRICTION_SPREAD if randomize else 0.0
     return EventTermCfg(
         func=randomize_rigid_body_material,
         mode="startup",
         params={
             "asset_cfg": SceneEntityCfg("robot", body_names=G1_HAND_BODY_EXPR),
-            "static_friction_range": (0.8, 1.2),
-            "dynamic_friction_range": (0.7, 1.1),
+            "static_friction_range": (static - spread, static + spread),
+            "dynamic_friction_range": (dynamic - spread, dynamic + spread),
             "restitution_range": (0.0, 0.0),
-            "num_buckets": 64,
+            "num_buckets": 64 if randomize else 1,
             "make_consistent": True,
         },
     )

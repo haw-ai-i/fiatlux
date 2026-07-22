@@ -300,3 +300,6 @@ class RemoveEnvCfg(ManagerBasedRLEnvCfg):
         self.events.reset_robot_joints = None
         self.events.reset_socket = None
         self.events.randomize_light = None
+        # Not a reset term, but a randomization all the same: unpinned, every grasp
+        # force measured downstream is seed-dependent.
+        self.events.randomize_hand_material = mdp.hand_grip_material_event(randomize=False)

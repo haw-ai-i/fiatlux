@@ -255,6 +255,9 @@ class FamilyBaseEnvCfg(ManagerBasedEnvCfg):
         """
         self.events.randomize_sky_intensity = None
         self.events.randomize_key_light = None
+        # Not a reset term, but a randomization all the same: unpinned, every grasp
+        # force measured downstream is seed-dependent.
+        self.events.randomize_hand_material = mdp.hand_grip_material_event(randomize=False)
 
 
 # Backwards-compat alias (pre-unification name).
