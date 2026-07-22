@@ -182,7 +182,7 @@ class FamilyBaseEnvCfg(ManagerBasedEnvCfg):
     # and the carried ladder, which are set to 1 because high velocity-iteration counts make
     # the TGS solver inject energy into resting contacts. Bodies asking for MORE keep it
     # (robot 8, replace-preset ladder 8), so this only stops the floor from overriding down.
-    solver_velocity_iterations: int = 4
+    solver_velocity_iterations: int = 1
     episode_length_s: float = 20.0
     """Nominal episode length. NOTE: ManagerBasedEnv (non-RL) has no episode horizon; this is a
     documented knob the RL/task layer will consume once terminations are added."""

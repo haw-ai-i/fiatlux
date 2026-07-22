@@ -276,7 +276,7 @@ class DescendEnvCfg(ManagerBasedRLEnvCfg):
         # PhysX floors + stabilization (family finding, see ClimbEnvCfg)
         self.sim.physx.solver_type = 1
         self.sim.physx.min_position_iteration_count = 8
-        self.sim.physx.min_velocity_iteration_count = 4  # floor, not a target:
+        self.sim.physx.min_velocity_iteration_count = 1  # floor, not a target:
         # per-body counts above it are kept; see FamilyBaseEnvCfg.solver_velocity_iterations
         self.sim.physx.bounce_threshold_velocity = 0.2
         self.sim.physx.enable_stabilization = True
