@@ -188,6 +188,12 @@ def build_insert_cfg(num_envs: int = 1):
     # Deterministic resets: zero every randomization range, keep the reset terms so
     # each reset returns entities exactly to their (scenario-crafted) init_state.
     cfg.events.randomize_light = None
+    cfg.events.randomize_key_light = None
+    cfg.events.randomize_material_tint = None
+    # The per-asset zeroed resets above already restore the scenario-crafted init_state;
+    # reset_scene_to_default would ADDITIONALLY write root state to the fixed-base rigs,
+    # which measurably shifts the calibrated press arc (crush peak 53.2 -> 48.2 N).
+    cfg.events.reset_all = None
     # Grip friction is a startup randomization; unpinned it makes every contact measurement
     # here seed-dependent. The term stays, so the hands keep grip friction.
     cfg.events.randomize_hand_material = mdp.hand_grip_material_event(randomize=False)
@@ -198,6 +204,8 @@ def build_insert_cfg(num_envs: int = 1):
     # terminations every step (the scorer detects drops from bulb height anyway)
     cfg.terminations.success = None
     cfg.terminations.bulb_dropped = None
+    cfg.terminations.fell_below = None
+    cfg.terminations.fell_over = None
     return cfg
 
 
@@ -765,6 +773,7 @@ def scenario_ladder(probe: bool = False):
     # RL env's reset events would perturb the calibrated stance below)
     cfg.events.randomize_sky_intensity = None
     cfg.events.randomize_key_light = None
+    cfg.events.randomize_material_tint = None
     cfg.events.reset_robot_joints = None
     cfg.events.reset_robot_root = None
     # the elevated chandelier is an opt-in dressing asset and irrelevant to

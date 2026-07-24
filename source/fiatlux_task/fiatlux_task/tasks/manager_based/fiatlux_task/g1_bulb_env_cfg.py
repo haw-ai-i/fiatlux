@@ -49,6 +49,7 @@ from fiatlux_task.robots.g1 import (
 )
 
 from . import mdp
+from .climb_env_cfg import FALL_MIN_HEIGHT, FALL_TILT_LIMIT
 from .scene_cfg import (
     ROOM_ENV_SPACING,
     G1ReplaceSceneCfg,
@@ -157,6 +158,11 @@ class EventCfg:
 
     reset_all = EventTerm(func=mdp.reset_scene_to_default, mode="reset")
 
+    # Restores every entity -- including the robot ROOT -- to init_state; must run
+    # first (cfg order) so the per-asset randomizations below apply on top. Isaac Lab
+    # restores sim state only through reset events, so without this a fallen robot
+    # stays fallen across resets and the fall gate below would re-fire every step.
+    reset_all = EventTerm(func=mdp.reset_scene_to_default, mode="reset")
     reset_robot_joints = EventTerm(
         func=mdp.reset_joints_by_offset,
         mode="reset",
@@ -183,15 +189,33 @@ class EventCfg:
         },
     )
 
-    # Intensity only: the dome carries an HDRI sky texture, and color-tinting a texture
-    # reads as a render bug rather than useful domain randomization (see mdp.events).
+    # Intensity + yaw only for the dome: it carries an HDRI sky texture, so color-tinting
+    # it or tilting its horizon reads as a render bug rather than useful domain
+    # randomization (see mdp.events); yaw = sun azimuth.
     randomize_light = EventTerm(
         func=mdp.randomize_light_properties,
         mode="reset",
         params={
             "asset_cfg": SceneEntityCfg("dome_light"),
             "intensity_range": (500.0, 2000.0),
+            "rotation_range_deg": {"yaw": (0.0, 360.0)},
         },
+    )
+    # Replicate-safe visual DR (this cfg keeps replicate_physics=True): key-light direction
+    # (orientation only -- Insert deliberately never randomized key intensity) and a global
+    # albedo tint on the shared room.
+    randomize_key_light = EventTerm(
+        func=mdp.randomize_light_properties,
+        mode="reset",
+        params={
+            "asset_cfg": SceneEntityCfg("key_light"),
+            "rotation_range_deg": {"pitch": (-15.0, 15.0), "yaw": (-30.0, 30.0)},
+        },
+    )
+    randomize_material_tint = EventTerm(
+        func=mdp.randomize_material_tint,
+        mode="reset",
+        params={"asset_cfgs": [SceneEntityCfg("room")]},
     )
 
     # Grip friction for the hands (startup, through the PhysX view -- see
@@ -274,9 +298,10 @@ class TerminationsCfg:
         func=mdp.object_dropped,
         params={"asset_cfg": SceneEntityCfg("bulb"), "min_height": 0.4},
     )
-    # Robot fall detection (built-in bool terms; end solver-kick episodes immediately
-    # instead of letting a collapsed robot grind against the kinematic table for the rest
-    # of the episode -- see FALL_MIN_HEIGHT's docstring above).
+    # Fall detection (the family RL gate: end solver-kick episodes immediately). A
+    # collapsed free-base G1 draped over the kinematic table accumulates violent
+    # PD-vs-contact solver kicks if episodes linger in that state. Thresholds shared
+    # with Climb/Replace; rationale at climb_env_cfg.FALL_*.
     fell_below = DoneTerm(func=mdp.root_height_below_minimum, params={"minimum_height": FALL_MIN_HEIGHT})
     fell_over = DoneTerm(func=mdp.bad_orientation, params={"limit_angle": FALL_TILT_LIMIT})
 
