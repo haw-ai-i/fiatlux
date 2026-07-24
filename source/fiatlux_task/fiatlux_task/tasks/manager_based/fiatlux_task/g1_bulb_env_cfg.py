@@ -49,7 +49,6 @@ from fiatlux_task.robots.g1 import (
 )
 
 from . import mdp
-from .climb_env_cfg import FALL_MIN_HEIGHT, FALL_TILT_LIMIT
 from .scene_cfg import (
     ROOM_ENV_SPACING,
     G1ReplaceSceneCfg,
