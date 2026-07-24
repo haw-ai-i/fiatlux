@@ -11,6 +11,7 @@ Usage:
   python scripts/omniverse/omniverse_pack_scan.py <pack.zip> --extract DIR --flat  # flatten to DIR/<design>/
   python scripts/omniverse/omniverse_pack_scan.py <pack.zip> --md            # markdown for the log
 """
+
 import os
 import sys
 import zipfile
@@ -20,12 +21,33 @@ from collections import defaultdict
 CATEGORIES = {
     "light_bulb": ["bulb", "lightbulb"],
     "lamp": ["lamp", "_lamp", "tablelamp", "floorlamp", "desklamp"],
-    "light_fixture": ["light", "luminaire", "sconce", "chandelier", "pendant",
-                      "downlight", "spotlight", "lantern", "fixture", "led", "bulbholder",
-                      "ceilinglight", "walllight"],
+    "light_fixture": [
+        "light",
+        "luminaire",
+        "sconce",
+        "chandelier",
+        "pendant",
+        "downlight",
+        "spotlight",
+        "lantern",
+        "fixture",
+        "led",
+        "bulbholder",
+        "ceilinglight",
+        "walllight",
+    ],
     "socket": ["socket", "bulbholder", "lampholder", "lampsocket", "e26", "e27"],
-    "ladder": ["ladder", "stepstand", "stepstool", "stepladder", "scaffold",
-               "stair", "rung", "step_stand", "platform_ladder"],
+    "ladder": [
+        "ladder",
+        "stepstand",
+        "stepstool",
+        "stepladder",
+        "scaffold",
+        "stair",
+        "rung",
+        "step_stand",
+        "platform_ladder",
+    ],
 }
 ASSET_EXTS = (".usd", ".usda", ".usdc", ".usdz")
 
@@ -71,23 +93,22 @@ def extract_matches(zf, names, wanted, extract_dir, pack, flat):
         # curated flat layout: each matched folder -> extract_dir/<basename>/...,
         # stripping the pack's deep nesting so no separate flatten pass is needed
         os.makedirs(extract_dir, exist_ok=True)
-        for w in wanted:                              # w is relative, e.g. Equipment/Ladders/AlumStep_A
+        for w in wanted:  # w is relative, e.g. Equipment/Ladders/AlumStep_A
             base = w.rsplit("/", 1)[-1]
-            if base.startswith("."):                  # .SubUSDs / .thumbs -- stub containers, not designs
+            if base.startswith("."):  # .SubUSDs / .thumbs -- stub containers, not designs
                 continue
             for n in names:
                 if n.endswith("/"):
                     continue
-                i = n.find(w + "/")                   # locate the matched folder in the full zip path
+                i = n.find(w + "/")  # locate the matched folder in the full zip path
                 if i < 0:
                     continue
-                out = os.path.join(extract_dir, base, n[i + len(w) + 1:])
+                out = os.path.join(extract_dir, base, n[i + len(w) + 1 :])
                 os.makedirs(os.path.dirname(out), exist_ok=True)
                 with zf.open(n) as src, open(out, "wb") as dst:
                     dst.write(src.read())
                 n_ex += 1
-        print(f"\n[extracted {n_ex} files (flattened) for {len(wanted)} folders -> {extract_dir}]",
-              file=sys.stderr)
+        print(f"\n[extracted {n_ex} files (flattened) for {len(wanted)} folders -> {extract_dir}]", file=sys.stderr)
     else:
         dest = os.path.join(extract_dir, pack)
         os.makedirs(dest, exist_ok=True)
@@ -95,8 +116,7 @@ def extract_matches(zf, names, wanted, extract_dir, pack, flat):
             if any(n.startswith(w) or w in n for w in wanted):
                 zf.extract(n, dest)
                 n_ex += 1
-        print(f"\n[extracted {n_ex} files for {len(wanted)} matched folders -> {dest}]",
-              file=sys.stderr)
+        print(f"\n[extracted {n_ex} files for {len(wanted)} matched folders -> {dest}]", file=sys.stderr)
 
 
 def main():
@@ -122,8 +142,7 @@ def main():
     # count only real MODEL usd files — exclude material/texture/thumbnail USDs so
     # per-asset and per-subcategory totals reflect actual models, not sub-files.
     NOISE = ("/materials/", "/textures/", "/.thumbs/")
-    usd_names = [n for n in names
-                 if n.lower().endswith(ASSET_EXTS) and not any(x in n.lower() for x in NOISE)]
+    usd_names = [n for n in names if n.lower().endswith(ASSET_EXTS) and not any(x in n.lower() for x in NOISE)]
 
     # overall structure: top-level folders and how many USDs under each
     tops = defaultdict(int)
@@ -138,7 +157,7 @@ def main():
         low = n.lower()
         folder = n.rsplit("/", 1)[0]
         if folder.startswith(root):
-            folder = folder[len(root):]
+            folder = folder[len(root) :]
         for cat, kws in CATEGORIES.items():
             if any(k in low for k in kws):
                 matches[cat].add(folder)
@@ -147,8 +166,10 @@ def main():
     out = []
     out.append(f"## {pack}")
     out.append(f"- ZIP size: {size_gb:.1f} GB | entries: {len(names)} | USD files: {len(usd_names)}")
-    out.append(f"- Top-level folders ({len(tops)}): " +
-               ", ".join(f"{k} ({v} usd)" for k, v in sorted(tops.items(), key=lambda x: -x[1])[:12]))
+    out.append(
+        f"- Top-level folders ({len(tops)}): "
+        + ", ".join(f"{k} ({v} usd)" for k, v in sorted(tops.items(), key=lambda x: -x[1])[:12])
+    )
     out.append(f"- Asset root: `{root}`")
     out.append("")
     out.append("**Fiatlux-relevant matches:**")
@@ -168,7 +189,7 @@ def main():
     # full inventory: subcategory -> {asset folder: variant count}
     inv = defaultdict(lambda: defaultdict(int))
     for n in usd_names:
-        rel = n[len(root):] if n.startswith(root) else n
+        rel = n[len(root) :] if n.startswith(root) else n
         parts = rel.split("/")
         if len(parts) >= 2:
             asset = parts[-2]

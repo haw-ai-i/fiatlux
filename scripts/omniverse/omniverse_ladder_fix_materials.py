@@ -19,6 +19,7 @@ Usage: python scripts/omniverse/omniverse_ladder_fix_materials.py [ROOT]
        (default ROOT = ~/omniverse_packs/keep/Warehouse_ladders; expects the
         flattened layout ROOT/<design>/<file>.usd with Materials at ROOT/Materials)
 """
+
 import glob
 import os
 import re
@@ -26,12 +27,15 @@ import sys
 
 from pxr import Sdf, Usd, UsdShade
 
-ROOT = (os.path.abspath(sys.argv[1]) if len(sys.argv) > 1
-        else os.path.expanduser("~/omniverse_packs/keep/Warehouse_ladders"))
+ROOT = (
+    os.path.abspath(sys.argv[1])
+    if len(sys.argv) > 1
+    else os.path.expanduser("~/omniverse_packs/keep/Warehouse_ladders")
+)
 
 
-COLLAPSE = r'(\.\./)+Materials/'                         # deep ../..-chain to the local Materials/
-CORE_MDLS = {"SimPBR.mdl", "OmniPBR.mdl"}               # ship with Isaac; reference by bare name
+COLLAPSE = r"(\.\./)+Materials/"  # deep ../..-chain to the local Materials/
+CORE_MDLS = {"SimPBR.mdl", "OmniPBR.mdl"}  # ship with Isaac; reference by bare name
 
 
 def fix(usd):
@@ -44,7 +48,7 @@ def fix(usd):
             a = sh.GetSourceAsset("mdl")
             if a:
                 old = str(a).strip("@")
-                new = re.sub(COLLAPSE, '../Materials/', old)
+                new = re.sub(COLLAPSE, "../Materials/", old)
                 # SimReady core materials referenced by a broken relative path
                 # (e.g. ../../../materials/SimPBR.mdl) -> bare name; Isaac resolves it
                 base = new.rsplit("/", 1)[-1]
@@ -60,10 +64,10 @@ def fix(usd):
         #    e.g. inputs:diffuse_texture authored directly on /World/Looks/<Material>)
         for a in p.GetAttributes():
             if a.GetName() == "info:mdl:sourceAsset":
-                continue                                  # handled above
+                continue  # handled above
             v = a.Get()
             if isinstance(v, Sdf.AssetPath) and v.path:
-                new = re.sub(COLLAPSE, '../Materials/', v.path)
+                new = re.sub(COLLAPSE, "../Materials/", v.path)
                 if new != v.path:
                     a.Set(Sdf.AssetPath(new))
                     n += 1
@@ -78,8 +82,11 @@ def fix(usd):
 
 
 def main():
-    usds = [f for f in glob.glob(os.path.join(ROOT, "*", "*.usd"))
-            if not f.endswith(("_collision.usd", "_collision_rigid.usd"))]
+    usds = [
+        f
+        for f in glob.glob(os.path.join(ROOT, "*", "*.usd"))
+        if not f.endswith(("_collision.usd", "_collision_rigid.usd"))
+    ]
     total = files = 0
     for f in sorted(usds):
         try:

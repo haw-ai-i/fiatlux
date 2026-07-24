@@ -12,6 +12,7 @@ a movable ladder to carry/knock over.
 
 Usage: python scripts/omniverse/omniverse_ladder_rigid.py <dir> [<dir> ...]
 """
+
 import os
 import sys
 
@@ -25,7 +26,7 @@ def mass_for(height_m):
 
 def author(collision_usd):
     d = os.path.dirname(collision_usd)
-    stem = os.path.basename(collision_usd)[:-len("_collision.usd")]
+    stem = os.path.basename(collision_usd)[: -len("_collision.usd")]
     out = os.path.join(d, f"{stem}_collision_rigid.usd")
     if os.path.exists(out):
         os.remove(out)

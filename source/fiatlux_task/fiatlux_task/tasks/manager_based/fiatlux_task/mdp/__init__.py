@@ -40,9 +40,15 @@ from isaaclab.envs.mdp import (  # noqa: F401
     time_out,
 )
 
-from .events import randomize_light_properties  # noqa: F401
+from .events import (  # noqa: F401
+    hand_grip_material_event,
+    randomize_light_properties,
+    randomize_material_tint,
+    randomize_prop_scale,
+)
 from .observations import (  # noqa: F401
     contact_net_forces,
+    lidar_ranges,
     replace_score_distances,
     root_pose_w,
 )
@@ -53,6 +59,8 @@ from .rewards import (  # noqa: F401
     climbed_to_target,
     com_sway_l2,
     completion_bonus,
+    descend_height_progress,
+    descended_to_target,
     distance_progress,
     fall_terminated,
     full_replacement_success,
@@ -73,4 +81,6 @@ from .rewards import (  # noqa: F401
     old_bulb_dropped,
     old_bulb_fixture_clearance,
     old_bulb_removed,
+    removal_bulb_disposal_distance,
+    removal_bulb_fixture_clearance,
 )

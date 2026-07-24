@@ -44,8 +44,8 @@ modes **standard** and **cheatcode**):
 - **`policy` = standard mode** (sensor-realizable only): IMU (base angular velocity,
   projected gravity), estimated base height + linear velocity (the documented
   estimator-realizable exception, as in Climb), joint pos/vel, hand contact forces,
-  **torso-mounted RGB camera features** (needs `--enable_cameras`), last action.
-  Corruption enabled.
+  **head-mounted (`d435_link`) RGB camera features** and **head-mounted (`mid360_link`)
+  lidar ranges** (camera needs `--enable_cameras`), last action. Corruption enabled.
 - **`privileged` = cheatcode mode** (exact simulator state): world poses of the robot,
   ladder, fixture, fresh bulb, old bulb, and disposal crate, plus the four score-relevant
   distances (`replace_score_distances`). Critic-only during RL
@@ -55,7 +55,7 @@ Smoke-test policies (`fiatlux_task/policy.py`): `basic_standard` consumes only t
 standard group and holds posture; `basic_cheatcode` additionally asserts and reads the
 privileged group. Both prove the episode/scoring loop end-to-end; neither solves the task.
 
-Standard mode admits *raw* sensor access too: a policy may read the torso camera frames
+Standard mode admits *raw* sensor access too: a policy may read the `ego_camera` frames
 and proprioception directly from the scene (rather than the flattened, corrupted,
 feature-extracted `policy` group) as long as it touches nothing privileged — that is how
 the `groot` VLA baseline consumes the same sensors (`fiatlux_task/groot.py`).
@@ -106,7 +106,11 @@ at 1.0). Completion bonuses pay once per episode.
 ## Randomization
 
 Scene layout (zones, fixture mount, ladder yaw, robot yaw) per scene build; robot root
-xy (±5 cm) / yaw (±0.1 rad), joints (±0.05 rad), and light intensities per reset.
+xy (±5 cm) / yaw (±0.1 rad), joints (±0.05 rad), light intensities, key-light direction
+(pitch ±15° / yaw ±30° about its authored 40° tilt), HDRI sky azimuth (0–360°), and a
+global room albedo tint (HSV multiplier on the bound materials' diffuse inputs) per
+reset. Prop-scale randomization is a scaffold-env default and an RL opt-in (prestartup
+USD writes require `replicate_physics=False`); see `base_env_cfg.py`'s EventCfg.
 
 # `FIATLUX-Insert-v0`
 
@@ -119,13 +123,16 @@ The **tabletop preset** of the shared family scene (`scene_cfg.py: G1ReplaceScen
 
 - **Robot:** Unitree G1 (`assets/unitree_g1/wholebody_inspire/g1_29dof_with_inspire_rev_1_0.usd`),
   legged/free base, right arm + Inspire hand actuated.
-- **Bulb:** graspable rigid body, a BEHAVIOR-1K light bulb
-  (`assets/behavior1k_bulb/ymomhw/usd/ymomhw.usd`), at hand height on the table.
-- **Socket:** kinematic lamp/socket fixture on the table, a BEHAVIOR-1K table lamp
-  stripped to a single rigid body (`assets/behavior1k_lamp/bbentu/usd/bbentu.usd`; see
-  `fiatlux_task/scenes.py: spawn_b1k_single_body` / issue #14).
-- Packing table; ground plane; Simple Room backdrop + HDRI sky dome (randomized
-  intensity); no ladder (that's the workshop preset's business).
+- **Bulb:** graspable dynamic rigid body, the Omniverse A19 bulb
+  (`assets/omniverse_bulb/LightBulb_bulb_z_rigid.usda`, 0.035 kg), standing on its screw
+  cap at hand height on the table.
+- **Socket:** kinematic fixture on the table, the matching Omniverse socket
+  (`assets/omniverse_bulb/LightBulb_socket_z_static.usda`). Its screw hole is an exact
+  triangle-mesh collider, so a bulb genuinely enters and rests in it -- which also makes
+  the socket permanently ineligible to be dynamic (a PhysX rule). Both halves are authored
+  assembled at identity, so *seated* is exactly *bulb pose == socket pose*.
+- Packing table; ground plane; per-env Simple Room with real wall/ceiling colliders + HDRI
+  sky dome (randomized intensity); no ladder (that's the workshop preset's business).
 
 ## Actions
 
@@ -158,13 +165,19 @@ Two groups:
 
 - **Success** (`bulb_seated`): bulb within `pos_threshold` (1.5 cm) **and**
   `ori_threshold` (0.2 rad) of the socket.
+- **Fall** (`fell_below` / `fell_over`): root below **0.35 m** (standing pelvis is
+  0.75 m; a collapsed robot reads < 0.30 m) or tilt beyond **1.0 rad**. This is the
+  family's fall-detection RL gate: solver-kick episodes against the kinematic table
+  end immediately (thresholds shared from `climb_env_cfg.py`).
 - **Timeout**: `episode_length_s = 15 s`.
 - **Bulb dropped**: bulb falls below `min_height`.
 
 ## Randomization (on reset)
 
 Socket pose (±3–5 cm), bulb start pose (±2 cm), arm joints (±0.05 rad), dome-light
-intensity and color.
+intensity and sky azimuth (0–360°), key-light direction (pitch ±15° / yaw ±30°), and a
+global room albedo tint. Prop-scale randomization is an RL opt-in (see
+`base_env_cfg.py`'s EventCfg; requires `replicate_physics=False`).
 
 # `FIATLUX-Climb-v0`
 
@@ -195,7 +208,9 @@ Two groups:
   height and linear velocity** — a documented *estimator-realizable exception* to the
   sensor-only contract: the real G1 publishes both from its kinematic-inertial state
   estimator (the same argument Isaac Lab's velocity tasks make) — joint pos/vel, per-limb
-  ladder contact forces (feet + palms), last action. Corruption enabled.
+  ladder contact forces (feet + palms), a head-mounted (`d435_link`) RGB camera, a
+  head-mounted (`mid360_link`) lidar (ground + ladder ranges), last action. Corruption
+  enabled; camera needs `--enable_cameras`.
 - **`privileged`** (critic / scripted baselines only): robot root pose + linear velocity,
   ladder pose. Routed to the critic via `ClimbPPORunnerCfg.obs_groups` (rsl_rl does not
   auto-route a group named `privileged`).
@@ -227,5 +242,6 @@ forward lean.
 
 ## Randomization (on reset)
 
-Robot root xy (±5 cm) and yaw (±0.1 rad), joints (±0.05 rad), dome/key-light intensity.
-All within `verify_scene.py`'s 0.10 m init-drift tolerance.
+Robot root xy (±5 cm) and yaw (±0.1 rad), joints (±0.05 rad), dome/key-light intensity,
+key-light direction (pitch ±15° / yaw ±30°), sky azimuth (0–360°), and a global room
+albedo tint. All within `verify_scene.py`'s 0.10 m init-drift tolerance.

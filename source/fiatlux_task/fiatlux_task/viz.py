@@ -51,11 +51,101 @@ def orbit_pose(
     center: tuple[float, float, float],
     radius: float,
     height: float,
+    sweep_deg: float = 360.0,
+    phase_deg: float = 0.0,
 ) -> tuple[tuple[float, float, float], tuple[float, float, float]]:
-    """(eye, lookat) for frame ``i`` of an ``n_frames``-frame 360-degree turntable orbit."""
-    theta = 2.0 * math.pi * i / max(n_frames, 1)
+    """(eye, lookat) for frame ``i`` of an ``n_frames``-frame turntable orbit.
+
+    ``sweep_deg``/``phase_deg`` restrict it to an arc. A full circle is only right when the
+    subject can be viewed from every side; a wall-mounted fixture cannot, and half such an
+    orbit sits outside the room filming the back of a wall.
+    """
+    theta = math.radians(phase_deg + sweep_deg * i / max(n_frames, 1))
     eye = (center[0] + radius * math.cos(theta), center[1] + radius * math.sin(theta), height)
     return eye, center
+
+
+# Orbit geometry for the fixture view: low enough to be a genuine upward look at a mount at
+# 2.2 m (wall) or 3.0 m (ceiling), close enough that the fixture is more than a speck.
+FIXTURE_VIEW_RADIUS = 2.2
+FIXTURE_VIEW_HEIGHT = 1.5
+FIXTURE_VIEW_MIN_RADIUS = 0.6  # closer than this and the fixture overflows the frame
+FIXTURE_VIEW_WALL_CLEARANCE = 0.3  # keep the camera off the wall it would otherwise clip into
+
+
+def _radius_inside(
+    center: tuple[float, float, float],
+    sweep_deg: float,
+    phase_deg: float,
+    bounds_min: tuple[float, float],
+    bounds_max: tuple[float, float],
+) -> float:
+    """Largest orbit radius whose whole arc stays inside the room, capped at the nominal one.
+
+    A camera that leaves the room does not fail -- it films the back of a wall and returns a
+    frame of flat grey, which is indistinguishable from a missing fixture. Since the fixture
+    may be sampled within one ladder zone of a wall, the nominal 2.2 m simply does not fit in
+    every layout, so the radius is derived per layout rather than assumed.
+    """
+    lo = (bounds_min[0] + FIXTURE_VIEW_WALL_CLEARANCE, bounds_min[1] + FIXTURE_VIEW_WALL_CLEARANCE)
+    hi = (bounds_max[0] - FIXTURE_VIEW_WALL_CLEARANCE, bounds_max[1] - FIXTURE_VIEW_WALL_CLEARANCE)
+    best = FIXTURE_VIEW_RADIUS
+    n = 72
+    for k in range(n + 1):
+        theta = math.radians(phase_deg + sweep_deg * k / n)
+        for axis, comp in ((0, math.cos(theta)), (1, math.sin(theta))):
+            if abs(comp) < 1e-9:  # travels parallel to this pair of walls; never crosses them
+                continue
+            edge = hi[axis] if comp > 0 else lo[axis]
+            best = min(best, (edge - center[axis]) / comp)
+    return max(best, FIXTURE_VIEW_MIN_RADIUS)
+
+
+def fixture_orbit(env_cfg) -> dict:
+    """Orbit kwargs (for :func:`orbit_pose` / :func:`record_orbit`) that look UP at the fixture.
+
+    Every other camera in this repo is aimed at the floor and the bench, and orbits above
+    what it is looking at. That blind spot is why an overhead fixture could hang 1.2 m under
+    the ceiling -- and later, after the room's floor was aligned, in open air a metre from
+    anything -- through many recorded runs without one frame showing it.
+
+    Aimed at where the **cfg** says the fixture is, deliberately: if the render shows empty
+    air, the fixture is not where the scene claims it is, which is exactly the failure this
+    view exists to make visible.
+
+    A wall mount gets a 180-degree arc rather than a full circle, centred on the direction
+    the socket opening faces -- taken from the fixture's own orientation, since the opening
+    points into the room by construction and is therefore the only side it can be filmed
+    from. The radius is then clamped so the arc stays inside the room (:func:`_radius_inside`);
+    both are needed, because a *ceiling* fixture sampled near a wall takes a full orbit
+    straight through it.
+
+    Raises:
+        ValueError: if the scene mounts no fixture at all, rather than silently orbiting the
+            origin and producing a video that looks like a successful check.
+    """
+    for name in ("socket", "fixture"):
+        entity = getattr(env_cfg.scene, name, None)
+        if entity is None or getattr(entity, "init_state", None) is None:
+            continue
+        from fiatlux_task.tasks.manager_based.fiatlux_task.scene_cfg import ROOM_FLOOR_MAX, ROOM_FLOOR_MIN
+
+        center = tuple(entity.init_state.pos)
+        sweep_deg, phase_deg = 360.0, 0.0
+        # the socket's opening is its local +Z; rotate it by the mount quaternion (w, x, y, z)
+        w, x, y, z = entity.init_state.rot
+        open_x, open_y = 2.0 * (x * z + w * y), 2.0 * (y * z - w * x)
+        if math.hypot(open_x, open_y) > 0.5:  # points sideways -> wall mount
+            sweep_deg = 180.0
+            phase_deg = math.degrees(math.atan2(open_y, open_x)) - 90.0
+        return {
+            "center": center,
+            "radius": _radius_inside(center, sweep_deg, phase_deg, ROOM_FLOOR_MIN, ROOM_FLOOR_MAX),
+            "height": FIXTURE_VIEW_HEIGHT,
+            "sweep_deg": sweep_deg,
+            "phase_deg": phase_deg,
+        }
+    raise ValueError("the fixture view needs a 'socket' or 'fixture' scene entity; this scene has neither")
 
 
 class VideoRecorder:
@@ -114,15 +204,22 @@ def record_orbit(
     center: tuple[float, float, float],
     radius: float,
     height: float,
+    sweep_deg: float = 360.0,
+    phase_deg: float = 0.0,
 ) -> str:
-    """Step ``env`` under constant ``actions`` while orbiting the camera 360 degrees.
+    """Step ``env`` under constant ``actions`` while orbiting the camera around ``center``.
 
     A turntable orbit makes a (policy-less, near-static) scene watchable and shows it in 3D.
+    ``sweep_deg``/``phase_deg`` restrict it to an arc (see :func:`orbit_pose`).
     Writes the MP4 (plus poster) to ``out_path`` and returns the path.
     """
     rec = VideoRecorder(env, camera, out_path, fps=fps)
     for i in range(n_steps):
-        rec.set_pose(*orbit_pose(i, n_steps, center=center, radius=radius, height=height))
+        rec.set_pose(
+            *orbit_pose(
+                i, n_steps, center=center, radius=radius, height=height, sweep_deg=sweep_deg, phase_deg=phase_deg
+            )
+        )
         env.step(actions)
         rec.capture()
     return rec.write()
