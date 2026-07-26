@@ -38,6 +38,7 @@ from fiatlux_task.robots.g1 import G1_ARM_JOINTS, G1_EE_BODY, G1_HAND_GRASP, G1_
 
 from .g1_bulb_env_cfg import G1BulbInsertEnvCfg
 from .scene_cfg import _quat_x_deg, _spawn_usd_as_rigid_body
+from .xr_controller_retargeters import ControllerGripperRetargeterCfg, Se3AbsControllerRetargeterCfg
 
 
 @clone
@@ -130,8 +131,8 @@ class G1BulbInsertTeleopEnvCfg(G1BulbInsertEnvCfg):
         self.scene.bulb.init_state.rot = upright
 
         # Stiffen the arm for crisp IK tracking (gravity stays ON -- realistic for physics testing).
-        self.scene.robot.actuators["arm"].stiffness = 2000.0
-        self.scene.robot.actuators["arm"].damping = 100.0
+        self.scene.robot.actuators["arms"].stiffness = 2000.0
+        self.scene.robot.actuators["arms"].damping = 100.0
 
         # Arm: ABSOLUTE EE pose IK. Relative mode re-anchors to the *current* pose each step, so a
         # compliant arm ratchets/drifts (it never actively returns to a target); absolute mode holds
@@ -192,6 +193,24 @@ class G1BulbInsertTeleopEnvCfg(G1BulbInsertEnvCfg):
                             sim_device=self.sim.device,
                         ),
                         GripperRetargeterCfg(
+                            bound_hand=DeviceBase.TrackingTarget.HAND_RIGHT, sim_device=self.sim.device
+                        ),
+                    ],
+                    sim_device=self.sim.device,
+                    xr_cfg=self.xr,
+                ),
+                # Motion-controller variant: same absolute-IK arm + binary grip, but driven by the
+                # headset CONTROLLER instead of hand tracking (the Quest/Pico CloudXR web client streams
+                # controllers, not optical hand joints -- see vr_teleop/vr_teleop_setup.md). Right grip
+                # pose -> EE target, trigger -> grip. Pick it with ``--teleop_device controller``.
+                "controller": OpenXRDeviceCfg(
+                    retargeters=[
+                        Se3AbsControllerRetargeterCfg(
+                            bound_hand=DeviceBase.TrackingTarget.HAND_RIGHT,
+                            zero_out_xy_rotation=True,
+                            sim_device=self.sim.device,
+                        ),
+                        ControllerGripperRetargeterCfg(
                             bound_hand=DeviceBase.TrackingTarget.HAND_RIGHT, sim_device=self.sim.device
                         ),
                     ],
