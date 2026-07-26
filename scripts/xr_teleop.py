@@ -63,8 +63,10 @@ app_launcher_args = vars(args_cli)
 if args_cli.enable_pinocchio:
     # Import pinocchio before AppLauncher so IsaacLab's build is used, not Isaac Sim's.
     import pinocchio  # noqa: F401
-if "handtracking" in args_cli.teleop_device.lower():
-    # Hand tracking requires the XR experience (stereo render + OpenXR); auto-enable it.
+_dev = args_cli.teleop_device.lower()
+if _dev == "handtracking" or _dev.startswith("controller"):
+    # All headset devices (hand tracking, controller, controller_rel) need the XR experience
+    # (stereo render + OpenXR); auto-enable it so the AR panel appears and cameras are stripped.
     app_launcher_args["xr"] = True
 
 app_launcher = AppLauncher(app_launcher_args)

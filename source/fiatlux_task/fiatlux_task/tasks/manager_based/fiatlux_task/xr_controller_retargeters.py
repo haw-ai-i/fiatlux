@@ -126,3 +126,68 @@ class ControllerGripperRetargeterCfg(RetargeterCfg):
     bound_hand: DeviceBase.TrackingTarget = DeviceBase.TrackingTarget.HAND_RIGHT
     trigger_threshold: float = 0.5
     retargeter_type: type[RetargeterBase] = ControllerGripperRetargeter
+
+
+class Se3RelControllerRetargeter(RetargeterBase):
+    """Map a controller's **incremental** motion to the end-effector (relative / clutch-free).
+
+    Unlike :class:`Se3AbsControllerRetargeter` (hand position *is* the EE target, which needs the
+    operator's hand physically in the robot's workspace), this integrates the controller's
+    frame-to-frame position delta into an accumulated absolute EE target, starting from
+    ``initial_position``. So the operator can hold the controller anywhere and *nudge* the EE around
+    -- far more forgiving. Output is still an absolute pose command matching the absolute IK action;
+    orientation is held at ``initial_orientation`` (position control first; add rotation later). The
+    accumulated target is clamped to ``[workspace_min, workspace_max]`` so it can't drift out of reach.
+    """
+
+    def __init__(self, cfg: Se3RelControllerRetargeterCfg):
+        super().__init__(cfg)
+        self._target = _controller_target(cfg.bound_hand)
+        self._scale = cfg.position_scale
+        self._init_pos = np.array(cfg.initial_position, dtype=np.float32)
+        self._init_quat = np.array(cfg.initial_orientation, dtype=np.float32)
+        self._lo = np.array(cfg.workspace_min, dtype=np.float32)
+        self._hi = np.array(cfg.workspace_max, dtype=np.float32)
+        self._max_step = cfg.max_step
+        self._pos = self._init_pos.copy()
+        self._prev: np.ndarray | None = None
+
+    def get_requirements(self) -> list[RetargeterBase.Requirement]:
+        return [RetargeterBase.Requirement.MOTION_CONTROLLER]
+
+    def reset(self) -> None:
+        self._pos = self._init_pos.copy()
+        self._prev = None
+
+    def retarget(self, data: dict) -> torch.Tensor:
+        arr = data.get(self._target)
+        if arr is not None and np.size(arr) >= _CTRL_ELEMS:
+            cur = np.asarray(arr, dtype=np.float32).reshape(2, 7)[0, :3]
+            if self._prev is not None:
+                delta = (cur - self._prev) * self._scale
+                # Reject tracking spikes: cap the per-frame step so a lost/re-acquired controller
+                # can't teleport the target. Normal hand motion is well under this per 60Hz frame.
+                n = float(np.linalg.norm(delta))
+                if n > self._max_step:
+                    delta = delta * (self._max_step / n)
+                self._pos = np.clip(self._pos + delta, self._lo, self._hi)
+            self._prev = cur
+        cmd = np.concatenate([self._pos, self._init_quat]).astype(np.float32)
+        return torch.tensor(cmd, dtype=torch.float32, device=self._sim_device)
+
+
+@dataclass
+class Se3RelControllerRetargeterCfg(RetargeterCfg):
+    """Configuration for :class:`Se3RelControllerRetargeter` (workspace defaults suit the Insert task)."""
+
+    bound_hand: DeviceBase.TrackingTarget = DeviceBase.TrackingTarget.HAND_RIGHT
+    position_scale: float = 1.0
+    max_step: float = 0.03  # max EE target move per frame (m); rejects controller tracking spikes
+    # G1 right-hand (right_wrist_yaw_link) REST pose, probed from the env: a reachable start so the
+    # IK holds a feasible wrist angle instead of flailing at an infeasible identity quat. Orientation
+    # stays fixed (position-only control for now); the operator nudges the EE from here to the props.
+    initial_position: tuple[float, float, float] = (0.351, 0.499, 0.833)
+    initial_orientation: tuple[float, float, float, float] = (0.706, 0.021, 0.023, -0.7075)  # w,x,y,z
+    workspace_min: tuple[float, float, float] = (0.15, 0.05, 0.78)  # spans rest + the tabletop props
+    workspace_max: tuple[float, float, float] = (0.65, 0.60, 1.10)
+    retargeter_type: type[RetargeterBase] = Se3RelControllerRetargeter

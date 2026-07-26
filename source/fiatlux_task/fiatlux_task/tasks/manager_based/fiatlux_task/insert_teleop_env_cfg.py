@@ -38,7 +38,11 @@ from fiatlux_task.robots.g1 import G1_ARM_JOINTS, G1_EE_BODY, G1_HAND_GRASP, G1_
 
 from .g1_bulb_env_cfg import G1BulbInsertEnvCfg
 from .scene_cfg import _quat_x_deg, _spawn_usd_as_rigid_body
-from .xr_controller_retargeters import ControllerGripperRetargeterCfg, Se3AbsControllerRetargeterCfg
+from .xr_controller_retargeters import (
+    ControllerGripperRetargeterCfg,
+    Se3AbsControllerRetargeterCfg,
+    Se3RelControllerRetargeterCfg,
+)
 
 
 @clone
@@ -165,9 +169,10 @@ class G1BulbInsertTeleopEnvCfg(G1BulbInsertEnvCfg):
 
         # XR scene anchor: the sim-world pose (on the floor) that maps to the origin of the headset's
         # local frame -- i.e. where the scene appears relative to the standing operator. Set near the
-        # robot base so the G1 + tabletop appear in front of the user. NOTE: tune in-headset (position
-        # + yaw of anchor_rot) so the operator faces the table with their hand reaching the props.
-        self.xr = XrCfg(anchor_pos=(0.5, 0.7, 0.0), anchor_rot=(1.0, 0.0, 0.0, 0.0))
+        # robot base so the G1 + tabletop appear in front of the user; anchor_rot is a 180 deg yaw
+        # (w,x,y,z)=(0,0,0,1) so the operator faces the table (props at -Y) instead of away from it.
+        # NOTE: still tune in-headset -- if the operator ends up 90 deg off, adjust the yaw quaternion.
+        self.xr = XrCfg(anchor_pos=(0.5, 0.7, 0.0), anchor_rot=(0.0, 0.0, 0.0, 1.0))
 
         # Devices the teleop script can instantiate for this env. ``handtracking`` drives the same
         # absolute-IK arm + binary grip via a Meta Quest / Pico headset through CloudXR (see
@@ -208,6 +213,22 @@ class G1BulbInsertTeleopEnvCfg(G1BulbInsertEnvCfg):
                         Se3AbsControllerRetargeterCfg(
                             bound_hand=DeviceBase.TrackingTarget.HAND_RIGHT,
                             zero_out_xy_rotation=True,
+                            sim_device=self.sim.device,
+                        ),
+                        ControllerGripperRetargeterCfg(
+                            bound_hand=DeviceBase.TrackingTarget.HAND_RIGHT, sim_device=self.sim.device
+                        ),
+                    ],
+                    sim_device=self.sim.device,
+                    xr_cfg=self.xr,
+                ),
+                # Relative/incremental controller variant (recommended): move the controller to *nudge*
+                # the EE from its current target -- no need to hold your hand in the robot's workspace.
+                # Pick with ``--teleop_device controller_rel``.
+                "controller_rel": OpenXRDeviceCfg(
+                    retargeters=[
+                        Se3RelControllerRetargeterCfg(
+                            bound_hand=DeviceBase.TrackingTarget.HAND_RIGHT,
                             sim_device=self.sim.device,
                         ),
                         ControllerGripperRetargeterCfg(
