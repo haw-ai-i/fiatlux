@@ -315,3 +315,76 @@ python ~/robotica_project/fiatlux/vr_teleop/vr_teleop.py --task FIATLUX-Insert-T
 - **`isaacteleop` import clashes with Isaac Lab:** the bridge needs both in one interpreter; if the
   pins conflict, keep IsaacTeleop's device process separate and pass the controller pose over a socket
   (advanced — only if a single env can't hold both).
+
+---
+
+## ⛑️ Known problems & probable causes (issue #51 — teleoperate the fiatlux Insert task with the G1)
+
+**Goal:** drive the G1 right arm + grip to insert the bulb in `FIATLUX-Insert-Teleop-v0`, via the
+Pico 4 Ultra Enterprise over CloudXR, using Isaac Lab's native OpenXR teleop (`scripts/xr_teleop.py
+--teleop_device controller_rel`). Env: Isaac Sim 5.1.0 / Isaac Lab 0.54.3, isaacteleop CloudXR 6.2.
+
+### What works (proven live)
+- Remote VR **streaming** Pico → CloudXR → PC over Tailscale (the `NV_CXR_ENDPOINT_IP=<tailnet-ip>` +
+  `NV_CXR_MEDIA_PORT=47998` fix). The fiatlux **scene renders** in the headset.
+- Controllers **register** (`bytedance/pico4_controller`, 18 inputs) and the **grasp works** —
+  trigger → `ControllerGripperRetargeter` → G1 hand closes.
+- The retargeter code path (reads `data[CONTROLLER_RIGHT]`, deadzone, spike-reject); when the
+  controller **pose** did stream (one early session), the EE target tracked the controller in the
+  correct direction. So the input→retarget→action pipeline is correct.
+
+### Problem 1 — controller 6-DoF POSE stream is intermittent / dead  ⬅ current top blocker
+- **Symptom:** the right controller's *position* reads **frozen at the anchor origin** (e.g.
+  `[0.5, 0.7, 0.0]`) even while the operator moves it in big arcs; the *trigger* still works (grasp
+  ok). So the arm has no position data to follow. Worked in one earlier session; dead in others.
+- **Evidence:** `[REL] rawpos=[0.5,0.7,0.0] moved=0.0000` while moving; CloudXR `cxr_server` log shows
+  `ERROR [processSystemInfo] Making device configuration` this session.
+- **Probable causes:** (a) CloudXR device-configuration failure this session (the error above) →
+  controller pose not published, defaults to origin; (b) Pico **Advanced Tracking Features** /
+  controller-pose-tracking (enterprise VST) not enabled — pose tracking off while buttons work;
+  (c) general CloudXR-6.2/Pico pose-stream flakiness.
+- **Next steps:** enable Pico "Advanced Tracking Features" (Settings → Developer/Tracking); confirm the
+  controller *model moves* in the headset view; investigate the `processSystemInfo` device-config
+  error; verify with the `[REL] rawpos` debug that the raw pose changes when moved.
+
+### Problem 2 — CloudXR/Isaac-Sim AR session is fragile (only clean right after a reboot)
+- **Symptom:** `Start AR` works on the **first ~2–3 launches after a fresh reboot**, then floods
+  `XR_ERROR ... swapchain == NULL` + `[XR] Frame ... did not call ... EndFrame` and freezes.
+- **Probable cause:** leaked GPU/Kit/CloudXR state across process kills — stale `carb`/`carbonite`
+  shared memory in `/dev/shm` (from SIGKILL'd Kit procs), stale CloudXR run-state
+  (`~/.cloudxr/run/{ipc_cloudxr,cloudxr.pid,runtime_started}`), and CloudXR-6.2 compositor session
+  state — that a plain restart doesn't clear.
+- **Mitigations tried:** clearing `/dev/shm/carb*` + `~/.cloudxr/run` state lets a **sim-only** restart
+  survive ~1–2 more launches, but a full **reboot** is the only reliable reset. **Budget one code
+  change per reboot; launch fresh; test; don't relaunch mid-session.**
+
+### Problem 3 — CloudXR runtime won't cleanly restart after being killed
+- **Symptom:** after `pkill`, `python -m isaacteleop.cloudxr` starts then immediately exits
+  (`cxr_server` log: `Server exiting: '0'`), launcher exits 1 with no stdout.
+- **Probable cause:** leftover shared resources (same class as Problem 2) block a clean service init.
+- **Mitigation:** `rm ~/.cloudxr/run/{cloudxr.pid,ipc_cloudxr,runtime_started}` + `/dev/shm/carb*`
+  helps but is unreliable; reboot is the sure fix.
+
+### Problem 4 — arm IK oscillates ("random") when the target is a bad pose
+- **Symptom:** with a frozen/garbage controller pose, the relative target drifted to a workspace
+  **corner** (`~[0.167, 0.386, 0.78]`, clamped to `workspace_min`); the G1 right arm then oscillates
+  trying to reach it. Looks like "the right arm moves randomly, left arm doesn't." (Left arm is
+  **intentionally uncontrolled** — only the right arm is teleoped; that is not a bug.)
+- **Probable causes:** (a) the G1 fixed-base tabletop workspace is **near-singular** (documented bulb
+  dead-zone) so DLS IK oscillates near the edges; (b) the retargeter holds a **fixed EE orientation**
+  that is infeasible away from the rest pose; (c) target drove to the corner because the *input pose
+  was garbage* (Problem 1) — the first huge delta (real pose → frozen origin) accumulated to the bound.
+- **Fixes applied (committed locally, `3bd5f4d`, UNTESTED):** removed the blanket arm gain override
+  (was replacing main's tuned per-joint gains while keeping `_ARM_ARMATURE` → oscillation); added a
+  **deadzone** so idle jitter can't drift the target; start from the probed **rest pose**; scale→2.
+- **Next steps (once Problem 1 is fixed so real pose flows):** if still unstable, raise DLS damping /
+  use relative-IK mode (`use_relative_mode=True`) / tighten the workspace clamp / let orientation
+  follow the controller instead of fixed.
+
+### Bottom line
+The pipeline (stream + input + retarget + grasp) is correct. **The arm "doesn't follow" primarily
+because the controller's 6-DoF pose isn't reaching the sim (Problem 1)** — grasp works because button
+data is separate from pose. Secondary is arm-IK instability (Problem 4) that only bites once a real,
+moving pose is available. The AR/runtime fragility (Problems 2–3) makes iterating slow (reboot per
+change). **Do next:** fix the controller pose stream (Pico Advanced Tracking + the CloudXR
+`processSystemInfo` device-config error), then verify the committed deadzone/rest-pose arm fixes.
