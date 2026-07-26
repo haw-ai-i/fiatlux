@@ -1,9 +1,11 @@
 # Roadmap
 
 The scored benchmark is the **full replacement task** (`FIATLUX-Replace-v0`); the
-**insertion** (`FIATLUX-Insert-v0`) and **climbing** (`FIATLUX-Climb-v0`) subtasks
-remain as functional development environments, not benchmark targets. Unfinished
-items below are listed so the extension seams are intentional.
+**insertion** (`FIATLUX-Insert-v0`), **climbing** (`FIATLUX-Climb-v0`), and
+**ladder-positioning** (`FIATLUX-Carry-v0`: walk to the ladder, grasp it, and carry it
+upright to a target — whole-body RL, `carry_env_cfg.py`) subtasks remain as functional
+development environments, not benchmark targets. Unfinished items below are listed so the
+extension seams are intentional.
 
 ## 1. Climbing subtask — `FIATLUX-Climb-v0` — ✅ DONE (2026-07-06)
 

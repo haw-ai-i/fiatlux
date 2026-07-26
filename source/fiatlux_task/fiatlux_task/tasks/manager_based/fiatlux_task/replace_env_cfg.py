@@ -174,15 +174,33 @@ class EventCfg:
             "velocity_range": {},
         },
     )
+    # Replicate-safe visual DR (this cfg keeps replicate_physics=True): light intensity +
+    # direction, and a global albedo tint on the shared room. Prestartup prop-SCALE DR is
+    # the documented opt-in instead: set `scene.replicate_physics = False` and add the
+    # prestartup terms from FamilyBaseEnvCfg.EventCfg (randomize_*_scale) -- the event
+    # manager raises if the terms are present under replicated physics.
     randomize_sky_intensity = EventTerm(
         func=mdp.randomize_light_properties,
         mode="reset",
-        params={"asset_cfg": SceneEntityCfg("dome_light"), "intensity_range": (600.0, 1400.0)},
+        params={
+            "asset_cfg": SceneEntityCfg("dome_light"),
+            "intensity_range": (600.0, 1400.0),
+            "rotation_range_deg": {"yaw": (0.0, 360.0)},
+        },
     )
     randomize_key_light = EventTerm(
         func=mdp.randomize_light_properties,
         mode="reset",
-        params={"asset_cfg": SceneEntityCfg("key_light"), "intensity_range": (800.0, 2200.0)},
+        params={
+            "asset_cfg": SceneEntityCfg("key_light"),
+            "intensity_range": (800.0, 2200.0),
+            "rotation_range_deg": {"pitch": (-15.0, 15.0), "yaw": (-30.0, 30.0)},
+        },
+    )
+    randomize_material_tint = EventTerm(
+        func=mdp.randomize_material_tint,
+        mode="reset",
+        params={"asset_cfgs": [SceneEntityCfg("room")]},
     )
 
 
@@ -408,8 +426,9 @@ class ReplaceEnvCfg(ManagerBasedRLEnvCfg):
             height=224,
             width=224,
             data_types=["rgb"],
+            # "world" convention: identity rot looks along the torso's +X (forward).
             offset=TiledCameraCfg.OffsetCfg(
-                pos=(0.08, 0.0, 0.42), rot=(1.0, 0.0, 0.0, 0.0), convention="ros"
+                pos=(0.08, 0.0, 0.42), rot=(1.0, 0.0, 0.0, 0.0), convention="world"
             ),
         )
 
@@ -428,5 +447,6 @@ class ReplaceEnvCfg(ManagerBasedRLEnvCfg):
         self.sim.physx.bounce_threshold_velocity = 0.2
         self.sim.physx.enable_stabilization = True
 
-        self.viewer.eye = (4.5, 4.5, 3.0)
+        # Must stay inside the Simple Room shell (walls x=±4.52, y=[-3.4, 4.86], ceiling ~3 m).
+        self.viewer.eye = (3.6, 3.8, 2.4)
         self.viewer.lookat = (0.0, 0.7, 1.0)

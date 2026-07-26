@@ -71,4 +71,16 @@ class ReplacePPORunnerCfg(PPORunnerCfg):
     max_iterations = 5000
     save_interval = 100
     experiment_name = "fiatlux_replace"
+
+
+class CarryPPORunnerCfg(PPORunnerCfg):
+    """PPO runner for the ladder-handling / positioning task (FIATLUX-Carry-v0).
+
+    Explicit ``obs_groups`` so the privileged ladder-pose group reaches the critic (a group
+    named ``privileged`` is otherwise silently dropped -- see :class:`ClimbPPORunnerCfg`).
+    """
+
+    max_iterations = 2000
+    save_interval = 100
+    experiment_name = "fiatlux_carry"
     obs_groups = {"policy": ["policy"], "critic": ["policy", "privileged"]}

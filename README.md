@@ -22,7 +22,7 @@ extension — no ROS, no distributed harness — so it plugs into the standard
 | `FIATLUX-Insert-v0` | G1 seats a bulb into a socket (tabletop manipulation) | ✅ functional |
 | `FIATLUX-Climb-v0` | G1 climbs the step ladder to the fixture height (whole-body RL) | ✅ functional |
 | `FIATLUX-Base-v0` | shared G1 + ladder + lamp + bulb scene, no task logic | 🧱 scaffold (non-RL) |
-| `FIATLUX-Carry-v0` | grab and position the ladder | 🧱 scaffold (non-RL) |
+| `FIATLUX-Carry-v0` | G1 walks to a ladder, grasps it, and carries it upright to a target (whole-body RL) | ✅ functional |
 | `FIATLUX-Descend-v0` | bipedal ladder descent | 🧱 scaffold (non-RL) |
 | `FIATLUX-Remove-v0` | unscrew / remove the seated bulb | 🧱 scaffold (non-RL) |
 | `FIATLUX-Install-v0` | seat a new bulb at the fixture (the at-fixture counterpart of `Insert`) | 🧱 scaffold (non-RL) |
@@ -44,7 +44,8 @@ fiatlux/
 │       ├── base_env_cfg.py      # shared non-RL base env (managers only)
 │       ├── g1_bulb_env_cfg.py   # Insert task MDP (RL, tabletop preset)
 │       ├── climb_env_cfg.py     # Climb task MDP (RL, at-height preset)
-│       ├── *_env_cfg.py         # carry / descend / remove / install scaffolds
+│       ├── carry_env_cfg.py     # Carry task MDP (RL, ladder-positioning preset)
+│       ├── *_env_cfg.py         # descend / remove / install scaffolds
 │       ├── mdp/                 # rewards, events, observations
 │       ├── agents/              # rsl_rl PPO config
 │       └── __init__.py          # gym.register(...) x7
@@ -86,6 +87,13 @@ uv run python scripts/score.py logs/runs/random0
 # 6. Train a policy:
 uv run python scripts/rsl_rl/train.py --task FIATLUX-Insert-v0
 uv run python scripts/rsl_rl/train.py --task FIATLUX-Climb-v0
+
+# 7. Run the GR00T N1.7 model baseline on the benchmark (needs the external
+#    PolicyServer -- setup in journal/specs/groot-sonic-baseline.md):
+uv sync --extra groot
+scripts/groot/serve.sh &   # terminal 1: the VLA server (own venv, HF token required)
+uv run python scripts/eval.py --task FIATLUX-Replace-v0 --policy groot \
+    --episodes 20 --seed 0 --enable_cameras
 ```
 
 ## Sim-to-real

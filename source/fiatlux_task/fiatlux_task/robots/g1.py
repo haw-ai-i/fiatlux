@@ -21,7 +21,7 @@ from isaaclab.assets import ArticulationCfg
 from isaaclab.sim.spawners.from_files.from_files import _spawn_from_usd_file
 from isaaclab.sim.utils import clone
 
-from ..assets import G1_USD
+from ..assets import G1_DEX3_USD, G1_USD
 
 # The Inspire hand is authored with collision meshes that interpenetrate their
 # non-joint-connected neighbors at the default pose (PhysX adjacency filtering
@@ -46,13 +46,12 @@ def _spawn_g1_with_filtered_hand_mounts(prim_path, cfg, translation=None, orient
     for side in ("left", "right"):
         fmt = {"side": side, "S": side[0].upper()}
         for body, targets in _G1_FILTERED_PAIRS.items():
-            api = UsdPhysics.FilteredPairsAPI.Apply(
-                stage.GetPrimAtPath(f"{prim_path}/{body.format(**fmt)}")
-            )
+            api = UsdPhysics.FilteredPairsAPI.Apply(stage.GetPrimAtPath(f"{prim_path}/{body.format(**fmt)}"))
             rel = api.GetFilteredPairsRel()
             for target in targets:
                 rel.AddTarget(f"{prim_path}/{target.format(**fmt)}")
     return prim
+
 
 # ---------------------------------------------------------------------------
 # Joint / body names (standard Unitree G1 naming)
@@ -117,6 +116,59 @@ G1_FINGER_JOINT_PATTERNS = ["[LR]_.*_joint"]
 
 
 # ---------------------------------------------------------------------------
+# Actuator model
+# ---------------------------------------------------------------------------
+
+# Rotor inertia reflected through the gearbox, per Unitree motor type.
+ARMATURE_5020 = 0.003609725
+ARMATURE_7520_14 = 0.010177520
+ARMATURE_7520_22 = 0.025101925
+ARMATURE_4010 = 0.00425
+
+_LEG_STIFFNESS = {".*_hip_.*_joint": 150.0, ".*_knee_joint": 200.0, ".*_ankle_.*_joint": 40.0}
+_LEG_DAMPING = {".*_hip_.*_joint": 2.0, ".*_knee_joint": 4.0, ".*_ankle_.*_joint": 2.0}
+_LEG_EFFORT = {
+    ".*_hip_yaw_joint": 88.0,
+    ".*_hip_roll_joint": 139.0,
+    ".*_hip_pitch_joint": 139.0,
+    ".*_knee_joint": 139.0,
+    ".*_ankle_.*_joint": 50.0,
+}
+_LEG_ARMATURE = {
+    ".*_hip_yaw_joint": ARMATURE_7520_14,
+    ".*_hip_roll_joint": ARMATURE_7520_22,
+    ".*_hip_pitch_joint": ARMATURE_7520_22,
+    ".*_knee_joint": ARMATURE_7520_22,
+    ".*_ankle_.*_joint": 2.0 * ARMATURE_5020,
+}
+_ARM_STIFFNESS = {
+    ".*_shoulder_pitch_joint": 100.0,
+    ".*_shoulder_roll_joint": 100.0,
+    ".*_shoulder_yaw_joint": 50.0,
+    ".*_elbow_joint": 50.0,
+    ".*_wrist_.*_joint": 20.0,
+}
+_ARM_DAMPING = {
+    ".*_shoulder_.*_joint": 2.0,
+    ".*_elbow_joint": 2.0,
+    ".*_wrist_.*_joint": 1.0,
+}
+_ARM_EFFORT = {
+    ".*_shoulder_.*_joint": 25.0,
+    ".*_elbow_joint": 25.0,
+    ".*_wrist_roll_joint": 25.0,
+    ".*_wrist_pitch_joint": 5.0,
+    ".*_wrist_yaw_joint": 5.0,
+}
+_ARM_ARMATURE = {
+    ".*_shoulder_.*_joint": ARMATURE_5020,
+    ".*_elbow_joint": ARMATURE_5020,
+    ".*_wrist_roll_joint": ARMATURE_5020,
+    ".*_wrist_pitch_joint": ARMATURE_4010,
+    ".*_wrist_yaw_joint": ARMATURE_4010,
+}
+
+# ---------------------------------------------------------------------------
 # Articulation config (legged / free base, Inspire hand)
 # ---------------------------------------------------------------------------
 
@@ -136,10 +188,9 @@ G1_INSPIRE_CFG = ArticulationCfg(
         ),
         activate_contact_sensors=True,
     ),
-    # Spawn standing (matching Unitree's reference init): pelvis at ~0.75 m with the
-    # legs slightly bent so the feet rest on the ground.
+    # Spawn standing (feet on the floor at the bent-knee pose; settled height 0.787 m).
     init_state=ArticulationCfg.InitialStateCfg(
-        pos=(0.0, 0.0, 0.75),
+        pos=(0.0, 0.0, 0.79),
         # Only the bent leg joints are listed; every other joint defaults to 0.0.
         # (A ``".*"`` catch-all here would also match these and trip Isaac Lab's
         # one-regex-per-joint resolver in ``resolve_matching_names_values``.)
@@ -149,34 +200,33 @@ G1_INSPIRE_CFG = ArticulationCfg(
             ".*_ankle_pitch_joint": -0.15,
         },
     ),
-    # Disjoint actuator groups covering every joint. Only the right arm + right hand
-    # are driven by policy actions; the rest hold their standing pose. NOTE the arm
-    # regex is anchored to shoulder/elbow/wrist so it does not also grab the right
-    # *leg* joints (which also start with ``right_``).
+    # Disjoint actuator groups covering every joint. NOTE the arm regex is anchored to
+    # shoulder/elbow/wrist so it does not also grab the *leg* joints (which share the
+    # left_/right_ prefix).
     actuators={
         "legs": ImplicitActuatorCfg(
             joint_names_expr=[".*_hip_.*_joint", ".*_knee_joint", ".*_ankle_.*_joint"],
-            effort_limit_sim=300.0,
-            stiffness=200.0,
-            damping=10.0,
+            effort_limit_sim=_LEG_EFFORT,
+            stiffness=_LEG_STIFFNESS,
+            damping=_LEG_DAMPING,
+            armature=_LEG_ARMATURE,
         ),
         "waist": ImplicitActuatorCfg(
             joint_names_expr=["waist_.*_joint"],
-            effort_limit_sim=200.0,
-            stiffness=200.0,
-            damping=10.0,
-        ),
-        "left_arm": ImplicitActuatorCfg(
-            joint_names_expr=["left_(shoulder|elbow|wrist).*_joint"],
-            effort_limit_sim=88.0,
-            stiffness=40.0,
-            damping=2.0,
-        ),
-        "arm": ImplicitActuatorCfg(
-            joint_names_expr=["right_(shoulder|elbow|wrist).*_joint"],
-            effort_limit_sim=88.0,
-            stiffness=150.0,
+            effort_limit_sim={"waist_yaw_joint": 88.0, "waist_(roll|pitch)_joint": 50.0},
+            stiffness=250.0,
             damping=5.0,
+            armature={
+                "waist_yaw_joint": ARMATURE_7520_14,
+                "waist_(roll|pitch)_joint": 2.0 * ARMATURE_5020,
+            },
+        ),
+        "arms": ImplicitActuatorCfg(
+            joint_names_expr=[".*_(shoulder|elbow|wrist).*_joint"],
+            effort_limit_sim=_ARM_EFFORT,
+            stiffness=_ARM_STIFFNESS,
+            damping=_ARM_DAMPING,
+            armature=_ARM_ARMATURE,
         ),
         "hands": ImplicitActuatorCfg(
             joint_names_expr=["[LR]_.*_joint"],
@@ -189,3 +239,64 @@ G1_INSPIRE_CFG = ArticulationCfg(
         ),
     },
 )
+
+
+# ---------------------------------------------------------------------------
+# Articulation config (legged / free base, Dex3 hand)
+# ---------------------------------------------------------------------------
+
+# Dex3 finger joints per hand, in GR00T's REAL_G1 hand-channel order
+# (GR00T-WholeBodyControl ``g1_supplemental_info.py`` ``joint_groups``).
+_DEX3_HAND_ORDER = [
+    "hand_index_0_joint",
+    "hand_index_1_joint",
+    "hand_middle_0_joint",
+    "hand_middle_1_joint",
+    "hand_thumb_0_joint",
+    "hand_thumb_1_joint",
+    "hand_thumb_2_joint",
+]
+G1_DEX3_LEFT_HAND_JOINTS = [f"left_{j}" for j in _DEX3_HAND_ORDER]
+G1_DEX3_RIGHT_HAND_JOINTS = [f"right_{j}" for j in _DEX3_HAND_ORDER]
+G1_DEX3_FINGER_JOINT_PATTERNS = [".*_hand_(thumb|index|middle)_._joint"]
+
+G1_DEX3_CFG = G1_INSPIRE_CFG.replace(
+    spawn=G1_INSPIRE_CFG.spawn.replace(usd_path=G1_DEX3_USD, func=sim_utils.spawn_from_usd),
+    actuators={
+        **{k: v for k, v in G1_INSPIRE_CFG.actuators.items() if k != "hands"},
+        # Unitree Dex3 driver gains (gear_sonic_deploy ``dex3_hands.hpp``); torque
+        # limits come from the URDF/USD.
+        "hands": ImplicitActuatorCfg(
+            joint_names_expr=G1_DEX3_FINGER_JOINT_PATTERNS,
+            stiffness=1.5,
+            damping=0.1,
+        ),
+    },
+)
+
+G1_VARIANTS = {"inspire": G1_INSPIRE_CFG, "dex3": G1_DEX3_CFG}
+_FINGER_PATTERNS_BY_VARIANT = {
+    "inspire": G1_FINGER_JOINT_PATTERNS,
+    "dex3": G1_DEX3_FINGER_JOINT_PATTERNS,
+}
+
+
+def swap_robot_variant(env_cfg, variant: str) -> None:
+    """Swap the scene's G1 hand variant in a parsed env cfg, keeping its placement.
+
+    Reward/termination terms that scope finger joints are re-pointed at the
+    variant's joint names (a regex that matches no joint raises in Isaac Lab's
+    name resolver).
+    """
+    robot = env_cfg.scene.robot
+    env_cfg.scene.robot = G1_VARIANTS[variant].replace(prim_path=robot.prim_path, init_state=robot.init_state)
+    patterns = _FINGER_PATTERNS_BY_VARIANT[variant]
+    for manager_name in ("rewards", "terminations", "events"):
+        manager = getattr(env_cfg, manager_name, None)
+        if manager is None:
+            continue
+        for term_name in dir(manager):
+            term = getattr(manager, term_name)
+            asset_cfg = getattr(term, "params", {}).get("asset_cfg") if hasattr(term, "params") else None
+            if asset_cfg is not None and list(asset_cfg.joint_names or []) == list(G1_FINGER_JOINT_PATTERNS):
+                asset_cfg.joint_names = list(patterns)

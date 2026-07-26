@@ -61,6 +61,7 @@ from fiatlux_task.assets import (
     LADDER_USD,
     SOCKET_SEAT_OFFSET,
     SOCKET_USD,
+    STEP_LADDER_RIGID_USD,
     STEP_LADDER_USD,
     TABLE_USD,
 )
@@ -71,7 +72,8 @@ from fiatlux_task.scenes import DressedSceneCfg, spawn_b1k_single_body
 #    entity's init_state). BEHAVIOR-1K USDs are authored with the origin near the bbox
 #    center, so a prop resting on the floor sits at roughly half its height. Tuned against
 #    scripts/verify_scene.py --record orbit videos; adjust the same way. --
-ROBOT_POSITION = (0.0, 0.0, 0.75)  # G1_INSPIRE_CFG's standing pelvis height
+_ROBOT_Z = G1_INSPIRE_CFG.init_state.pos[2]  # standing pelvis height (feet on the floor)
+ROBOT_POSITION = (0.0, 0.0, _ROBOT_Z)
 # Work-site step ladder (STEP_LADDER_USD, probe: 0.68 wide x 1.11 deep x 1.75 tall, base
 # authored at z=0). Yawed 90 deg so its steps face -x (toward the robot's approach).
 LADDER_POSITION = (1.6, 0.0, 0.0)
@@ -86,7 +88,7 @@ FIXTURE_POSITION = (0.0, 0.0, 2.45)  # hangs overhead in the record camera's fra
 #    so a robot standing inside that footprint spawns with its legs among the
 #    frame members (kN solver wedges the moment anything touches). --
 TABLE_POSITION = (0.40, -0.10, 0.0)  # authored tabletop surface is ~1.0 m above the origin
-TABLETOP_ROBOT_POSITION = (0.60, 0.58, 0.75)
+TABLETOP_ROBOT_POSITION = (0.60, 0.58, _ROBOT_Z)
 TABLETOP_ROBOT_YAW_DEG = -90.0
 # ehjsdz base_link origin sits 0.48 m above the lamp's feet, so z=1.47 rests it on the
 # ~0.99 m tabletop; the bulblampF socket seat is then ~1.50 m (base_link + 3.3 cm).
@@ -97,14 +99,35 @@ TABLETOP_BULB_POSITION = (0.30, 0.18, 1.05)
 #    authored lying/leaning pose (probe: 2.41 long x 1.67 high, bbox bottom at -0.47 ->
 #    pivot z=+0.47 rests it on the floor), robot beside it, work area across the room --
 CARRY_LADDER_POSITION = (-3.2, 1.8, 0.47)  # near the Simple Room wall (~4.5 m out)
-CARRY_ROBOT_POSITION = (-2.4, 1.8, 0.75)  # standing next to the stored ladder
+CARRY_ROBOT_POSITION = (-2.4, 1.8, _ROBOT_Z)  # standing next to the stored ladder
 CARRY_LADDER_YAW_DEG = 90.0  # parallel to the wall
+
+# -- position (ladder-handling) subtask: FIATLUX-Carry-v0. The ladder is the free-standing
+#    Omniverse A-frame step ladder (STEP_LADDER_USD), made DYNAMIC + high-friction + graspable.
+#    It STARTS upright but off-target, a short distance IN FRONT of the robot (the robot
+#    stands back from it); the robot approaches, grasps a rail, and repositions it to the
+#    fixed upright TARGET pose directly under the light. The A-frame's base is authored at
+#    z=0, so start/target z=0. Tuned against verify_scene --record --hold_base (the free
+#    robot collapses under a zero policy). --
+POSITION_ROBOT_POSITION = (-0.20, -0.20, 0.75)
+# Ladder STARTS well out in front, a long distance from the robot AND far from under the
+# fixture; the robot approaches it, then carries it back to the TARGET, which is directly
+# UNDER the ceiling light (the fixture is mounted at TARGET_LADDER_POSITION's x,y on the
+# ceiling). ~2 m robot->ladder, ~1.5 m ladder->light.
+POSITION_LADDER_START_POS = (1.50, 0.85, 0.0)
+POSITION_LADDER_START_YAW = 30.0
+TARGET_LADDER_POSITION = (0.55, -0.30, 0.0)  # directly beneath the ceiling fixture
+LADDER_MASS = 3.0  # modest, so one arm can move it (real step ladders are heavier)
+# The light fixture the positioned ladder leads to is the SAME validated BEHAVIOR-1K lamp +
+# bulb (SOCKET_USD / BULB_USD) the Insert/Replace tasks use, mounted on the ceiling directly
+# above the target and flipped bulb-down -- exactly how apply_replace_preset mounts its
+# ceiling fixture. See apply_position_preset (no OMNI-specific constants needed anymore).
 
 # -- at-height presets (climb / descend): elevated fixture over the ladder. The
 #    chandelier hangs above/behind the ladder's top; positions are tuned against
 #    verify_scene --record orbit videos, same as the floor layout. --
 ELEVATED_SOCKET_POSITION = (1.9, 0.0, 2.80)  # cage bottom clears the at-top robot's head
-CLIMB_ROBOT_POSITION = (0.75, 0.0, 0.75)  # at the step ladder's base, ready to ascend
+CLIMB_ROBOT_POSITION = (0.75, 0.0, _ROBOT_Z)  # at the step ladder's base, ready to ascend
 TOP_ROBOT_POSITION = (1.35, 0.0, 1.85)  # pelvis at the upper steps (descend)
 PARKED_BULB_POSITION = (0.5, -0.6, 0.05)  # out of the way on the floor
 
@@ -236,6 +259,29 @@ def _spawn_usd_as_rigid_body(prim_path, cfg, translation=None, orientation=None)
     if cfg.mass_props is not None:
         UsdPhysics.MassAPI.Apply(prim)
         schemas.modify_mass_properties(prim.GetPath(), cfg.mass_props)
+    return prim
+
+
+@clone
+def _spawn_usd_as_rigid_body_frictional(prim_path, cfg, translation=None, orientation=None):
+    """Tune rigid/mass props on a *preconfigured* rigid asset + bind a high-friction grip material.
+
+    For the graspable ladder in ``FIATLUX-Carry-v0``, whose ``_collision_rigid`` USD already
+    carries a single dynamic ``RigidBodyAPI`` + ``MassAPI``: this only *modifies* the existing
+    body (solver/sleep props, mass override) and creates + binds a high-friction material
+    (``UsdFileCfg`` has no ``physics_material`` field) so it can be held by hand friction -- no
+    weld. (No ``RigidBodyAPI``/``MassAPI`` ``Apply`` needed; the asset ships them.)
+    """
+    from isaaclab.sim.utils import bind_physics_material
+
+    prim = _spawn_from_usd_file(prim_path, cfg.usd_path, cfg, translation, orientation)
+    if cfg.rigid_props is not None:
+        schemas.modify_rigid_body_properties(prim.GetPath(), cfg.rigid_props)
+    if cfg.mass_props is not None:
+        schemas.modify_mass_properties(prim.GetPath(), cfg.mass_props)
+    grip = sim_utils.RigidBodyMaterialCfg(static_friction=1.5, dynamic_friction=1.2, restitution=0.0)
+    grip.func(f"{prim_path}/physicsMaterial", grip)
+    bind_physics_material(prim_path, f"{prim_path}/physicsMaterial")
     return prim
 
 
@@ -408,6 +454,57 @@ def apply_carry_preset(scene: G1ReplaceSceneCfg) -> None:
     scene.ladder.init_state.pos = CARRY_LADDER_POSITION
     scene.ladder.init_state.rot = _quat_z_deg(CARRY_LADDER_YAW_DEG)
     scene.robot.init_state.pos = CARRY_ROBOT_POSITION
+
+
+def apply_position_preset(scene: G1ReplaceSceneCfg) -> None:
+    """Ladder-positioning start (FIATLUX-Carry-v0): a DYNAMIC, high-friction, graspable ladder
+    standing upright out in front of the robot; the robot grasps a rail and carries it to
+    TARGET_LADDER_POSITION, directly beneath the ceiling light fixture. Scored by reusing the
+    Replace task's ladder terms (see carry_env_cfg).
+    """
+    scene.ladder.spawn = sim_utils.UsdFileCfg(
+        usd_path=STEP_LADDER_RIGID_USD,
+        # The A-frame step ladder's PRECONFIGURED `_collision_rigid` variant -- already a single
+        # dynamic RigidBodyAPI + MassAPI, so the spawner does not stamp the rigid body; it just
+        # tunes the solver/mass props on the existing body and binds a high-friction grip
+        # material (UsdFileCfg has no physics_material field). cm-authored -> scale 0.01; mass
+        # overridden below to a modest value so one arm can move it.
+        func=_spawn_usd_as_rigid_body_frictional,
+        scale=(0.01, 0.01, 0.01),
+        rigid_props=sim_utils.RigidBodyPropertiesCfg(
+            kinematic_enabled=False,
+            # High POSITION iters for stable resting contact; LOW velocity iters -- high
+            # velocity-iteration counts make PhysX's TGS solver inject energy and jitter the
+            # ladder at rest (the ">4 velocity iterations" warning). 1 keeps it steady.
+            solver_position_iteration_count=16,
+            solver_velocity_iteration_count=1,
+            max_depenetration_velocity=1.0,
+            sleep_threshold=0.005,
+            stabilization_threshold=0.001,
+        ),
+        mass_props=sim_utils.MassPropertiesCfg(mass=LADDER_MASS),
+    )
+    scene.ladder.init_state.pos = POSITION_LADDER_START_POS
+    scene.ladder.init_state.rot = _quat_z_deg(POSITION_LADDER_START_YAW)
+    scene.robot.init_state.pos = POSITION_ROBOT_POSITION
+    scene.fixture = None
+    # The light fixture the positioned ladder leads to: the SAME validated BEHAVIOR-1K lamp +
+    # bulb the Insert/Replace tasks use (default scene.socket/bulb = SOCKET_USD/BULB_USD via
+    # spawn_b1k_single_body), mounted on the ceiling directly above the target and flipped
+    # bulb-down -- identical to how apply_replace_preset mounts its ceiling fixture. Kinematic:
+    # visual context only (the task target is the ladder pose). The bulb is seated in the
+    # flipped socket with the same seat-offset math (SOCKET_SEAT_OFFSET / BULB_PLUG_OFFSET).
+    fixture_pos = (TARGET_LADDER_POSITION[0], TARGET_LADDER_POSITION[1], ROOM_CEILING_Z)
+    fixture_quat = _quat_y_deg(180.0)
+    scene.socket.init_state.pos = fixture_pos
+    scene.socket.init_state.rot = fixture_quat
+    seat_w = tuple(f + o for f, o in zip(fixture_pos, _rotate_vec(fixture_quat, SOCKET_SEAT_OFFSET)))
+    bulb_pos = tuple(s - o for s, o in zip(seat_w, _rotate_vec(fixture_quat, BULB_PLUG_OFFSET)))
+    scene.bulb.init_state.pos = bulb_pos
+    scene.bulb.init_state.rot = fixture_quat
+    scene.bulb.spawn.rigid_props.kinematic_enabled = True  # overhead context, not the manipuland
+    # hand_contact stays for the net-force obs + compliance penalty; no ladder force-matrix
+    # filter (Carry scores the ladder via the Replace task's pose terms, not a grasp reward).
 
 
 def apply_at_height_preset(scene: G1ReplaceSceneCfg, robot_at: str = "base") -> None:
@@ -654,7 +751,13 @@ def apply_replace_preset(
     )
 
     scene.robot.init_state.pos = (robot_center[0], robot_center[1], ROBOT_POSITION[2])
-    scene.robot.init_state.rot = _quat_z_deg(rng.uniform(0.0, 360.0))
+    # Face the table (the task's first target), +/- a small jitter: the ego camera's
+    # 50 deg frustum must contain the work area or the standard observation mode
+    # cannot see the task at all.
+    facing = math.degrees(
+        math.atan2(table_center[1] - robot_center[1], table_center[0] - robot_center[0])
+    )
+    scene.robot.init_state.rot = _quat_z_deg(facing + rng.uniform(-15.0, 15.0))
     scene.table.init_state.pos = (table_center[0], table_center[1], TABLE_POSITION[2])
     bulb_local_offset = tuple(b - t for b, t in zip(TABLETOP_BULB_POSITION, TABLE_POSITION))
     scene.bulb.init_state.pos = (

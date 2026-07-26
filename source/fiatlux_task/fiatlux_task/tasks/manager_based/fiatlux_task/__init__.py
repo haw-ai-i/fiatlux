@@ -16,13 +16,14 @@ One family, one scene (``scene_cfg.G1ReplaceSceneCfg``), preset layouts per task
   FUNCTIONAL, RL.
 - ``FIATLUX-Climb-v0``   : G1 climbs the step ladder to the fixture height (*at-height*
   preset, whole-body RL). FUNCTIONAL, RL.
-- Workshop-preset scaffolds: G1 + ladder + socket-lamp + bulb on the floor. The five share
+- ``FIATLUX-Carry-v0``   : G1 grasps a ladder and positions it upright at a target (ladder-
+  handling, *carry* preset, arm+hand manipulation RL). FUNCTIONAL, RL.
+- Workshop-preset scaffolds: G1 + ladder + socket-lamp + bulb on the floor. The four share
   the **non-RL** :class:`base_env_cfg.FamilyBaseEnvCfg` base (observation / action / event
   managers only -- no rewards, terminations, or training code yet). They remain as
   development aids, not benchmark targets:
 
   - ``FIATLUX-Base-v0``    : the shared base scene, no task logic (verify_scene.py's default).
-  - ``FIATLUX-Carry-v0``   : grab and position the ladder.
   - ``FIATLUX-Descend-v0`` : bipedal ladder descent.
   - ``FIATLUX-Remove-v0``  : unscrew / remove the seated bulb.
   - ``FIATLUX-Install-v0`` : seat a new bulb at the fixture (the at-fixture counterpart of
@@ -91,9 +92,12 @@ gym.register(
 
 gym.register(
     id="FIATLUX-Carry-v0",
-    entry_point="isaaclab.envs:ManagerBasedEnv",
+    entry_point="isaaclab.envs:ManagerBasedRLEnv",
     disable_env_checker=True,
-    kwargs={"env_cfg_entry_point": f"{__name__}.carry_env_cfg:CarryEnvCfg"},
+    kwargs={
+        "env_cfg_entry_point": f"{__name__}.carry_env_cfg:CarryEnvCfg",
+        "rsl_rl_cfg_entry_point": f"{agents.__name__}.rsl_rl_ppo_cfg:CarryPPORunnerCfg",
+    },
 )
 
 gym.register(

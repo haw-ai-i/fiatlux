@@ -40,7 +40,11 @@ from isaaclab.envs.mdp import (  # noqa: F401
     time_out,
 )
 
-from .events import randomize_light_properties  # noqa: F401
+from .events import (  # noqa: F401
+    randomize_light_properties,
+    randomize_material_tint,
+    randomize_prop_scale,
+)
 from .observations import (  # noqa: F401
     contact_net_forces,
     replace_score_distances,
