@@ -17,8 +17,12 @@ for a SpaceMouse).
 
 import isaaclab.sim as sim_utils
 from isaaclab.controllers.differential_ik_cfg import DifferentialIKControllerCfg
-from isaaclab.devices.device_base import DevicesCfg
+from isaaclab.devices.device_base import DeviceBase, DevicesCfg
 from isaaclab.devices.keyboard import Se3KeyboardCfg
+from isaaclab.devices.openxr import XrCfg
+from isaaclab.devices.openxr.openxr_device import OpenXRDeviceCfg
+from isaaclab.devices.openxr.retargeters.manipulator.gripper_retargeter import GripperRetargeterCfg
+from isaaclab.devices.openxr.retargeters.manipulator.se3_abs_retargeter import Se3AbsRetargeterCfg
 from isaaclab.devices.spacemouse import Se3SpaceMouseCfg
 from isaaclab.envs.mdp.actions.actions_cfg import (
     BinaryJointPositionActionCfg,
@@ -158,7 +162,18 @@ class G1BulbInsertTeleopEnvCfg(G1BulbInsertEnvCfg):
         self.terminations.success = None
         self.terminations.bulb_dropped = None
 
-        # Devices the teleop script (scripts/insert_teleop.py) can instantiate for this env.
+        # XR scene anchor: the sim-world pose (on the floor) that maps to the origin of the headset's
+        # local frame -- i.e. where the scene appears relative to the standing operator. Set near the
+        # robot base so the G1 + tabletop appear in front of the user. NOTE: tune in-headset (position
+        # + yaw of anchor_rot) so the operator faces the table with their hand reaching the props.
+        self.xr = XrCfg(anchor_pos=(0.5, 0.7, 0.0), anchor_rot=(1.0, 0.0, 0.0, 0.0))
+
+        # Devices the teleop script can instantiate for this env. ``handtracking`` drives the same
+        # absolute-IK arm + binary grip via a Meta Quest / Pico headset through CloudXR (see
+        # vr_teleop/vr_teleop_setup.md): Se3AbsRetargeter maps the right-hand wrist pose -> EE target,
+        # GripperRetargeter maps thumb-index pinch -> open/close. Launch with Isaac Lab's
+        # ``scripts/environments/teleoperation/teleop_se3_agent.py --teleop_device handtracking`` (it
+        # auto-enables ``--xr``); keyboard/spacemouse remain for the flat-screen path.
         self.teleop_devices = DevicesCfg(
             devices={
                 "keyboard": Se3KeyboardCfg(
@@ -166,6 +181,22 @@ class G1BulbInsertTeleopEnvCfg(G1BulbInsertEnvCfg):
                 ),
                 "spacemouse": Se3SpaceMouseCfg(
                     pos_sensitivity=0.05, rot_sensitivity=0.05, sim_device=self.sim.device
+                ),
+                "handtracking": OpenXRDeviceCfg(
+                    retargeters=[
+                        Se3AbsRetargeterCfg(
+                            bound_hand=DeviceBase.TrackingTarget.HAND_RIGHT,
+                            zero_out_xy_rotation=True,
+                            use_wrist_rotation=False,
+                            use_wrist_position=True,
+                            sim_device=self.sim.device,
+                        ),
+                        GripperRetargeterCfg(
+                            bound_hand=DeviceBase.TrackingTarget.HAND_RIGHT, sim_device=self.sim.device
+                        ),
+                    ],
+                    sim_device=self.sim.device,
+                    xr_cfg=self.xr,
                 ),
             }
         )
