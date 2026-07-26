@@ -343,9 +343,25 @@ Pico 4 Ultra Enterprise over CloudXR, using Isaac Lab's native OpenXR teleop (`s
   controller pose not published, defaults to origin; (b) Pico **Advanced Tracking Features** /
   controller-pose-tracking (enterprise VST) not enabled — pose tracking off while buttons work;
   (c) general CloudXR-6.2/Pico pose-stream flakiness.
-- **Next steps:** enable Pico "Advanced Tracking Features" (Settings → Developer/Tracking); confirm the
-  controller *model moves* in the headset view; investigate the `processSystemInfo` device-config
-  error; verify with the `[REL] rawpos` debug that the raw pose changes when moved.
+- **First, isolate Pico-side vs CloudXR-side (do this before changing any setting):** in the headset,
+  does the **controller *model* move** when you move the controller?
+  - **Yes (model moves in-headset)** → the Pico is tracking fine; the frozen pose is **CloudXR-side**
+    (the `processSystemInfo` device-config failure / browser bridge). No Pico toggle will fix it —
+    investigate the CloudXR device config, restart the runtime clean (or reboot), re-pair the client.
+  - **No (frozen in-headset too)** → it's a **Pico-side** tracking/permission issue → check the
+    settings below.
+  It worked in one earlier session with no setting change, which points at the **CloudXR-side**
+  (intermittent) cause, not a missing toggle.
+- **Pico requirements the official docs DO state** (check these; "Advanced Tracking Features" from the
+  Google AI summary is *not* confirmed in the IsaacTeleop/CloudXR docs and may describe the separate
+  Unitree pipeline): **Pico OS 15.4.4U+** (Settings → General → About) and **PICO Browser 4.0.40+,
+  "Enterprise enabled"** — the WebXR client runs in that browser, so a non-enterprise / outdated
+  browser can drop the pose stream.
+- **Pico settings worth checking (names vary by OS version):** Settings → Controllers (paired, fresh
+  batteries); Settings → Motion Tracking / Hand & Controller Tracking (on); Settings → General →
+  About → tap Software Version ~7× → Developer; enterprise VST/tracking may be gated by PICO Business
+  Suite / device management (the owning org).
+- **Then verify the fix** with the `[REL] rawpos` debug: raw pose should change when you move.
 
 ### Problem 2 — CloudXR/Isaac-Sim AR session is fragile (only clean right after a reboot)
 - **Symptom:** `Start AR` works on the **first ~2–3 launches after a fresh reboot**, then floods
