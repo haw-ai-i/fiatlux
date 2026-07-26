@@ -44,6 +44,14 @@ from .xr_controller_retargeters import (
     Se3RelControllerRetargeterCfg,
 )
 
+# Left-arm mirror of the right teleop constants (robots/g1.py only defines the right side). Used to
+# add optional bimanual control: the left controller drives the left arm + grip.
+G1_LEFT_ARM_JOINTS = [j.replace("right_", "left_", 1) for j in G1_ARM_JOINTS]
+G1_LEFT_EE_BODY = "left_wrist_yaw_link"
+G1_LEFT_HAND_JOINTS = [j.replace("R_", "L_", 1) for j in G1_HAND_JOINTS]
+G1_LEFT_HAND_OPEN = dict.fromkeys(G1_LEFT_HAND_JOINTS, 0.0)
+G1_LEFT_HAND_GRASP = {k.replace("R_", "L_", 1): v for k, v in G1_HAND_GRASP.items()}
+
 
 @clone
 def _spawn_omni_rigid(prim_path, cfg, translation=None, orientation=None):
@@ -160,6 +168,26 @@ class G1BulbInsertTeleopEnvCfg(G1BulbInsertEnvCfg):
             close_command_expr=G1_HAND_GRASP,
         )
 
+        # LEFT arm + grip (optional bimanual): mirror of the right actions on the left limb, so the
+        # left controller can drive the left hand. Added AFTER the right actions, so the action tensor
+        # is [right_arm(7), right_grip(1), left_arm(7), left_grip(1)] -- matching the controller_rel
+        # device's retargeter order (ActionManager iterates cfg fields in insertion order).
+        self.actions.left_arm_action = DifferentialInverseKinematicsActionCfg(
+            asset_name="robot",
+            joint_names=G1_LEFT_ARM_JOINTS,
+            body_name=G1_LEFT_EE_BODY,
+            controller=DifferentialIKControllerCfg(
+                command_type="pose", use_relative_mode=False, ik_method="dls"
+            ),
+            scale=1.0,
+        )
+        self.actions.left_hand_action = BinaryJointPositionActionCfg(
+            asset_name="robot",
+            joint_names=G1_LEFT_HAND_JOINTS,
+            open_command_expr=G1_LEFT_HAND_OPEN,
+            close_command_expr=G1_LEFT_HAND_GRASP,
+        )
+
         # Teleop is operator-paced: disable ALL automatic terminations. Isaac Lab's env.step()
         # auto-resets any terminated env internally, so without this the scene would reset itself
         # out from under the operator -- on the 15 s time-out, on an accidental bulb knock/drop
@@ -228,12 +256,26 @@ class G1BulbInsertTeleopEnvCfg(G1BulbInsertEnvCfg):
                 # Pick with ``--teleop_device controller_rel``.
                 "controller_rel": OpenXRDeviceCfg(
                     retargeters=[
+                        # RIGHT arm + grip (defaults start from the right rest pose).
                         Se3RelControllerRetargeterCfg(
                             bound_hand=DeviceBase.TrackingTarget.HAND_RIGHT,
                             sim_device=self.sim.device,
                         ),
                         ControllerGripperRetargeterCfg(
                             bound_hand=DeviceBase.TrackingTarget.HAND_RIGHT, sim_device=self.sim.device
+                        ),
+                        # LEFT arm + grip (bimanual): left controller drives the left EE, starting from
+                        # the probed left rest pose; workspace shifted to the left arm's reach (x~0.65).
+                        Se3RelControllerRetargeterCfg(
+                            bound_hand=DeviceBase.TrackingTarget.HAND_LEFT,
+                            initial_position=(0.6497, 0.5043, 0.8242),
+                            initial_orientation=(0.7086, 0.05, 0.0479, -0.7022),
+                            workspace_min=(0.35, 0.05, 0.78),
+                            workspace_max=(0.85, 0.60, 1.10),
+                            sim_device=self.sim.device,
+                        ),
+                        ControllerGripperRetargeterCfg(
+                            bound_hand=DeviceBase.TrackingTarget.HAND_LEFT, sim_device=self.sim.device
                         ),
                     ],
                     sim_device=self.sim.device,
