@@ -134,9 +134,10 @@ class G1BulbInsertTeleopEnvCfg(G1BulbInsertEnvCfg):
         self.scene.bulb.init_state.pos = (0.34, 0.24, 0.93)
         self.scene.bulb.init_state.rot = upright
 
-        # Stiffen the arm for crisp IK tracking (gravity stays ON -- realistic for physics testing).
-        self.scene.robot.actuators["arms"].stiffness = 2000.0
-        self.scene.robot.actuators["arms"].damping = 100.0
+        # NOTE: use the robot's tuned per-joint arm gains (_ARM_STIFFNESS/_ARM_DAMPING/_ARM_ARMATURE
+        # from robots/g1.py). A previous blanket override (stiffness=2000, damping=100) replaced those
+        # per-joint dicts with uniform values while leaving the tuned armature in place -- the
+        # stiffness/armature mismatch made the IK arm oscillate ("random" motion) even holding still.
 
         # Arm: ABSOLUTE EE pose IK. Relative mode re-anchors to the *current* pose each step, so a
         # compliant arm ratchets/drifts (it never actively returns to a target); absolute mode holds

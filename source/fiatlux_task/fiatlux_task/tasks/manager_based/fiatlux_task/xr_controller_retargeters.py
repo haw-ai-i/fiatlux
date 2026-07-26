@@ -149,6 +149,7 @@ class Se3RelControllerRetargeter(RetargeterBase):
         self._lo = np.array(cfg.workspace_min, dtype=np.float32)
         self._hi = np.array(cfg.workspace_max, dtype=np.float32)
         self._max_step = cfg.max_step
+        self._deadzone = cfg.deadzone
         self._pos = self._init_pos.copy()
         self._prev: np.ndarray | None = None
 
@@ -161,17 +162,29 @@ class Se3RelControllerRetargeter(RetargeterBase):
 
     def retarget(self, data: dict) -> torch.Tensor:
         arr = data.get(self._target)
+        _rawcur = None
+        _moved = 0.0
         if arr is not None and np.size(arr) >= _CTRL_ELEMS:
             cur = np.asarray(arr, dtype=np.float32).reshape(2, 7)[0, :3]
-            if self._prev is not None:
-                delta = (cur - self._prev) * self._scale
-                # Reject tracking spikes: cap the per-frame step so a lost/re-acquired controller
-                # can't teleport the target. Normal hand motion is well under this per 60Hz frame.
-                n = float(np.linalg.norm(delta))
-                if n > self._max_step:
-                    delta = delta * (self._max_step / n)
-                self._pos = np.clip(self._pos + delta, self._lo, self._hi)
-            self._prev = cur
+            _rawcur = cur.round(3).tolist()
+            if self._prev is None:
+                self._prev = cur
+            else:
+                raw = cur - self._prev
+                # Deadzone: hold the reference (and the target) until the controller moves past a
+                # small threshold, so idle jitter/noise can't drift the arm ("moves when still").
+                if float(np.linalg.norm(raw)) >= self._deadzone:
+                    delta = raw * self._scale
+                    n = float(np.linalg.norm(delta))
+                    if n > self._max_step:  # cap per-frame step -> reject tracking spikes
+                        delta = delta * (self._max_step / n)
+                    self._pos = np.clip(self._pos + delta, self._lo, self._hi)
+                    _moved = float(np.linalg.norm(delta))
+                    self._prev = cur  # re-reference only on deliberate motion
+        # DEBUG (temporary): raw controller pos (does it change when you move?), step, target.
+        self._dbg = getattr(self, "_dbg", 0) + 1
+        if self._dbg % 20 == 0:
+            print(f"[REL] rawpos={_rawcur} moved={_moved:.4f} target={self._pos.round(3).tolist()}", flush=True)
         cmd = np.concatenate([self._pos, self._init_quat]).astype(np.float32)
         return torch.tensor(cmd, dtype=torch.float32, device=self._sim_device)
 
@@ -181,8 +194,9 @@ class Se3RelControllerRetargeterCfg(RetargeterCfg):
     """Configuration for :class:`Se3RelControllerRetargeter` (workspace defaults suit the Insert task)."""
 
     bound_hand: DeviceBase.TrackingTarget = DeviceBase.TrackingTarget.HAND_RIGHT
-    position_scale: float = 1.0
-    max_step: float = 0.03  # max EE target move per frame (m); rejects controller tracking spikes
+    position_scale: float = 2.0  # controller motion is small in sim units; amplify so the arm follows
+    max_step: float = 0.08  # max EE target move per frame (m); rejects controller tracking spikes
+    deadzone: float = 0.004  # ignore controller moves below this (m) so idle jitter can't drift the arm
     # G1 right-hand (right_wrist_yaw_link) REST pose, probed from the env: a reachable start so the
     # IK holds a feasible wrist angle instead of flailing at an infeasible identity quat. Orientation
     # stays fixed (position-only control for now); the operator nudges the EE from here to the props.
