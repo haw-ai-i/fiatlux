@@ -337,12 +337,26 @@ Pico 4 Ultra Enterprise over CloudXR, using Isaac Lab's native OpenXR teleop (`s
 - **Symptom:** the right controller's *position* reads **frozen at the anchor origin** (e.g.
   `[0.5, 0.7, 0.0]`) even while the operator moves it in big arcs; the *trigger* still works (grasp
   ok). So the arm has no position data to follow. Worked in one earlier session; dead in others.
-- **Evidence:** `[REL] rawpos=[0.5,0.7,0.0] moved=0.0000` while moving; CloudXR `cxr_server` log shows
-  `ERROR [processSystemInfo] Making device configuration` this session.
-- **Probable causes:** (a) CloudXR device-configuration failure this session (the error above) →
-  controller pose not published, defaults to origin; (b) Pico **Advanced Tracking Features** /
-  controller-pose-tracking (enterprise VST) not enabled — pose tracking off while buttons work;
-  (c) general CloudXR-6.2/Pico pose-stream flakiness.
+- **Evidence + NARROWED (confirmed CloudXR-side):** the controller **model moves in-headset** (Pico
+  tracks fine) AND CloudXR **is receiving poses** — `cxr_server` shows continuous `DevicePoseInterval
+  ~15.5ms` / `PoseInterarrivalTime ~15.7ms`. Yet `[REL] rawpos` stays frozen at the anchor origin. So
+  the pose reaches CloudXR but is **not forwarded to the OpenXR app** (Isaac Lab's
+  `_query_controller` → `get_virtual_world_pose()` returns identity/origin). The break is the
+  `cxr_server` line **`ERROR [processSystemInfo] Making device configuration`**, which fires
+  immediately after the client SystemInfo advertising **`body_tracking: true, controller_haptics:
+  true`** (then logs "Processed SystemInfo successfully" — so the failed sub-config is silently
+  swallowed). Not a Pico setting (model moves); not our retargeter (it reads what it's given).
+- **Probable causes:** (a) CloudXR 6.2 fails to build the controller **pose** device config for the
+  Pico `bytedance/pico4_controller` profile (only inputs/haptics get wired, not the 6-DoF pose) — the
+  Isaac Lab CloudXR path is designed for Apple Vision Pro *hand tracking* + CloudXR 5.0; Pico
+  web-client **controllers** are "early access" and may be incompletely plumbed to OpenXR; (b) the
+  client's `body_tracking: true` advertisement trips the device-config builder. It worked in ONE early
+  session, so it's intermittent — a warm/degraded runtime state may also contribute.
+- **Next-session investigation (CloudXR-side):** diff a working-vs-frozen session's `processSystemInfo`
+  block; see if the Pico web client can be told NOT to advertise body tracking (URL param / setting);
+  check whether the controller pose is meant to arrive via `NV_CXR_ENABLE_PUSH_DEVICES` and whether
+  that path is configured for controllers; consider Isaac Lab's own Docker CloudXR runtime (the
+  documented/tested one) instead of isaacteleop's 6.2 for the app-facing device config.
 - **First, isolate Pico-side vs CloudXR-side (do this before changing any setting):** in the headset,
   does the **controller *model* move** when you move the controller?
   - **Yes (model moves in-headset)** → the Pico is tracking fine; the frozen pose is **CloudXR-side**
