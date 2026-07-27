@@ -164,7 +164,19 @@ class Se3RelControllerRetargeter(RetargeterBase):
         # unreachable -> the arm hunts upward and oscillates even for a dead-constant command.
         rq = cfg.root_quat  # (w, x, y, z)
         self._root_pos = np.array(cfg.root_pos, dtype=np.float32)
-        self._root_R_T = Rotation.from_quat([rq[1], rq[2], rq[3], rq[0]]).as_matrix().T.astype(np.float32)
+        self._root_R = Rotation.from_quat([rq[1], rq[2], rq[3], rq[0]])  # root (pelvis) orientation in world
+        self._root_R_T = self._root_R.as_matrix().T.astype(np.float32)
+        # Orientation tracking (clutch-gated): the controller's rotation drives the wrist. The IK command
+        # orientation is in the ROOT frame but the controller quat is WORLD, so the incremental rotation is
+        # conjugated into the root frame before being applied. Starts from the fixed root-frame rest quat
+        # and "ratchets" like position (release clutch -> hold; re-grip -> continue from where it is).
+        self._enable_rot = cfg.enable_rotation
+        self._rot_deadzone = cfg.rot_deadzone
+        self._rot_max_step = cfg.rot_max_step
+        iq = cfg.initial_orientation  # (w, x, y, z)
+        self._init_R = Rotation.from_quat([iq[1], iq[2], iq[3], iq[0]])
+        self._quat_R = self._init_R  # current EE orientation command (root frame)
+        self._prev_cq: Rotation | None = None
         self._pos = self._init_pos.copy()
         self._prev: np.ndarray | None = None
         self._smooth: np.ndarray | None = None
@@ -178,6 +190,8 @@ class Se3RelControllerRetargeter(RetargeterBase):
         self._prev = None
         self._smooth = None
         self._reject = 0
+        self._quat_R = self._init_R
+        self._prev_cq = None
 
     def retarget(self, data: dict) -> torch.Tensor:
         arr = data.get(self._target)
@@ -201,6 +215,7 @@ class Se3RelControllerRetargeter(RetargeterBase):
                 self._prev = None
                 self._smooth = None
                 self._reject = 0
+                self._prev_cq = None
             else:
                 # EMA-smooth the raw controller pose first: CloudXR controller tracking jitters/spikes
                 # hard under motion (~0.9 m frame-to-frame swings observed), and following it raw makes
@@ -237,15 +252,32 @@ class Se3RelControllerRetargeter(RetargeterBase):
                         self._prev = sm.copy()
                     else:
                         self._reject = 0  # inside deadzone: hold, keep the reference
-        # Transform the accumulated WORLD-frame target into the ROOT frame the IK expects. Orientation
-        # is already given in the root frame (fixed), so only the position needs transforming.
+                # Orientation: track the controller's rotation (clutch-gated), applied in the root frame.
+                if self._enable_rot:
+                    cq = Rotation.from_quat([a2[0, 4], a2[0, 5], a2[0, 6], a2[0, 3]])  # ctrl quat wxyz->xyzw
+                    if self._prev_cq is None:
+                        self._prev_cq = cq
+                    else:
+                        dqw = cq * self._prev_cq.inv()  # world-frame incremental rotation since last frame
+                        ang = float(dqw.magnitude())
+                        if ang >= self._rot_deadzone:  # ignore tiny rotation (jitter); hold ref below it
+                            if ang > self._rot_max_step:  # cap per-frame rotation -> reject glitch spikes
+                                dqw = Rotation.from_rotvec(dqw.as_rotvec() * (self._rot_max_step / ang))
+                            dqr = self._root_R.inv() * dqw * self._root_R  # express the delta in root frame
+                            self._quat_R = dqr * self._quat_R  # rotate the EE orientation
+                            self._prev_cq = cq  # re-reference only on deliberate rotation
+        # Transform the accumulated WORLD-frame target into the ROOT frame the IK expects; the EE
+        # orientation is tracked from the controller (self._quat_R), both already in the root frame.
         pos_root = self._root_R_T @ (self._pos - self._root_pos)
-        # DEBUG (temporary): raw controller pos, clutch, per-frame smoothed jump, reject, step, target.
+        oq = self._quat_R.as_quat()  # scipy returns [x, y, z, w]
+        out_quat = np.array([oq[3], oq[0], oq[1], oq[2]], dtype=np.float32)  # -> [w, x, y, z] for the cmd
+        # DEBUG (temporary): raw pos, clutch, jump, reject, step, target, wrist rotation from rest (deg).
         self._dbg = getattr(self, "_dbg", 0) + 1
         if self._dbg % 5 == 0:
+            _rotdeg = float((self._quat_R * self._init_R.inv()).magnitude()) * 57.29578
             print(f"[REL] raw={_rawcur} clutch={int(_clutched)} jump={_jump:.3f} rej={int(_rej)} "
-                  f"moved={_moved:.4f} tgt_w={self._pos.round(3).tolist()}", flush=True)
-        cmd = np.concatenate([pos_root, self._init_quat]).astype(np.float32)
+                  f"moved={_moved:.4f} tgt_w={self._pos.round(3).tolist()} rot={_rotdeg:.1f}deg", flush=True)
+        cmd = np.concatenate([pos_root, out_quat]).astype(np.float32)
         return torch.tensor(cmd, dtype=torch.float32, device=self._sim_device)
 
 
@@ -268,6 +300,11 @@ class Se3RelControllerRetargeterCfg(RetargeterCfg):
     smoothing_alpha: float = 0.35  # EMA weight on the newest reading (lower = smoother, more lag; 1.0 = off)
     max_jump: float = 0.20  # per-frame smoothed jump (m) above which the reading is a glitch -> reject
     max_reject: int = 15  # consecutive rejects before assuming a real relocation and re-referencing
+    # Wrist rotation: controller twist -> EE orientation (clutch-gated, in the root frame). Off = the
+    # orientation stays locked to ``initial_orientation`` (position-only, the original stable behaviour).
+    enable_rotation: bool = True
+    rot_deadzone: float = 0.02  # rad (~1.1 deg) per frame; ignore smaller rotation (jitter)
+    rot_max_step: float = 0.10  # rad (~5.7 deg) per-frame cap; rejects rotation glitch spikes
     # Robot ROOT (pelvis) pose in WORLD, probed from the env: base of the world->root transform applied
     # to the output. G1 base is static, so these are constants. quat is (w, x, y, z).
     root_pos: tuple[float, float, float] = (0.5, 0.7, 0.75)

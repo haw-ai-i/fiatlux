@@ -173,12 +173,17 @@ python scripts/xr_teleop.py --task FIATLUX-Insert-Teleop-v0 --teleop_device cont
   was oscillating because it fed WORLD poses to a ROOT-frame IK (see Problem 4); (2) **clutch** (grip
   gates motion); (3) **untracked/origin-pose rejection** (`min_valid_z`); (4) **EMA smoothing +
   spike-rejection** for CloudXR controller jitter; (5) **1:1 scale**; (6) connect via **Port 48322 +
-  SAN cert + `--host-client`** (see Run recipe). Fixed-orientation wrist for now (rotation = TODO).
+  SAN cert + `--host-client`** (see Run recipe).
 - ✅ **Reset now fully resets.** `OpenXRDevice.reset()` resets only its head/hand caches, NOT the
   retargeters — so the accumulated EE target survived a reset and the IK drove the arm on its own
   after `R`. `xr_teleop.py` now also resets every retargeter (`_pos`→rest, refs cleared) on reset.
-- ⏳ **Wrist rotation = TODO** (deliberately locked to a feasible fixed orientation for stability;
-  adding controller-rotation→wrist is the next enhancement, expect jitter tuning).
+- ✅ **Wrist rotation works (confirmed live "perfect").** Controller twist → wrist, clutch-gated,
+  applied in the root frame (`dq_root = R_root⁻¹·dq_world·R_root`), with a rotational deadzone +
+  per-frame cap; ratchets like position. Full 6-DoF now (`command_type="pose"`). Toggle via
+  `Se3RelControllerRetargeterCfg.enable_rotation`; tune `rot_deadzone`/`rot_max_step` if ever twitchy.
+- ✅ **One-command restart:** `bash scripts/restart_xr_teleop.sh` does the full clean cycle (kill sim
+  + runtime, clear shm/run-state, start runtime `--host-client` + sim, wait, print connect steps).
+  Needed because reconnecting a headset to a stale session degrades the CloudXR pose stream.
 - ✅ env cfg + `xr_teleop.py` written; headless env load verified.
 - ✅ Launches to `Teleop ready`; the `handtracking` `OpenXRDevice` initializes ("Using teleop device:
   OpenXR Hand Tracking Device"). Fixed a latent Isaac Lab bug on the way: `remove_camera_configs`
