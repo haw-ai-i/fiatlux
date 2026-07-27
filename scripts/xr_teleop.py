@@ -175,8 +175,18 @@ def main() -> None:
     teleop_interface = create_teleop_device(args_cli.teleop_device, env_cfg.teleop_devices.devices, callbacks)
     print(f"Using teleop device: {teleop_interface}")
 
+    def _reset_teleop() -> None:
+        # Full reset. OpenXRDevice.reset() does NOT reset its retargeters, so the accumulated EE
+        # target (Se3RelControllerRetargeter._pos) and its motion references survive a reset. After
+        # env.reset() puts the arm at its default pose, a stale target makes the IK drive the arm on
+        # its own ("moves when the controller isn't moving / doesn't fully reset"). Reset both.
+        teleop_interface.reset()
+        for _rt in getattr(teleop_interface, "_retargeters", None) or []:
+            if hasattr(_rt, "reset"):
+                _rt.reset()
+
     env.reset()
-    teleop_interface.reset()
+    _reset_teleop()
     print(
         "Teleop ready. In the Isaac Sim UI: open the AR panel (OpenXR / System OpenXR Runtime) and "
         "click 'Start AR', then connect the headset. Press 'R' to reset."
@@ -196,7 +206,7 @@ def main() -> None:
                 if should_reset:
                     should_reset = False
                     env.reset()
-                    teleop_interface.reset()
+                    _reset_teleop()
                     print("Environment reset complete")
         except KeyboardInterrupt:
             break

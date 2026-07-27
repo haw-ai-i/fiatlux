@@ -150,8 +150,25 @@ class Se3RelControllerRetargeter(RetargeterBase):
         self._hi = np.array(cfg.workspace_max, dtype=np.float32)
         self._max_step = cfg.max_step
         self._deadzone = cfg.deadzone
+        self._min_valid_z = cfg.min_valid_z
+        self._clutch_idx = cfg.clutch_button_idx
+        self._clutch_threshold = cfg.clutch_threshold
+        self._alpha = cfg.smoothing_alpha
+        self._max_jump = cfg.max_jump
+        self._max_reject = cfg.max_reject
+        # World->root transform. The IK action interprets its command in the robot ROOT (pelvis) frame
+        # (isaaclab task_space_actions._compute_frame_pose -> subtract_frame_transforms(root, ee)), but
+        # controller poses / init / workspace here are all WORLD frame. The G1 base is effectively
+        # static (torso drift < 1 mm), so bake the transform as a constant: pos_root = R^T (pos_w - t).
+        # Without this the IK reads a world z~0.83 as a root z, demanding the hand ~0.79 m too high ->
+        # unreachable -> the arm hunts upward and oscillates even for a dead-constant command.
+        rq = cfg.root_quat  # (w, x, y, z)
+        self._root_pos = np.array(cfg.root_pos, dtype=np.float32)
+        self._root_R_T = Rotation.from_quat([rq[1], rq[2], rq[3], rq[0]]).as_matrix().T.astype(np.float32)
         self._pos = self._init_pos.copy()
         self._prev: np.ndarray | None = None
+        self._smooth: np.ndarray | None = None
+        self._reject = 0
 
     def get_requirements(self) -> list[RetargeterBase.Requirement]:
         return [RetargeterBase.Requirement.MOTION_CONTROLLER]
@@ -159,33 +176,76 @@ class Se3RelControllerRetargeter(RetargeterBase):
     def reset(self) -> None:
         self._pos = self._init_pos.copy()
         self._prev = None
+        self._smooth = None
+        self._reject = 0
 
     def retarget(self, data: dict) -> torch.Tensor:
         arr = data.get(self._target)
         _rawcur = None
         _moved = 0.0
+        _jump = 0.0
+        _clutched = False
+        _rej = False
         if arr is not None and np.size(arr) >= _CTRL_ELEMS:
-            cur = np.asarray(arr, dtype=np.float32).reshape(2, 7)[0, :3]
+            a2 = np.asarray(arr, dtype=np.float32).reshape(2, 7)
+            cur = a2[0, :3]
+            _clutched = float(a2[1, self._clutch_idx]) >= self._clutch_threshold
             _rawcur = cur.round(3).tolist()
-            if self._prev is None:
-                self._prev = cur
+            if cur[2] < self._min_valid_z or not _clutched:
+                # Don't accumulate when (a) the pose is untracked/frozen -- an untracked controller
+                # reads the anchor origin (z~0) while a held one is ~1 m up -- or (b) the clutch button
+                # is released. Either way HOLD the target and drop all references, so when tracking + a
+                # held clutch resume, motion re-references cleanly instead of jumping/drifting. The
+                # clutch is the "moves when I'm not moving it" fix: set the controller down (release
+                # clutch) and the arm freezes no matter how much the CloudXR pose wanders.
+                self._prev = None
+                self._smooth = None
+                self._reject = 0
             else:
-                raw = cur - self._prev
-                # Deadzone: hold the reference (and the target) until the controller moves past a
-                # small threshold, so idle jitter/noise can't drift the arm ("moves when still").
-                if float(np.linalg.norm(raw)) >= self._deadzone:
-                    delta = raw * self._scale
-                    n = float(np.linalg.norm(delta))
-                    if n > self._max_step:  # cap per-frame step -> reject tracking spikes
-                        delta = delta * (self._max_step / n)
-                    self._pos = np.clip(self._pos + delta, self._lo, self._hi)
-                    _moved = float(np.linalg.norm(delta))
-                    self._prev = cur  # re-reference only on deliberate motion
-        # DEBUG (temporary): raw controller pos (does it change when you move?), step, target.
+                # EMA-smooth the raw controller pose first: CloudXR controller tracking jitters/spikes
+                # hard under motion (~0.9 m frame-to-frame swings observed), and following it raw makes
+                # the arm whack around. Smoothing tames high-frequency noise; deltas come from the
+                # smoothed signal.
+                if self._smooth is None:
+                    self._smooth = cur.copy()
+                else:
+                    self._smooth = self._alpha * cur + (1.0 - self._alpha) * self._smooth
+                sm = self._smooth
+                if self._prev is None:
+                    self._prev = sm.copy()
+                else:
+                    raw = sm - self._prev
+                    _jump = float(np.linalg.norm(raw))
+                    if _jump > self._max_jump:
+                        # Implausible one-frame teleport = tracking glitch. Reject it (hold target, keep
+                        # the last good reference) so a spike can't fling the arm. If it persists for many
+                        # frames the controller genuinely relocated -> re-reference to resume control.
+                        self._reject += 1
+                        _rej = True
+                        if self._reject >= self._max_reject:
+                            self._prev = sm.copy()
+                            self._reject = 0
+                    elif _jump >= self._deadzone:
+                        # Deadzone: only deliberate motion past the threshold moves the arm.
+                        self._reject = 0
+                        delta = raw * self._scale
+                        n = float(np.linalg.norm(delta))
+                        if n > self._max_step:  # cap per-frame step
+                            delta = delta * (self._max_step / n)
+                        self._pos = np.clip(self._pos + delta, self._lo, self._hi)
+                        _moved = float(np.linalg.norm(delta))
+                        self._prev = sm.copy()
+                    else:
+                        self._reject = 0  # inside deadzone: hold, keep the reference
+        # Transform the accumulated WORLD-frame target into the ROOT frame the IK expects. Orientation
+        # is already given in the root frame (fixed), so only the position needs transforming.
+        pos_root = self._root_R_T @ (self._pos - self._root_pos)
+        # DEBUG (temporary): raw controller pos, clutch, per-frame smoothed jump, reject, step, target.
         self._dbg = getattr(self, "_dbg", 0) + 1
-        if self._dbg % 20 == 0:
-            print(f"[REL] rawpos={_rawcur} moved={_moved:.4f} target={self._pos.round(3).tolist()}", flush=True)
-        cmd = np.concatenate([self._pos, self._init_quat]).astype(np.float32)
+        if self._dbg % 5 == 0:
+            print(f"[REL] raw={_rawcur} clutch={int(_clutched)} jump={_jump:.3f} rej={int(_rej)} "
+                  f"moved={_moved:.4f} tgt_w={self._pos.round(3).tolist()}", flush=True)
+        cmd = np.concatenate([pos_root, self._init_quat]).astype(np.float32)
         return torch.tensor(cmd, dtype=torch.float32, device=self._sim_device)
 
 
@@ -194,14 +254,30 @@ class Se3RelControllerRetargeterCfg(RetargeterCfg):
     """Configuration for :class:`Se3RelControllerRetargeter` (workspace defaults suit the Insert task)."""
 
     bound_hand: DeviceBase.TrackingTarget = DeviceBase.TrackingTarget.HAND_RIGHT
-    position_scale: float = 2.0  # controller motion is small in sim units; amplify so the arm follows
+    position_scale: float = 1.0  # controller pose is in metres; 1:1 maps hand motion to EE motion 1-for-1
     max_step: float = 0.08  # max EE target move per frame (m); rejects controller tracking spikes
     deadzone: float = 0.004  # ignore controller moves below this (m) so idle jitter can't drift the arm
-    # G1 right-hand (right_wrist_yaw_link) REST pose, probed from the env: a reachable start so the
-    # IK holds a feasible wrist angle instead of flailing at an infeasible identity quat. Orientation
-    # stays fixed (position-only control for now); the operator nudges the EE from here to the props.
+    min_valid_z: float = 0.3  # reject poses below this height (m): an untracked controller reads the
+    # anchor origin (z~0); a real held controller is ~1 m up. Guards against the frozen/origin pose.
+    # Clutch (dead-man's switch): the arm only tracks while this button is held, so setting the
+    # controller down freezes the arm regardless of tracking jitter. idx 3 = grip/squeeze (idx 2 =
+    # trigger, reserved for grasp). Threshold on the analog value.
+    clutch_button_idx: int = 3
+    clutch_threshold: float = 0.5
+    # Input conditioning for jittery CloudXR controller tracking:
+    smoothing_alpha: float = 0.35  # EMA weight on the newest reading (lower = smoother, more lag; 1.0 = off)
+    max_jump: float = 0.20  # per-frame smoothed jump (m) above which the reading is a glitch -> reject
+    max_reject: int = 15  # consecutive rejects before assuming a real relocation and re-referencing
+    # Robot ROOT (pelvis) pose in WORLD, probed from the env: base of the world->root transform applied
+    # to the output. G1 base is static, so these are constants. quat is (w, x, y, z).
+    root_pos: tuple[float, float, float] = (0.5, 0.7, 0.75)
+    root_quat: tuple[float, float, float, float] = (0.7071, 0.0, 0.0, -0.7071)
+    # G1 right-hand (right_wrist_yaw_link) REST pose. ``initial_position``/``workspace_*`` are WORLD
+    # frame (the accumulator + clamp work in world, matching the controller poses). ``initial_orientation``
+    # is the fixed EE orientation expressed in the ROOT frame (what the IK command wants), probed as the
+    # right-hand rest orientation in root frame -> a feasible wrist so the IK settles instead of flailing.
     initial_position: tuple[float, float, float] = (0.351, 0.499, 0.833)
-    initial_orientation: tuple[float, float, float, float] = (0.706, 0.021, 0.023, -0.7075)  # w,x,y,z
+    initial_orientation: tuple[float, float, float, float] = (0.998, -0.006, 0.059, 0.001)  # w,x,y,z (root)
     workspace_min: tuple[float, float, float] = (0.15, 0.05, 0.78)  # spans rest + the tabletop props
     workspace_max: tuple[float, float, float] = (0.65, 0.60, 1.10)
     retargeter_type: type[RetargeterBase] = Se3RelControllerRetargeter

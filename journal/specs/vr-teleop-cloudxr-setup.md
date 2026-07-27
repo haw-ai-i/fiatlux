@@ -136,14 +136,49 @@ source ~/.cloudxr/run/cloudxr.env          # sets XR_RUNTIME_JSON -> CloudXR
 cd ~/robotica_project/fiatlux/fiatlux
 export PYTHONPATH=$PWD/source/fiatlux_task
 export DISPLAY=:1001                        # NX display (GUI needed for the AR panel)
-python scripts/xr_teleop.py --task FIATLUX-Insert-Teleop-v0 --teleop_device handtracking
+python scripts/xr_teleop.py --task FIATLUX-Insert-Teleop-v0 --teleop_device controller_rel
 ```
-Then in the Isaac Sim UI: **AR panel** → Output Plugin **OpenXR**, Runtime **System OpenXR Runtime**
-→ **Start AR** (viewport shows two eyes). Connect the Pico web client
-(`https://100.112.32.21:48322/client/`) → the fiatlux scene renders in the headset. Press **Play**
-in the headset UI (or `R` to reset) and move your right hand to drive the G1.
+**Connect the Pico (the exact steps that work — ✅ confirmed 2026-07-26):**
+1. In the Isaac Sim UI: **AR panel** → Output Plugin **OpenXR**, Runtime **System OpenXR Runtime** →
+   **Start AR**.
+2. On the Pico browser open `https://100.112.32.21:48322/client/` → cert warning → **Advanced →
+   Proceed** (the cert now carries the tailnet IP in its SAN, so it's bypassable, not a hard block).
+3. In the client Settings: **Device Profile = Pico 4 Ultra**, **Server IP = 100.112.32.21**,
+   **Port = 48322** ⬅ **CRITICAL: NOT the default 49100.** 49100 is the raw CloudXR backend (no TLS);
+   the browser must hit the **WSS proxy on 48322**, which terminates TLS and bridges to 49100.
+4. Tap **Connect** → the fiatlux scene streams to the headset.
+5. Drive: **hold grip** on a controller to move that arm (release = freeze/clutch), **trigger** =
+   grasp. Left controller → left arm, right → right arm. `R` = full reset.
+
+**Gotchas that cost hours (all fixed/worked-around):**
+- **Port 48322 not 49100** (above) — the single biggest connect blocker.
+- **`--host-client`** is required or nothing serves the web page on 48322 (`run()` alone only starts
+  49100/47998). The runtime prints the LAN URL (`10.94.22.136`); remote, use the tailnet IP.
+- **Self-signed cert**: regenerate with the tailnet IP in the SAN so the Pico browser can proceed:
+  `openssl req -x509 -newkey rsa:2048 -nodes -keyout ~/.cloudxr/certs/server.key -out
+  ~/.cloudxr/certs/server.crt -days 365 -subj "/CN=100.112.32.21" -addext
+  "subjectAltName=IP:100.112.32.21,IP:127.0.0.1,DNS:localhost"`.
+- **Greyed CONNECT button (intermittent):** even with valid settings + passed capabilities the button
+  can stay disabled on a fresh load. Worked around with a tiny force-enable script appended to
+  `~/.cloudxr/static-client/index.html` (re-enables the button when its label is "CONNECT"). Not in
+  the repo (client is outside it); re-apply after any client re-download. Root cause not fully known.
+- **Controller pose quality is best on a FIRST sim launch after a clean CloudXR runtime restart** —
+  then poses are stable (~1 mm); on stale/nth launches they freeze at the anchor origin or jitter.
 
 ### Status / open items
+- ✅✅ **FULL LOOP CONFIRMED WORKING END-TO-END (2026-07-26):** operator in the Pico drives the G1 arm
+  live over Tailscale via `controller_rel` — scene streams to the headset, **hold-grip clutch moves
+  the arm smoothly (no jitter/whacking), trigger grasps, both arms independent.** The chain of fixes
+  that got here: (1) **world→root frame transform** in `Se3RelControllerRetargeter` output — the arm
+  was oscillating because it fed WORLD poses to a ROOT-frame IK (see Problem 4); (2) **clutch** (grip
+  gates motion); (3) **untracked/origin-pose rejection** (`min_valid_z`); (4) **EMA smoothing +
+  spike-rejection** for CloudXR controller jitter; (5) **1:1 scale**; (6) connect via **Port 48322 +
+  SAN cert + `--host-client`** (see Run recipe). Fixed-orientation wrist for now (rotation = TODO).
+- ✅ **Reset now fully resets.** `OpenXRDevice.reset()` resets only its head/hand caches, NOT the
+  retargeters — so the accumulated EE target survived a reset and the IK drove the arm on its own
+  after `R`. `xr_teleop.py` now also resets every retargeter (`_pos`→rest, refs cleared) on reset.
+- ⏳ **Wrist rotation = TODO** (deliberately locked to a feasible fixed orientation for stability;
+  adding controller-rotation→wrist is the next enhancement, expect jitter tuning).
 - ✅ env cfg + `xr_teleop.py` written; headless env load verified.
 - ✅ Launches to `Teleop ready`; the `handtracking` `OpenXRDevice` initializes ("Using teleop device:
   OpenXR Hand Tracking Device"). Fixed a latent Isaac Lab bug on the way: `remove_camera_configs`
@@ -332,6 +367,14 @@ Pico 4 Ultra Enterprise over CloudXR, using Isaac Lab's native OpenXR teleop (`s
 - The retargeter code path (reads `data[CONTROLLER_RIGHT]`, deadzone, spike-reject); when the
   controller **pose** did stream (one early session), the EE target tracked the controller in the
   correct direction. So the input→retarget→action pipeline is correct.
+- **Bimanual** — left controller → left arm, right → right arm (mirrored joints/EE, probed rest pose);
+  both follow when a valid pose flows. 16-dim action verified.
+- **Clutch** — arm only tracks while grip/squeeze (input idx 3) is held; release → arm freezes and the
+  reference is dropped. Confirmed live (clutch=1 tracking on the `sim_clutch` launch). This is what
+  makes "set the controller down = arm stays put" work regardless of pose jitter.
+- **Arm/IK + frame transform (root-caused & verified this session — see Problem 4).** With a correct
+  root-frame command the arm holds a constant pose to **0.0 mm** and tracks a clean input **1:1**. The
+  manipulation side is solved; the arm no longer oscillates at rest.
 
 ### Problem 1 — controller 6-DoF POSE stream is intermittent / dead  ⬅ current top blocker
 - **Symptom:** the right controller's *position* reads **frozen at the anchor origin** (e.g.
@@ -377,6 +420,33 @@ Pico 4 Ultra Enterprise over CloudXR, using Isaac Lab's native OpenXR teleop (`s
   Suite / device management (the owning org).
 - **Then verify the fix** with the `[REL] rawpos` debug: raw pose should change when you move.
 
+- **UPDATE (2026-07-26) — this is now the SOLE blocker, and it has three distinct failure modes** (all
+  observed in one session's `[REL] raw=` debug):
+  1. **Drops entirely** → `raw=None` (no controller device). Whole `sim_smooth` launch #5: 0 of 250,438
+     frames had pose data. This is the operator's "then no longer in my controller" — the device
+     disappears mid-session.
+  2. **Freezes at the anchor origin** → `raw=[0.5, 0.7, 0.0]` (z=0) — the untracked controller reports
+     the XR anchor default.
+  3. **Jitters ~0.9 m frame-to-frame** when it *does* flow → the arm faithfully whacks around ("moves
+     randomly once my controller moves"). Stable at rest, bad under motion → classic **inside-out
+     tracking loss** (controller leaves the Pico headset-camera FOV while moving).
+- **The architectural weak point** is `isaaclab .../devices/openxr/openxr_device.py::_query_controller`
+  (~line 437): `pose = input_device.get_virtual_world_pose()` returns a pose **unconditionally, with no
+  tracking-valid flag** — on tracking loss it silently hands back a default/stale pose (→ the origin
+  freeze). **Investigation TODO:** check the `input_device` API for an is-tracked/pose-valid flag and
+  gate on it instead of our `z<0.3` heuristic.
+- **Ranked probable causes:** (1) controllers leaving the Pico inside-out tracking volume during motion
+  (best fit for jitter+freeze-when-moving, stable-at-rest); (2) CloudXR device-config only partially
+  exposing 6-DoF (the `processSystemInfo`/`body_tracking` race above); (3) reference-space recentering
+  on head motion.
+- **★ Strategic recommendation — switch to a tracking-INDEPENDENT control scheme.** Pose-based control
+  is capped by this stream quality. Drive the EE with the **thumbstick** (→ EE *velocity*) + trigger for
+  grasp, via `get_input_gesture_value("thumbstick", ...)`: thumbstick values are **digital inputs, not
+  optical tracking**, so they are immune to FOV/jitter/dropouts. Less "natural" than 1:1 hand motion,
+  but it would let the operator **actually complete the Insert task** instead of fighting tracking. Add
+  it as a new retargeter selectable via `--teleop_device` (keep the pose one). This is the recommended
+  next build.
+
 ### Problem 2 — CloudXR/Isaac-Sim AR session is fragile (only clean right after a reboot)
 - **Symptom:** `Start AR` works on the **first ~2–3 launches after a fresh reboot**, then floods
   `XR_ERROR ... swapchain == NULL` + `[XR] Frame ... did not call ... EndFrame` and freezes.
@@ -395,26 +465,40 @@ Pico 4 Ultra Enterprise over CloudXR, using Isaac Lab's native OpenXR teleop (`s
 - **Mitigation:** `rm ~/.cloudxr/run/{cloudxr.pid,ipc_cloudxr,runtime_started}` + `/dev/shm/carb*`
   helps but is unreliable; reboot is the sure fix.
 
-### Problem 4 — arm IK oscillates ("random") when the target is a bad pose
-- **Symptom:** with a frozen/garbage controller pose, the relative target drifted to a workspace
-  **corner** (`~[0.167, 0.386, 0.78]`, clamped to `workspace_min`); the G1 right arm then oscillates
-  trying to reach it. Looks like "the right arm moves randomly, left arm doesn't." (Left arm is
-  **intentionally uncontrolled** — only the right arm is teleoped; that is not a bug.)
-- **Probable causes:** (a) the G1 fixed-base tabletop workspace is **near-singular** (documented bulb
-  dead-zone) so DLS IK oscillates near the edges; (b) the retargeter holds a **fixed EE orientation**
-  that is infeasible away from the rest pose; (c) target drove to the corner because the *input pose
-  was garbage* (Problem 1) — the first huge delta (real pose → frozen origin) accumulated to the bound.
-- **Fixes applied (committed locally, `3bd5f4d`, UNTESTED):** removed the blanket arm gain override
-  (was replacing main's tuned per-joint gains while keeping `_ARM_ARMATURE` → oscillation); added a
-  **deadzone** so idle jitter can't drift the target; start from the probed **rest pose**; scale→2.
-- **Next steps (once Problem 1 is fixed so real pose flows):** if still unstable, raise DLS damping /
-  use relative-IK mode (`use_relative_mode=True`) / tighten the workspace clamp / let orientation
-  follow the controller instead of fixed.
+### Problem 4 — arm oscillates / "moves randomly / raised high" — ✅ ROOT-CAUSED & FIXED (2026-07-26)
+This was the "the robot moves randomly even when my controller is still" the operator reported many
+times. The earlier hypotheses below (near-singular workspace / infeasible fixed orientation / garbage
+input) were **wrong**. The real cause was a **coordinate-frame bug**.
+- **Root cause — WORLD vs ROOT frame.** `DifferentialInverseKinematicsAction` interprets its command in
+  the robot **ROOT (pelvis) frame** (`isaaclab .../mdp/actions/task_space_actions.py::_compute_frame_pose`
+  → `subtract_frame_transforms(root, ee)`), but the retargeter was emitting **WORLD-frame** poses. The
+  G1 root is at world `pos(0.5, 0.7, 0.75) quat_wxyz(0.7071,0,0,-0.7071)` (−90° yaw). So a world height
+  z≈0.83 was read as a *root* z, commanding the hand to world z≈1.6 m — **unreachable** → the arm hunts
+  upward and oscillates, **even for a dead-constant command**.
+- **Proof (headless, `scratchpad/ik_stability_probe.py` + `frame_probe.py`):** feeding the WORLD-frame
+  rest pose as a constant command → EE oscillates **40–56 cm peak-to-peak**, settles ~0.5 m high, torso
+  stable to 0.6 mm (so it's the *arm*, not base sway, not the controller). Feeding the **ROOT-frame**
+  rest pose → **0.0 mm** — rock steady. Position-only IK oscillated too, confirming it's the frame, not
+  the orientation.
+- **Fix (in `xr_controller_retargeters.py`, verified end-to-end via `verify_retarget.py`):** transform
+  the accumulated world-frame target into the root frame at output — `pos_root = R^T (pos_w − root_pos)`
+  with `root_pos`/`root_quat` cfg fields; set `initial_orientation` to the **root-frame** rest quats
+  (right `(0.998,-0.006,0.059,0.001)`, left `(0.9975,-0.009,0.069,0.008)`); `initial_position` /
+  `workspace_*` stay WORLD frame (the accumulator + clamp run in world, matching the controller poses).
+  Verified: HOLD (still controller) → EE p2p ≤0.2 mm; MOVE controller +0.12 m world-x → EE +0.113 m.
+  Live-confirmed by the operator: "initially the hands are in place" (was raised/oscillating before).
 
-### Bottom line
-The pipeline (stream + input + retarget + grasp) is correct. **The arm "doesn't follow" primarily
-because the controller's 6-DoF pose isn't reaching the sim (Problem 1)** — grasp works because button
-data is separate from pose. Secondary is arm-IK instability (Problem 4) that only bites once a real,
-moving pose is available. The AR/runtime fragility (Problems 2–3) makes iterating slow (reboot per
-change). **Do next:** fix the controller pose stream (Pico Advanced Tracking + the CloudXR
-`processSystemInfo` device-config error), then verify the committed deadzone/rest-pose arm fixes.
+### Bottom line (updated 2026-07-26)
+The **manipulation side is solved and verified**: the arm oscillation ("moves randomly / raised high"),
+long blamed on IK/workspace, was a **world-vs-root frame bug** in the retargeter output (Problem 4) —
+now fixed; the arm holds a constant command to 0.0 mm and tracks a clean input 1:1. Clutch, z-rejection,
+bimanual, and grasp all work.
+
+**The sole remaining blocker is the controller 6-DoF pose STREAM (Problem 1)** — it drops (`raw=None`),
+freezes at the anchor origin, and jitters ~0.9 m under motion. This is upstream (Pico inside-out tracking
++ CloudXR device-config), not our code, and more retargeter tuning won't fix garbage input. Two paths:
+(A) fix the stream — enable Pico advanced tracking, keep controllers in FOV, resolve the CloudXR
+`processSystemInfo` device-config; or (B, **recommended**) add a **thumbstick→EE-velocity** retargeter
+that is immune to tracking quality, so the Insert task can actually be completed. AR/runtime fragility
+(Problems 2–3) still makes iterating slow — clearing `/dev/shm/carb*` between sim relaunches has been
+keeping AR healthy without a reboot (launches #3–#5).

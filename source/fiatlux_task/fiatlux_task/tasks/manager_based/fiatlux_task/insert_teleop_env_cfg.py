@@ -268,8 +268,8 @@ class G1BulbInsertTeleopEnvCfg(G1BulbInsertEnvCfg):
                         # the probed left rest pose; workspace shifted to the left arm's reach (x~0.65).
                         Se3RelControllerRetargeterCfg(
                             bound_hand=DeviceBase.TrackingTarget.HAND_LEFT,
-                            initial_position=(0.6497, 0.5043, 0.8242),
-                            initial_orientation=(0.7086, 0.05, 0.0479, -0.7022),
+                            initial_position=(0.6497, 0.5043, 0.8242),  # WORLD-frame left rest
+                            initial_orientation=(0.9975, -0.009, 0.069, 0.008),  # ROOT-frame left rest quat
                             workspace_min=(0.35, 0.05, 0.78),
                             workspace_max=(0.85, 0.60, 1.10),
                             sim_device=self.sim.device,
