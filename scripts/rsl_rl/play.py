@@ -38,7 +38,14 @@ parser.add_argument(
     default="rsl_rl_cfg_entry_point",
     help="Name of the RL agent configuration entry point.",
 )
-parser.add_argument("--seed", type=int, default=None, help="Seed used for the environment")
+parser.add_argument(
+    "--seed",
+    type=int,
+    default=0,
+    help="Seed for the environment, the agent, and the Replace room layout. -1 draws one at "
+    "random and reports it. Defaults to 0 rather than the agent cfg's own seed so that one "
+    "flag governs every draw in the run, including the layout.",
+)
 parser.add_argument(
     "--use_pretrained_checkpoint",
     action="store_true",
@@ -70,11 +77,13 @@ simulation_app = app_launcher.app
 """Rest everything follows."""
 
 import os
+import random
 import time
 
 import fiatlux_task.tasks  # noqa: F401
 import gymnasium as gym
 import torch
+from fiatlux_task.tasks.manager_based.fiatlux_task.scene_cfg import set_layout_seed
 from rsl_rl.runners import DistillationRunner, OnPolicyRunner
 
 from isaaclab.envs import (
@@ -227,6 +236,12 @@ def main(
 
 
 if __name__ == "__main__":
+    # hydra builds env_cfg before main's body runs, and the Replace room layout is drawn
+    # during that build -- so the layout's seed has to be declared here or the run is not
+    # reproducible. -1 is resolved now so the layout and the agent share one concrete seed.
+    if args_cli.seed == -1:
+        args_cli.seed = random.randint(0, 10000)
+    set_layout_seed(args_cli.seed)
     # run the main function
     main()  # pyright: ignore[reportCallIssue]
     # close sim app

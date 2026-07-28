@@ -49,6 +49,7 @@ from fiatlux_task.robots.g1 import (
 )
 
 from . import mdp
+from .climb_env_cfg import FALL_MIN_HEIGHT, FALL_TILT_LIMIT
 from .scene_cfg import (
     ROOM_ENV_SPACING,
     G1ReplaceSceneCfg,
@@ -60,15 +61,6 @@ from .scene_cfg import (
 ##
 # MDP settings
 ##
-
-# Fall thresholds (mirrors Climb/Carry/Replace's mdp.root_height_below_minimum /
-# mdp.bad_orientation gate): standing pelvis is 0.75 m, a deep crouch stays > 0.45 m, a
-# collapsed robot reads < 0.30 m. Needed now that actions are whole-body -- confirmed via
-# a groot-policy recording that the robot can crouch/collapse against the (immovable)
-# table with no termination catching it, driving contact force far above any insertion-
-# related contact for the rest of the episode.
-FALL_MIN_HEIGHT = 0.35  # m, world frame (the floor is flat)
-FALL_TILT_LIMIT = 1.0  # rad
 
 
 @configclass
@@ -154,8 +146,6 @@ class EventCfg:
     randomizing terms below then re-pose their own assets on top of the defaults, the
     same layering Climb/Carry/Replace use.
     """
-
-    reset_all = EventTerm(func=mdp.reset_scene_to_default, mode="reset")
 
     # Restores every entity -- including the robot ROOT -- to init_state; must run
     # first (cfg order) so the per-asset randomizations below apply on top. Isaac Lab
@@ -376,6 +366,5 @@ class G1BulbInsertEnvCfg(ManagerBasedRLEnvCfg):
         self.events.reset_socket = None
         self.events.reset_bulb = None
         self.events.randomize_light = None
-        # Not a reset term, but a randomization all the same: unpinned, every grasp
-        # force measured downstream is seed-dependent.
+        # A randomization too, though not a reset term.
         self.events.randomize_hand_material = mdp.hand_grip_material_event(randomize=False)

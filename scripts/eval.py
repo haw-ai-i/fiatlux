@@ -100,6 +100,7 @@ import fiatlux_task.tasks  # noqa: F401
 import gymnasium as gym
 import torch
 from fiatlux_task.policy import make_policy
+from fiatlux_task.tasks.manager_based.fiatlux_task.scene_cfg import set_layout_seed
 from fiatlux_task.telemetry import ScoreLogger
 
 import isaaclab_tasks  # noqa: F401
@@ -107,9 +108,10 @@ from isaaclab_tasks.utils import parse_env_cfg
 
 
 def main():
-    # Scene-build randomization (the replace preset's room layout) draws from the global
-    # `random` stream at cfg-build time; seed it here so the benchmark's determinism
-    # contract (same --task/--seed/--policy -> same numbers) covers the layout too.
+    # The replace preset's room layout is drawn at cfg-build time, so its seed must be
+    # declared before parse_env_cfg -- this is what puts the layout under the benchmark's
+    # same-task/seed/policy -> same-numbers contract.
+    set_layout_seed(args_cli.seed)
     random.seed(args_cli.seed)
     env_cfg = parse_env_cfg(
         args_cli.task,

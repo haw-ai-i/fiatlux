@@ -296,6 +296,5 @@ class CarryEnvCfg(ManagerBasedRLEnvCfg):
         """
         self.events.reset_ladder = None
         self.events.randomize_sky_intensity = None
-        # Not a reset term, but a randomization all the same: unpinned, every grasp
-        # force measured downstream is seed-dependent.
+        # A randomization too, though not a reset term.
         self.events.randomize_hand_material = mdp.hand_grip_material_event(randomize=False)

@@ -439,14 +439,17 @@ class ReplaceEnvCfg(ManagerBasedRLEnvCfg):
         """Deterministic canonical spawns (debug / basic testing; ``--no_randomize``).
 
         Strips the reset-time randomization terms; ``reset_all`` stays -- restoring
-        default state between episodes is correctness, not noise. The room *layout*
-        randomization happens at cfg-build time and is already deterministic per
-        ``--seed`` (same seed -> same layout).
+        default state between episodes is correctness, not noise.
+
+        Does NOT touch the room layout. That is drawn once at cfg-build time from the
+        global ``random`` stream (``apply_replace_preset``), before this runs and before
+        Isaac Lab has seen ``cfg.seed`` -- so it is reproducible only for callers that
+        seed the global stream themselves ahead of ``parse_env_cfg`` (``eval.py`` and
+        ``record_run.py`` do; ``rsl_rl/train.py`` and ``verify_scene.py`` do not).
         """
         self.events.reset_robot_joints = None
         self.events.reset_robot_root = None
         self.events.randomize_sky_intensity = None
         self.events.randomize_key_light = None
-        # Not a reset term, but a randomization all the same: unpinned, every grasp
-        # force measured downstream is seed-dependent.
+        # A randomization too, though not a reset term.
         self.events.randomize_hand_material = mdp.hand_grip_material_event(randomize=False)

@@ -271,15 +271,14 @@ class RemoveEnvCfg(ManagerBasedRLEnvCfg):
     def __post_init__(self) -> None:
         super().__post_init__()
         apply_remove_preset(self.scene)
+        self.scene.fixture = None
         # Tabletop preset has no ladder; the top-level SceneEntityCfg would fail to resolve.
         self.events.randomize_ladder_scale = None
         # TODO(task phase): create a bulb<->socket joint at the seat pose (revolute/screw or a
         #   fixed joint broken by rotation), add a grasp/attach action, and a removal reward.
-        self.scene.fixture = None
 
         add_wrist_camera(self.scene)
         # GrootPolicy looks up ``scene["ego_camera"]`` unconditionally (same gap
-        # g1_bulb_env_cfg had before it was fixed); every family member needs it.
         add_ego_camera(self.scene)
 
         self.decimation = 4
@@ -304,6 +303,5 @@ class RemoveEnvCfg(ManagerBasedRLEnvCfg):
         self.events.reset_robot_joints = None
         self.events.reset_socket = None
         self.events.randomize_light = None
-        # Not a reset term, but a randomization all the same: unpinned, every grasp
-        # force measured downstream is seed-dependent.
+        # A randomization too, though not a reset term.
         self.events.randomize_hand_material = mdp.hand_grip_material_event(randomize=False)

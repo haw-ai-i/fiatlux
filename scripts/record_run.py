@@ -116,6 +116,7 @@ import gymnasium as gym
 import torch
 from fiatlux_task.policy import make_policy
 from fiatlux_task.recording import TrajectoryRecorder
+from fiatlux_task.tasks.manager_based.fiatlux_task.scene_cfg import set_layout_seed
 from fiatlux_task.telemetry import ScoreLogger
 from fiatlux_task.viz import VideoRecorder, fixture_orbit, make_video_camera_cfg, orbit_pose
 
@@ -148,8 +149,9 @@ def _cam_pose_fn(kind: str, env_cfg):
 
 
 def main():
-    # Seed the global stream: the replace preset's room layout draws from it at cfg-build
-    # time (same determinism contract as eval.py).
+    # The room layout is drawn at cfg-build time, so its seed is declared before
+    # parse_env_cfg (same determinism contract as eval.py).
+    set_layout_seed(args_cli.seed)
     random.seed(args_cli.seed)
     env_cfg = parse_env_cfg(
         args_cli.task,
