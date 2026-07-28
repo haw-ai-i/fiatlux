@@ -270,6 +270,26 @@ _DEX3_HAND_ORDER = [
 G1_DEX3_LEFT_HAND_JOINTS = [f"left_{j}" for j in _DEX3_HAND_ORDER]
 G1_DEX3_RIGHT_HAND_JOINTS = [f"right_{j}" for j in _DEX3_HAND_ORDER]
 G1_DEX3_FINGER_JOINT_PATTERNS = [".*_hand_(thumb|index|middle)_._joint"]
+G1_DEX3_PALM_BODIES = ["left_hand_palm_link", "right_hand_palm_link"]
+
+# Distal link of each digit that closes on a grasped object, per variant. Their centroid
+# against the palm's locates the hand's cup without needing to know which local axis the
+# palm surface is -- the two hands disagree on that, and it is the thing most easily got
+# wrong by inspection. Dex3 opposes a 3-DoF thumb against two 2-DoF fingers; Inspire curls
+# four fingers against a 4-DoF thumb, of which only the index/middle/ring reach the cup.
+G1_GRASP_DISTAL_BODIES: dict[str, list[str]] = {
+    "inspire": ["R_index_intermediate", "R_middle_intermediate", "R_ring_intermediate", "R_thumb_distal"],
+    "dex3": ["right_hand_index_1_link", "right_hand_middle_1_link", "right_hand_thumb_2_link"],
+}
+# Right-hand joints and palm body per variant, for scripted poses that must name them.
+G1_RIGHT_HAND_JOINTS_BY_VARIANT: dict[str, list[str]] = {
+    "inspire": G1_HAND_JOINTS,
+    "dex3": G1_DEX3_RIGHT_HAND_JOINTS,
+}
+G1_PALM_BODY_BY_VARIANT: dict[str, str] = {
+    "inspire": G1_PALM_BODIES[1],
+    "dex3": G1_DEX3_PALM_BODIES[1],
+}
 
 G1_DEX3_CFG = G1_INSPIRE_CFG.replace(
     spawn=G1_INSPIRE_CFG.spawn.replace(usd_path=G1_DEX3_USD, func=_spawn_g1_dex3_with_filtered_hand_mounts),

@@ -54,6 +54,14 @@ parser.add_argument(
 )
 parser.add_argument("--seed", type=int, default=0, help="Env seed (scenarios are deterministic).")
 parser.add_argument(
+    "--robot",
+    type=str,
+    default="dex3",
+    choices=["dex3", "inspire"],
+    help="G1 hand variant. Defaults to dex3: it is the hand the benchmark scores and the only "
+    "one GR00T shipped a checkpoint for, so the grasp checks measure it.",
+)
+parser.add_argument(
     "--probe",
     action="store_true",
     help="Calibration mode: print body names, palm/ladder poses and live contact readings "
@@ -85,7 +93,16 @@ if args_cli.scenario == "all":
 
     failed = []
     for name in ("socket", "hand", "fragility", "ladder"):
-        cmd = [sys.executable, os.path.abspath(__file__), "--scenario", name, "--seed", str(args_cli.seed)]
+        cmd = [
+            sys.executable,
+            os.path.abspath(__file__),
+            "--scenario",
+            name,
+            "--seed",
+            str(args_cli.seed),
+            "--robot",
+            args_cli.robot,
+        ]
         if args_cli.headless:
             cmd.append("--headless")
         if args_cli.probe:
@@ -124,13 +141,18 @@ from fiatlux_task.poses import (
     ARM_PRESS_HOVER,
     BULB_LYING_QUAT,
     BULB_UPRIGHT_QUAT,
-    HAND_CRADLE,
-    HAND_FLAT,
+    HAND_CRADLE_BY_VARIANT,
+    HAND_FLAT_BY_VARIANT,
     LADDER_STANCE_JOINTS,
     LADDER_STANCE_ROOT_POS,
     LADDER_STANCE_ROOT_ROT,
 )
 from fiatlux_task.recording import TrajectoryRecorder
+from fiatlux_task.robots.g1 import (
+    G1_GRASP_DISTAL_BODIES,
+    G1_PALM_BODY_BY_VARIANT,
+    swap_robot_variant,
+)
 from fiatlux_task.tasks.manager_based.fiatlux_task import mdp
 from fiatlux_task.tasks.manager_based.fiatlux_task.mdp import rewards as task_rewards
 from prettytable import PrettyTable
@@ -158,7 +180,10 @@ MIN_ROOT_Z = -0.05  # m
 STEPS_PER_SECOND = 50  # sim.dt=1/200 * decimation=4 (the family control rate)
 CONTACT_N = 0.05  # above sensor noise, below any force that means something
 MAX_SLIP_M = 0.06  # a grasp that lets the bulb travel further than this has lost it
-BULB_GRASP_OFFSET_M = 0.035  # bulb radius: how far off the palm surface a held bulb's centre sits
+
+# Hand poses for the variant under test: the two hands share no joint names.
+HAND_FLAT = HAND_FLAT_BY_VARIANT[args_cli.robot]
+HAND_CRADLE = HAND_CRADLE_BY_VARIANT[args_cli.robot]
 
 
 # --------------------------------------------------------------------------- #
@@ -200,6 +225,8 @@ def build_insert_cfg(num_envs: int = 1):
     cfg = parse_env_cfg("FIATLUX-Insert-v0", device=args_cli.device, num_envs=num_envs)
     cfg.seed = args_cli.seed
     strip_task_cameras(cfg)
+    if args_cli.robot != "inspire":
+        swap_robot_variant(cfg, args_cli.robot)
     # Deterministic resets: zero every randomization range, keep the reset terms so
     # each reset returns entities exactly to their (scenario-crafted) init_state.
     cfg.events.randomize_light = None
@@ -557,16 +584,17 @@ def probe_arm_grid(env, base=ARM_PRESS_HOVER):
 
 
 def grasp_point(env) -> torch.Tensor:
-    """Where a bulb held in the right hand sits: off the palm SURFACE along its normal.
+    """Where a bulb held in the right hand sits: midway between the palm and the digit tips.
 
-    Anchor to the palm, not to a centroid of the finger links -- with the hand open those are
-    extended, so their centroid lands out at the fingertips.
+    Derived from body positions, not from a palm-normal constant: the two hand variants put
+    their palm surface on different local axes, and getting that axis wrong aims the bulb at
+    the back of the hand. The midpoint is inside the cup for both, since an open hand's tips
+    sit roughly a bulb-diameter beyond where the closed grasp will hold it.
     """
     robot = env.scene["robot"]
-    idx = robot.find_bodies("right_hand_base_link")[0][0]
-    state = robot.data.body_state_w[0, idx]
-    palm_normal = -matrix_from_quat(state[3:7].unsqueeze(0))[0][:, 0]  # palm surface is local -x
-    return state[:3] + palm_normal * BULB_GRASP_OFFSET_M
+    palm = robot.data.body_pos_w[0, robot.find_bodies(G1_PALM_BODY_BY_VARIANT[args_cli.robot])[0][0]]
+    tip_ids, _ = robot.find_bodies(G1_GRASP_DISTAL_BODIES[args_cli.robot], preserve_order=True)
+    return 0.5 * (palm + robot.data.body_pos_w[0, tip_ids].mean(dim=0))
 
 
 def close_hand_on_bulb(env, closed: torch.Tensor, monitor=None, ramp_steps: int = 60) -> None:
