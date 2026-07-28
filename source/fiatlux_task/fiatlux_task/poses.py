@@ -88,7 +88,7 @@ HAND_CRADLE: dict[str, float] = {
 #   thumb_1 [-1.047, +0.611]   thumb_2 [-1.745, 0]
 # ---------------------------------------------------------------------------
 HAND_FLAT_DEX3: dict[str, float] = dict.fromkeys(G1_DEX3_RIGHT_HAND_JOINTS, 0.0)
-_DEX3_CURL = 0.8
+_DEX3_CURL = 1.2
 HAND_CRADLE_DEX3: dict[str, float] = {
     "right_hand_index_0_joint": _DEX3_CURL,
     "right_hand_index_1_joint": _DEX3_CURL,
