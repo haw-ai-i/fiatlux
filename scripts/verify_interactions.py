@@ -547,15 +547,20 @@ def build_hand_cfg(arm=ARM_PRESS_HOVER, hand=HAND_FLAT):
 
 
 def palm_body_index(env) -> int:
+    """Index of the right palm body for the variant under test.
+
+    Resolved from :data:`G1_PALM_BODY_BY_VARIANT`, and it must be the palm rather than
+    anything near it: this positions the bulb under the pressing palm, and the wrist sits
+    ~4 cm away, which turns a flat press into an off-centre edge contact. Raises rather than
+    falling back to a neighbouring body -- a silent fallback is what made the Dex3 "gentle"
+    press read 64.8 N against Inspire's 0.0 N.
+    """
     robot = env.scene["robot"]
-    for name in ("right_hand_base_link", "right_wrist_yaw_link"):
-        try:
-            ids, _ = robot.find_bodies(name)
-            if ids:
-                return ids[0]
-        except ValueError:
-            continue
-    raise RuntimeError(f"no palm body found among {robot.body_names}")
+    name = G1_PALM_BODY_BY_VARIANT[args_cli.robot]
+    ids, _ = robot.find_bodies(name)
+    if not ids:
+        raise RuntimeError(f"palm body {name!r} not found among {robot.body_names}")
+    return ids[0]
 
 
 def place_bulb_under_palm(env, settle_steps: int = 30):
