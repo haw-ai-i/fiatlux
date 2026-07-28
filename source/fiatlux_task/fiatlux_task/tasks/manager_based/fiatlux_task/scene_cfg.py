@@ -724,6 +724,30 @@ def _clamp_to_floor(center: Vec2, half_size: float) -> Vec2:
     )
 
 
+_layout_seed: int | None = None
+
+
+def set_layout_seed(seed: int | None) -> None:
+    """Fix the entropy for every subsequent Replace layout draw.
+
+    The layout sets scene-entity ``init_state``s, so it has to be drawn in ``__post_init__``
+    -- which runs inside ``parse_env_cfg``, before the caller can assign ``cfg.seed`` and
+    before Isaac Lab seeds anything. So the seed cannot come from the cfg: entry points must
+    declare it here, BEFORE building the cfg, or the layout is drawn from OS entropy and the
+    run is not reproducible.
+
+    Deliberately not Python's global ``random`` stream, which this used to lean on: that
+    couples the layout to every other consumer of ``random`` in the process, so any library
+    reseeding it silently changes the scene.
+
+    Args:
+        seed: the layout's seed, or None to draw from OS entropy (an explicitly
+            irreproducible layout).
+    """
+    global _layout_seed
+    _layout_seed = seed
+
+
 def _sample_fixture_mount(rng: random.Random) -> FixtureMount:
     """Randomly mount the fixture on the ceiling or a wall.
 
@@ -885,7 +909,9 @@ def apply_replace_preset(
     the elevated socket/lamp ("fixture") with the OLD BULB seated in it -- each floor occupant
     randomized into its own non-overlapping "safe zone", and the fixture randomly ceiling- or
     wall-mounted. Randomized once per scene build (this function's own ``rng`` draw), not
-    re-sampled every episode reset.
+    re-sampled every episode reset -- so one layout serves every env and every episode of a
+    run, and varying it is a between-runs affair. ``rng`` defaults to :func:`set_layout_seed`'s
+    declared seed; without one the layout is drawn from OS entropy.
 
     The fixture reuses ``SOCKET_USD`` (``ehjsdz``/``kfmkwd``, the validated bulblampF/M pair
     already used by the tabletop Insert task) rather than the decorative ``ELEVATED_SOCKET_USD``
@@ -904,10 +930,7 @@ def apply_replace_preset(
             instead of sampling it fully independently. Off by default -- positioning the
             ladder is part of the task; coupling is a debug/curriculum aid only.
     """
-    # Default rng derives from the (seedable) global stream: scripts that call
-    # `random.seed(seed)` before cfg construction (eval.py, record_run.py) get a
-    # deterministic layout -- the benchmark's same-seed-same-numbers contract.
-    rng = rng or random.Random(random.getrandbits(64))
+    rng = rng or random.Random(_layout_seed if _layout_seed is not None else random.getrandbits(64))
 
     # Table: holds the fresh bulb. No separate tabletop socket -- the elevated fixture is the
     # real insertion target in this scene.

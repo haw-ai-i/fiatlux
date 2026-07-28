@@ -46,6 +46,13 @@ parser.add_argument(
     help="Gym id of the env/task to verify (any FIATLUX id; Insert also needs --enable_cameras).",
 )
 parser.add_argument("--num_envs", type=int, default=4, help="Number of environments to spawn.")
+parser.add_argument(
+    "--seed",
+    type=int,
+    default=0,
+    help="Run seed. Also fixes the Replace room layout, which is drawn once at cfg-build time -- "
+    "so re-running a failure needs the same --seed.",
+)
 parser.add_argument("--steps", type=int, default=200, help="Number of (decimated) env steps to simulate.")
 parser.add_argument(
     "--hold_base",
@@ -98,7 +105,7 @@ import fiatlux_task.tasks  # noqa: F401  -- registers the FIATLUX Gym environmen
 import gymnasium as gym
 import torch
 from fiatlux_task.assets import BULB_STAND_Z_OFFSET
-from fiatlux_task.tasks.manager_based.fiatlux_task.scene_cfg import CEILING_FIXTURE_Z
+from fiatlux_task.tasks.manager_based.fiatlux_task.scene_cfg import CEILING_FIXTURE_Z, set_layout_seed
 from fiatlux_task.viz import fixture_orbit, make_video_camera_cfg, record_orbit
 from prettytable import PrettyTable
 
@@ -236,7 +243,11 @@ def main() -> int:
 
     # ----- build & reset -----
     print(f"\n[verify] Loading task '{args_cli.task}' with {args_cli.num_envs} env(s)...")
+    # Replace draws its room layout at cfg-build time, so the seed is declared first; without
+    # this a failing layout could not be re-run.
+    set_layout_seed(args_cli.seed)
     env_cfg = parse_env_cfg(args_cli.task, device=args_cli.device, num_envs=args_cli.num_envs)
+    env_cfg.seed = args_cli.seed
     if args_cli.hold_base:
         env_cfg.scene.robot.spawn.articulation_props.fix_root_link = True
         print("[verify] --hold_base: G1 root fixed -> it stands and holds the default pose (balancing not tested).")
