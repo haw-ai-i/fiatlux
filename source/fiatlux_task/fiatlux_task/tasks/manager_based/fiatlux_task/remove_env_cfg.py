@@ -272,6 +272,10 @@ class RemoveEnvCfg(ManagerBasedRLEnvCfg):
         super().__post_init__()
         apply_remove_preset(self.scene)
         self.scene.fixture = None
+        # Tabletop preset has no ladder; the top-level SceneEntityCfg would fail to resolve.
+        self.events.randomize_ladder_scale = None
+        # TODO(task phase): create a bulb<->socket joint at the seat pose (revolute/screw or a
+        #   fixed joint broken by rotation), add a grasp/attach action, and a removal reward.
 
         add_wrist_camera(self.scene)
         # GrootPolicy looks up ``scene["ego_camera"]`` unconditionally (same gap

@@ -106,7 +106,11 @@ at 1.0). Completion bonuses pay once per episode.
 ## Randomization
 
 Scene layout (zones, fixture mount, ladder yaw, robot yaw) per scene build; robot root
-xy (±5 cm) / yaw (±0.1 rad), joints (±0.05 rad), and light intensities per reset.
+xy (±5 cm) / yaw (±0.1 rad), joints (±0.05 rad), light intensities, key-light direction
+(pitch ±15° / yaw ±30° about its authored 40° tilt), HDRI sky azimuth (0–360°), and a
+global room albedo tint (HSV multiplier on the bound materials' diffuse inputs) per
+reset. Prop-scale randomization is a scaffold-env default and an RL opt-in (prestartup
+USD writes require `replicate_physics=False`); see `base_env_cfg.py`'s EventCfg.
 
 # `FIATLUX-Insert-v0`
 
@@ -161,13 +165,19 @@ Two groups:
 
 - **Success** (`bulb_seated`): bulb within `pos_threshold` (1.5 cm) **and**
   `ori_threshold` (0.2 rad) of the socket.
+- **Fall** (`fell_below` / `fell_over`): root below **0.35 m** (standing pelvis is
+  0.75 m; a collapsed robot reads < 0.30 m) or tilt beyond **1.0 rad**. This is the
+  family's fall-detection RL gate: solver-kick episodes against the kinematic table
+  end immediately (thresholds shared from `climb_env_cfg.py`).
 - **Timeout**: `episode_length_s = 15 s`.
 - **Bulb dropped**: bulb falls below `min_height`.
 
 ## Randomization (on reset)
 
 Socket pose (±3–5 cm), bulb start pose (±2 cm), arm joints (±0.05 rad), dome-light
-intensity and color.
+intensity and sky azimuth (0–360°), key-light direction (pitch ±15° / yaw ±30°), and a
+global room albedo tint. Prop-scale randomization is an RL opt-in (see
+`base_env_cfg.py`'s EventCfg; requires `replicate_physics=False`).
 
 # `FIATLUX-Climb-v0`
 
@@ -232,5 +242,6 @@ forward lean.
 
 ## Randomization (on reset)
 
-Robot root xy (±5 cm) and yaw (±0.1 rad), joints (±0.05 rad), dome/key-light intensity.
-All within `verify_scene.py`'s 0.10 m init-drift tolerance.
+Robot root xy (±5 cm) and yaw (±0.1 rad), joints (±0.05 rad), dome/key-light intensity,
+key-light direction (pitch ±15° / yaw ±30°), sky azimuth (0–360°), and a global room
+albedo tint. All within `verify_scene.py`'s 0.10 m init-drift tolerance.

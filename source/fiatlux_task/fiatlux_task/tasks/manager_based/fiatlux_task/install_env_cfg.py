@@ -257,6 +257,10 @@ class InstallEnvCfg(ManagerBasedRLEnvCfg):
         super().__post_init__()
         apply_install_preset(self.scene)
         self.scene.fixture = None
+        # Tabletop preset has no ladder; the top-level SceneEntityCfg would fail to resolve.
+        self.events.randomize_ladder_scale = None
+        # TODO(task phase): start the bulb in the robot's hand (or nearby), reward seating it into
+        #   the socket and forming the attach joint at the seat pose.
 
         add_wrist_camera(self.scene)
         # GrootPolicy looks up ``scene["ego_camera"]`` unconditionally (same gap
