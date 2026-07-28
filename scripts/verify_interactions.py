@@ -559,8 +559,11 @@ def palm_body_index(env) -> int:
     return ids[0]
 
 
-def place_bulb_under_palm(env, settle_steps: int = 30):
+def place_bulb_under_palm(env, arm=None, settle_steps: int = 30):
     """Lay the bulb on the tabletop exactly where the PRESSED palm will arrive.
+
+    ``arm`` is the press pose the bulb will be met with, so each phase places it under its own
+    palm arc; defaults to :data:`ARM_PRESS_DOWN`.
 
     The press pose is dipped once to measure the pressed palm point (the shoulder
     pitch moves the palm along an arc, not straight down), the arm returns to
@@ -570,7 +573,7 @@ def place_bulb_under_palm(env, settle_steps: int = 30):
     robot = env.scene["robot"]
     bulb = env.scene["bulb"]
     zero = torch.zeros((env.num_envs, env.action_manager.total_action_dim), device=env.device)
-    press = targets_to_actions(env, {**ARM_PRESS_DOWN, **HAND_FLAT})
+    press = targets_to_actions(env, {**(arm or ARM_PRESS_DOWN), **HAND_FLAT})
     run_steps(env, press, 45)
     pressed_palm = robot.data.body_state_w[:, palm_body_index(env), :3].clone()
     if args_cli.probe:
@@ -828,8 +831,9 @@ def scenario_fragility():
 
         phases = [
             ("gentle", place_bulb_under_palm, press_ramp(gentle_press)),
-            # crush presses into the bare tabletop; the bulb stays at its spawn spot
-            ("crush", lambda env: None, press_ramp(crush_press)),
+            # The bulb goes under the CRUSH arc, not the gentle one: the contact channel counts
+            # only force on the bulb, so a press into the bare tabletop scores nothing.
+            ("crush", lambda env: place_bulb_under_palm(env, arm=ARM_PRESS_CRUSH), press_ramp(crush_press)),
             ("drop", drop_setup, lambda i: zero),
         ]
         for name, setup, actions in phases:
