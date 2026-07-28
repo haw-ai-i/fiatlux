@@ -48,9 +48,7 @@ def _install_omnigibson_shim(data_dir: Path, temp_dir: Path, behavior_repo: Path
     temp_dir.mkdir(parents=True, exist_ok=True)
 
     og = types.ModuleType("omnigibson")
-    setattr(
-        og, "example_config_path", str(behavior_repo / "OmniGibson" / "omnigibson" / "configs")
-    )
+    setattr(og, "example_config_path", str(behavior_repo / "OmniGibson" / "omnigibson" / "configs"))
     setattr(og, "tempdir", str(temp_dir))
     setattr(og, "shutdown", lambda: None)
 
@@ -72,15 +70,11 @@ def load_asset_utils(behavior_repo: Path, data_dir: Path, temp_dir: Path):
     os.environ.setdefault("OMNIGIBSON_NO_OMNIVERSE", "1")
     _install_omnigibson_shim(data_dir=data_dir, temp_dir=temp_dir, behavior_repo=behavior_repo)
 
-    asset_utils_path = (
-        behavior_repo / "OmniGibson" / "omnigibson" / "utils" / "asset_utils.py"
-    )
+    asset_utils_path = behavior_repo / "OmniGibson" / "omnigibson" / "utils" / "asset_utils.py"
     if not asset_utils_path.exists():
         raise FileNotFoundError(asset_utils_path)
 
-    spec = importlib.util.spec_from_file_location(
-        "fiatlux_omnigibson_asset_utils", asset_utils_path
-    )
+    spec = importlib.util.spec_from_file_location("fiatlux_omnigibson_asset_utils", asset_utils_path)
     if spec is None or spec.loader is None:
         raise RuntimeError(f"Unable to load module spec for {asset_utils_path}")
 
@@ -130,16 +124,13 @@ def _online_zip_filename(asset_utils: Any, dataset_name: str) -> str:
     return f"{dataset_name}.zip"
 
 
-def download_zipped_dataset(
-    asset_utils: Any, dataset_name: str, download_dir: Path
-) -> Path:
+def download_zipped_dataset(asset_utils: Any, dataset_name: str, download_dir: Path) -> Path:
     """Download a BEHAVIOR zip with a persistent local_dir, then unpack it."""
     try:
         from huggingface_hub import hf_hub_download
     except ImportError as exc:
         raise ImportError(
-            "huggingface_hub is required for dataset downloads. "
-            "Run with `uv run --with huggingface_hub ...`."
+            "huggingface_hub is required for dataset downloads. Run with `uv run --with huggingface_hub ...`."
         ) from exc
 
     download_dir.mkdir(parents=True, exist_ok=True)
@@ -175,9 +166,7 @@ def _relative_files(path: Path, limit: int) -> list[str]:
     return sorted(files)[:limit]
 
 
-def _model_record(
-    data_dir: Path, category: str, model: str, role: str, max_files: int
-) -> dict[str, Any]:
+def _model_record(data_dir: Path, category: str, model: str, role: str, max_files: int) -> dict[str, Any]:
     model_dir = data_dir / "behavior-1k-assets" / "objects" / category / model
     usd_dir = model_dir / "usd"
     expected_usd = usd_dir / f"{model}.usd"
@@ -214,9 +203,7 @@ def inspect_dataset(data_dir: Path, max_files: int) -> dict[str, Any]:
         category_dir = objects_dir / category
         hinted_categories[category] = {
             "exists": category_dir.exists(),
-            "models": sorted(p.name for p in category_dir.iterdir() if p.is_dir())
-            if category_dir.exists()
-            else [],
+            "models": sorted(p.name for p in category_dir.iterdir() if p.is_dir()) if category_dir.exists() else [],
         }
 
     candidates = [
@@ -295,10 +282,7 @@ def main() -> int:
         "--download-dir",
         type=Path,
         default=None,
-        help=(
-            "Persistent Hugging Face local_dir for the asset zip "
-            "(default: DATA_DIR/_downloads/behavior-1k-assets)."
-        ),
+        help=("Persistent Hugging Face local_dir for the asset zip (default: DATA_DIR/_downloads/behavior-1k-assets)."),
     )
 
     download_assets_description = (
@@ -321,15 +305,10 @@ def main() -> int:
         "--download-dir",
         type=Path,
         default=None,
-        help=(
-            "Persistent Hugging Face local_dir for the asset zip "
-            "(default: DATA_DIR/_downloads/behavior-1k-assets)."
-        ),
+        help=("Persistent Hugging Face local_dir for the asset zip (default: DATA_DIR/_downloads/behavior-1k-assets)."),
     )
 
-    key = subparsers.add_parser(
-        "download-key", help="Accept EULA and install the BEHAVIOR key only."
-    )
+    key = subparsers.add_parser("download-key", help="Accept EULA and install the BEHAVIOR key only.")
     key.add_argument(
         "--accept-license",
         action="store_true",
@@ -352,11 +331,7 @@ def main() -> int:
 
     args = parser.parse_args()
     data_dir = args.data_dir.resolve()
-    temp_dir = (
-        args.temp_dir.resolve()
-        if args.temp_dir is not None
-        else data_dir / "_fiatlux_temp"
-    )
+    temp_dir = args.temp_dir.resolve() if args.temp_dir is not None else data_dir / "_fiatlux_temp"
     if args.network_timeout is not None:
         socket.setdefaulttimeout(args.network_timeout)
 
@@ -371,9 +346,7 @@ def main() -> int:
         if not args.accept_license:
             raise SystemExit(f"--accept-license is required for {args.command}")
         assert behavior_repo is not None
-        asset_utils = load_asset_utils(
-            behavior_repo=behavior_repo, data_dir=data_dir, temp_dir=temp_dir
-        )
+        asset_utils = load_asset_utils(behavior_repo=behavior_repo, data_dir=data_dir, temp_dir=temp_dir)
         key_path = Path(asset_utils.get_key_path())
         if key_path.exists():
             LOGGER.info("BEHAVIOR-1K dataset encryption key already installed.")
@@ -388,9 +361,7 @@ def main() -> int:
             download_zipped_dataset(
                 asset_utils=asset_utils,
                 dataset_name="behavior-1k-assets",
-                download_dir=_resolve_download_dir(
-                    args.download_dir, data_dir, "behavior-1k-assets"
-                ),
+                download_dir=_resolve_download_dir(args.download_dir, data_dir, "behavior-1k-assets"),
             )
         return 0
 
@@ -398,9 +369,7 @@ def main() -> int:
         if not args.accept_license:
             raise SystemExit("--accept-license is required for download-assets")
         assert behavior_repo is not None
-        asset_utils = load_asset_utils(
-            behavior_repo=behavior_repo, data_dir=data_dir, temp_dir=temp_dir
-        )
+        asset_utils = load_asset_utils(behavior_repo=behavior_repo, data_dir=data_dir, temp_dir=temp_dir)
         dataset_path = Path(asset_utils.get_dataset_path("behavior-1k-assets"))
         if _dataset_layout_exists(dataset_path):
             LOGGER.info("BEHAVIOR-1K dataset already exists: %s", dataset_path)
@@ -408,9 +377,7 @@ def main() -> int:
             download_zipped_dataset(
                 asset_utils=asset_utils,
                 dataset_name="behavior-1k-assets",
-                download_dir=_resolve_download_dir(
-                    args.download_dir, data_dir, "behavior-1k-assets"
-                ),
+                download_dir=_resolve_download_dir(args.download_dir, data_dir, "behavior-1k-assets"),
             )
             LOGGER.info("Downloaded BEHAVIOR-1K dataset: %s", dataset_path)
         return 0
@@ -419,9 +386,7 @@ def main() -> int:
         if not args.accept_license:
             raise SystemExit("--accept-license is required for download-key")
         assert behavior_repo is not None
-        asset_utils = load_asset_utils(
-            behavior_repo=behavior_repo, data_dir=data_dir, temp_dir=temp_dir
-        )
+        asset_utils = load_asset_utils(behavior_repo=behavior_repo, data_dir=data_dir, temp_dir=temp_dir)
         key_path = Path(asset_utils.get_key_path())
         LOGGER.debug("before key exists=%s", key_path.exists())
         asset_utils.download_key()

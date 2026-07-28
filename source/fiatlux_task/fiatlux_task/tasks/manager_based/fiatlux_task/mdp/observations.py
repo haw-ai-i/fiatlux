@@ -57,6 +57,26 @@ def replace_score_distances(env: ManagerBasedRLEnv) -> torch.Tensor:
     )
 
 
+def lidar_ranges(
+    env: ManagerBasedRLEnv,
+    sensor_cfg: SceneEntityCfg,
+) -> torch.Tensor:
+    """Per-ray hit distance from a ``MultiMeshRayCasterCfg``/``RayCasterCfg`` lidar.
+
+    Misses report ``inf`` in ``ray_hits_w`` (no intersection within ``max_distance``);
+    clamped to the sensor's own ``max_distance`` so the observation stays finite (a raw
+    ``inf`` would poison downstream normalization/concatenation).
+
+    Returns:
+        Tensor of shape (num_envs, num_rays).
+    """
+    from isaaclab.sensors.ray_caster import RayCaster
+
+    sensor: RayCaster = env.scene.sensors[sensor_cfg.name]
+    ranges = torch.linalg.norm(sensor.data.ray_hits_w - sensor.data.pos_w.unsqueeze(1), dim=-1)
+    return torch.nan_to_num(ranges, posinf=sensor.cfg.max_distance).clamp(max=sensor.cfg.max_distance)
+
+
 def contact_net_forces(
     env: ManagerBasedRLEnv,
     sensor_cfg: SceneEntityCfg,
@@ -76,15 +96,9 @@ def contact_net_forces(
     body_ids = sensor_cfg.body_ids
     if body_ids is None or body_ids == slice(None):
         if getattr(sensor_cfg, "body_names", None) is not None:
-            names = (
-                [sensor_cfg.body_names]
-                if isinstance(sensor_cfg.body_names, str)
-                else sensor_cfg.body_names
-            )
+            names = [sensor_cfg.body_names] if isinstance(sensor_cfg.body_names, str) else sensor_cfg.body_names
             pattern = re.compile(names[0] if len(names) == 1 else "|".join(names))
-            body_ids = [
-                i for i, b in enumerate(contact_sensor.body_names) if pattern.search(b)
-            ]
+            body_ids = [i for i, b in enumerate(contact_sensor.body_names) if pattern.search(b)]
             if body_ids:
                 net = net[:, body_ids, :]
     else:

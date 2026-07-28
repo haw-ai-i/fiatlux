@@ -31,7 +31,10 @@ from fiatlux_task.robots.g1 import G1_FINGER_JOINT_PATTERNS, G1_WAIST_JOINT_PATT
 
 from . import mdp
 from .scene_cfg import (
+    ROOM_ENV_SPACING,
     G1ReplaceSceneCfg,
+    add_ego_camera,
+    add_mid360_lidar,
     apply_position_preset,
 )
 
@@ -53,9 +56,7 @@ class ActionsCfg:
     """Whole-body joint-position targets: the task spans locomotion + manipulation (the robot
     walks to the ladder, then grasps and carries it), mirroring the full Replace task."""
 
-    joint_pos = mdp.JointPositionActionCfg(
-        asset_name="robot", joint_names=[".*"], scale=0.5, use_default_offset=True
-    )
+    joint_pos = mdp.JointPositionActionCfg(asset_name="robot", joint_names=[".*"], scale=0.5, use_default_offset=True)
 
 
 @configclass
@@ -77,6 +78,21 @@ class ObservationsCfg:
             func=mdp.contact_net_forces,
             scale=0.1,
             params={"sensor_cfg": SceneEntityCfg("hand_contact")},
+        )
+        # Exteroception: ego RGB (features) + head lidar ranges (the ladder being
+        # carried is the salient thing to range). Requires --enable_cameras.
+        ego_rgb = ObsTerm(
+            func=mdp.image_features,
+            params={
+                "sensor_cfg": SceneEntityCfg("ego_camera"),
+                "data_type": "rgb",
+                "model_name": "resnet18",
+            },
+        )
+        lidar_ranges = ObsTerm(
+            func=mdp.lidar_ranges,
+            scale=0.1,
+            params={"sensor_cfg": SceneEntityCfg("mid360_lidar")},
         )
         actions = ObsTerm(func=mdp.last_action)
 
@@ -140,6 +156,10 @@ class EventCfg:
         },
     )
 
+    # Grip friction for the hands (startup, through the PhysX view -- see
+    # mdp.hand_grip_material_event for why this cannot be a USD material bind).
+    randomize_hand_material = mdp.hand_grip_material_event()
+
 
 @configclass
 class RewardsCfg:
@@ -167,9 +187,7 @@ class RewardsCfg:
         },
     )
     # -- penalties (each predicate also terminates -> fires once) --
-    ladder_tipped = RewTerm(
-        func=mdp.ladder_tipped, weight=-200.0, params={"tilt_limit": LADDER_TILT_LIMIT}
-    )
+    ladder_tipped = RewTerm(func=mdp.ladder_tipped, weight=-200.0, params={"tilt_limit": LADDER_TILT_LIMIT})
     robot_fall = RewTerm(
         func=mdp.fall_terminated,
         weight=-200.0,
@@ -190,11 +208,7 @@ class RewardsCfg:
     ankle_pos_limits = RewTerm(
         func=mdp.joint_pos_limits,
         weight=-1.0,
-        params={
-            "asset_cfg": SceneEntityCfg(
-                "robot", joint_names=[".*_ankle_pitch_joint", ".*_ankle_roll_joint"]
-            )
-        },
+        params={"asset_cfg": SceneEntityCfg("robot", joint_names=[".*_ankle_pitch_joint", ".*_ankle_roll_joint"])},
     )
     joint_deviation_waist = RewTerm(
         func=mdp.joint_deviation_l1,
@@ -210,7 +224,7 @@ class RewardsCfg:
 
 @configclass
 class TerminationsCfg:
-    """Horizon, success (ladder positioned upright within reach), and fall/tip/drop violations."""
+    """Horizon, success (ladder positioned upright within reach), and fall/tip violations."""
 
     time_out = DoneTerm(func=mdp.time_out, time_out=True)
     # success: the Replace task's ladder-ready predicate (xy within reach + upright)
@@ -219,9 +233,12 @@ class TerminationsCfg:
         params={"xy_radius": LADDER_READY_XY_RADIUS, "tilt_limit": LADDER_TILT_LIMIT},
     )
     ladder_tipped = DoneTerm(func=mdp.ladder_tipped, params={"tilt_limit": LADDER_TILT_LIMIT})
-    ladder_dropped = DoneTerm(
-        func=mdp.object_dropped, params={"asset_cfg": SceneEntityCfg("ladder"), "min_height": 0.2}
-    )
+    # No height-gate "dropped" check here (unlike the bulb terms in Replace): this ladder's
+    # root frame sits at ~0 m when resting upright on the floor (verified via a live probe --
+    # see the groot-scoring debug notes), the same as its correctly-resting state, so any
+    # min_height threshold above 0 trips on step 1 of every episode regardless of policy.
+    # Replace's own ladder handling relies on orientation alone (`ladder_tipped`) for exactly
+    # this reason; Carry follows suit.
     # robot fall detection (built-in bool terms; end solver-kick episodes immediately)
     fell_below = DoneTerm(func=mdp.root_height_below_minimum, params={"minimum_height": FALL_MIN_HEIGHT})
     fell_over = DoneTerm(func=mdp.bad_orientation, params={"limit_angle": FALL_TILT_LIMIT})
@@ -241,7 +258,7 @@ class CarryEnvCfg(ManagerBasedRLEnvCfg):
     # Homogeneous envs -> replicated physics for training scale (USD cloning, not fabric, so
     # the hand_contact sensor's PhysX contact-reporter attaches; same as Insert).
     scene: G1ReplaceSceneCfg = G1ReplaceSceneCfg(
-        num_envs=1, env_spacing=6.0, replicate_physics=True, clone_in_fabric=False
+        num_envs=1, env_spacing=ROOM_ENV_SPACING, replicate_physics=True, clone_in_fabric=False
     )
     observations: ObservationsCfg = ObservationsCfg()
     actions: ActionsCfg = ActionsCfg()
@@ -253,11 +270,14 @@ class CarryEnvCfg(ManagerBasedRLEnvCfg):
         super().__post_init__()
 
         apply_position_preset(self.scene)
+        add_ego_camera(self.scene)
+        add_mid360_lidar(self.scene)
 
         self.decimation = 4
         self.sim.render_interval = self.decimation
         self.episode_length_s = 20.0
-        self.sim.dt = 1.0 / 120.0
+        # family control rate (50 Hz; the GEAR-WBC decoders enforce it)
+        self.sim.dt = 1.0 / 200.0
         # PhysX solver floors + stabilization (uncontrolled free base against props; Insert finding)
         self.sim.physx.solver_type = 1
         self.sim.physx.min_position_iteration_count = 8
@@ -267,3 +287,14 @@ class CarryEnvCfg(ManagerBasedRLEnvCfg):
         self.sim.physx.enable_stabilization = True
         self.viewer.eye = (2.5, 2.5, 2.0)
         self.viewer.lookat = (0.5, 0.0, 0.9)
+
+    def disable_randomization(self) -> None:
+        """Deterministic canonical spawns (debug / basic testing; ``--no_randomize``).
+
+        Strips the reset-time randomization terms; ``reset_all`` stays -- restoring
+        default state between episodes is correctness, not noise.
+        """
+        self.events.reset_ladder = None
+        self.events.randomize_sky_intensity = None
+        # A randomization too, though not a reset term.
+        self.events.randomize_hand_material = mdp.hand_grip_material_event(randomize=False)

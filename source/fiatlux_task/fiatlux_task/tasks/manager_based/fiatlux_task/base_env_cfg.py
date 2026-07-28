@@ -26,7 +26,13 @@ from isaaclab.managers import SceneEntityCfg
 from isaaclab.utils import configclass
 
 from . import mdp
-from .scene_cfg import FIXTURE_USDS, G1ReplaceSceneCfg, apply_workshop_preset
+from .scene_cfg import (
+    FIXTURE_USDS,
+    ROOM_ENV_SPACING,
+    G1ReplaceSceneCfg,
+    add_ego_camera,
+    apply_workshop_preset,
+)
 
 ##
 # Observations -- generic G1 proprioception (no task-specific terms yet).
@@ -110,6 +116,11 @@ class EventCfg:
             "rotation_range_deg": {"pitch": (-15.0, 15.0), "yaw": (-30.0, 30.0)},
         },
     )
+
+    # -------- ENABLED: grip friction on the hands, at startup. Without it every grasp in the
+    # benchmark is made on the PhysX default 0.5/0.5. See mdp.hand_grip_material_event for why
+    # this is an event term and not a material bound in the robot spawner. --------
+    randomize_hand_material = mdp.hand_grip_material_event()
 
     # ---- (A) asset SCALE: ladder / socket / bulb (prestartup USD writes; requires
     #   replicate_physics=False, so these are gated on enable_dressing_randomization in
@@ -204,7 +215,11 @@ class FamilyBaseEnvCfg(ManagerBasedEnvCfg):
     control_decimation: int = 4  # -> 50 Hz control
     gravity: tuple[float, float, float] = (0.0, 0.0, -9.81)
     solver_position_iterations: int = 8
-    solver_velocity_iterations: int = 4
+    # PhysX applies this as a FLOOR over every actor, not a default: any per-body
+    # ``solver_velocity_iteration_count`` below it is raised to it. Keep it at 1 -- the bulb,
+    # old bulb and carried ladder ask for 1 because high velocity-iteration counts make the
+    # TGS solver inject energy into resting contacts. Bodies asking for more still get more.
+    solver_velocity_iterations: int = 1
     episode_length_s: float = 20.0
     """Nominal episode length. NOTE: ManagerBasedEnv (non-RL) has no episode horizon; this is a
     documented knob the RL/task layer will consume once terminations are added."""
@@ -228,7 +243,7 @@ class FamilyBaseEnvCfg(ManagerBasedEnvCfg):
 
     # -- scene + managers --
     scene: G1ReplaceSceneCfg = G1ReplaceSceneCfg(
-        num_envs=4, env_spacing=4.0, replicate_physics=False, clone_in_fabric=False
+        num_envs=4, env_spacing=ROOM_ENV_SPACING, replicate_physics=False, clone_in_fabric=False
     )
     observations: ObservationsCfg = ObservationsCfg()
     actions: ActionsCfg = ActionsCfg()
@@ -236,6 +251,8 @@ class FamilyBaseEnvCfg(ManagerBasedEnvCfg):
 
     def __post_init__(self) -> None:
         apply_workshop_preset(self.scene)
+        # GrootPolicy looks up ``scene["ego_camera"]`` unconditionally (same gap g1_bulb_env_cfg
+        add_ego_camera(self.scene)
         # Dressing randomization: drop the fixture when disabled, or when its (opt-in)
         # assets are not downloaded (`download_assets.sh --scene-dressing`) so the env
         # still loads from a clean clone.
@@ -269,6 +286,18 @@ class FamilyBaseEnvCfg(ManagerBasedEnvCfg):
         # default viewer framing
         self.viewer.eye = (4.5, 4.5, 3.0)
         self.viewer.lookat = (0.0, 0.0, 1.0)
+
+    def disable_randomization(self) -> None:
+        """Deterministic canonical spawns (debug / basic testing; ``--no_randomize``).
+
+        Strips the reset-time randomization terms; ``reset_all`` stays -- restoring
+        default state between episodes is correctness, not noise. RL subclasses with
+        their own task-specific reset terms override this rather than call it.
+        """
+        self.events.randomize_sky_intensity = None
+        self.events.randomize_key_light = None
+        # A randomization too, though not a reset term.
+        self.events.randomize_hand_material = mdp.hand_grip_material_event(randomize=False)
 
 
 # Backwards-compat alias (pre-unification name).

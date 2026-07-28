@@ -18,6 +18,7 @@ it via ``.replace(prim_path=...)`` so the same robot can be reused across tasks.
 import isaaclab.sim as sim_utils
 from isaaclab.actuators import ImplicitActuatorCfg
 from isaaclab.assets import ArticulationCfg
+from isaaclab.managers import ObservationGroupCfg as ObsGroup
 from isaaclab.sim.spawners.from_files.from_files import _spawn_from_usd_file
 from isaaclab.sim.utils import clone
 
@@ -31,26 +32,43 @@ from ..assets import G1_DEX3_USD, G1_USD
 # self-collisions enabled these saturate every contact reading on the hand.
 # Filter exactly those pairs at spawn; a fixed-joint merge of the asset would
 # cover only the camera housing and requires re-authoring the USD.
-_G1_FILTERED_PAIRS = {
+_G1_INSPIRE_FILTERED_PAIRS = {
     "{side}_hand_camera_base_link": ("{side}_wrist_pitch_link", "{side}_hand_base_link"),
     "{S}_thumb_proximal": ("{side}_hand_base_link",),
 }
 
+# The Dex3 hand has the same embedded-camera-housing defect, against different
+# neighbors: probe-verified (zero action, contact_matrix) at ~22 kN against the palm
+# and ~1.8 kN against the thumb base -- both zero against every wrist link, so those
+# are the only two pairs that need filtering.
+_G1_DEX3_FILTERED_PAIRS = {
+    "{side}_hand_camera_base_link": ("{side}_hand_palm_link", "{side}_hand_thumb_0_link"),
+}
 
-@clone
-def _spawn_g1_with_filtered_hand_mounts(prim_path, cfg, translation=None, orientation=None):
-    from pxr import UsdPhysics
 
-    prim = _spawn_from_usd_file(prim_path, cfg.usd_path, cfg, translation, orientation)
-    stage = prim.GetStage()
-    for side in ("left", "right"):
-        fmt = {"side": side, "S": side[0].upper()}
-        for body, targets in _G1_FILTERED_PAIRS.items():
-            api = UsdPhysics.FilteredPairsAPI.Apply(stage.GetPrimAtPath(f"{prim_path}/{body.format(**fmt)}"))
-            rel = api.GetFilteredPairsRel()
-            for target in targets:
-                rel.AddTarget(f"{prim_path}/{target.format(**fmt)}")
-    return prim
+def _make_filtered_hand_mount_spawner(pairs: dict[str, tuple[str, ...]]):
+    """Build a spawner that filters ``pairs`` (formatted per side) after loading the USD."""
+
+    @clone
+    def _spawn(prim_path, cfg, translation=None, orientation=None):
+        from pxr import UsdPhysics
+
+        prim = _spawn_from_usd_file(prim_path, cfg.usd_path, cfg, translation, orientation)
+        stage = prim.GetStage()
+        for side in ("left", "right"):
+            fmt = {"side": side, "S": side[0].upper()}
+            for body, targets in pairs.items():
+                api = UsdPhysics.FilteredPairsAPI.Apply(stage.GetPrimAtPath(f"{prim_path}/{body.format(**fmt)}"))
+                rel = api.GetFilteredPairsRel()
+                for target in targets:
+                    rel.AddTarget(f"{prim_path}/{target.format(**fmt)}")
+        return prim
+
+    return _spawn
+
+
+_spawn_g1_with_filtered_hand_mounts = _make_filtered_hand_mount_spawner(_G1_INSPIRE_FILTERED_PAIRS)
+_spawn_g1_dex3_with_filtered_hand_mounts = _make_filtered_hand_mount_spawner(_G1_DEX3_FILTERED_PAIRS)
 
 
 # ---------------------------------------------------------------------------
@@ -67,8 +85,11 @@ G1_ARM_JOINTS = [
     "right_wrist_pitch_joint",
     "right_wrist_yaw_joint",
 ]
-# Right Inspire-hand finger joints (12 DoF) so the policy can actually grasp.
-G1_HAND_JOINTS = [
+# Right Inspire-hand joints (12 DoF) so the policy can actually grasp. Split four-fingers /
+# thumb because they curl to different targets -- the thumb's pitch joint tops out at 0.6 rad
+# where the fingers reach 1.7. ORDER IS LOAD-BEARING: it lays out the hand's slice of the
+# action vector, so append rather than rearrange.
+G1_FINGER_JOINTS = [
     "R_index_proximal_joint",
     "R_index_intermediate_joint",
     "R_middle_proximal_joint",
@@ -77,11 +98,14 @@ G1_HAND_JOINTS = [
     "R_pinky_intermediate_joint",
     "R_ring_proximal_joint",
     "R_ring_intermediate_joint",
+]
+G1_THUMB_JOINTS = [
     "R_thumb_proximal_yaw_joint",
     "R_thumb_proximal_pitch_joint",
     "R_thumb_intermediate_joint",
     "R_thumb_distal_joint",
 ]
+G1_HAND_JOINTS = G1_FINGER_JOINTS + G1_THUMB_JOINTS
 # End-effector body the wrist camera mounts on / eef pose is read from (exists in
 # all G1 variants). The Inspire hand links hang off this via right_hand_palm_link.
 G1_EE_BODY = "right_wrist_yaw_link"
@@ -92,6 +116,11 @@ G1_FOOT_BODIES = ["left_ankle_roll_link", "right_ankle_roll_link"]
 # The Inspire palm body; its surface is the local -x side (see fiatlux_task/poses.py).
 G1_PALM_BODIES = ["left_hand_base_link", "right_hand_base_link"]
 G1_TORSO_BODY = "torso_link"
+# Real sensor-housing bodies authored on the USD (RealSense D435 + Livox Mid360,
+# fixed to the torso -- G1 has no neck joint). Verified by rendering each mount's
+# frame (see fiatlux_task/sensors.py).
+G1_D435_BODY = "d435_link"
+G1_MID360_BODY = "mid360_link"
 # Joint-name patterns for reward scoping (match the actuator groups below).
 G1_WAIST_JOINT_PATTERNS = ["waist_.*_joint"]
 G1_FINGER_JOINT_PATTERNS = ["[LR]_.*_joint"]
@@ -241,9 +270,29 @@ _DEX3_HAND_ORDER = [
 G1_DEX3_LEFT_HAND_JOINTS = [f"left_{j}" for j in _DEX3_HAND_ORDER]
 G1_DEX3_RIGHT_HAND_JOINTS = [f"right_{j}" for j in _DEX3_HAND_ORDER]
 G1_DEX3_FINGER_JOINT_PATTERNS = [".*_hand_(thumb|index|middle)_._joint"]
+G1_DEX3_PALM_BODIES = ["left_hand_palm_link", "right_hand_palm_link"]
+
+# Distal link of each digit that closes on a grasped object, per variant. Their centroid
+# against the palm's locates the hand's cup without needing to know which local axis the
+# palm surface is -- the two hands disagree on that, and it is the thing most easily got
+# wrong by inspection. Dex3 opposes a 3-DoF thumb against two 2-DoF fingers; Inspire curls
+# four fingers against a 4-DoF thumb, of which only the index/middle/ring reach the cup.
+G1_GRASP_DISTAL_BODIES: dict[str, list[str]] = {
+    "inspire": ["R_index_intermediate", "R_middle_intermediate", "R_ring_intermediate", "R_thumb_distal"],
+    "dex3": ["right_hand_index_1_link", "right_hand_middle_1_link", "right_hand_thumb_2_link"],
+}
+# Right-hand joints and palm body per variant, for scripted poses that must name them.
+G1_RIGHT_HAND_JOINTS_BY_VARIANT: dict[str, list[str]] = {
+    "inspire": G1_HAND_JOINTS,
+    "dex3": G1_DEX3_RIGHT_HAND_JOINTS,
+}
+G1_PALM_BODY_BY_VARIANT: dict[str, str] = {
+    "inspire": G1_PALM_BODIES[1],
+    "dex3": G1_DEX3_PALM_BODIES[1],
+}
 
 G1_DEX3_CFG = G1_INSPIRE_CFG.replace(
-    spawn=G1_INSPIRE_CFG.spawn.replace(usd_path=G1_DEX3_USD, func=sim_utils.spawn_from_usd),
+    spawn=G1_INSPIRE_CFG.spawn.replace(usd_path=G1_DEX3_USD, func=_spawn_g1_dex3_with_filtered_hand_mounts),
     actuators={
         **{k: v for k, v in G1_INSPIRE_CFG.actuators.items() if k != "hands"},
         # Unitree Dex3 driver gains (gear_sonic_deploy ``dex3_hands.hpp``); torque
@@ -257,28 +306,104 @@ G1_DEX3_CFG = G1_INSPIRE_CFG.replace(
 )
 
 G1_VARIANTS = {"inspire": G1_INSPIRE_CFG, "dex3": G1_DEX3_CFG}
-_FINGER_PATTERNS_BY_VARIANT = {
-    "inspire": G1_FINGER_JOINT_PATTERNS,
-    "dex3": G1_DEX3_FINGER_JOINT_PATTERNS,
+
+# Every task in this repo is *authored* against the Inspire hand (G1_INSPIRE_CFG is the
+# scene's default robot everywhere); swapping is always FROM that fixed baseline TO the
+# target variant. Each entry maps an exact Inspire joint-name list a task might reference
+# (a reward/termination finger-deviation pattern, an action term's controlled joints, or
+# an observation term's scoped joints) to its dex3 equivalent. Insert's action/observation
+# scope arm+hand together (``G1_ARM_JOINTS + G1_HAND_JOINTS``), hence that combined entry.
+_HAND_REMAPS: dict[str, dict[tuple[str, ...], list[str]]] = {
+    "dex3": {
+        tuple(G1_FINGER_JOINT_PATTERNS): list(G1_DEX3_FINGER_JOINT_PATTERNS),
+        tuple(G1_HAND_JOINTS): list(G1_DEX3_RIGHT_HAND_JOINTS),
+        tuple(G1_ARM_JOINTS + G1_HAND_JOINTS): list(G1_ARM_JOINTS + G1_DEX3_RIGHT_HAND_JOINTS),
+    },
 }
+# Symmetric "back to inspire" entries, kept for completeness / testability even though no
+# script currently calls ``swap_robot_variant(cfg, "inspire")`` (eval.py / record_run.py
+# only swap when ``--robot != "inspire"``).
+_HAND_REMAPS["inspire"] = {tuple(v): list(k) for k, v in _HAND_REMAPS["dex3"].items()}
+
+# Substrings that flag a joint-name list as hand-specific for *some* variant, so an
+# unrecognized list containing one can be told apart from a variant-agnostic list (arm,
+# waist, leg joints -- identical names on every G1 variant) that never needed remapping.
+_HAND_NAME_MARKERS = ("R_", "L_", "_hand_")
 
 
 def swap_robot_variant(env_cfg, variant: str) -> None:
     """Swap the scene's G1 hand variant in a parsed env cfg, keeping its placement.
 
-    Reward/termination terms that scope finger joints are re-pointed at the
-    variant's joint names (a regex that matches no joint raises in Isaac Lab's
-    name resolver).
+    Rewrites every joint-name reference this function recognizes -- reward/termination/
+    event *and* action *and* observation terms scoped to the Inspire hand's finger
+    pattern or literal hand-joint list -- to the target variant's equivalent. A
+    wildcard action term (``joint_names=[".*"]``) needs no rewriting; it resolves
+    against whichever robot is attached.
+
+    Raises ``ValueError`` if it finds a joint-name list that looks hand-specific (matches
+    neither variant's known joint names, but contains a hand-name marker) and isn't in
+    ``_HAND_REMAPS``, rather than leaving it pointed at joints the swapped-in robot
+    does not have.
     """
+    if variant not in G1_VARIANTS:
+        raise ValueError(f"unknown G1 variant {variant!r}; choose from {sorted(G1_VARIANTS)}")
     robot = env_cfg.scene.robot
     env_cfg.scene.robot = G1_VARIANTS[variant].replace(prim_path=robot.prim_path, init_state=robot.init_state)
-    patterns = _FINGER_PATTERNS_BY_VARIANT[variant]
+
+    remap_table = _HAND_REMAPS[variant]
+
+    def remap(names) -> list[str] | None:
+        names = list(names or [])
+        if not names or names == [".*"]:
+            return None  # empty / wildcard: variant-agnostic, nothing to do
+        mapped = remap_table.get(tuple(names))
+        if mapped is not None:
+            return mapped
+        if any(any(marker in n for marker in _HAND_NAME_MARKERS) for n in names):
+            raise ValueError(
+                f"swap_robot_variant({variant!r}): don't know how to remap "
+                f"joint_names={names!r} -- it looks hand-specific but isn't in "
+                "robots.g1._HAND_REMAPS. Add it there rather than swapping the robot "
+                "and leaving this term pointed at joints the new hand doesn't have."
+            )
+        return None  # arm / waist / leg joints: identical names on every variant
+
+    def remap_asset_cfg(term) -> None:
+        asset_cfg = getattr(term, "params", {}).get("asset_cfg") if hasattr(term, "params") else None
+        if asset_cfg is not None and getattr(asset_cfg, "name", "robot") == "robot":
+            remapped = remap(asset_cfg.joint_names)
+            if remapped is not None:
+                asset_cfg.joint_names = remapped
+
     for manager_name in ("rewards", "terminations", "events"):
         manager = getattr(env_cfg, manager_name, None)
         if manager is None:
             continue
         for term_name in dir(manager):
-            term = getattr(manager, term_name)
-            asset_cfg = getattr(term, "params", {}).get("asset_cfg") if hasattr(term, "params") else None
-            if asset_cfg is not None and list(asset_cfg.joint_names or []) == list(G1_FINGER_JOINT_PATTERNS):
-                asset_cfg.joint_names = list(patterns)
+            if term_name.startswith("_"):
+                continue
+            remap_asset_cfg(getattr(manager, term_name))
+
+    actions = getattr(env_cfg, "actions", None)
+    if actions is not None:
+        for term_name in dir(actions):
+            if term_name.startswith("_"):
+                continue
+            term = getattr(actions, term_name)
+            if getattr(term, "asset_name", None) == "robot" and hasattr(term, "joint_names"):
+                remapped = remap(term.joint_names)
+                if remapped is not None:
+                    term.joint_names = remapped
+
+    observations = getattr(env_cfg, "observations", None)
+    if observations is not None:
+        for group_name in dir(observations):
+            if group_name.startswith("_"):
+                continue
+            group = getattr(observations, group_name)
+            if not isinstance(group, ObsGroup):
+                continue
+            for term_name in dir(group):
+                if term_name.startswith("_"):
+                    continue
+                remap_asset_cfg(getattr(group, term_name))

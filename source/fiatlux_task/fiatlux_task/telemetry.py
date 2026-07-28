@@ -183,9 +183,7 @@ class ScoreLogger:
                 self._policy_counts[key] = self._policy_counts.get(key, 0) + 1
         if "hand_contact" in env.scene.sensors:
             forces = env.scene.sensors["hand_contact"].data.net_forces_w
-            self.peak_contact_force = max(
-                self.peak_contact_force, float(torch.norm(forces, dim=-1).max())
-            )
+            self.peak_contact_force = max(self.peak_contact_force, float(torch.norm(forces, dim=-1).max()))
 
         done_ids = torch.nonzero(done, as_tuple=False).flatten()
         if len(done_ids) == 0:
@@ -238,14 +236,11 @@ class ScoreLogger:
             "mean_episode_length": _mean(self._ep_lengths),
             "mean_control_effort": _mean(self._control_efforts),
             "peak_contact_force": self.peak_contact_force,
-            "score_breakdown": {
-                key: self._sums[key] / self._counts[key] for key in sorted(self._sums)
-            },
+            "score_breakdown": {key: self._sums[key] / self._counts[key] for key in sorted(self._sums)},
         }
         if self._policy_sums:
             results["policy_diagnostics"] = {
-                key: self._policy_sums[key] / self._policy_counts[key]
-                for key in sorted(self._policy_sums)
+                key: self._policy_sums[key] / self._policy_counts[key] for key in sorted(self._policy_sums)
             }
         return results
 

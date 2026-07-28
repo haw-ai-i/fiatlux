@@ -3,7 +3,7 @@
 The benchmark's first real (non-smoke) baseline entry: **zero-shot GR00T N1.7**
 (`nvidia/GR00T-N1.7-3B` base checkpoint, `REAL_G1` embodiment) + the **decoupled GEAR
 whole-body controller** inside `FIATLUX-Replace-v0`. GR00T consumes the *standard*
-observation mode (torso RGB + proprioception + a language instruction) — no privileged
+observation mode (ego RGB + proprioception + a language instruction) — no privileged
 state. Expected result: ~0 completions (published zero-shot GR00T numbers are 0% even on
 tabletop G1 pick-place); the meaningful outputs are survival, the partial-progress
 channels, and a working submission path for fine-tuned models.
@@ -65,24 +65,44 @@ Isaac Lab process (fiatlux venv)                GR00T venv process
   `left/right_arm` (RELATIVE joints, decoded absolute against the state we send),
   `waist` (3), `left/right_hand` (Dex3, unused), `base_height_command` (1),
   `navigate_command` (3). Server round-trip ≈ **0.11 s** on the 3090.
+- `wrist_eef_9d` is genuinely unused, not a missed integration: NVIDIA's own real
+  inference path (`G1DecoupledWholeBodyPolicy`) takes joint-space `target_upper_body_pose`
+  from its upper-body policy directly, no IK step. The only IK in `GR00T-WholeBodyControl`
+  (`TeleopRetargetingIK`) is teleop/data-collection tooling (AVP hand-tracking → joint
+  targets for demonstration recording) and is never wired into VLA inference.
+- Server-side `decode_action` (`gr00t/data/state_action/state_action_processor.py`)
+  converts `RELATIVE`-rep actions to absolute using the *state we sent in that request*
+  as reference (`reference_state = state[state_key][-1]`) -- confirmed by reading it, not
+  inferred from behavior. `left_arm`/`right_arm` values in the chunk are therefore already
+  absolute joint targets.
 - Zeros for the wrist rot6d crash the server pipeline ("SVD did not converge") — always
   send a valid rotation.
-- The adapter maps: `navigate_command` → WBC nav cmd, `base_height_command` → WBC height,
-  VLA `waist` joint targets → WBC torso-rpy command (small-angle stand-in for the
-  reference pipeline's FK), `left/right_arm` → direct joint-position targets. Chunks are
-  re-fetched every 20 env steps; the sim clock stops during the request, so no latency
-  compensation.
+- The adapter maps: `navigate_command` → WBC nav cmd (no transform in either direction;
+  `G1DecoupledWholeBodyPolicy.get_action` passes `upper_body_action["navigate_cmd"]`
+  straight to the lower-body policy too), `base_height_command` → WBC height, VLA `waist`
+  joint targets → WBC torso-rpy command (small-angle stand-in for the reference
+  pipeline's FK), `left/right_arm` → direct joint-position targets. Chunks are re-fetched
+  every 20 env steps; the sim clock stops during the request, so no latency compensation.
 
 ## Decoupled GEAR WBC contract (`decoupled_wbc`, mirrored in `GearWbcDecoder`)
 
-- Balance/Walk ONNX pair `[B, 516] → [B, 15]`; Balance serves `|nav cmd| < 0.05`.
+- Balance/Walk ONNX pair `[B, 516] → [B, 15]`; Balance serves `|nav cmd| < 0.05`
+  (`g1_gear_wbc_policy.py:get_action`, `if np.linalg.norm(self.cmd) < 0.05`).
 - 516 = 6-frame history (oldest first, zero-padded at episode start) of an 86-d frame:
   `[cmd*(2,2,0.5), height, rpy_cmd, ω*0.5, projected gravity, (q29 − defaults),
   dq29*0.05, last_action15]`, q/dq in URDF body order (legs, waist, arms) with defaults
-  only for the lower 15.
-- `q_target15 = action*0.25 + defaults15`; plant gains kp `[150,150,150,200,40,40]×2 +
-  [250]×3`, kd `[2,2,2,4,2,2]×2 + [5]×3`; torque-retargeted through the env's own PD
-  (same scheme as SONIC below).
+  only for the lower 15. Body-joint order confirmed against the literal
+  `g1_gear_wbc.xml` `<joint>` tree, not assumed from the `joint_groups` dict's listing
+  order -- `get_joint_group_indices` sorts by canonical model index (its own docstring),
+  so dict listing order is not the actual returned order.
+- `q_des15 = action*0.25 + defaults15`; plant gains transcribed from `g1_gear_wbc.yaml`:
+  kp `[150,150,150,200,40,40]×2 + [250]×3`, kd `[2,2,2,4,2,2]×2 + [5]×3`. These equal our
+  own leg/waist actuator gains (`robots/g1.py`) exactly -- golden-tested in
+  `tests/test_groot_adapter.py`, not just asserted.
+- Was: used `q_des15` directly, relying on that gain match without ever checking it.
+  Now: retargets through the env's own PD like SONIC below regardless (`τ = kp_wbc(q_des
+  − q) − kd_wbc·q̇`, then solve for `q_t` under our gains) -- correct even if the gains
+  ever drift apart, not just today.
 
 ## SONIC decoder contract (reverse-engineered from `gear_sonic_deploy`)
 
@@ -147,9 +167,9 @@ response `[action, info]`. `{"endpoint": "ping"}` for liveness,
   spawn pose to the controller's standing pose over the first 1 s of each episode
   (the deploy stacks' "blend to initial pose"); histories/actions engage after
   handover. Without it the controllers receive a ~0.5 rad step input at t=0.
-- Our camera is torso-mounted, not the real G1's head-mounted ego view; our hands are
-  Inspire, not Dex3 (hand states sent as zeros, hand actions ignored, fingers held).
-  Acceptable zero-shot domain gaps, documented with the results.
+- Our hands are Inspire, not Dex3 by default (hand states sent as zeros, hand actions
+  ignored, fingers held) unless run with `--robot dex3`. Acceptable zero-shot domain
+  gap, documented with the results.
 
 ## Findings log
 
@@ -173,6 +193,27 @@ response `[action, info]`. `{"endpoint": "ping"}` for liveness,
 - The lower-body stand gate is zero-command `wbc_stand` **displacement** (0.21 m spawn
   settle, then static), not survival: an upright robot can still skate metres per
   episode.
+- Dex3's `right_hand_camera_base_link` is wedged into `right_hand_palm_link` (~22 kN)
+  and `right_hand_thumb_0_link` (~1.8 kN) from spawn, under zero action -- a static
+  authoring defect, the same class of bug `G1_INSPIRE_CFG`'s `_G1_FILTERED_PAIRS`
+  collision filter already covers, but `G1_DEX3_CFG` spawned with the plain
+  `sim_utils.spawn_from_usd` (no filter) until this session. Confirmed via a
+  `ContactSensorCfg` filtered specifically against neighbor bodies (ruled out
+  `d435_link`/`mid360_link` first -- zero force there despite the hand visibly blocking
+  the ego camera in every recorded frame; the occlusion and the contact spike are
+  coincidental, not causally the same mechanism). Fixed in `robots/g1.py`
+  (`_G1_DEX3_FILTERED_PAIRS`); `eval.py` `peak_contact_force` 34,481 N -> 836 N,
+  `contact_penalty` -827,598 -> -64.2 (5 episodes, seed 0). Hand still blocks the ego
+  view -- that's GR00T's own commanded arm pose, unrelated to the collision fix.
+- Ego camera FOV was 50 deg (`focal_length=22.48/horizontal_aperture=20.955`); the real
+  D435 RGB sensor is 69.4x42.5 deg. Narrowed `focal_length` to 15.13 mm (aperture fixed)
+  to match horizontal FOV; golden-tested in `tests/test_groot_adapter.py`.
+- `GearWbcDecoder` used the WBC's `q_des` as an env action target directly instead of
+  retargeting through our own PD gains like `SonicDecoder` does -- silently correct only
+  because `robots/g1.py`'s leg/waist gains happen to equal `g1_gear_wbc.yaml`'s exactly.
+  That equality is now itself a golden-tested assertion, and `GearWbcDecoder` retargets
+  explicitly regardless (shared `retarget_torque_to_position` helper, `groot.py`), so
+  it stays correct even if the gains are ever retuned apart.
 
 ## Results (seed 0, 20 episodes, protocol runs)
 
@@ -193,12 +234,33 @@ progress range — all progress channels 0. Diagnostics: server latency ≈ 117 
 `nav_cmd_norm` ≈ 0.052, `base_height_cmd` ≈ 0.73. Artifacts:
 `logs/runs/groot-replace-seed0/`, `logs/runs/groot-replace-dex3-seed0/`.
 
+**Post self-collision + ego-camera-mount fix (this session, 5 episodes, seed 0):**
+success 0, `mean_episode_length` 2000.0 (time_out 100%, still never falls),
+`peak_contact_force` 836 N (was 34,481 N), `nav_cmd_norm` ≈ 0.019-0.030 across query
+windows -- same order as before, not a regression from the camera-mount change (A/B'd
+directly: reproducing the old torso-mount camera gives the same small/noisy range).
+All progress channels still 0 -- zero-shot still doesn't solve the task, matching
+NVIDIA's own published ~0% zero-shot numbers; this session's fixes clean up the reward
+signal and the ego view, they don't make the base checkpoint solve the benchmark.
+Ego-view video (`--cam ego`, now supported by `record_run.py`):
+`logs/runs/groot-replace-dex3-final-check/video/run.mp4` -- floor renders correctly
+(the room's real wood floor, not the default grid plane) and the wider FOV shows more
+context (table edge visible late in the episode), but both hands still dominate the
+frame most of the episode -- that's GR00T's own commanded arm pose, not something in
+our plumbing.
+Instruction probe (same frozen frame, four prompts): "walk forward" gave the
+*smallest* `|nav_cmd|` (0.014) of the four tested, below GearWbcDecoder's own
+Balance/Walk 0.05 threshold -- i.e. that specific instruction would select the
+*standing* controller. "stand still" gave a larger, non-zero command (0.065) that
+clears the walking threshold. Direction (sign of vx/vy) barely varies with the prompt
+either. Independently reproduces the "weak, unreliable grounding" finding below on
+the current, fixed codebase -- not something the sensor/collision fixes touch.
+
 Plumbing probes (same observation, repeated queries = the sampling-noise floor):
-- The torso camera's offset must use `convention="world"` (identity rot = parent +X,
-  forward). Under `"ros"` the identity rot points the optical axis along +Z — straight
-  at the ceiling. Caught by dumping the exact frames sent to the VLA; with the fix, the
-  model's output distribution responds to real-vs-blank imagery. The Insert wrist
-  camera uses the same identity-`"ros"` offset and needs the same audit (follow-up).
+- Ego camera: `convention="world"`, identity rot (forward = parent +X); `"ros"` points
+  the optical axis at the ceiling. Mounted on `d435_link` (matches NVIDIA's head-mounted
+  rig), not `torso_link`. The Insert wrist camera is unrelated to GR00T -- REAL_G1's
+  modality config has no wrist video key, only `state.{left,right}_wrist_eef_9d` (FK pose).
 - Instruction following (eight prompts, same live frame): weak, unreliable grounding.
   "walk forward" commands |nav| 0.34 (as a turn), "crouch down" gives the lowest height
   command (0.696), "pick up the light bulb" the largest arm excursion — but "turn left"

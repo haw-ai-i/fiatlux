@@ -86,9 +86,13 @@ uv run python scripts/record_run.py --task FIATLUX-Insert-v0 --policy random \
 
 This writes `logs/runs/random0/video/run.mp4` plus a `run_poster.png` still (PNGs
 preview inline in most editors). `--cam` picks the camera: the fixed `third_person`
-(default) / `closeup` viewpoints, or `orbit` for a 360° turntable of the scene —
-the same scene-inspection view `verify_scene.py --record` produces for the ladder
-family. On a headless/remote box there's no display to preview the MP4 on, so pull
+(default) / `closeup` viewpoints, `orbit` for a 360° turntable of the scene — the
+same scene-inspection view `verify_scene.py --record` produces for the ladder
+family — `fixture`, a low orbit that looks **up** at the mounted socket, or `ego`
+for the robot's own head camera. Use `fixture` (also `verify_scene.py --record
+--record_view fixture`) whenever an overhead mount is in question: every other
+camera here points at the floor and the bench, and none of them can see a fixture
+at 2.2 m or 3.0 m at all. On a headless/remote box there's no display to preview the MP4 on, so pull
 the file to your machine (e.g. `scp` or a remote-file-browsing editor) and play it
 locally.
 

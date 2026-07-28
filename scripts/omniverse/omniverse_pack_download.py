@@ -13,6 +13,7 @@ Usage:
   python scripts/omniverse/omniverse_pack_download.py Warehouse Residential
   python scripts/omniverse/omniverse_pack_download.py Warehouse --dest /data/packs
 """
+
 import argparse
 import os
 import shutil
@@ -23,20 +24,20 @@ BASE = "https://d4i3qtqj3r0z5.cloudfront.net"
 
 # friendly name -> CloudFront zip filename (the %40 is an encoded '@')
 PACKS = {
-    "Warehouse":                  "Warehouse_NVD%4010013.zip",
-    "Residential":                "Residential_NVD%4010012.zip",
-    "Commercial":                 "Commercial_NVD%4010013.zip",
-    "Industrial":                 "Industrial_NVD%4010012.zip",
-    "SimReady_Warehouse_01":      "SimReady_Warehouse_01_NVD%4010010.zip",
-    "SimReady_Warehouse_02":      "SimReady_Warehouse_02_NVD%4010010.zip",
-    "SimReady_Furniture_Misc":    "SimReady_Furniture_Misc_01_NVD%4010010.zip",
+    "Warehouse": "Warehouse_NVD%4010013.zip",
+    "Residential": "Residential_NVD%4010012.zip",
+    "Commercial": "Commercial_NVD%4010013.zip",
+    "Industrial": "Industrial_NVD%4010012.zip",
+    "SimReady_Warehouse_01": "SimReady_Warehouse_01_NVD%4010010.zip",
+    "SimReady_Warehouse_02": "SimReady_Warehouse_02_NVD%4010010.zip",
+    "SimReady_Furniture_Misc": "SimReady_Furniture_Misc_01_NVD%4010010.zip",
     "SimReady_Containers_Shipping_01": "SimReady_Containers_Shipping_01_NVD%4010010.zip",
     "SimReady_Containers_Shipping_02": "SimReady_Containers_Shipping_02_NVD%4010010.zip",
-    "Sample_Scenes":              "Sample_Scenes_NVD%4010013.zip",
-    "Showcase":                   "Showcases_Content_NVD%4010011.zip",
-    "Default_Scene_Templates":    "Scene_Templates_NVD%4010011.zip",
-    "Rigged_Characters":          "Characters_NVD%4010012.zip",
-    "Data_Center":                "Datacenter_NVD%4010012.zip",
+    "Sample_Scenes": "Sample_Scenes_NVD%4010013.zip",
+    "Showcase": "Showcases_Content_NVD%4010011.zip",
+    "Default_Scene_Templates": "Scene_Templates_NVD%4010011.zip",
+    "Rigged_Characters": "Characters_NVD%4010012.zip",
+    "Data_Center": "Datacenter_NVD%4010012.zip",
 }
 DEFAULT_DEST = os.path.expanduser("~/omniverse_packs/zips")
 
@@ -52,8 +53,7 @@ def download(name, dest):
     out = os.path.join(dest, f"{name}.zip")
     url = f"{BASE}/{PACKS[name]}"
     print(f"  downloading {name} -> {out}")
-    rc = subprocess.call(["curl", "-L", "-C", "-", "--retry", "5", "--retry-delay", "5",
-                          "-o", out, url])
+    rc = subprocess.call(["curl", "-L", "-C", "-", "--retry", "5", "--retry-delay", "5", "-o", out, url])
     if rc == 0:
         print(f"  done: {name} ({os.path.getsize(out) / 1e9:.2f} GB)")
     else:
