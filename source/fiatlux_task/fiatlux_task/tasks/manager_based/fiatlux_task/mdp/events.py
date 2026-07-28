@@ -79,14 +79,13 @@ HAND_GRIP_FRICTION_SPREAD = 0.2
 def hand_grip_material_event(randomize: bool = True) -> EventTermCfg:
     """Grip friction for the G1's hands, as a startup event term.
 
-    Every grasp in the benchmark is made with these shapes, and without this they run on the
-    PhysX default 0.5/0.5 -- bare steel on glass, which is not what a robot hand is.
+    Every grasp in the benchmark is made with these shapes; without it they run on the PhysX
+    default 0.5/0.5.
 
-    Deliberately an EVENT rather than a material bound in the robot spawner:
-    ``bind_physics_material`` is ``apply_nested``-decorated and ``apply_nested`` SKIPS
-    INSTANCED PRIMS, while every G1 link's ``collisions`` child is authored instanceable. The
-    USD route therefore binds nothing and leaves the whole robot at 0.5/0.5 while reading as
-    applied. This term writes through the PhysX view, which has no notion of instancing.
+    Must stay an EVENT, not a material bound in the robot spawner: ``bind_physics_material``
+    is ``apply_nested``-decorated, ``apply_nested`` skips instanced prims, and every G1 link's
+    ``collisions`` child is instanceable -- the USD route binds nothing while reporting
+    success. This writes through the PhysX view, which has no notion of instancing.
 
     Range: NVIDIA's own manipulation environments bracket it -- Factory/AutoMate fix 1.0/1.0
     for insertion, Dexsuite randomizes the hand over [0.5, 1.0]. Centered on
@@ -94,11 +93,9 @@ def hand_grip_material_event(randomize: bool = True) -> EventTermCfg:
     a fresh cfg per call so each task's ``EventCfg`` owns its own instance.
 
     Args:
-        randomize: when False the band collapses onto ``HAND_GRIP_FRICTION``. The term stays
-            -- the hands keep grip friction instead of falling back to the PhysX 0.5/0.5
-            default -- but every run measures the same contact. This is what
-            ``disable_randomization`` and the interaction scenarios want; anything that
-            measures a grasp force is otherwise seed-dependent.
+        randomize: when False the band collapses onto ``HAND_GRIP_FRICTION`` -- the term
+            stays, so the hands keep grip friction, but every run measures the same contact.
+            Anything measuring a grasp force needs this.
     """
     static, dynamic = HAND_GRIP_FRICTION
     spread = HAND_GRIP_FRICTION_SPREAD if randomize else 0.0

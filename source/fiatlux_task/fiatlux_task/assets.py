@@ -26,14 +26,11 @@ FIATLUX_ASSETS_DIR = os.environ.get("FIATLUX_ASSETS_DIR", os.path.join(_REPO_ROO
 G1_USD = os.path.join(FIATLUX_ASSETS_DIR, "unitree_g1", "wholebody_inspire", "g1_29dof_with_inspire_rev_1_0.usd")
 G1_DEX3_USD = os.path.join(FIATLUX_ASSETS_DIR, "unitree_g1", "wholebody_dex3", "g1_29dof_with_dex3_rev_1_0.usd")
 
-# Bulb + fixture are the two halves of the Omniverse Sample-Scenes ``LightBulb`` -- the only
-# separable, modelled bulb-in-a-socket found in any Omniverse pack. The BEHAVIOR-1K pair
-# (``kfmkwd`` bulb / ``ehjsdz`` lamp) it replaces was unusable: ``ehjsdz`` is not hollow, so
-# the bulb could not physically enter it, which is why "seated" had to degrade to pose
-# coincidence and why an installed bulb had to be spawned kinematic. The socket half's
-# colliders are an exact triangle mesh (``physics:approximation = "none"``) precisely so the
-# screw hole stays OPEN: a bulb lowered in nests and rests stably, and a loose bulb collides
-# with the fixture instead of passing through it -- no collision filter needed.
+# Bulb + fixture: the two halves of the Omniverse Sample-Scenes ``LightBulb``, the only
+# separable modelled bulb-in-a-socket in any Omniverse pack. The socket's colliders are an
+# exact triangle mesh (``physics:approximation = "none"``) so the screw hole stays OPEN -- a
+# bulb lowered in nests and rests. Keep it: a convex hull closes the hole, and an exact mesh
+# is illegal on a dynamic body, so the socket can never be anything but static/kinematic.
 # ``scripts/omniverse/omniverse_bulb_rigid.py`` authors these two spawn-ready wrappers from
 # Yujin Chen's ``_bulb``/``_socket`` layers, converting Y-up centimetres to Z-up metres so the
 # env cfgs spawn them with an identity rotation.
@@ -87,19 +84,14 @@ STEP_LADDER_RIGID_USD = os.path.join(
 # below the rail top). Used by the replace task's ladder-progress scoring.
 STEP_LADDER_TOP_OFFSET = (0.0, 0.0, 1.70)
 
-# How high above whatever surface the G1's feet are on its fingertips reach, arm raised
-# straight up. MEASURED by FK (right shoulder pitch at its -3.089 rad limit, every other arm
-# joint at 0): pelvis 0.790 m, highest finger body ``R_pinky_intermediate`` at 1.3738 m. Used
-# to assert that a randomly mounted fixture is reachable from the step ladder's top platform
-# -- ``STEP_LADDER_TOP_OFFSET[2] + G1_OVERHEAD_REACH`` = 3.074 m -- rather than merely
-# looking reachable in a render.
+# Fingertip height above whatever surface the feet are on, arm raised straight up. MEASURED
+# by FK (right shoulder pitch at its -3.089 rad limit, all other arm joints 0): pelvis 0.790,
+# highest finger body 1.3738. Bounds how high a fixture may be mounted and still be worked on.
 G1_OVERHEAD_REACH = 1.3738
 
 # Elevated fixture for the at-height presets: the SAME socket half as the bench tasks, just
-# mounted inverted. It replaces the BEHAVIOR-1K chandelier (``qghfol``) that used to stand in
-# here -- that model is decorative and has no matching socket, so a bulb could never be
-# removed from or seated into it, which is what made FIATLUX-Replace-v0 unsolvable at the
-# fixture end. One socket everywhere means one set of mating constants and one seating rule.
+# mounted inverted. One socket everywhere means one set of mating constants and one seating
+# rule; a decorative chandelier has no matching socket and cannot be seated into at all.
 ELEVATED_SOCKET_USD = SOCKET_USD
 
 # Parts crate (the Install preset's bulb bin), from the packing-table prop set; the

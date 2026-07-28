@@ -182,11 +182,10 @@ class FamilyBaseEnvCfg(ManagerBasedEnvCfg):
     control_decimation: int = 4  # -> 50 Hz control
     gravity: tuple[float, float, float] = (0.0, 0.0, -9.81)
     solver_position_iterations: int = 8
-    # PhysX applies this as a FLOOR over every actor, not a default: at 4 it silently
-    # overrode the per-body ``solver_velocity_iteration_count=1`` on the bulb, the old bulb
-    # and the carried ladder, which are set to 1 because high velocity-iteration counts make
-    # the TGS solver inject energy into resting contacts. Bodies asking for MORE keep it
-    # (robot 8, replace-preset ladder 8), so this only stops the floor from overriding down.
+    # PhysX applies this as a FLOOR over every actor, not a default: any per-body
+    # ``solver_velocity_iteration_count`` below it is raised to it. Keep it at 1 -- the bulb,
+    # old bulb and carried ladder ask for 1 because high velocity-iteration counts make the
+    # TGS solver inject energy into resting contacts. Bodies asking for more still get more.
     solver_velocity_iterations: int = 1
     episode_length_s: float = 20.0
     """Nominal episode length. NOTE: ManagerBasedEnv (non-RL) has no episode horizon; this is a
@@ -218,7 +217,6 @@ class FamilyBaseEnvCfg(ManagerBasedEnvCfg):
     def __post_init__(self) -> None:
         apply_workshop_preset(self.scene)
         # GrootPolicy looks up ``scene["ego_camera"]`` unconditionally (same gap g1_bulb_env_cfg
-        # had before it was fixed): every family member needs the sensor, not just the RL ones.
         add_ego_camera(self.scene)
         # Dressing randomization: drop the fixture when disabled, or when its (opt-in)
         # assets are not downloaded (`download_assets.sh --scene-dressing`) so the env
@@ -255,8 +253,7 @@ class FamilyBaseEnvCfg(ManagerBasedEnvCfg):
         """
         self.events.randomize_sky_intensity = None
         self.events.randomize_key_light = None
-        # Not a reset term, but a randomization all the same: unpinned, every grasp
-        # force measured downstream is seed-dependent.
+        # A randomization too, though not a reset term.
         self.events.randomize_hand_material = mdp.hand_grip_material_event(randomize=False)
 
 

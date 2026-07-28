@@ -260,7 +260,6 @@ class InstallEnvCfg(ManagerBasedRLEnvCfg):
 
         add_wrist_camera(self.scene)
         # GrootPolicy looks up ``scene["ego_camera"]`` unconditionally (same gap
-        # g1_bulb_env_cfg had before it was fixed); every family member needs it.
         add_ego_camera(self.scene)
 
         self.decimation = 4
@@ -286,6 +285,5 @@ class InstallEnvCfg(ManagerBasedRLEnvCfg):
         self.events.reset_socket = None
         self.events.reset_bulb = None
         self.events.randomize_light = None
-        # Not a reset term, but a randomization all the same: unpinned, every grasp
-        # force measured downstream is seed-dependent.
+        # A randomization too, though not a reset term.
         self.events.randomize_hand_material = mdp.hand_grip_material_event(randomize=False)

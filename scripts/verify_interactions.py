@@ -131,12 +131,12 @@ from fiatlux_task.poses import (
     LADDER_STANCE_ROOT_ROT,
 )
 from fiatlux_task.recording import TrajectoryRecorder
-from fiatlux_task.robots.g1 import G1_CUP_BODIES
 from fiatlux_task.tasks.manager_based.fiatlux_task import mdp
 from fiatlux_task.tasks.manager_based.fiatlux_task.mdp import rewards as task_rewards
 from prettytable import PrettyTable
 
 from isaaclab.sensors import ContactSensorCfg
+from isaaclab.utils.math import matrix_from_quat
 
 from isaaclab_tasks.utils import parse_env_cfg
 
@@ -158,6 +158,7 @@ MIN_ROOT_Z = -0.05  # m
 STEPS_PER_SECOND = 50  # sim.dt=1/200 * decimation=4 (the family control rate)
 CONTACT_N = 0.05  # above sensor noise, below any force that means something
 MAX_SLIP_M = 0.06  # a grasp that lets the bulb travel further than this has lost it
+BULB_GRASP_OFFSET_M = 0.035  # bulb radius: how far off the palm surface a held bulb's centre sits
 
 
 # --------------------------------------------------------------------------- #
@@ -188,8 +189,7 @@ def build_insert_cfg(num_envs: int = 1):
     # Deterministic resets: zero every randomization range, keep the reset terms so
     # each reset returns entities exactly to their (scenario-crafted) init_state.
     cfg.events.randomize_light = None
-    # Grip friction is a startup randomization; unpinned it makes every contact measurement
-    # here seed-dependent. The term stays, so the hands keep grip friction.
+    # Grip friction is a startup randomization; pinned, so contact measurements are stable.
     cfg.events.randomize_hand_material = mdp.hand_grip_material_event(randomize=False)
     cfg.events.reset_robot_joints.params["position_range"] = (0.0, 0.0)
     cfg.events.reset_socket.params["pose_range"] = {}
@@ -294,9 +294,8 @@ class Monitor:
 def run_steps(env, actions, n, monitor=None, per_step=None, pre_step=None):
     """Step ``n`` env steps under fixed or callable actions.
 
-    ``pre_step`` runs BEFORE each physics step, ``per_step`` after it. Anything that writes
-    asset state the step must honour (pinning a body in place) belongs in ``pre_step``;
-    from ``per_step`` it lands after the solver has already moved things.
+    ``pre_step`` runs BEFORE each physics step, ``per_step`` after it. Asset state the step
+    must honour (pinning a body) belongs in ``pre_step``.
     """
     for i in range(n):
         if pre_step is not None:
@@ -434,8 +433,7 @@ def scenario_socket():
 def build_hand_cfg(arm=ARM_PRESS_HOVER, hand=HAND_FLAT):
     """Fixed-root G1 over the bench table, holding ``arm``/``hand`` as its DEFAULT pose.
 
-    The default matters beyond the spawn: zero action means exactly this pose, and the
-    scenarios ramp their actions from it.
+    Zero action means exactly this pose; the scenarios ramp their actions from it.
     """
     cfg = build_insert_cfg()
     cfg.scene.robot.spawn.articulation_props.fix_root_link = True
@@ -514,8 +512,6 @@ def touching_bodies(env) -> str:
 def probe_arm_grid(env, base=ARM_PRESS_HOVER):
     """Calibration sweep around ``base``: print each pose's palm world position and which
     palm-local axis points most nearly world-up."""
-    from isaaclab.utils.math import matrix_from_quat
-
     robot = env.scene["robot"]
     palm_idx = palm_body_index(env)
     axes = ("+x", "+y", "+z")
@@ -538,27 +534,28 @@ def probe_arm_grid(env, base=ARM_PRESS_HOVER):
             )
 
 
-def cup_center(env) -> torch.Tensor:
-    """World centre of the closed hand's cup.
+def grasp_point(env) -> torch.Tensor:
+    """Where a bulb held in the right hand sits: off the palm SURFACE along its normal.
 
-    The palm LINK ORIGIN is not the palm surface -- a bulb aimed at it is aimed behind the
-    hand -- so the placement point is the centroid of the palm plus the finger links.
+    Anchor to the palm, not to a centroid of the finger links -- with the hand open those are
+    extended, so their centroid lands out at the fingertips.
     """
     robot = env.scene["robot"]
-    ids, _ = robot.find_bodies(list(G1_CUP_BODIES), preserve_order=True)
-    return robot.data.body_pos_w[0, ids].mean(dim=0)
+    idx = robot.find_bodies("right_hand_base_link")[0][0]
+    state = robot.data.body_state_w[0, idx]
+    palm_normal = -matrix_from_quat(state[3:7].unsqueeze(0))[0][:, 0]  # palm surface is local -x
+    return state[:3] + palm_normal * BULB_GRASP_OFFSET_M
 
 
 def close_hand_on_bulb(env, closed: torch.Tensor, monitor=None, ramp_steps: int = 60) -> None:
-    """Pin the bulb in the cup while the fingers wrap it, then release the pin.
+    """Pin the bulb in the hand while the fingers wrap it, then release the pin.
 
-    The hand closes around a bulb already in it; an open hand cannot catch one. The pin is
-    scaffolding for that starting state, so NOTHING here is graded: a pinned bulb is
-    infinitely stiff and the closing reaction (~80 N) is an artifact of the pin, not a force
-    the bulb feels. Grade the hold, after this returns.
+    The hand closes around a bulb already in it; an open hand cannot catch one. Nothing here
+    is graded: a pinned bulb is infinitely stiff, so the closing reaction is an artifact of
+    the pin. Grade the hold, after this returns.
     """
     bulb = env.scene["bulb"]
-    place = cup_center(env).clone()
+    place = grasp_point(env).clone()
     run_steps(
         env,
         ramp(closed, ramp_steps),
@@ -575,11 +572,9 @@ def hand_bulb_force(env) -> float:
 def scenario_hand(probe: bool = False):
     """Grasp the bulb IN the hand: close, hold on grip alone, release.
 
-    Replaces a palm-down press against the bench, which was calibrated to the BEHAVIOR-1K
-    bulb's geometry and stopped reaching the (shorter, self-righting) Omniverse bulb at all.
-    Holding it in the hand removes the bench from the test entirely -- no surface height, no
-    drop height, no dependence on which way the bulb settles -- and makes the graded quantity
-    the one the benchmark actually scores: grip force against retention.
+    Holding it in the hand keeps the bench out of the test -- no surface height, no drop
+    height, no dependence on which way the bulb settles -- and makes the graded quantity the
+    one the benchmark scores: grip force against retention.
     """
     print("\n[verify] === scenario: bulb-in-hand ===")
     cfg = build_hand_cfg(arm=ARM_CRADLE)
@@ -594,7 +589,7 @@ def scenario_hand(probe: bool = False):
             robot = env.scene["robot"]
             palm = robot.data.body_state_w[0, palm_body_index(env), :7]
             print(f"  [PROBE] palm pose (world): {palm.tolist()}")
-            print(f"  [PROBE] cup centre: {cup_center(env).tolist()}")
+            print(f"  [PROBE] grasp point: {grasp_point(env).tolist()}")
             print(f"  [PROBE] initial contacts: {touching_bodies(env)}")
             probe_arm_grid(env, ARM_CRADLE)  # palm-pose sweep for recalibrating ARM_CRADLE
             run_steps(env, zero, 60)  # back to the open palm-up cradle
@@ -616,18 +611,18 @@ def scenario_hand(probe: bool = False):
             peak_f = max(peak_f, f)
             contact_steps += int(f > CONTACT_N)
             if probe and i % 30 == 0:
-                slip = (bulb.data.root_pos_w[0] - cup_center(env)).norm().item()
+                slip = (bulb.data.root_pos_w[0] - grasp_point(env)).norm().item()
                 print(f"  [PROBE] hold t={i / STEPS_PER_SECOND:.1f}s force {f:.2f} N, slip {slip * 100:.1f} cm")
 
         run_steps(env, hold, n_hold, mon, per_step=track)
-        slip = (bulb.data.root_pos_w[0] - cup_center(env)).norm().item()
+        slip = (bulb.data.root_pos_w[0] - grasp_point(env)).norm().item()
         held_f = hand_bulb_force(env)
         ok, detail = mon.bounded()
         record("hand:hold_no_explosion", ok, detail)
         record(
             "hand:hold_retains_bulb",
             (not mon.nan) and held_f > CONTACT_N and slip < MAX_SLIP_M,
-            f"after {n_hold / STEPS_PER_SECOND:.1f} s on grip alone: {slip * 100:.1f} cm from the cup, "
+            f"after {n_hold / STEPS_PER_SECOND:.1f} s on grip alone: {slip * 100:.1f} cm of slip, "
             f"contact {held_f:.2f} N",
         )
         record(
@@ -648,7 +643,7 @@ def scenario_hand(probe: bool = False):
         end_speed = bulb.data.root_lin_vel_w.norm().item()
         ok, detail = mon.bounded()
         record("hand:release_no_explosion", ok, detail)
-        # ~1.5 m/s is free fall to the bench and fine; the fingers must not fling it.
+        # ~1.5 m/s is free fall to the bench; the fingers must not fling it.
         record(
             "hand:release_no_launch",
             (not mon.nan) and mon.max_bulb_speed < 2.5 and end_speed < 0.2,
@@ -832,14 +827,9 @@ def scenario_ladder(probe: bool = False):
             (not mon.nan) and 5.0 < total < 1000.0,
             f"mean robot-ladder contact {total:.1f} N over 8 s (via {touching or 'nothing'})",
         )
-        # CONVERGENCE, not a snapshot: assert the pelvis has stopped moving by the end of the
-        # soak (peak-to-peak under 2 cm on every axis over the final ~2 s), rather than
-        # sampling instantaneous height+speed at a fixed mark. A passive robot slumped on a
-        # ladder is a marginally stable pile that settles on its own schedule, so an
-        # instantaneous speed at an arbitrary time reads as noise -- it was non-monotonic in
-        # hand friction, failing at 1.0 and at 1.5 while passing at 0.5. Whether the pile is
-        # held UP by the ladder is not this check's business: ladder:robot_rests_on_ladder
-        # already asserts that, via contact force.
+        # CONVERGENCE, not a snapshot: a passive robot slumped on a ladder settles on its own
+        # schedule, so instantaneous speed at a fixed mark reads as noise. Whether the pile is
+        # held UP belongs to ladder:robot_rests_on_ladder, which asserts it via contact force.
         tail = root_track[-n_tail:] if len(root_track) >= n_tail else root_track
         p2p = [max(p[ax] for p in tail) - min(p[ax] for p in tail) for ax in range(3)] if tail else [9.9] * 3
         record(

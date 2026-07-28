@@ -56,9 +56,8 @@ def orbit_pose(
 ) -> tuple[tuple[float, float, float], tuple[float, float, float]]:
     """(eye, lookat) for frame ``i`` of an ``n_frames``-frame turntable orbit.
 
-    ``sweep_deg``/``phase_deg`` restrict it to an arc. A full circle is only right when the
-    subject can be viewed from every side; a wall-mounted fixture cannot, and half such an
-    orbit sits outside the room filming the back of a wall.
+    ``sweep_deg``/``phase_deg`` restrict it to an arc, for a subject that cannot be viewed
+    from every side.
     """
     theta = math.radians(phase_deg + sweep_deg * i / max(n_frames, 1))
     eye = (center[0] + radius * math.cos(theta), center[1] + radius * math.sin(theta), height)
@@ -82,10 +81,9 @@ def _radius_inside(
 ) -> float:
     """Largest orbit radius whose whole arc stays inside the room, capped at the nominal one.
 
-    A camera that leaves the room does not fail -- it films the back of a wall and returns a
-    frame of flat grey, which is indistinguishable from a missing fixture. Since the fixture
-    may be sampled within one ladder zone of a wall, the nominal 2.2 m simply does not fit in
-    every layout, so the radius is derived per layout rather than assumed.
+    Derived per layout: a fixture may be sampled within one ladder zone of a wall, where the
+    nominal radius does not fit. A camera outside the room returns flat grey, which looks
+    exactly like a missing fixture.
     """
     lo = (bounds_min[0] + FIXTURE_VIEW_WALL_CLEARANCE, bounds_min[1] + FIXTURE_VIEW_WALL_CLEARANCE)
     hi = (bounds_max[0] - FIXTURE_VIEW_WALL_CLEARANCE, bounds_max[1] - FIXTURE_VIEW_WALL_CLEARANCE)
@@ -104,21 +102,14 @@ def _radius_inside(
 def fixture_orbit(env_cfg) -> dict:
     """Orbit kwargs (for :func:`orbit_pose` / :func:`record_orbit`) that look UP at the fixture.
 
-    Every other camera in this repo is aimed at the floor and the bench, and orbits above
-    what it is looking at. That blind spot is why an overhead fixture could hang 1.2 m under
-    the ceiling -- and later, after the room's floor was aligned, in open air a metre from
-    anything -- through many recorded runs without one frame showing it.
+    The only camera here that can see an overhead mount; every other one is aimed at the
+    floor and the bench. Aimed at where the **cfg** says the fixture is, so empty air in the
+    render means the fixture is not where the scene claims.
 
-    Aimed at where the **cfg** says the fixture is, deliberately: if the render shows empty
-    air, the fixture is not where the scene claims it is, which is exactly the failure this
-    view exists to make visible.
-
-    A wall mount gets a 180-degree arc rather than a full circle, centred on the direction
-    the socket opening faces -- taken from the fixture's own orientation, since the opening
-    points into the room by construction and is therefore the only side it can be filmed
-    from. The radius is then clamped so the arc stays inside the room (:func:`_radius_inside`);
-    both are needed, because a *ceiling* fixture sampled near a wall takes a full orbit
-    straight through it.
+    A wall mount gets a 180-degree arc centred on the direction the socket opening faces --
+    read off the fixture's own orientation, since the opening points into the room by
+    construction and is the only side it can be filmed from. The radius is then clamped to
+    keep the arc inside the room (:func:`_radius_inside`).
 
     Raises:
         ValueError: if the scene mounts no fixture at all, rather than silently orbiting the

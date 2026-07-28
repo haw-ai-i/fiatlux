@@ -164,18 +164,16 @@ ROOM_FLOOR_MAX = (4.0, 4.2)
 # Heights, measured off the room asset AFTER ``_spawn_room_backdrop`` aligns its walking
 # surface to z=0 (the asset is authored tabletop-at-origin, so everything shifts +0.7696):
 #   floor 0.000 | baseboard 0.000-0.190 | walls 0.190-3.989 | ceiling slab 4.179-4.197.
-# ROOM_CEILING_Z is the ceiling's underside -- a real surface a fixture can be mounted to,
-# not an inset guess. It is far above reach, so ceiling fixtures hang from it on a pendant
-# (CEILING_FIXTURE_Z + add_ceiling_pendant) rather than floating at the reach height, which
-# is what they did while this constant still held the pre-alignment 3.0.
+# ROOM_CEILING_Z is the ceiling's underside -- a real surface to mount to. It is far above
+# reach, so ceiling fixtures hang from it on a pendant (add_ceiling_pendant) at
+# CEILING_FIXTURE_Z rather than floating unsupported at the reach height.
 ROOM_CEILING_Z = 4.179
 ROOM_WALL_TOP_Z = 3.989
 CEILING_FIXTURE_Z = 3.0  # fixture height: reachable from the step ladder's top step
 WALL_MOUNT_Z = 2.2  # reach height for a wall-mounted fixture
 # Highest point a fixture may be mounted at and still be worked on: the ladder's top platform
-# plus the robot's measured overhead reach (3.074 m). Asserted at import rather than trusted,
-# because "reachable from the ladder" was previously only ever checked by eye -- and the
-# render looks identical whether the bulb is 5 cm inside reach or 5 cm outside it.
+# plus the robot's measured overhead reach. Asserted at import -- a render looks identical
+# whether the bulb is 5 cm inside reach or 5 cm outside it.
 MAX_REACHABLE_MOUNT_Z = STEP_LADDER_TOP_OFFSET[2] + G1_OVERHEAD_REACH
 if max(CEILING_FIXTURE_Z, WALL_MOUNT_Z) > MAX_REACHABLE_MOUNT_Z:
     raise ValueError(
@@ -183,15 +181,13 @@ if max(CEILING_FIXTURE_Z, WALL_MOUNT_Z) > MAX_REACHABLE_MOUNT_Z:
         f"reach from the step ladder's top platform ({MAX_REACHABLE_MOUNT_Z:.3f} m): the Replace "
         "task would be unsolvable by construction"
     )
-# Env spacing must clear the room's own wall box (9.04 x 8.26 m) now that each env carries
-# its own colliding room. Overlap would be physically harmless -- filter_collisions=True
-# puts every env in its own collision group -- but it makes any render with num_envs > 1
-# unreadable, which is how the floating-props bug stayed invisible for so long.
+# Must clear the room's own wall box (9.04 x 8.26 m), since each env carries its own colliding
+# room. Overlap is physically harmless (filter_collisions=True isolates each env's collision
+# group) but makes any render with num_envs > 1 unreadable.
 ROOM_ENV_SPACING = 10.0
 PENDANT_RADIUS = 0.012  # the rod a ceiling fixture hangs from
 # Decorative per-env ceiling fixture: flush against the real ceiling, because these are
-# ceiling-MOUNT BEHAVIOR-1K assets. It used to hang at 2.45 m purely to sit in the record
-# camera's frame, which put a ceiling light floating 1.7 m below the ceiling in every shot.
+# ceiling-MOUNT BEHAVIOR-1K assets. Do not lower it to suit a camera framing.
 FIXTURE_POSITION = (0.0, 0.0, ROOM_CEILING_Z)
 
 # Zone half-sizes (m) -- each occupant's own "safe square" half-extent, footprint + a bit of
@@ -510,9 +506,8 @@ def apply_tabletop_preset(scene: G1ReplaceSceneCfg) -> None:
         prim_path="{ENV_REGEX_NS}/Table",
         init_state=AssetBaseCfg.InitialStateCfg(pos=TABLE_POSITION),
         # STATIC, not kinematic: the USD authors colliders but no RigidBodyAPI, so it is
-        # already a static collider -- immovable, and cheaper than a kinematic body. The
-        # kinematic_enabled=True this used to carry was a silent no-op
-        # (modify_rigid_body_properties returns False on a prim without a RigidBodyAPI).
+        # already a static collider -- immovable, and cheaper. Note rigid_props here would be
+        # a no-op (modify_rigid_body_properties returns False without a RigidBodyAPI).
         spawn=sim_utils.UsdFileCfg(usd_path=TABLE_USD),
     )
     scene.robot.init_state.pos = TABLETOP_ROBOT_POSITION
@@ -674,8 +669,8 @@ def apply_remove_preset(scene: G1ReplaceSceneCfg) -> None:
     bulb's destination. The bulb stays DYNAMIC and is held only by gravity and contact:
     the fixture is upright here and its screw hole is an open triangle-mesh collider, so a
     seated bulb nests and rests, and the robot can lift it straight out. That is what makes
-    this task solvable -- it used to spawn kinematic (a "screwed in" stand-in for an
-    attach/detach joint that never landed), which meant no action could move it at all.
+    this task solvable. It must stay dynamic: a kinematic bulb cannot be moved by any
+    action at all.
     """
     apply_tabletop_preset(scene)
     _add_parts_bin(scene)
@@ -698,15 +693,12 @@ def apply_install_preset(scene: G1ReplaceSceneCfg) -> None:
 # span of real wall panel along the other axis).
 #
 # MEASURED off the room asset (probe 2026-07-22: world bboxes of every ``Towel_Room01_wall_*`` /
-# ``wood_wall_*`` panel that exists at the WALL_MOUNT_Z height, corner blocks excluded).
-# These are NOT ROOM_FLOOR_MIN/MAX, which is what this table used to hold: those are the inset
-# FLOOR-placement bounds, 41 cm short of the side walls and 31 cm short of the back wall, so
-# every wall-mounted fixture hung that far out in mid-air -- visible the moment a camera was
-# finally pointed at one.
+# ``wood_wall_*`` panel present at WALL_MOUNT_Z, corner blocks excluded). Do NOT substitute
+# ROOM_FLOOR_MIN/MAX: those are inset FLOOR-placement bounds, 41 cm short of the side walls and
+# 31 cm short of the back wall, and a fixture mounted on them hangs in mid-air.
 #
-# There is no "north" entry because Simple_Room HAS NO +y WALL: the only geometry on that side
-# is two corner blocks at |x| > 3.723, and between them the room is open. A quarter of all wall
-# mounts were being placed on a wall that does not exist.
+# No "north" entry: Simple_Room HAS NO +y WALL -- the only geometry there is two corner blocks
+# at |x| > 3.723, open between them.
 _WALLS: dict[str, tuple[int, float, tuple[float, float], float, tuple[float, float]]] = {
     "west": (0, -4.410, (1.0, 0.0), 0.0, (-2.622, 4.078)),
     "east": (0, 4.410, (-1.0, 0.0), 180.0, (-2.622, 4.078)),
@@ -793,10 +785,8 @@ def _sample_nonoverlapping_centers(
 
     Raises:
         LayoutInfeasible: if any zone cannot be placed, or a pinned zone does not fit inside
-            the bounds. This used to accept the last (overlapping) sample instead, which
-            produced a scene where furniture interpenetrates and the episode is scored
-            normally -- a silent, unreproducible corruption of whatever ran on that seed.
-            The caller resamples the fixture and tries again.
+            the bounds. Never accept an overlapping layout: it renders and scores like any
+            other, so the corruption is invisible. The caller resamples and retries.
     """
     n = len(half_sizes)
     centers: list[tuple[float, float] | None] = list(fixed) if fixed else [None] * n
@@ -843,9 +833,8 @@ def _sample_replace_layout(
 
     Fixture first, because it constrains the floor rather than the other way round: its
     ladder anchor is reserved as a zone no other occupant may take, so wherever the fixture
-    landed there is always somewhere legal to stand the ladder. Sampling the two
-    independently -- the old behaviour -- let a ceiling fixture land directly over the table,
-    leaving the task unsolvable while looking perfectly normal in a render.
+    lands there is somewhere legal to stand the ladder. Sampled independently, a ceiling
+    fixture can land over the table and leave the task unsolvable while rendering normally.
 
     Returns ``(mount, [robot, table, ladder, disposal] centers, ladder_yaw_deg)``.
 

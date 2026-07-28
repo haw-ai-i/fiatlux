@@ -115,9 +115,6 @@ G1_EE_BODY = "right_wrist_yaw_link"
 G1_FOOT_BODIES = ["left_ankle_roll_link", "right_ankle_roll_link"]
 # The Inspire palm body; its surface is the local -x side (see fiatlux_task/poses.py).
 G1_PALM_BODIES = ["left_hand_base_link", "right_hand_base_link"]
-# Bodies bounding the cup of the closed right hand. Their centroid is where a grasped object
-# sits; the palm link's own origin is behind the palm surface, not on it.
-G1_CUP_BODIES = ["right_hand_base_link", "R_index_intermediate", "R_middle_intermediate", "R_ring_intermediate"]
 G1_TORSO_BODY = "torso_link"
 # Real sensor-housing bodies authored on the USD (RealSense D435 + Livox Mid360,
 # fixed to the torso -- G1 has no neck joint). Verified by rendering each mount's

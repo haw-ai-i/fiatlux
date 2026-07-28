@@ -41,12 +41,10 @@ def _spawn_room_backdrop(prim_path, cfg, translation=None, orientation=None):
     destabilize a standing G1). ``SetActive(False)`` removes render and physics at
     once; the room stays a pure backdrop.
 
-    Also aligns the room's floor to the scene's ground-plane collider at z=0. Simple_Room is
-    authored *tabletop-at-origin*: its own floor sits ~0.77 m BELOW the USD origin, so once
-    the opaque debug grid stopped being drawn the room rendered its real floor three-quarters
-    of a metre under every prop, and everything appeared to hover. The shift is MEASURED off
-    the asset's own floor prims rather than hardcoded, so swapping the room asset cannot
-    silently reintroduce the gap.
+    Also aligns the room's floor to the scene's ground-plane collider at z=0: Simple_Room is
+    authored *tabletop-at-origin*, with its floor ~0.77 m BELOW the USD origin. The shift is
+    MEASURED off the asset's own floor prims, so swapping the room asset cannot reintroduce
+    the gap.
     """
     from pxr import Gf, Usd, UsdGeom
 
