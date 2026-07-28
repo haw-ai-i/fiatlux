@@ -39,6 +39,7 @@ speak Dex3, which this robot does not have).
 from __future__ import annotations
 
 import os
+import sys
 
 import numpy as np
 import torch
@@ -657,11 +658,24 @@ class GrootPolicy:
 
         from .robots.g1 import G1_DEX3_LEFT_HAND_JOINTS, G1_DEX3_RIGHT_HAND_JOINTS
 
+        # REAL_G1's action head emits 7 DoF per hand, i.e. the Dex3. On any other variant
+        # there is nothing to map those onto, so the server's hand output is discarded and
+        # the fingers hold their default pose for the whole episode -- the robot cannot
+        # grasp at all. Say so: silently running a manipulation benchmark with dead hands
+        # reads as the policy failing the task.
         dex3_names = G1_DEX3_LEFT_HAND_JOINTS + G1_DEX3_RIGHT_HAND_JOINTS
         self._hand_ids: torch.Tensor | None = None
         if set(dex3_names) <= set(self.robot.joint_names):
             hand_ids, _ = self.robot.find_joints(dex3_names, preserve_order=True)
             self._hand_ids = torch.tensor(hand_ids, dtype=torch.long, device=device)
+        else:
+            print(
+                "\n[GR00T] WARNING: this robot is not the Dex3 variant, so REAL_G1's 7-DoF-per-hand\n"
+                "        action has no mapping. The server's hand output is DISCARDED and the fingers\n"
+                "        hold their default pose -- grasping is impossible. Pass --robot dex3.\n",
+                file=sys.stderr,
+                flush=True,
+            )
 
         self._blend = _StartupBlend(
             env, self._wbc.robot, self._wbc.lower_ids, self._wbc.lower_defaults, self._wbc.action_scale

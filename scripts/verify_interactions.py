@@ -179,13 +179,27 @@ def info(msg: str) -> None:
 # --------------------------------------------------------------------------- #
 # Env construction                                                             #
 # --------------------------------------------------------------------------- #
+def strip_task_cameras(cfg) -> None:
+    """Drop the task's own RTX cameras.
+
+    Every task in the family mounts an ego camera and most mount a wrist camera. These
+    scenarios measure physics, and an RTX sensor in the cfg makes ``--enable_cameras``
+    mandatory. ``--video`` adds its own ``video_cam`` instead, which enables cameras itself.
+    """
+    cfg.scene.ego_camera = None
+    cfg.scene.wrist_camera = None
+    # The observation terms that read them must go too, or the manager fails to resolve
+    # the sensor entity. Names differ per task; drop whichever this one declares.
+    for term in ("ego_rgb", "wrist_rgb"):
+        if getattr(cfg.observations.policy, term, None) is not None:
+            setattr(cfg.observations.policy, term, None)
+
+
 def build_insert_cfg(num_envs: int = 1):
     """Insert-task cfg stripped for deterministic, camera-free scenario runs."""
     cfg = parse_env_cfg("FIATLUX-Insert-v0", device=args_cli.device, num_envs=num_envs)
     cfg.seed = args_cli.seed
-    # No camera sensor -> no --enable_cameras, no resnet18 feature download.
-    cfg.scene.wrist_camera = None
-    cfg.observations.policy.wrist_rgb = None
+    strip_task_cameras(cfg)
     # Deterministic resets: zero every randomization range, keep the reset terms so
     # each reset returns entities exactly to their (scenario-crafted) init_state.
     cfg.events.randomize_light = None
@@ -764,6 +778,7 @@ def scenario_ladder(probe: bool = False):
     print("\n[verify] === scenario: robot-on-ladder ===")
     cfg = parse_env_cfg("FIATLUX-Climb-v0", device=args_cli.device, num_envs=1)
     cfg.seed = args_cli.seed
+    strip_task_cameras(cfg)
     # deterministic: no per-reset light sampling, no start-pose randomization (the
     # RL env's reset events would perturb the calibrated stance below)
     cfg.events.randomize_sky_intensity = None
