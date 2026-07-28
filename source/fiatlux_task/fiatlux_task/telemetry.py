@@ -35,6 +35,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Protocol
 
 from .recording import term_flag
+from .tasks.manager_based.fiatlux_task.mdp import observations as _obs
 
 if TYPE_CHECKING:
     import torch
@@ -182,7 +183,9 @@ class ScoreLogger:
                 self._policy_sums[key] = self._policy_sums.get(key, 0.0) + float(value)
                 self._policy_counts[key] = self._policy_counts.get(key, 0) + 1
         if "hand_contact" in env.scene.sensors:
-            forces = env.scene.sensors["hand_contact"].data.net_forces_w
+            # Force on the OBJECT, matching the recorded contact_force channel and the
+            # scorer. The sensor's net force also carries scenery and self-contact.
+            forces = _obs.object_contact_forces(env.scene.sensors["hand_contact"])
             self.peak_contact_force = max(self.peak_contact_force, float(torch.norm(forces, dim=-1).max()))
 
         done_ids = torch.nonzero(done, as_tuple=False).flatten()
