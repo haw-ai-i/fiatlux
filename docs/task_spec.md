@@ -32,8 +32,9 @@ return to it (plus the reset jitter below).
 ## Goal
 
 Insert the fresh bulb into the fixture, remove the old bulb from the fixture, and place
-the old bulb in the disposal crate. Full success = fresh bulb seated **and** old bulb in
-the crate.
+the old bulb in the disposal crate. Full success = fresh bulb **attached** (seated AND
+screwed in, per ``mdp.bulb_attachment``) **and** old bulb in the crate. Seating alone no
+longer scores: a bulb resting in the socket without the screw-in gate firing is not done.
 
 ## Actions
 

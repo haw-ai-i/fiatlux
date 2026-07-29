@@ -26,8 +26,9 @@ One family, one scene (``scene_cfg.G1ReplaceSceneCfg``), preset layouts per task
 - ``FIATLUX-Remove-v0``  : unscrew / remove the seated bulb (``remove_env_cfg.py``,
   Replace's own removal/disposal reward channels, parametrized onto this scene's
   standalone ``bulb`` entity). RL, but **scored-not-yet-achievable**: the bulb is
-  kinematic (no attach/detach mechanic yet -- unification spec Phase 4), so no policy
-  can move it. Same documented gap as Replace's own removal channel.
+  kinematic, so no policy can move it. Replace no longer shares this gap -- its bulbs
+  are dynamic and governed by ``mdp.bulb_attachment`` (issue #54); porting that term
+  here is what would close it.
 - ``FIATLUX-Base-v0``    : the shared scene-only cfg, deliberately **non-RL**
   (:class:`base_env_cfg.FamilyBaseEnvCfg` -- observation/action/event managers only, no
   task to reward). Not a task; ``verify_scene.py``'s default target.

@@ -38,8 +38,12 @@ def replace_score_distances(env: ManagerBasedRLEnv) -> torch.Tensor:
     """The replace task's four score-relevant distances, for the privileged group.
 
     Columns: ladder top -> fixture seat, fresh-bulb plug -> fixture seat, old-bulb plug
-    clearance from the fixture seat, old bulb -> disposal crate. Exactly the channels the
-    reward terms normalize -- exposed so a cheatcode policy can read the score geometry.
+    clearance from the fixture seat, old bulb -> disposal crate. These mirror the channels
+    the reward terms normalize, exposed so a cheatcode policy can read the score geometry.
+    The two old-bulb columns are the RAW geometry; the reward terms gate the same
+    quantities on attachment state (``old_bulb_release_clearance`` and
+    ``old_bulb_disposal_distance_pinned``), so a still-attached bulb reads as seated there
+    while these columns keep reporting live distance.
 
     Returns:
         Tensor of shape (num_envs, 4).
