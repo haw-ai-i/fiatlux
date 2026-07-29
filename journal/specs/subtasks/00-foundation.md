@@ -82,18 +82,37 @@ across the six existing RL cfgs that motivates it. Summary: `SubtaskEnvCfg` hold
 class and asserts each one's observation-group term names, event term names, and shaping reward
 term names are exactly the base's — any subclass that redefines a shared term fails the test.
 
-## Start states — randomized ranges around a frozen centre
+## Start states — randomize what is fat, calibrate what is thin
 
-A subtask's start state is a **distribution**, not a pose. Several of the centres are states no
-static layout constant can express today (*standing at the ladder base holding a bulb*, *on the
-upper steps holding a bulb*), so each is a frozen measured centre — the convention the repo
-already uses for `LADDER_STANCE_ROOT_POS` / `TOP_ROBOT_POSITION` / `TABLETOP_SURFACE_Z` — plus a
-randomization range around it.
+A start state is **randomized per component, not per subtask.** The criterion is whether that
+component's feasible set is fat enough to sample from:
 
-The range is the load-bearing part. A policy that only works from one exact pose is worthless, and
-**a start distribution wide enough to contain its predecessor's actual outcomes removes the need
-for the handoff to be exact.** That is what makes the chain robust to the previous subtask
-finishing sloppily, and it is why the contract below is stated as coverage rather than equality.
+| Component | Treatment |
+|---|---|
+| robot root xy / yaw, **standing on the floor** | **randomized** — ±5 cm, ±0.1 rad, the existing `reset_robot_root` range |
+| joint jitter for a floor stance | **randomized** — ±0.05 rad, the existing `reset_robot_joints` range |
+| entity layout (ladder zone, table, crate, fixture mount) | **randomized** — the existing `apply_replace_preset` draw |
+| lights, material tint | **randomized** — the existing three DR axes |
+| robot pose **while balanced on the ladder** | **deterministic**, one manually calibrated pose |
+| payload pose **in the hand** | **deterministic**, one manually calibrated offset |
+
+The reason for the split is that a balanced-on-the-ladder-holding-a-bulb state sits on a thin,
+coupled manifold: both feet on a *specific* step, CoM over the support polygon, the bulb inside a
+roughly centimetre-scale window given Dex3's geometry (thumb tip 6.5 cm off the palm plane,
+fingertips 12.4 cm out), no limb through a rail, all at rest at once. Sampling axis-aligned ranges
+independently would draw mostly from the infeasible interior of the bounding box, injecting
+penetration and imbalance — and the resulting distribution would be neither known nor reproducible.
+
+So those components get **one deterministic, hand-calibrated pose** — the convention the repo
+already uses for `LADDER_STANCE_ROOT_POS` / `LADDER_STANCE_ROOT_ROT` / `LADDER_STANCE_JOINTS` /
+`TOP_ROBOT_POSITION`, calibrated exactly the way `poses.py` documents: run the probe, iterate the
+constants until the contacts register, freeze with a `CALIBRATED <date>` note.
+
+**This is explicitly a for-now decision.** Widening those start states later means generating a pool
+of physics-validated states offline (or harvesting them from a controller that solves the
+predecessor) and drawing an index at reset. Nothing here forecloses that: the mechanism below reads
+a range of zero as a point, so a pool is a later substitution behind the same interface, not a
+rewrite.
 
 Do **not** compute a payload pose from live forward kinematics inside a reset event: at reset the
 joint state has been written but physics has not stepped, so `robot.data.body_pos_w` still holds
@@ -106,47 +125,39 @@ Mechanism, in `fiatlux_task/subtask_states.py`:
 ```python
 @dataclass(frozen=True)
 class SubtaskStartCfg:
-    robot_root: Vec3;  robot_root_range: Vec3          # centre + half-extent
-    robot_rot: Quat;   robot_yaw_range: float
-    robot_joints: dict[str, float]                     # pattern -> radians, over the standing default
-    joint_range: float                                 # +/- rad on every actuated joint
-    payload: str | None                                # "bulb" | "old_bulb" | "ladder" | None
-    payload_in_root: tuple[Vec3, Quat] | None          # payload root pose IN THE ROBOT ROOT FRAME
-    payload_pos_range: Vec3 | None                     # + rotation range, about the same frame
-    payload_rot_range: float | None
-    entities: dict[str, tuple[Vec3, Quat]]             # world poses for everything else
-    entity_ranges: dict[str, tuple[Vec3, float]]
+    robot_root: Vec3;  robot_root_range: Vec3 = (0.0, 0.0, 0.0)   # zero range == deterministic
+    robot_rot: Quat;   robot_yaw_range: float = 0.0
+    robot_joints: dict[str, float]                    # pattern -> radians, over the standing default
+    joint_range: float = 0.0
+    payload: str | None = None                        # "bulb" | "old_bulb" | "ladder" | None
+    payload_in_root: tuple[Vec3, Quat] | None = None  # payload root pose IN THE ROBOT ROOT FRAME
+    entities: dict[str, tuple[Vec3, Quat]] = field(default_factory=dict)
+    entity_ranges: dict[str, tuple[Vec3, float]] = field(default_factory=dict)
 ```
 
-`payload_in_root` is a rigid offset in the robot's root frame, so the reset event only composes
-`robot_root_pose ⊗ sample(payload_in_root)` — known quantities, valid before the first physics
-step, and correct under root jitter because the same transform carries the payload along with the
+Ranges **default to zero**, so a component is deterministic unless a subtask opts it into
+randomization. That way the thin cases are the cheap default and widening is always a deliberate,
+reviewable act — the opposite of the current risk, where an inherited range silently covers
+infeasible states. `payload_in_root` is a rigid offset in the robot's root frame, so the reset event
+only composes `robot_root_pose ⊗ payload_in_root` — known quantities, valid before the first
+physics step, and correct under root jitter because the same transform carries the payload with the
 robot.
 
-**Every sampled state must be feasible, which is the one thing DR cannot manufacture.** Widening a
-range past the point where the subtask is possible does not buy robustness, it injects unsolvable
-episodes. The A-frame ladder is the concrete case: its steps face one way, so S05's robot-spawn
-range may cover the step-facing arc and must not cover the back. Each range therefore needs a
-*validated* boundary — sample the extremes, render them, confirm the subtask is still doable — and
-that check is part of the visual gate below, not an afterthought.
+**Any range that is non-zero needs a validated boundary.** DR covers variation inside the feasible
+set and cannot manufacture feasibility: the A-frame's steps face one way, so S05's floor-stance
+range may cover the step-facing arc and must not cover the back. Sample the extremes, render them,
+confirm the subtask is still doable — part of the visual gate below, not an afterthought.
 
-Two new event terms:
+Three new event terms:
 
-- `mdp.randomize_start_state` (`mode="reset"`) — samples the ranges above. Rides the seeded torch
-  default generator like every other DR term, with a constant per-reset draw count regardless of
-  which optional entities a preset keeps (the rule `randomize_material_tint` already follows), so
-  same-seed runs reproduce.
+- `mdp.randomize_start_state` (`mode="reset"`) — samples the non-zero ranges. Rides the seeded torch
+  default generator like every other DR term, with a **constant per-reset draw count** regardless of
+  which ranges are zero (the rule `randomize_material_tint` already follows), so same-seed runs
+  reproduce and adding a range later does not shift the stream for the others.
 - `mdp.place_payload_in_hand` (`mode="reset"`, ordered **after** `reset_robot_root`) — writes the
   payload's root state from the composed pose, zero velocity.
 - `mdp.hold_grasp_pose` — pins the grasping hand's joint targets to the start pose's grasp so the
   payload is not dropped on step 0 before the policy has produced an action.
-
-Two new event terms:
-
-- `mdp.place_payload_in_hand` (`mode="reset"`, ordered **after** `reset_robot_root`) — writes
-  the payload's root state from the composed pose, zero velocity.
-- `mdp.hold_grasp_pose` — pins the grasping hand's joint targets to the start pose's grasp so
-  the payload is not dropped on step 0 before the policy has produced an action.
 
 ### Phase 0 probes (blocking, do these first)
 
@@ -221,12 +232,28 @@ Two residues, and they are the ones that matter:
 
 1. **Feasibility.** DR covers variation *inside* the feasible set; it cannot manufacture
    feasibility. Widening S05's spawn range to include "behind the A-frame" does not make the back of
-   a step ladder climbable — it just adds unsolvable episodes. So each range needs a validated
-   feasibility boundary, and a predecessor whose success region extends outside it has a real gap
+   a step ladder climbable — it just adds unsolvable episodes. So each non-zero range needs a
+   validated boundary, and a predecessor whose success region extends outside it has a real gap
    (`CONTINUITY.md` C2).
 2. **Presence and topology.** No pose range covers "the object is not there". If subtask *N* ends
    with the old bulb on the floor and subtask *N+1* is *remove the old bulb from the fixture*, that
    is not a distribution mismatch, it is a different world (`CONTINUITY.md` C3 — the #54 case).
+
+### How much the check is actually worth — stated plainly
+
+Two decisions weaken it, and the earlier draft of this file oversold it as "the check that catches
+the failure mode this re-discretization is most exposed to". It is not.
+
+- The balance start states are **deterministic point masses**, so for the S05→S06, S06→S07,
+  S13→S14 and S14→S15 boundaries coverage cannot hold in any meaningful sense — a point is inside a
+  region or it is not, and there is no distribution to cover anything.
+- The 15 run as **independent envs** with no chained rollout, so no runtime behaviour depends on the
+  handoff at all. Nothing breaks at run time if it fails.
+
+What is left is a **static consistency check over frozen constants**: it fires when someone edits
+S05's success height until S06's start pose falls outside it. That is worth keeping — it is free and
+it catches a silent orphaning — but it is a lint, not a regression guard, and it cannot fail
+spontaneously. The plans should not lean on it as evidence that the chain composes.
 
 ### Seeds
 
@@ -317,14 +344,46 @@ Plus two numeric gates, both already-established patterns:
   < 2 mm and ends below 1 cm/s. A start state that needs settling gets fixed at the constant.
 - **retention** (loaded subtasks only) — the payload is still in the hand after the soak.
 
+## Three consumers, and what each one requires
+
+These envs serve **VLA evaluation, per-subtask RL, and scripted baselines** — all three. That is
+worth stating because the three want different things and it is easy to build for one and discover
+the others are unserved:
+
+| Consumer | What it needs | Consequence |
+|---|---|---|
+| **Zero-shot VLA eval** | correct start states, correct success gates, clean feeds, the frozen `policy` obs group | Dense shaping is invisible to it. Start-state fidelity and gate correctness are the whole deliverable. |
+| **Per-subtask RL** | dense progress channels, balanced weights, a `PPORunnerCfg` with `obs_groups` routing | Only 4 of 7 existing tasks have a runner cfg at all. Each new subtask needs one, or `scripts/rsl_rl/{train,play}.py` cannot touch it. |
+| **Scripted baselines** | a reachable success gate and enough privileged state to drive to it | Establishes a non-zero reference. The WBC walk probe already proved this works for navigation; nothing comparable exists for the manipulation subtasks. |
+
+The scripted baseline is the cheapest guard against the worst failure mode: a subtask nobody can
+solve, where "0%" cannot be distinguished from "broken". A scripted controller that reaches the gate
+proves the gate is reachable. **Where a subtask has no scripted baseline, its 0% means nothing.**
+
+## Scoring is not yet defined — open
+
+Fifteen success gates do not make a benchmark score. `scripts/score.py` currently scores one task
+(seated / broken / dropped). Nothing in these plans says how 15 subtask results aggregate, and the
+naive answer is wrong: the 15 are **not equal difficulty and must not be averaged**. Five of them
+(S01, S03, S08, S10, S12) are "walk to X", so a policy that can only walk would score 5/15 = 33%
+while the hardest single subtask (S14, fine insertion under balance) is worth 1/15. Partial credit is
+also undefined — the reward channels carry graded progress but the score has no place to put it.
+
+This needs a decision before any number is quoted. Options, not resolved here: per-subtask
+independent reporting with no aggregate; difficulty-weighted aggregate; or longest-prefix (how far
+along the chain a policy gets), which matches how the task actually reads.
+
 ## What counts as done
 
-A subtask is complete when: the env is registered and constructs; `verify_scene.py --task <id>`
-passes all checks; the visual checklist above is reported frame by frame; `handoff:` passes
-against both neighbours; and a zero-action and a random-action rollout both run the full
-episode without a solver explosion. **A converged policy is not required** — and per the
-benchmark's own bar, a policy failing to solve a subtask is not a defect. Broken physics, a
-broken start state, a broken feed, or a success gate that fires on the wrong thing are.
+## Not in scope: "move the ladder back" (S16)
+
+Raised in review: the chain could end by returning the ladder to storage. Skipped, because it is
+mechanically S03 with a different target and adds no new mode boundary.
+
+One consequence to record rather than hide: the chain is therefore **not idempotent**. Its terminal
+state leaves the ladder under the fixture, not where it started, so the world cannot be replayed
+without a reset. That is fine for 15 independent envs and would matter only if the chain were ever
+run twice back-to-back.
 
 ## Blockers
 

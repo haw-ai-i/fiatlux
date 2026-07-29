@@ -1,7 +1,7 @@
 # S06 — Remove the old bulb while balancing on the ladder
 
 `FIATLUX-S06-RemoveOldBulb-v0` · mode **grasping on balance** · object **old_bulb**
-Read `00-foundation.md`, `ABSTRACTIONS.md` and `CONTINUITY.md` first. **Blocked on #54 — read the Blockers section first.**
+Read `00-foundation.md`, `ABSTRACTIONS.md`, `CONTINUITY.md` and `CRITIQUE.md` first. **Blocked on #54 — read the Blockers section first.**
 
 ## Objective
 

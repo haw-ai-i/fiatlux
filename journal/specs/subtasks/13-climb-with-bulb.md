@@ -1,7 +1,7 @@
 # S13 — Climb up with the bulb in hand
 
 `FIATLUX-S13-ClimbWithBulb-v0` · mode **balance (loaded)** · payload **bulb**
-Read `00-foundation.md`, `ABSTRACTIONS.md` and `CONTINUITY.md` first.
+Read `00-foundation.md`, `ABSTRACTIONS.md`, `CONTINUITY.md` and `CRITIQUE.md` first.
 
 ## Objective
 

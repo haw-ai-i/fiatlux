@@ -1,7 +1,7 @@
 # S01 — Approach the ladder
 
 `FIATLUX-S01-ApproachLadder-v0` · mode **navigation** · payload **none**
-Read `00-foundation.md`, `ABSTRACTIONS.md` and `CONTINUITY.md` first.
+Read `00-foundation.md`, `ABSTRACTIONS.md`, `CONTINUITY.md` and `CRITIQUE.md` first.
 
 ## Objective
 

@@ -1,7 +1,7 @@
 # S09 — Dispose of the old bulb
 
 `FIATLUX-S09-DisposeBulb-v0` · mode **grasping (release)** · object **old_bulb**
-Read `00-foundation.md`, `ABSTRACTIONS.md` and `CONTINUITY.md` first.
+Read `00-foundation.md`, `ABSTRACTIONS.md`, `CONTINUITY.md` and `CRITIQUE.md` first.
 
 ## Objective
 

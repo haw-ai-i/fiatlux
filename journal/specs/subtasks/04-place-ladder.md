@@ -1,7 +1,7 @@
 # S04 — Place the ladder
 
 `FIATLUX-S04-PlaceLadder-v0` · mode **grasping (release)** · object **ladder**
-Read `00-foundation.md`, `ABSTRACTIONS.md` and `CONTINUITY.md` first.
+Read `00-foundation.md`, `ABSTRACTIONS.md`, `CONTINUITY.md` and `CRITIQUE.md` first.
 
 ## Objective
 

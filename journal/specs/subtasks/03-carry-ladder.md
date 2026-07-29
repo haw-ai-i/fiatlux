@@ -1,7 +1,7 @@
 # S03 — Walk with the ladder to the fixture
 
 `FIATLUX-S03-CarryLadder-v0` · mode **navigation (loaded)** · payload **ladder**
-Read `00-foundation.md`, `ABSTRACTIONS.md` and `CONTINUITY.md` first.
+Read `00-foundation.md`, `ABSTRACTIONS.md`, `CONTINUITY.md` and `CRITIQUE.md` first.
 
 ## Objective
 

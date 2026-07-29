@@ -1,7 +1,7 @@
 # S11 — Grab the new bulb
 
 `FIATLUX-S11-GrabNewBulb-v0` · mode **grasping** · object **bulb**
-Read `00-foundation.md`, `ABSTRACTIONS.md` and `CONTINUITY.md` first.
+Read `00-foundation.md`, `ABSTRACTIONS.md`, `CONTINUITY.md` and `CRITIQUE.md` first.
 
 ## Objective
 

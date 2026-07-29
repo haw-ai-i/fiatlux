@@ -1,7 +1,7 @@
 # S12 — Walk to the ladder with the new bulb
 
 `FIATLUX-S12-CarryBulbToLadder-v0` · mode **navigation (loaded)** · payload **bulb**
-Read `00-foundation.md`, `ABSTRACTIONS.md` and `CONTINUITY.md` first.
+Read `00-foundation.md`, `ABSTRACTIONS.md`, `CONTINUITY.md` and `CRITIQUE.md` first.
 
 ## Objective
 

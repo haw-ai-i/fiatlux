@@ -1,7 +1,7 @@
 # S02 — Grab the ladder
 
 `FIATLUX-S02-GrabLadder-v0` · mode **grasping** · object **ladder**
-Read `00-foundation.md`, `ABSTRACTIONS.md` and `CONTINUITY.md` first.
+Read `00-foundation.md`, `ABSTRACTIONS.md`, `CONTINUITY.md` and `CRITIQUE.md` first.
 
 ## Objective
 

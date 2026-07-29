@@ -1,7 +1,7 @@
 # S15 — Climb down
 
 `FIATLUX-S15-ClimbDown-v0` · mode **balance** · payload **none**
-Read `00-foundation.md`, `ABSTRACTIONS.md` and `CONTINUITY.md` first.
+Read `00-foundation.md`, `ABSTRACTIONS.md`, `CONTINUITY.md` and `CRITIQUE.md` first.
 
 ## Objective
 

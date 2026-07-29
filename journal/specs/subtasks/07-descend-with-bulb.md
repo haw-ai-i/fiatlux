@@ -1,7 +1,7 @@
 # S07 — Walk down the ladder with the old bulb in hand
 
 `FIATLUX-S07-DescendWithBulb-v0` · mode **balance (loaded)** · payload **old_bulb**
-Read `00-foundation.md`, `ABSTRACTIONS.md` and `CONTINUITY.md` first.
+Read `00-foundation.md`, `ABSTRACTIONS.md`, `CONTINUITY.md` and `CRITIQUE.md` first.
 
 ## Objective
 
