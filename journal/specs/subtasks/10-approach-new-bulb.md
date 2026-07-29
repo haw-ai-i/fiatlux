@@ -1,7 +1,7 @@
 # S10 — Walk to the new bulb
 
 `FIATLUX-S10-ApproachNewBulb-v0` · mode **navigation** · payload **none**
-Read `00-foundation.md` and `CONTINUITY.md` first.
+Read `00-foundation.md`, `ABSTRACTIONS.md` and `CONTINUITY.md` first.
 
 ## Objective
 

@@ -1,7 +1,7 @@
 # S05 — Climb the ladder
 
 `FIATLUX-S05-ClimbLadder-v0` · mode **balance** · payload **none**
-Read `00-foundation.md` and `CONTINUITY.md` first.
+Read `00-foundation.md`, `ABSTRACTIONS.md` and `CONTINUITY.md` first.
 
 ## Objective
 

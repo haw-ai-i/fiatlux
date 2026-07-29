@@ -29,12 +29,13 @@ tasks/manager_based/fiatlux_task/subtasks/
     ...                                  (15 modules, 15 classes, 15 ids)
 ```
 
-What is **not** duplicated 15 times is the boilerplate that Climb/Descend/Carry/Replace already
-agree on verbatim today: the same two observation groups, the same five event terms, the same six
-smoothness/discipline reward terms, the same solver block, the same `fell_below`/`fell_over`
-pair — ~200 of each file's ~300 lines. Climb and Descend already half-acknowledge this by
-importing `FALL_MIN_HEIGHT`/`FALL_TILT_LIMIT` across module boundaries. That shared material
-moves into one base class:
+What is **not** duplicated 15 times is the boilerplate the six existing RL cfgs already
+re-declare independently — ~200 of each file's ~300 lines: two observation groups, the event set,
+the smoothness/discipline reward tail, the solver block, the `fell_below`/`fell_over` pair. They are
+*not* verbatim copies; they have already drifted, with one concept carrying up to five different
+term names across the family (`ABSTRACTIONS.md` measures it). Climb and Descend half-acknowledge the
+problem by importing `FALL_MIN_HEIGHT`/`FALL_TILT_LIMIT` across module boundaries. That shared
+material moves into one base class, which also fixes the **canonical name** for each concept:
 
 ```
 SubtaskEnvCfg(ManagerBasedRLEnvCfg)      # obs, events, shaping, solver, fall gates
@@ -53,7 +54,9 @@ S08/S10/S12 all navigate to something — they share **mdp reward functions**, n
 tasks). A parameterized cfg class would couple the five navigation subtasks' versions together;
 a shared reward function does not.
 
-`SubtaskEnvCfg` holds:
+The full factoring — what the base owns, the six mode intermediates, the leaf contract, and what
+deliberately stays un-abstracted — is in **`ABSTRACTIONS.md`**, together with the measured drift
+across the six existing RL cfgs that motivates it. Summary: `SubtaskEnvCfg` holds:
 
 - **`ObservationsCfg`** — `policy` (base_ang_vel, projected_gravity, base_lin_vel, base_height,
   joint_pos_rel, joint_vel_rel, hand_contact, ego_rgb, lidar_ranges, last_action) and
@@ -61,9 +64,11 @@ a shared reward function does not.
   `policy` / `privileged` — rsl_rl's `obs_groups` routing is keyed to them.
 - **`EventCfg`** — `reset_all`, `reset_robot_joints`, `reset_robot_root`,
   `randomize_sky_intensity`, `randomize_key_light`, `randomize_material_tint`,
-  `randomize_hand_material`. Plus the two new terms below.
+  `randomize_hand_material`, plus the three new terms below.
 - **Shaping rewards** — `com_sway`, `ang_vel_xy`, `action_rate`, `joint_acc`,
-  `ankle_pos_limits`, `joint_deviation_waist`, `joint_deviation_fingers`, `termination_penalty`.
+  `ankle_pos_limits`, `joint_deviation_waist`, `joint_deviation_fingers`, `robot_fall`. The last is
+  the canonical name for the fall penalty that the family currently spells two ways
+  (`termination_penalty` in 2/6, `robot_fall` in 4/6).
 - **Solver / rate block** — `decimation=4`, `sim.dt=1/200`, `solver_type=1`,
   `min_position_iteration_count=8`, `min_velocity_iteration_count=1`,
   `bounce_threshold_velocity=0.2`, `enable_stabilization=True`.
@@ -77,36 +82,64 @@ a shared reward function does not.
 class and asserts each one's observation-group term names, event term names, and shaping reward
 term names are exactly the base's — any subclass that redefines a shared term fails the test.
 
-## Start states — frozen, cfg-time, no live FK
+## Start states — randomized ranges around a frozen centre
 
-A subtask's start state is the previous subtask's end state, and several of them are states no
-static layout constant can express today: *standing at the ladder base holding a bulb*,
-*on the upper steps holding a bulb*.
+A subtask's start state is a **distribution**, not a pose. Several of the centres are states no
+static layout constant can express today (*standing at the ladder base holding a bulb*, *on the
+upper steps holding a bulb*), so each is a frozen measured centre — the convention the repo
+already uses for `LADDER_STANCE_ROOT_POS` / `TOP_ROBOT_POSITION` / `TABLETOP_SURFACE_Z` — plus a
+randomization range around it.
 
-Author them as **frozen measured constants**, the convention the repo already uses for
-`LADDER_STANCE_ROOT_POS` / `TOP_ROBOT_POSITION` / `TABLETOP_SURFACE_Z`. Do **not** compute a
-payload pose from live forward kinematics inside a reset event: at reset the joint state has
-been written but physics has not stepped, so `robot.data.body_pos_w` still holds the previous
-episode's poses and the payload lands in the wrong place. This is the exact class of bug that
-put the bulb 13 cm from the palm before (root outside geometry) and 4 cm off (wrong palm body).
+The range is the load-bearing part. A policy that only works from one exact pose is worthless, and
+**a start distribution wide enough to contain its predecessor's actual outcomes removes the need
+for the handoff to be exact.** That is what makes the chain robust to the previous subtask
+finishing sloppily, and it is why the contract below is stated as coverage rather than equality.
+
+Do **not** compute a payload pose from live forward kinematics inside a reset event: at reset the
+joint state has been written but physics has not stepped, so `robot.data.body_pos_w` still holds
+the previous episode's poses and the payload lands in the wrong place. This is the exact class of
+bug that put the bulb 13 cm from the palm before (root outside geometry) and 4 cm off (wrong palm
+body).
 
 Mechanism, in `fiatlux_task/subtask_states.py`:
 
 ```python
 @dataclass(frozen=True)
-class SubtaskState:
-    robot_root: tuple[float, float, float]
-    robot_rot: tuple[float, float, float, float]
-    robot_joints: dict[str, float]          # pattern -> radians, over the standing default
-    payload: str | None                     # "bulb" | "old_bulb" | "ladder" | None
-    payload_in_root: tuple[Vec3, Quat] | None   # payload root pose IN THE ROBOT ROOT FRAME
-    entities: dict[str, tuple[Vec3, Quat]]      # world poses for everything else
+class SubtaskStartCfg:
+    robot_root: Vec3;  robot_root_range: Vec3          # centre + half-extent
+    robot_rot: Quat;   robot_yaw_range: float
+    robot_joints: dict[str, float]                     # pattern -> radians, over the standing default
+    joint_range: float                                 # +/- rad on every actuated joint
+    payload: str | None                                # "bulb" | "old_bulb" | "ladder" | None
+    payload_in_root: tuple[Vec3, Quat] | None          # payload root pose IN THE ROBOT ROOT FRAME
+    payload_pos_range: Vec3 | None                     # + rotation range, about the same frame
+    payload_rot_range: float | None
+    entities: dict[str, tuple[Vec3, Quat]]             # world poses for everything else
+    entity_ranges: dict[str, tuple[Vec3, float]]
 ```
 
-`payload_in_root` is a rigid offset in the robot's root frame, so the reset event only has to
-compose `robot_root_pose ⊗ payload_in_root` — a transform of known quantities, valid before the
-first physics step, and correct under the ±5 cm / ±0.1 rad root jitter because the same
-transform carries the payload along with the robot.
+`payload_in_root` is a rigid offset in the robot's root frame, so the reset event only composes
+`robot_root_pose ⊗ sample(payload_in_root)` — known quantities, valid before the first physics
+step, and correct under root jitter because the same transform carries the payload along with the
+robot.
+
+**Every sampled state must be feasible, which is the one thing DR cannot manufacture.** Widening a
+range past the point where the subtask is possible does not buy robustness, it injects unsolvable
+episodes. The A-frame ladder is the concrete case: its steps face one way, so S05's robot-spawn
+range may cover the step-facing arc and must not cover the back. Each range therefore needs a
+*validated* boundary — sample the extremes, render them, confirm the subtask is still doable — and
+that check is part of the visual gate below, not an afterthought.
+
+Two new event terms:
+
+- `mdp.randomize_start_state` (`mode="reset"`) — samples the ranges above. Rides the seeded torch
+  default generator like every other DR term, with a constant per-reset draw count regardless of
+  which optional entities a preset keeps (the rule `randomize_material_tint` already follows), so
+  same-seed runs reproduce.
+- `mdp.place_payload_in_hand` (`mode="reset"`, ordered **after** `reset_robot_root`) — writes the
+  payload's root state from the composed pose, zero velocity.
+- `mdp.hold_grasp_pose` — pins the grasping hand's joint targets to the start pose's grasp so the
+  payload is not dropped on step 0 before the policy has produced an action.
 
 Two new event terms:
 
@@ -151,44 +184,56 @@ hand. If it is not, the subtask is unsolvable by construction and the honest opt
 (a) score the drop as the failure mode it is and accept a low ceiling, or (b) fold hand
 retention into the #54 attach mechanic. Report the measurement; do not silently pick one.
 
-## The handoff contract
+## The handoff contract — coverage, not equality
 
-The point of the split is that subtask *N*'s success state is subtask *N+1*'s start state. Make
-it checkable, or this is 15 disconnected envs sharing a room.
+The naive contract is "subtask *N*'s success state **equals** subtask *N+1*'s start state". That is
+the wrong contract. Demanding equality within a tolerance makes the chain brittle, forces an
+argument about per-entity tolerances, and produces failures that are settling noise rather than
+defects — the ladder alone gets climbed four times.
+
+The right contract is **coverage**:
+
+> `SUCCESS_REGION[N]` ⊆ `support(START_DIST[N+1])`
+
+Anywhere subtask *N* can legitimately finish must be somewhere subtask *N+1* can legitimately
+start. Randomization is how the successor's support is widened to achieve that, so exact continuity
+stops mattering: pose mismatches between a predecessor's outcome and a successor's nominal start are
+absorbed by the successor's own DR range, which it wants for robustness regardless.
 
 In `subtask_states.py`:
 
 ```python
-SUBTASK_CHAIN: list[str]                       # the 15 ids, in order
-START_STATE: dict[str, SubtaskState]
-SUCCESS_REGION: dict[str, SuccessRegion]       # the success gate as a region, not a bool
+SUBTASK_CHAIN: list[str]                        # the 15 ids, in order
+START_DIST: dict[str, SubtaskStartCfg]          # centre + ranges
+SUCCESS_REGION: dict[str, SuccessRegion]        # the success gate as a region, not a bool
 ```
 
-`SuccessRegion` holds the same thresholds the success termination uses (xy centre + radius,
-height bound, tilt limit, payload-held flag). New `verify_scene.py` check
-**`handoff:<N>-><N+1>`**: for each adjacent pair, assert `START_STATE[N+1]` lies inside
-`SUCCESS_REGION[N]` — robot root within the xy radius and height bound, payload state equal,
-and every shared entity pose equal to within 1 cm. Pure geometry on frozen constants, so it
-costs nothing and runs without a GPU; put it in `tests/test_subtask_contract.py` too.
+`SuccessRegion` holds the same thresholds the success termination uses (xy centre + radius, height
+bound, tilt limit, payload-held flag). New check **`handoff:<N>-><N+1>`**: sample K states from
+`SUCCESS_REGION[N]`, including its corners, and assert each lies inside `START_DIST[N+1]`'s support.
+Pure geometry over frozen constants, so it runs without a GPU — put it in
+`tests/test_subtask_contract.py`. It catches the failure this re-discretization is most exposed to:
+retuning subtask 5's success region until it pokes outside subtask 6's start range.
 
-This is the check that catches the failure mode this re-discretization is most exposed to:
-retuning subtask 5's success height and silently orphaning subtask 6's start state.
+### What coverage does *not* fix
 
-Three rules the continuity audit (`CONTINUITY.md`) derived, which the check depends on:
+Two residues, and they are the ones that matter:
 
-1. **A subtask that ends holding something must pin the payload to its successor's start pose** —
-   within 0.03 m and 0.2 rad of the frozen `payload_in_root` constant — as a condition of its own
-   success gate. Ending on a bare threshold ("lifted > 3 cm") while the successor starts from a
-   frozen pose leaves a gap the chain jumps silently. See `CONTINUITY.md` C1 for the per-subtask
-   table.
-2. **A chain is identified by `(seed, subtask ids)`.** The Replace layout is drawn once per cfg
-   build, and each subtask builds its own cfg in its own process, so two subtasks at different
-   seeds are two different rooms. Run a chain at one `set_layout_seed(seed)` throughout, evaluate
-   `handoff:` per seed, and never compare subtask scores across seeds.
-3. **Handoff tolerances are per entity, not global.** 1 cm for static and kinematic entities; the
-   ladder gets **5 cm / 0.1 rad** because it is dynamic and gets climbed four times in the chain,
-   plus a separate `ladder_tipped` check for the thing that actually matters. Set the ladder number
-   from S05's measured post-climb drift rather than guessing.
+1. **Feasibility.** DR covers variation *inside* the feasible set; it cannot manufacture
+   feasibility. Widening S05's spawn range to include "behind the A-frame" does not make the back of
+   a step ladder climbable — it just adds unsolvable episodes. So each range needs a validated
+   feasibility boundary, and a predecessor whose success region extends outside it has a real gap
+   (`CONTINUITY.md` C2).
+2. **Presence and topology.** No pose range covers "the object is not there". If subtask *N* ends
+   with the old bulb on the floor and subtask *N+1* is *remove the old bulb from the fixture*, that
+   is not a distribution mismatch, it is a different world (`CONTINUITY.md` C3 — the #54 case).
+
+### Seeds
+
+With coverage semantics, subtasks do **not** need a shared layout seed to train: each randomizes
+its own layout, and the chain is a claim about distributions. A shared `set_layout_seed(seed)`
+matters only when rolling the 15 out as one continuous demo or evaluation. Scores still may not be
+compared across seeds, because the geometry differs.
 
 ## Naming and registration
 

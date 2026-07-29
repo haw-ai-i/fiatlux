@@ -1,7 +1,7 @@
 # S14 — Screw the bulb in while on the ladder
 
 `FIATLUX-S14-ScrewInBulb-v0` · mode **grasping on balance** · object **bulb** + **socket**
-Read `00-foundation.md` and `CONTINUITY.md` first. **Blocked on #54 — read the Blockers section first.**
+Read `00-foundation.md`, `ABSTRACTIONS.md` and `CONTINUITY.md` first. **Blocked on #54 — read the Blockers section first.**
 
 ## Objective
 

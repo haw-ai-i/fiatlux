@@ -1,7 +1,7 @@
 # S08 — Walk to the disposal box with the bulb in hand
 
 `FIATLUX-S08-CarryBulbToDisposal-v0` · mode **navigation (loaded)** · payload **old_bulb**
-Read `00-foundation.md` and `CONTINUITY.md` first.
+Read `00-foundation.md`, `ABSTRACTIONS.md` and `CONTINUITY.md` first.
 
 ## Objective
 
