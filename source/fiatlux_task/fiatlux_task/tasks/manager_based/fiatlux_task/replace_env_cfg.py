@@ -30,12 +30,17 @@ Design notes (full-task benchmark plan, ``journal/specs/full-task-benchmark-plan
   ``ClimbPPORunnerCfg``); the benchmark docs map standard->policy, cheatcode->privileged.
 - **The ladder is dynamic** (only here): knocking it over is a real, penalized, episode-
   ending physical event. **Both bulbs are dynamic**, seated in the fixture by contact rather
-  than pinned kinematic, so removal and disposal are real physical events. Retention in an
-  INVERTED fixture -- which contact alone cannot provide, since the socket then opens
-  downward -- is owned by the ``mdp.bulb_attachment`` state machine (unification spec
-  Phase 4, issue #54): the old bulb starts held at the seat pose and is freed by the unscrew
-  gate (palm proximity + accumulated wrist roll), the fresh bulb becomes held once the
-  screw-in gate fires (seated + palm proximity + wrist roll into an empty socket).
+  than pinned kinematic, so removal and disposal are real physical events.
+
+  What ``mdp.bulb_attachment`` adds on top (unification spec Phase 4, issue #54) is the
+  SCREW GATE, not basic retention: the socket's exact-mesh open hole already holds a bulb
+  by contact even inverted -- measured, a detached bulb in a ceiling mount settles 1.9 mm
+  and stays. Without the state machine the bulb simply lifts out, so removal is a pick-up
+  rather than an unscrew. With it, the old bulb starts held at the seat pose and is freed
+  only by the unscrew gate (palm proximity + accumulated wrist roll); the fresh bulb becomes
+  held once the screw-in gate fires (seated + palm proximity + wrist roll into an empty
+  socket). Slaving also makes a held bulb survive disturbance that contact would not -- it
+  re-seats after a 16 cm shove (``verify_attach``).
   ``fresh_bulb_inserted`` and ``success`` read the attachment state, not the raw seating
   geometry, so every score channel is genuinely achievable. Remove/Install do not yet gate
   on attachment: their bulbs are dynamic and simply lift out of / drop into the socket, so
