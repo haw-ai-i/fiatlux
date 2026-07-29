@@ -68,14 +68,15 @@ import math
 
 import fiatlux_task.tasks  # noqa: F401  -- registers the FIATLUX Gym environments
 import gymnasium as gym
-import isaaclab.sim as sim_utils
 import torch
 from fiatlux_task.assets import BULB_PLUG_OFFSET, SOCKET_SEAT_AXIS, SOCKET_SEAT_OFFSET
 from fiatlux_task.tasks.manager_based.fiatlux_task.mdp import attach as task_attach
 from fiatlux_task.tasks.manager_based.fiatlux_task.mdp import rewards as task_rewards
 from prettytable import PrettyTable
 
+import isaaclab.sim as sim_utils
 from isaaclab.utils.math import quat_apply, quat_mul
+
 from isaaclab_tasks.utils import parse_env_cfg
 
 GRASP_RADIUS = 0.12  # m  (mdp.attach default)
@@ -152,6 +153,149 @@ def make_env(cfg):
 VIDEO = None
 
 
+def _build_rig(
+    env,
+    robot,
+    socket,
+    fresh_bulb,
+    palm_id,
+    wrist_id,
+    n_act,
+    all_ids,
+    all_names,
+    default_q,
+    zeros6,
+    seat,
+    plug,
+    seat_axis,
+    roll0,
+):
+    """The scripted-demo rig: pose helpers, the step wrapper, and the ratchet driver.
+
+    Lives at module scope purely so ``main`` stays under ruff's C901 limit -- these are
+    one closure and depend on each other, so they move together. Returned in a fixed
+    order that ``main`` unpacks into the same names it used before.
+    """
+
+    # -- helpers ------------------------------------------------------------------
+    def act_from_roll(roll_target: float) -> torch.Tensor:
+        """Action holding every joint at default except the wrist roll (scale=0.5)."""
+        act = torch.zeros((env.num_envs, n_act), device=env.device)
+        for k, (jid, name) in enumerate(zip(all_ids, all_names)):
+            if name == "right_wrist_roll_joint":
+                act[:, k] = 2.0 * (roll_target - default_q[:, jid])
+        return act
+
+    def palm_pos() -> torch.Tensor:
+        return robot.data.body_link_pos_w[0, palm_id]
+
+    def seat_pose():
+        q = socket.data.root_quat_w[0]
+        pos = (
+            socket.data.root_pos_w[0]
+            + quat_apply(q.unsqueeze(0), seat.unsqueeze(0))[0]
+            - quat_apply(q.unsqueeze(0), plug.unsqueeze(0))[0]
+        )
+        return pos, q
+
+    def track_socket_to_palm(clearance_z: float = 0.04) -> None:
+        """Move the kinematic socket so its seat pose sits at the palm (+clearance),
+        keeping the FSM-held bulb inside the grasp radius as the hand turns."""
+        q = socket.data.root_quat_w[0]
+        tgt = palm_pos() + torch.tensor([0.0, 0.0, clearance_z], device=env.device)
+        spos = (
+            tgt
+            - quat_apply(q.unsqueeze(0), seat.unsqueeze(0))[0]
+            + quat_apply(q.unsqueeze(0), plug.unsqueeze(0))[0]
+        )
+        socket.write_root_pose_to_sim(torch.cat([spos, q]).unsqueeze(0))
+        socket.write_root_velocity_to_sim(zeros6)
+
+    def drive_wrist(roll: float) -> None:
+        """Kinematically pin the wrist-roll joint so the exact roll signal reaches the
+        gate integrator (PD alone lags the target)."""
+        pos = torch.full((1, 1), roll, device=env.device)
+        robot.write_joint_state_to_sim(pos, torch.zeros((1, 1), device=env.device), joint_ids=[wrist_id])
+
+    def hold_fresh_at_seat(roll: float) -> None:
+        """Hold the fresh bulb at the seat, TURNED about the mating axis by ``roll``.
+
+        Turning it is the point: that is what a bulb gripped in a turning hand does.
+        Writing the socket's own quaternion instead would pin full-frame orientation
+        error at zero and hide a gate that wrongly scores rotation about the mating
+        axis as misalignment -- the bug this exercises (#54 review). ``roll=0`` gives
+        an identity spin, so the seated pose is unchanged.
+        """
+        p, q = seat_pose()
+        q = _spin_about(q, quat_apply(q.unsqueeze(0), seat_axis.unsqueeze(0))[0], roll)
+        fresh_bulb.write_root_pose_to_sim(torch.cat([p, q]).unsqueeze(0))
+        fresh_bulb.write_root_velocity_to_sim(zeros6)
+
+    def aim_camera() -> None:
+        """Frame the work point (seat) up close so the make/break is legible."""
+        if VIDEO is None:
+            return
+        sp, _ = seat_pose()
+        eye = (sp[0].item() + 0.48, sp[1].item() - 0.58, sp[2].item() + 0.20)
+        VIDEO.set_pose(eye, tuple(sp.tolist()))
+
+    def animate_bulb(bulb, start, end, quat, n: int) -> None:
+        """Slide a (detached / not-yet-attached) bulb from start->end over n steps,
+        writing its pose each frame so the motion is visible on camera."""
+        for i in range(n):
+            t = (i + 1) / n
+            p = start * (1.0 - t) + end * t
+            bulb.write_root_pose_to_sim(torch.cat([p, quat]).unsqueeze(0))
+            bulb.write_root_velocity_to_sim(zeros6)
+            step(roll0, track=False)
+
+    def step(roll: float, track: bool = True, hold_fresh: bool = False, drive: bool = False) -> None:
+        if track:
+            track_socket_to_palm()
+        if hold_fresh and not bool(task_attach.fresh_bulb_attached(env)[0].item()):
+            # Turn the bulb WITH the wrist, as a gripped bulb does. This is what makes
+            # the screw phase a real test of the gate's alignment check rather than a
+            # tautology (#54 review): a full-frame check would read this as misaligned
+            # within a fraction of a turn and the gate could never fire.
+            hold_fresh_at_seat(roll=roll - roll0)
+        if drive:  # only pin the joint while actively ratcheting (constant-hold pins
+            drive_wrist(roll)  # would feed the gate integrator phantom drift deltas)
+        env.step(act_from_roll(roll))
+        if VIDEO is not None:
+            VIDEO.capture()
+
+    def ratchet(direction: float, n_cycles: int, amp: float, half_steps: int, hold_fresh: bool = False):
+        """Sawtooth the wrist roll. direction -1 = unscrew (decreasing roll counts),
+        +1 = screw (increasing). Working stroke ratchets; return stroke is free."""
+        for _ in range(n_cycles):
+            for going_out in (True, False):
+                for s in range(half_steps):
+                    f = (s + 1) / half_steps
+                    frac = f if going_out else (1.0 - f)
+                    step(roll0 + direction * amp * frac, track=True, hold_fresh=hold_fresh, drive=True)
+
+    return (
+        act_from_roll,
+        palm_pos,
+        seat_pose,
+        track_socket_to_palm,
+        drive_wrist,
+        hold_fresh_at_seat,
+        aim_camera,
+        animate_bulb,
+        step,
+        ratchet,
+    )
+
+
+def _spin_about(q: torch.Tensor, axis_w: torch.Tensor, angle: float) -> torch.Tensor:
+    """``q`` rotated by ``angle`` rad about the world-frame ``axis_w``. Identity at 0."""
+    axis = axis_w / axis_w.norm().clamp(min=1e-9)
+    half = torch.tensor(angle / 2.0, device=q.device)
+    spin = torch.cat([torch.cos(half).unsqueeze(0), torch.sin(half) * axis])
+    return quat_mul(spin.unsqueeze(0), q.unsqueeze(0))[0]
+
+
 def main() -> int:
     global VIDEO
     cfg = build_replace_cfg()
@@ -184,104 +328,35 @@ def main() -> int:
             VIDEO = VideoRecorder(env, env.scene["video_cam"], args_cli.video, fps=20)
 
         roll0 = robot.data.joint_pos[0, wrist_id].item()
-
-        # -- helpers ------------------------------------------------------------------
-        def act_from_roll(roll_target: float) -> torch.Tensor:
-            """Action holding every joint at default except the wrist roll (scale=0.5)."""
-            act = torch.zeros((env.num_envs, n_act), device=env.device)
-            for k, (jid, name) in enumerate(zip(all_ids, all_names)):
-                if name == "right_wrist_roll_joint":
-                    act[:, k] = 2.0 * (roll_target - default_q[:, jid])
-            return act
-
-        def palm_pos() -> torch.Tensor:
-            return robot.data.body_link_pos_w[0, palm_id]
-
-        def seat_pose():
-            q = socket.data.root_quat_w[0]
-            pos = (
-                socket.data.root_pos_w[0]
-                + quat_apply(q.unsqueeze(0), seat.unsqueeze(0))[0]
-                - quat_apply(q.unsqueeze(0), plug.unsqueeze(0))[0]
-            )
-            return pos, q
-
-        def track_socket_to_palm(clearance_z: float = 0.04) -> None:
-            """Move the kinematic socket so its seat pose sits at the palm (+clearance),
-            keeping the FSM-held bulb inside the grasp radius as the hand turns."""
-            q = socket.data.root_quat_w[0]
-            tgt = palm_pos() + torch.tensor([0.0, 0.0, clearance_z], device=env.device)
-            spos = tgt - quat_apply(q.unsqueeze(0), seat.unsqueeze(0))[0] + quat_apply(q.unsqueeze(0), plug.unsqueeze(0))[0]
-            socket.write_root_pose_to_sim(torch.cat([spos, q]).unsqueeze(0))
-            socket.write_root_velocity_to_sim(zeros6)
-
-        def drive_wrist(roll: float) -> None:
-            """Kinematically pin the wrist-roll joint so the exact roll signal reaches the
-            gate integrator (PD alone lags the target)."""
-            pos = torch.full((1, 1), roll, device=env.device)
-            robot.write_joint_state_to_sim(pos, torch.zeros((1, 1), device=env.device), joint_ids=[wrist_id])
-
-        def hold_fresh_at_seat(roll: float | None = None) -> None:
-            """Hold the fresh bulb at the seat, optionally TURNED about the mating axis.
-
-            Passing ``roll`` rotates the bulb about the socket's seat axis by that angle,
-            which is what a bulb gripped in a turning hand actually does. Writing the
-            socket's own quaternion instead (the ``roll=None`` case) pins full-frame
-            orientation error at zero and would hide a gate that wrongly scores rotation
-            about the mating axis as misalignment -- the bug this exercises (#54 review).
-            """
-            p, q = seat_pose()
-            if roll is not None:
-                axis = quat_apply(q.unsqueeze(0), seat_axis.unsqueeze(0))[0]
-                axis = axis / axis.norm().clamp(min=1e-9)
-                half = torch.tensor(roll / 2.0, device=env.device)
-                spin = torch.cat([torch.cos(half).unsqueeze(0), torch.sin(half) * axis])
-                q = quat_mul(spin.unsqueeze(0), q.unsqueeze(0))[0]
-            fresh_bulb.write_root_pose_to_sim(torch.cat([p, q]).unsqueeze(0))
-            fresh_bulb.write_root_velocity_to_sim(zeros6)
-
-        def aim_camera() -> None:
-            """Frame the work point (seat) up close so the make/break is legible."""
-            if VIDEO is None:
-                return
-            sp, _ = seat_pose()
-            eye = (sp[0].item() + 0.48, sp[1].item() - 0.58, sp[2].item() + 0.20)
-            VIDEO.set_pose(eye, tuple(sp.tolist()))
-
-        def animate_bulb(bulb, start, end, quat, n: int) -> None:
-            """Slide a (detached / not-yet-attached) bulb from start->end over n steps,
-            writing its pose each frame so the motion is visible on camera."""
-            for i in range(n):
-                t = (i + 1) / n
-                p = start * (1.0 - t) + end * t
-                bulb.write_root_pose_to_sim(torch.cat([p, quat]).unsqueeze(0))
-                bulb.write_root_velocity_to_sim(zeros6)
-                step(roll0, track=False)
-
-        def step(roll: float, track: bool = True, hold_fresh: bool = False, drive: bool = False) -> None:
-            if track:
-                track_socket_to_palm()
-            if hold_fresh and not bool(task_attach.fresh_bulb_attached(env)[0].item()):
-                # Turn the bulb WITH the wrist, as a gripped bulb does. This is what makes
-                # the screw phase a real test of the gate's alignment check rather than a
-                # tautology (#54 review): a full-frame check would read this as misaligned
-                # within a fraction of a turn and the gate could never fire.
-                hold_fresh_at_seat(roll=roll - roll0)
-            if drive:  # only pin the joint while actively ratcheting (constant-hold pins
-                drive_wrist(roll)  # would feed the gate integrator phantom drift deltas)
-            env.step(act_from_roll(roll))
-            if VIDEO is not None:
-                VIDEO.capture()
-
-        def ratchet(direction: float, n_cycles: int, amp: float, half_steps: int, hold_fresh: bool = False):
-            """Sawtooth the wrist roll. direction -1 = unscrew (decreasing roll counts),
-            +1 = screw (increasing). Working stroke ratchets; return stroke is free."""
-            for _ in range(n_cycles):
-                for going_out in (True, False):
-                    for s in range(half_steps):
-                        f = (s + 1) / half_steps
-                        frac = f if going_out else (1.0 - f)
-                        step(roll0 + direction * amp * frac, track=True, hold_fresh=hold_fresh, drive=True)
+        # -- helpers (module-level factory; see _build_rig) ---------------------------
+        (
+            act_from_roll,
+            palm_pos,
+            seat_pose,
+            track_socket_to_palm,
+            drive_wrist,
+            hold_fresh_at_seat,
+            aim_camera,
+            animate_bulb,
+            step,
+            ratchet,
+        ) = _build_rig(
+            env,
+            robot,
+            socket,
+            fresh_bulb,
+            palm_id,
+            wrist_id,
+            n_act,
+            all_ids,
+            all_names,
+            default_q,
+            zeros6,
+            seat,
+            plug,
+            seat_axis,
+            roll0,
+        )
 
         # -- settle: bulb rests at its real elevated fixture (NOT tracked to the palm) --
         # so the ratcheted unscrew gate does not farm settling jitter before we mean to
