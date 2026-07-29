@@ -5,13 +5,14 @@
 
 """``FIATLUX-Remove-v0`` -- unscrew/remove the existing bulb (standalone RL task).
 
-Start layout: Insert's bench world with the OLD BULB seated in the table lamp (kinematic
--- a stand-in for "screwed in" until the attach joint exists) and an empty parts crate
-beside the bench as its destination.
+Start layout: Insert's bench world with the OLD BULB seated in the table lamp -- DYNAMIC,
+resting in the socket's open hole under gravity (see ``apply_remove_preset``) -- and an
+empty parts crate beside the bench as its destination.
 
-**Honesty note (same gap ``FIATLUX-Replace-v0``'s own removal/disposal channels carry,
-see its module docstring):** the bulb is kinematic, so *no action can actually move it*
--- there is no attach/detach mechanic yet (unification spec Phase 4: a revolute/screw
+**Honesty note:** the bulb lifts straight out -- nothing gates unscrewing here, so the
+task is "pick it up and bin it" rather than "unscrew it". ``FIATLUX-Replace-v0`` now gates
+removal on ``mdp.bulb_attachment`` (issue #54); porting that term here is the remaining
+work (unification spec Phase 4: a revolute/screw
 joint or a make/break fixed-joint attach gated by rotation, anchored at the lamp's socket
 seat pose). The reward/termination code below is real, not a placeholder -- it is
 Replace's own ``old_bulb_removed`` / ``old_bulb_disposed`` distance channels, parametrized
@@ -46,7 +47,7 @@ from .scene_cfg import (
 # Task thresholds (Replace's own values for the same mechanic)
 ##
 
-BULB_ENTITY = SceneEntityCfg("bulb")  # this scene's single, kinematic "old" bulb
+BULB_ENTITY = SceneEntityCfg("bulb")  # this scene's single, dynamic "old" bulb
 REMOVAL_CLEARANCE = 0.10  # m; plug this far from the seat counts as removed
 DISPOSAL_THRESHOLD = 0.25  # m; within this of the crate origin counts as disposed
 OLD_BULB_DROP_HEIGHT = 0.15  # m; must clear a bulb resting *inside* the floor crate (~0.1)

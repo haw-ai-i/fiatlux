@@ -37,8 +37,7 @@ Design notes (full-task benchmark plan, ``journal/specs/full-task-benchmark-plan
   gate (palm proximity + accumulated wrist roll), the fresh bulb becomes held once the
   screw-in gate fires (seated + palm proximity + wrist roll into an empty socket).
   ``fresh_bulb_inserted`` and ``success`` read the attachment state, not the raw seating
-  geometry, so every score channel is genuinely achievable. Remove/Install still carry the
-  older kinematic stand-in gap.
+  geometry, so every score channel is genuinely achievable. Remove/Install do not yet gate on attachment: their bulbs are dynamic and simply lift out of / drop into the socket, so neither requires unscrewing.
 """
 
 import math

@@ -26,8 +26,7 @@ return to it (plus the reset jitter below).
   freed by the unscrew gate (palm within grasp radius + accumulated wrist roll); the fresh
   bulb becomes held once the screw-in gate fires (seated within tolerance + palm proximity
   + wrist roll, into an empty socket). `fresh_bulb_inserted` and `success` read the
-  attachment state, so every score channel is achievable. Remove/Install still carry the
-  older kinematic stand-in.
+  attachment state, so every score channel is achievable. Remove/Install do not yet gate on attachment: their bulbs are dynamic and simply lift out of / drop into the socket, so neither requires unscrewing.
 
 ## Goal
 

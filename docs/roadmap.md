@@ -48,8 +48,8 @@ descoping still stands — it is one flat RL episode, chaining is solution struc
   attachment + seated-pose slaving, gated by palm proximity and accumulated wrist roll
   (see `journal/specs/issue-54-bulb-attach-detach.md`). All Replace score channels are
   now achievable. Follow-ups: the physical D6-joint backend (spec Approach A, needs an
-  on-GPU spike), and promoting Remove/Install off their kinematic stand-ins onto the
-  same mechanic.
+  on-GPU spike), and putting Remove/Install on the same mechanic -- their bulbs are
+  already dynamic, but nothing gates screw/unscrew there yet.
 
 ## 3. Learned-policy support
 
