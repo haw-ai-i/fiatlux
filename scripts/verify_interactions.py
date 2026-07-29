@@ -180,38 +180,32 @@ MIN_ROOT_Z = -0.05  # m
 STEPS_PER_SECOND = 50  # sim.dt=1/200 * decimation=4 (the family control rate)
 CONTACT_N = 0.05  # above sensor noise, below any force that means something
 MAX_SLIP_M = 0.06  # a grasp that lets the bulb travel further than this has lost it
-# Bulb geometry in its own frame, MEASURED via ``--scenario hand --probe`` (which prints the
-# collider bounds against the root). The root sits OUTSIDE the geometry -- the cap bottom is
-# 0.036 along local +z from it, matching assets.BULB_STAND_Z_OFFSET -- so a grasp has to seat
-# the glass and then back the root out, or the body lands a hand's width from the hand.
-# Glass: 8 cm across, centre 0.131 along local +z. Too wide for the Dex3 thumb (6.5 cm of
-# reach off the palm plane), so it is not the grip feature -- kept for the geometry record.
+# Bulb geometry in its own frame, offsets along local +z from the root. MEASURED via
+# ``--scenario hand --probe``. The root sits OUTSIDE the geometry (cap bottom at 0.036, per
+# assets.BULB_STAND_Z_OFFSET), so placements seat a feature and back the root out.
+# Glass is too wide for the Dex3 thumb's 6.5 cm reach to close over; the cap is the grip
+# feature. Glass values kept for the geometry record.
 BULB_GLASS_RADIUS_M = 0.040
 BULB_GLASS_CENTRE_M = 0.131
-# Cap: 4.2 cm across, centre 0.054 along local +z. This is what the hand grips.
 BULB_CAP_RADIUS_M = 0.021
 BULB_CAP_CENTRE_M = 0.054
 
-# What the bulb tolerates, by the feature being held -- a single number cannot serve both.
-# GLASS: a thin soda-lime shell. It survives a few hundred N spread over a palm but only
-# ~50-150 N under a hard fingertip, which is the regime a rigid gripper is in; 50 N also
-# matches scripts/score.py's fragility_threshold, so glass contact keeps that bound.
-# CAP: a metal E26 shell, good for several hundred N -- and it has to be. IEC 60968 tests
-# the cap/glass joint to 3 N.m, and transmitting even a realistic 0.3-0.5 N.m install
-# torque at the cap's 13 mm radius already needs tens of N of grip, so a hand bounded at
-# the glass figure could not screw the bulb in at all.
+# What the bulb tolerates, by the feature held -- one number cannot serve both.
+# Glass: thin soda-lime shell, ~50-150 N under a hard fingertip; 50 N also matches
+# scripts/score.py's fragility_threshold.
+# Cap: metal E26 shell, several hundred N, and it needs to be -- IEC 60968 tests the
+# cap/glass joint to 3 N.m, and a realistic 0.3-0.5 N.m install torque at the cap's 13 mm
+# radius costs tens of N of grip.
 GLASS_CONTACT_LIMIT_N = 50.0
 CAP_CONTACT_LIMIT_N = 300.0
-# How far out along the fingers the bulb sits. Bounded by the thumb: on Dex3 the thumb tip
-# reaches 2.3 cm out and the fingertips 12.4 cm, so anything past ~0.06 is beyond the thumb's
-# closing arc entirely and nothing grips it.
+# How far out along the fingers the bulb sits. Bounded by the thumb: on Dex3 it reaches
+# 2.3 cm out against 12.4 cm of fingertip, so past ~0.06 nothing can close on the bulb.
 PALM_GRASP_FORWARD_M = 0.045
 
 # Palm-link local axes as ``(axis_index, sign)`` -- (outward normal, along fingers, across palm).
-# MEASURED per variant via ``--scenario hand --probe``; assuming them is how the bulb ends up
-# aimed at the back of the hand. Dex3: under the palm-up cradle the palm link's +y points up
-# (the face the digits close onto), +x runs out toward the tips, +z spans the palm. Inspire's
-# face is its local -x (see fiatlux_task/poses.py).
+# MEASURED per variant via ``--scenario hand --probe``. Dex3: +y is the face the digits close
+# onto, +x runs out toward the tips, +z spans the palm. Inspire's face is its local -x
+# (see fiatlux_task/poses.py).
 PALM_LOCAL_AXES: dict[str, tuple[tuple[int, float], ...]] = {
     "dex3": ((1, 1.0), (0, 1.0), (2, 1.0)),
     "inspire": ((0, -1.0), (1, 1.0), (2, 1.0)),
@@ -430,6 +424,12 @@ def scenario_socket():
 
     # --- part 1: physically-seated rest pose is stable -----------------------------
     cfg = build_insert_cfg()
+    # robot:no_self_collision_noise needs the robot touching nothing but itself. Its root is
+    # fixed (a free base has no policy here and cannot balance), and the bench is dropped --
+    # the arms hang into its under-shelf crates, and nothing in this scenario rests on it: the
+    # socket is kinematic and the bulb is teleported to its seated poses.
+    cfg.scene.robot.spawn.articulation_props.fix_root_link = True
+    cfg.scene.table = None
     cfg.scene.bulb.init_state.pos = TABLETOP_SEATED_BULB_POSITION
     cfg.scene.bulb.spawn.activate_contact_sensors = True
     # The Omniverse bulb/socket carry their rigid body on the spawned prim itself; the
@@ -473,17 +473,15 @@ def scenario_socket():
         rest_err = task_rewards._bulb_socket_pos_error(env).item()
         info(f"pos_error at physical rest = {rest_err * 100:.1f} cm (success needs < 1.5 cm)")
 
-        # Stock-robot health: with nothing near the hand, the hand/wrist bodies must
-        # carry no contact force. Sustained kN-scale readings here are the robot's own
-        # links self-colliding (authored collider overlap + enabled_self_collisions);
-        # they saturate the recorded ``contact_force`` channel that fragility scoring
-        # reads, marking every episode "broken" regardless of policy behavior.
+        # Stock-robot health: touching nothing, no body may carry contact force. A reading is
+        # the robot's own geometry (collider overlap + enabled_self_collisions), and it lands
+        # in the unfiltered net-force channel feeding the contact observation and the recorded
+        # fragility force -- so it scores policies as "broken". Every body the sensor reports
+        # is inspected; its prim_path already scopes it to the right hand and wrist.
         sensor = env.scene.sensors["hand_contact"]
         norms = sensor.data.net_forces_w[0].norm(dim=-1)
         hand_noise = [
-            f"{name}={norms[i].item():.0f}N"
-            for i, name in enumerate(sensor.body_names)
-            if norms[i].item() > 5.0 and ("hand" in name or "wrist" in name)
+            f"{name}={norms[i].item():.0f}N" for i, name in enumerate(sensor.body_names) if norms[i].item() > 5.0
         ]
         record(
             "robot:no_self_collision_noise",
@@ -547,19 +545,25 @@ def build_hand_cfg(arm=ARM_PRESS_HOVER, hand=HAND_FLAT):
 
 
 def palm_body_index(env) -> int:
+    """Index of the right palm body for the variant under test.
+
+    Must be the palm itself: callers position the bulb under the pressing palm, and the wrist
+    sits ~4 cm away, which turns a flat press into an off-centre edge contact. Raises rather
+    than substituting a neighbouring body.
+    """
     robot = env.scene["robot"]
-    for name in ("right_hand_base_link", "right_wrist_yaw_link"):
-        try:
-            ids, _ = robot.find_bodies(name)
-            if ids:
-                return ids[0]
-        except ValueError:
-            continue
-    raise RuntimeError(f"no palm body found among {robot.body_names}")
+    name = G1_PALM_BODY_BY_VARIANT[args_cli.robot]
+    ids, _ = robot.find_bodies(name)
+    if not ids:
+        raise RuntimeError(f"palm body {name!r} not found among {robot.body_names}")
+    return ids[0]
 
 
-def place_bulb_under_palm(env, settle_steps: int = 30):
+def place_bulb_under_palm(env, arm=None, settle_steps: int = 30):
     """Lay the bulb on the tabletop exactly where the PRESSED palm will arrive.
+
+    ``arm`` is the press pose the bulb will be met with, so each phase places it under its own
+    palm arc; defaults to :data:`ARM_PRESS_DOWN`.
 
     The press pose is dipped once to measure the pressed palm point (the shoulder
     pitch moves the palm along an arc, not straight down), the arm returns to
@@ -569,7 +573,7 @@ def place_bulb_under_palm(env, settle_steps: int = 30):
     robot = env.scene["robot"]
     bulb = env.scene["bulb"]
     zero = torch.zeros((env.num_envs, env.action_manager.total_action_dim), device=env.device)
-    press = targets_to_actions(env, {**ARM_PRESS_DOWN, **HAND_FLAT})
+    press = targets_to_actions(env, {**(arm or ARM_PRESS_DOWN), **HAND_FLAT})
     run_steps(env, press, 45)
     pressed_palm = robot.data.body_state_w[:, palm_body_index(env), :3].clone()
     if args_cli.probe:
@@ -636,19 +640,14 @@ def palm_frame(env) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Ten
 def palm_grasp_pose(env) -> tuple[torch.Tensor, torch.Tensor]:
     """Bulb lying ACROSS the fingers, gripped at the CAP, long axis spanning the palm.
 
-    Every offset here is bounded by measured geometry, which ``--probe`` prints: the digits in
-    this palm frame, and the bulb's collider bounds against its root.
+    Every offset is bounded by geometry ``--probe`` prints: the digits in this palm frame, and
+    the bulb's collider bounds against its root.
 
-    The cap, not the glass. The glass is 8 cm across while the Dex3 thumb tip reaches only
-    6.5 cm off the palm plane, so the thumb cannot close over the glass at all -- seated on it,
-    the hand either wedges the bulb or holds it by depenetrating it, and both read as retention
-    while measuring nothing about grip. The 4.2 cm cap fits inside the thumb's span.
-
-    ``PALM_GRASP_FORWARD_M`` places the grip under the thumb (which reaches 2.3 cm out) rather
-    than at the fingertips (12.4 cm out), where nothing can close on it.
-
-    The root is then backed out along the axis, because the bulb's root lies outside its own
-    geometry: writing the root to the seat point leaves the body a hand's width away.
+    The cap, not the glass: the glass is 8 cm across against 6.5 cm of Dex3 thumb reach off the
+    palm plane, so the thumb cannot close over it. The 4.2 cm cap fits the thumb's span.
+    ``PALM_GRASP_FORWARD_M`` keeps the grip within the thumb's 2.3 cm reach rather than out at
+    the fingertips (12.4 cm). The root is then backed out along the axis, since it lies outside
+    the bulb's own geometry.
     """
     origin, normal, fingers, across = palm_frame(env)
     seat = origin + normal * BULB_CAP_RADIUS_M + fingers * PALM_GRASP_FORWARD_M
@@ -832,8 +831,9 @@ def scenario_fragility():
 
         phases = [
             ("gentle", place_bulb_under_palm, press_ramp(gentle_press)),
-            # crush presses into the bare tabletop; the bulb stays at its spawn spot
-            ("crush", lambda env: None, press_ramp(crush_press)),
+            # The bulb goes under the CRUSH arc, not the gentle one: the contact channel counts
+            # only force on the bulb, so a press into the bare tabletop scores nothing.
+            ("crush", lambda env: place_bulb_under_palm(env, arm=ARM_PRESS_CRUSH), press_ramp(crush_press)),
             ("drop", drop_setup, lambda i: zero),
         ]
         for name, setup, actions in phases:

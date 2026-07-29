@@ -77,11 +77,22 @@ def lidar_ranges(
     return torch.nan_to_num(ranges, posinf=sensor.cfg.max_distance).clamp(max=sensor.cfg.max_distance)
 
 
+def object_contact_forces(sensor) -> torch.Tensor:
+    """Per-body contact force against the sensor's FILTERED targets: ``(N, B, 3)``.
+
+    Same shape as ``net_forces_w``, but counting only the objects the sensor filters for, so
+    the robot's own links and the scenery cannot enter the channel. The hand sensor feeds both
+    the contact observation and the recorded fragility force; on the unfiltered net force those
+    read the arm resting against a bench, or the robot's own colliders, as force on the bulb.
+    """
+    return sensor.data.force_matrix_w.sum(dim=2)  # (N, B, M, 3) -> (N, B, 3)
+
+
 def contact_net_forces(
     env: ManagerBasedRLEnv,
     sensor_cfg: SceneEntityCfg,
 ) -> torch.Tensor:
-    """Net contact forces (world frame) from the contact sensor, flattened for policy obs.
+    """Contact forces on the sensor's filtered objects (world frame), flattened for policy obs.
 
     Uses the current timestep net forces (no history). Body selection is via sensor_cfg.body_ids
     if set by the manager, or sensor_cfg.body_names matched against the sensor's body_names.
@@ -92,7 +103,7 @@ def contact_net_forces(
     from isaaclab.sensors import ContactSensor
 
     contact_sensor: ContactSensor = env.scene.sensors[sensor_cfg.name]
-    net = contact_sensor.data.net_forces_w  # (N, B, 3)
+    net = object_contact_forces(contact_sensor)  # (N, B, 3), filtered to the objects
     body_ids = sensor_cfg.body_ids
     if body_ids is None or body_ids == slice(None):
         if getattr(sensor_cfg, "body_names", None) is not None:
