@@ -16,9 +16,9 @@ work (unification spec Phase 4: a revolute/screw
 joint or a make/break fixed-joint attach gated by rotation, anchored at the lamp's socket
 seat pose). The reward/termination code below is real, not a placeholder -- it is
 Replace's own ``old_bulb_removed`` / ``old_bulb_disposed`` distance channels, parametrized
-to point at this scene's ``bulb`` entity instead of Replace's ``old_bulb`` -- but no policy
-can solve it until that mechanic lands. This mirrors Replace's own documented caveat
-rather than inventing a new one.
+to point at this scene's ``bulb`` entity instead of Replace's ``old_bulb``. A policy can
+solve it today by lifting the bulb out and binning it; what the mechanic would add is the
+requirement to *unscrew* first, which is how Replace now scores the same channels.
 """
 
 from isaaclab.envs import ManagerBasedRLEnvCfg
