@@ -3,8 +3,9 @@
 Written 2026-07-28, after pushing `68ec17e` to PR #60 and discovering `origin/main`
 had advanced 28 commits (PRs #59 and #63) with overlapping work.
 
-**Recommendation: adopt `main`'s asset design and drop most of PR #60's. `main` solved
-the problem PR #60 worked around.** Details and the salvage list below.
+**Outcome: `main`'s asset design was adopted and most of PR #60's was dropped.** PR #60 was
+reset onto `main`, the attach FSM was cherry-picked on top, and both now ship together as
+PR #65 (#60 closed). What follows is the analysis that led there, kept as the record.
 
 ---
 
@@ -159,18 +160,28 @@ only if more fixtures get split later; otherwise drop.
    Occlusion was read as absence. Measure before concluding.
 3. **`apply_carry_preset` was rewritten before checking its callers.** It had none.
 
-## 6. Suggested resolution
+## 6. Resolution (done)
 
-1. Reset PR #60 to `origin/main`.
-2. Re-apply only the manifest correction (§4.1), as a standalone commit.
-3. Optionally keep §4.2 as a note in this file and `omniverse_fixture_split.py` if more
-   fixtures are coming.
-4. Drop everything in §4.4. Delete the `omniverse_chandelier` and `omniverse_table_lamp`
-   GCS prefixes once the branch is settled (37 MB + 138 MB).
-5. Re-point issue #54 at `main`'s pair, and re-run `verify_attach` there — the attach FSM
-   itself (`mdp/attach.py`'s state machine) is unaffected by the asset choice and is the
-   part of PR #60 worth preserving.
+1. PR #60 was reset onto `origin/main`, discarding the two-pair `FixturePair` design, the
+   `chandelier_A` / `BlackLamp` assets, and the pendant-specific mounting.
+2. The manifest correction (§4.1) was re-applied as a standalone commit, with the two
+   promoted rows returned to `scene_dressing` and their locations corrected, since neither
+   split prefix exists on `main`.
+3. The five FSM commits (§4.2's sibling, the part always worth keeping) were cherry-picked
+   onto `main` as PR #65. Conflicts resolved toward `main` throughout: `seated ==` the
+   fixture's own pose, so the branch's offset arithmetic was deleted.
+4. Both sets of changes were then consolidated into PR #65 and PR #60 closed.
 
-Conflicting files if merged instead of reset: `scripts/verify_scene.py`,
-`assets.py`, `scenes.py`, `mdp/rewards.py`, `replace_env_cfg.py`, `scene_cfg.py`.
-They conflict because both sides restructured the same things, not by textual accident.
+Two bugs surfaced only after landing on `main`, neither visible on the old branch:
+
+- The screw-in gate required *full-frame* orientation alignment while the wrist turned
+  pi rad -- but that turn is the screwing motion, so the gate fought itself. `main` already
+  declared the mating axis free (`BULB_PLUG_AXIS`) and nothing used it. Fixed with
+  `_bulb_socket_axis_error`, and `verify_attach` now turns the bulb about that axis so the
+  check is a real test: reverting the fix drops it to 8/11 with `screw_accum` stalling at
+  1.97 of the 3.14 rad gate.
+- `LightBulb_bulb_z_rigid.usda` / `LightBulb_socket_z_static.usda` were absent from GCS, so
+  a clean `download_assets.sh` left `main` unable to start. Generated and uploaded.
+
+Still open: the `omniverse_chandelier` (37 MB) and `omniverse_table_lamp` (138 MB) GCS
+prefixes are now unreferenced and can be deleted.

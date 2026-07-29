@@ -70,12 +70,12 @@ import fiatlux_task.tasks  # noqa: F401  -- registers the FIATLUX Gym environmen
 import gymnasium as gym
 import isaaclab.sim as sim_utils
 import torch
-from fiatlux_task.assets import BULB_PLUG_OFFSET, SOCKET_SEAT_OFFSET
+from fiatlux_task.assets import BULB_PLUG_OFFSET, SOCKET_SEAT_AXIS, SOCKET_SEAT_OFFSET
 from fiatlux_task.tasks.manager_based.fiatlux_task.mdp import attach as task_attach
 from fiatlux_task.tasks.manager_based.fiatlux_task.mdp import rewards as task_rewards
 from prettytable import PrettyTable
 
-from isaaclab.utils.math import quat_apply
+from isaaclab.utils.math import quat_apply, quat_mul
 from isaaclab_tasks.utils import parse_env_cfg
 
 GRASP_RADIUS = 0.12  # m  (mdp.attach default)
@@ -175,6 +175,7 @@ def main() -> int:
         default_q = robot.data.default_joint_pos
         zeros6 = torch.zeros((env.num_envs, 6), device=env.device)
         seat = torch.tensor(SOCKET_SEAT_OFFSET, device=env.device)
+        seat_axis = torch.tensor(SOCKET_SEAT_AXIS, device=env.device)
         plug = torch.tensor(BULB_PLUG_OFFSET, device=env.device)
 
         if args_cli.video:
@@ -220,8 +221,22 @@ def main() -> int:
             pos = torch.full((1, 1), roll, device=env.device)
             robot.write_joint_state_to_sim(pos, torch.zeros((1, 1), device=env.device), joint_ids=[wrist_id])
 
-        def hold_fresh_at_seat() -> None:
+        def hold_fresh_at_seat(roll: float | None = None) -> None:
+            """Hold the fresh bulb at the seat, optionally TURNED about the mating axis.
+
+            Passing ``roll`` rotates the bulb about the socket's seat axis by that angle,
+            which is what a bulb gripped in a turning hand actually does. Writing the
+            socket's own quaternion instead (the ``roll=None`` case) pins full-frame
+            orientation error at zero and would hide a gate that wrongly scores rotation
+            about the mating axis as misalignment -- the bug this exercises (#54 review).
+            """
             p, q = seat_pose()
+            if roll is not None:
+                axis = quat_apply(q.unsqueeze(0), seat_axis.unsqueeze(0))[0]
+                axis = axis / axis.norm().clamp(min=1e-9)
+                half = torch.tensor(roll / 2.0, device=env.device)
+                spin = torch.cat([torch.cos(half).unsqueeze(0), torch.sin(half) * axis])
+                q = quat_mul(spin.unsqueeze(0), q.unsqueeze(0))[0]
             fresh_bulb.write_root_pose_to_sim(torch.cat([p, q]).unsqueeze(0))
             fresh_bulb.write_root_velocity_to_sim(zeros6)
 
@@ -247,7 +262,11 @@ def main() -> int:
             if track:
                 track_socket_to_palm()
             if hold_fresh and not bool(task_attach.fresh_bulb_attached(env)[0].item()):
-                hold_fresh_at_seat()
+                # Turn the bulb WITH the wrist, as a gripped bulb does. This is what makes
+                # the screw phase a real test of the gate's alignment check rather than a
+                # tautology (#54 review): a full-frame check would read this as misaligned
+                # within a fraction of a turn and the gate could never fire.
+                hold_fresh_at_seat(roll=roll - roll0)
             if drive:  # only pin the joint while actively ratcheting (constant-hold pins
                 drive_wrist(roll)  # would feed the gate integrator phantom drift deltas)
             env.step(act_from_roll(roll))
