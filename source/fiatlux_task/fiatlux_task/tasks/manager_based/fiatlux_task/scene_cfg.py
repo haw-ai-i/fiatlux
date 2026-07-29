@@ -124,7 +124,6 @@ POSITION_ROBOT_POSITION = (-0.20, -0.20, 0.75)
 POSITION_LADDER_START_POS = (1.50, 0.85, 0.0)
 POSITION_LADDER_START_YAW = 30.0
 TARGET_LADDER_POSITION = (0.55, -0.30, 0.0)  # directly beneath the ceiling fixture
-LADDER_MASS = 3.0  # modest, so one arm can move it (real step ladders are heavier)
 # The light fixture the positioned ladder leads to is the SAME validated BEHAVIOR-1K lamp +
 # bulb (SOCKET_USD / BULB_USD) the Insert/Replace tasks use, mounted on the ceiling directly
 # above the target and flipped bulb-down -- exactly how apply_replace_preset mounts its
@@ -201,10 +200,11 @@ DISPOSAL_ZONE_HALF_SIZE = 0.5  # the old-bulb disposal crate (crate footprint ~0
 ZONE_MARGIN = 0.5  # minimum gap left between any two zones' bounding squares
 LADDER_WALL_STANDOFF = 0.4  # extra gap between the (coupled) ladder zone edge and the wall
 
-# Dynamic-ladder mass (replace preset only). Without an authored MassAPI PhysX derives mass
-# from collider volume at 1000 kg/m^3, which lands a hollow A-frame at furniture-crushing
-# tens of kg; a real 1.75 m fiberglass step ladder is ~12 kg.
-LADDER_MASS_KG = 12.0
+# Ladder mass, every preset. Without an authored MassAPI PhysX derives mass from collider
+# volume at 1000 kg/m^3, which lands a hollow A-frame at furniture-crushing tens of kg.
+# 7.25 kg is what STEP_LADDER_RIGID_USD itself carries (omniverse_ladder_rigid.py's 2 + 3*h
+# at this asset's 1.75 m) and what a real 1.75 m fiberglass A-frame weighs.
+LADDER_MASS_KG = 7.25
 
 # -- prop masses. Without an authored MassAPI PhysX derives mass from collider volume at
 #    1000 kg/m^3, which lands a hollow crate at tens of kg. --
@@ -527,8 +527,7 @@ def apply_position_preset(scene: G1ReplaceSceneCfg) -> None:
         # The A-frame step ladder's PRECONFIGURED `_collision_rigid` variant -- already a single
         # dynamic RigidBodyAPI + MassAPI, so the spawner does not stamp the rigid body; it just
         # tunes the solver/mass props on the existing body and binds a high-friction grip
-        # material (UsdFileCfg has no physics_material field). cm-authored -> scale 0.01; mass
-        # overridden below to a modest value so one arm can move it.
+        # material (UsdFileCfg has no physics_material field). cm-authored -> scale 0.01.
         func=_spawn_usd_as_rigid_body_frictional,
         scale=(0.01, 0.01, 0.01),
         rigid_props=sim_utils.RigidBodyPropertiesCfg(
@@ -542,7 +541,7 @@ def apply_position_preset(scene: G1ReplaceSceneCfg) -> None:
             sleep_threshold=0.005,
             stabilization_threshold=0.001,
         ),
-        mass_props=sim_utils.MassPropertiesCfg(mass=LADDER_MASS),
+        mass_props=sim_utils.MassPropertiesCfg(mass=LADDER_MASS_KG),
     )
     scene.ladder.init_state.pos = POSITION_LADDER_START_POS
     scene.ladder.init_state.rot = _quat_z_deg(POSITION_LADDER_START_YAW)
