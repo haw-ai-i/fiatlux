@@ -50,7 +50,13 @@ from isaaclab.managers import ManagerTermBase, SceneEntityCfg
 from isaaclab.sensors import ContactSensor
 from isaaclab.utils.math import quat_apply, quat_error_magnitude
 
-from fiatlux_task.assets import BULB_PLUG_OFFSET, SOCKET_SEAT_OFFSET, STEP_LADDER_TOP_OFFSET
+from fiatlux_task.assets import (
+    BULB_PLUG_AXIS,
+    BULB_PLUG_OFFSET,
+    SOCKET_SEAT_AXIS,
+    SOCKET_SEAT_OFFSET,
+    STEP_LADDER_TOP_OFFSET,
+)
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Sequence
@@ -85,6 +91,26 @@ def _bulb_socket_pos_error(env: ManagerBasedRLEnv) -> torch.Tensor:
     origins: seating means the plug reaches the socket, and the two origins are offset by
     the plug geometry even when fully mated (issue #29)."""
     return torch.norm(_plug_point_w(env) - _seat_point_w(env), dim=1)
+
+
+def _bulb_socket_axis_error(env: ManagerBasedRLEnv) -> torch.Tensor:
+    """Angle (rad) between the bulb's plug axis and the socket's seat axis.
+
+    Unlike :func:`_bulb_socket_ori_error` this ignores rotation ABOUT the mating axis,
+    which ``assets.BULB_PLUG_AXIS`` defines as free -- that rotation *is* the screwing
+    motion. A full-frame comparison makes a bulb turning with the wrist read as
+    misaligned within a fraction of a turn, which would make a screw-in gate that also
+    demands alignment impossible to satisfy (issue #54).
+    """
+    bulb: RigidObject = env.scene["bulb"]
+    socket: RigidObject = env.scene["socket"]
+    n = env.num_envs
+    plug = torch.tensor(BULB_PLUG_AXIS, device=env.device).expand(n, 3)
+    seat = torch.tensor(SOCKET_SEAT_AXIS, device=env.device).expand(n, 3)
+    a = quat_apply(bulb.data.root_quat_w, plug)
+    b = quat_apply(socket.data.root_quat_w, seat)
+    cos = (a * b).sum(dim=1) / (a.norm(dim=1) * b.norm(dim=1)).clamp(min=1e-9)
+    return torch.acos(cos.clamp(-1.0, 1.0))
 
 
 def _bulb_socket_ori_error(env: ManagerBasedRLEnv) -> torch.Tensor:

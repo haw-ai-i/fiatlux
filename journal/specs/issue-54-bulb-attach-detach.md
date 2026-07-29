@@ -46,7 +46,12 @@ Design deltas from §5 as-specced, made during implementation:
   The old-bulb score channels are now attach-aware (`old_bulb_release_clearance`,
   `old_bulb_removed_after_release`, `old_bulb_disposal_distance_pinned`,
   `old_bulb_dropped_after_release`): a held bulb reads as seated, by definition.
-- Not yet run on GPU (no Isaac Sim on the dev machine). First-run checklist:
+- **Verified on GPU** (RTX 3090, Isaac Sim 5.1 / Isaac Lab 2.3.2): `verify_attach.py`
+  11/11 and all eight `verify_scene.py` presets pass against the Omniverse LightBulb pair
+  that landed on `main`. The seated-bulb jitter feared below did not materialise: `main`'s
+  socket keeps its screw hole OPEN via an exact triangle-mesh collider, so a seated bulb
+  rests instead of being depenetrated out. Superseded first-run checklist, kept for the
+  record:
   `verify_scene.py` for the replace preset; watch for seated-bulb jitter against the
   socket colliders (the slaved dynamic bulb may interpenetrate where the kinematic one
   sat passively — `max_depenetration_velocity=1.0` caps ejection); confirm the
@@ -77,6 +82,13 @@ same mechanic must anchor at the table lamp's seat pose for the bench tasks
 ## 2. Current state of the codebase (survey findings)
 
 ### Scene & assets
+
+> **Superseded.** This section describes the BEHAVIOR-1K pair the investigation was written
+> against. `main` has since replaced it with the two halves of the Omniverse Sample-Scenes
+> `LightBulb` (`assets.py`), authored assembled at identity so "seated" is simply *bulb root
+> pose == socket root pose* — the offsets quoted below no longer apply, and the metalink
+> reasoning is moot because the new socket has a real open hole. The state machine itself is
+> unchanged: it reads `SOCKET_SEAT_OFFSET`/`BULB_PLUG_OFFSET`, whatever they point at.
 
 - Bulb = B1K `kfmkwd`, socket/lamp = B1K `ehjsdz` — **this exact pair is a registered
   attachment pair in BEHAVIOR-1K** (`attachment_combinations.json`: `light_bulb-kfmkwd` ↔

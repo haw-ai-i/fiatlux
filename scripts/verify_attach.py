@@ -97,24 +97,25 @@ def build_replace_cfg(num_envs: int = 1):
     """Replace-task cfg stripped for a deterministic, single-env scripted run."""
     cfg = parse_env_cfg("FIATLUX-Replace-v0", device=args_cli.device, num_envs=num_envs)
     cfg.seed = args_cli.seed
-    if getattr(cfg.events, "randomize_light", None) is not None:
-        cfg.events.randomize_light = None
+    for ev in ("randomize_sky_intensity", "randomize_key_light", "randomize_material_tint"):
+        if getattr(cfg.events, ev, None) is not None:
+            setattr(cfg.events, ev, None)
     if getattr(cfg.events, "reset_robot_joints", None) is not None:
         cfg.events.reset_robot_joints.params["position_range"] = (0.0, 0.0)
     # No episode should end mid-demo: we deliberately trip task terminations.
-    for term in ("success", "old_bulb_dropped", "bulb_dropped"):
+    for term in ("success", "old_bulb_dropped", "fresh_bulb_dropped"):
         if getattr(cfg.terminations, term, None) is not None:
             setattr(cfg.terminations, term, None)
     # Drop camera-based observation terms so a plain --headless run needs neither
-    # --enable_cameras nor a feature extractor. Replace mounts a torso RGB camera
-    # (``torso_camera`` / ``policy.torso_rgb``); null both, plus any wrist-named variants
-    # other presets may carry.
-    for cam in ("torso_camera", "wrist_camera"):
+    # --enable_cameras nor a feature extractor. Replace mounts a head-mounted RGB
+    # camera (``ego_camera`` / ``policy.ego_rgb``); null both, plus the older
+    # torso-/wrist-named variants other presets may still carry.
+    for cam in ("ego_camera", "torso_camera", "wrist_camera"):
         if getattr(cfg.scene, cam, None) is not None:
             setattr(cfg.scene, cam, None)
     for grp in ("policy", "privileged"):
         g = getattr(cfg.observations, grp, None)
-        for term in ("torso_rgb", "wrist_rgb"):
+        for term in ("ego_rgb", "torso_rgb", "wrist_rgb"):
             if g is not None and getattr(g, term, None) is not None:
                 setattr(g, term, None)
     # Fixed root: no balance controller needed for a scripted-joint demo.
@@ -416,8 +417,23 @@ def _summary() -> int:
 
 
 if __name__ == "__main__":
-    code = main()
-    simulation_app.close()
+    import os
     import sys
 
-    sys.exit(code)
+    code = 1
+    try:
+        code = main()
+    except Exception:  # noqa: BLE001 -- print the traceback before the process exits
+        import traceback
+
+        traceback.print_exc()
+    finally:
+        # Do NOT call simulation_app.close() here: it ends in a native framework shutdown
+        # that terminates the process with exit code 0, so nothing after it (sys.exit or
+        # os._exit included) ever runs, and a FAIL would report success. main() already
+        # closed the env; os._exit skips Kit's graceful shutdown on purpose -- process
+        # teardown releases the GPU, and CI must see a non-zero code on FAIL. Same
+        # reasoning and same shape as verify_scene.py.
+        sys.stdout.flush()
+        sys.stderr.flush()
+        os._exit(code)

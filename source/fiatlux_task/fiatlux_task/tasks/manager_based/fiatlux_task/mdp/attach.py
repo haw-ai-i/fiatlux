@@ -66,7 +66,7 @@ from isaaclab.utils.math import quat_apply
 from fiatlux_task.assets import BULB_PLUG_OFFSET, SOCKET_SEAT_OFFSET
 
 from .rewards import (
-    _bulb_socket_ori_error,
+    _bulb_socket_axis_error,
     _bulb_socket_pos_error,
     old_bulb_disposal_distance,
     old_bulb_disposed,
@@ -113,8 +113,24 @@ class bulb_attachment(ManagerTermBase):
         super().__init__(cfg, env)
         setattr(env, _ENV_ATTR, self)
         robot: Articulation = env.scene["robot"]
-        palm_ids, _ = robot.find_bodies(cfg.params.get("palm_body", "right_hand_base_link"))
+        # Inspire names the grasping body right_hand_base_link, Dex3 right_hand_palm_link,
+        # and swap_robot_variant does not rewrite palm_body -- so resolve by trying the
+        # known names rather than indexing an empty match (issue #54 review).
+        wanted = cfg.params.get("palm_body")
+        candidates = [wanted] if wanted else ["right_hand_base_link", "right_hand_palm_link"]
+        palm_ids = []
+        for name in candidates:
+            palm_ids, _ = robot.find_bodies(name)
+            if palm_ids:
+                break
+        if not palm_ids:
+            raise ValueError(
+                f"bulb_attachment: no grasping body matched {candidates} on this robot; "
+                f"pass palm_body= explicitly. Available: {robot.body_names}"
+            )
         wrist_ids, _ = robot.find_joints(cfg.params.get("wrist_joint", "right_wrist_roll_joint"))
+        if not wrist_ids:
+            raise ValueError("bulb_attachment: no wrist-roll joint matched; pass wrist_joint=")
         self._palm_id = palm_ids[0]
         self._wrist_id = wrist_ids[0]
         n, dev = env.num_envs, env.device
@@ -139,7 +155,7 @@ class bulb_attachment(ManagerTermBase):
         self,
         env: ManagerBasedEnv,
         env_ids: torch.Tensor,
-        palm_body: str = "right_hand_base_link",
+        palm_body: str | None = None,  # None -> auto-detect Inspire/Dex3 naming
         wrist_joint: str = "right_wrist_roll_joint",
         grasp_radius: float = 0.12,
         screw_angle: float = math.pi,
@@ -167,8 +183,10 @@ class bulb_attachment(ManagerTermBase):
 
         # -- attach gate (fresh bulb): ratcheted screw-in roll while seated + gripped,
         #    only into an empty socket
+        # Axis alignment, NOT full-frame: rotation about the mating axis is the screw
+        # gesture itself, so a full-frame check would fight the gate it gates.
         aligned = (_bulb_socket_pos_error(env) < pos_threshold) & (
-            _bulb_socket_ori_error(env) < ori_threshold
+            _bulb_socket_axis_error(env) < ori_threshold
         )
         fresh_near = torch.norm(palm_pos - fresh_bulb.data.root_pos_w, dim=1) < grasp_radius
         active = ~self._fresh_attached & ~self._old_attached & aligned & fresh_near
