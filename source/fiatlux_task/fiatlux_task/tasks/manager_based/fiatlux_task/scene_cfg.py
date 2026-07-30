@@ -65,7 +65,7 @@ from fiatlux_task.assets import (
     STEP_LADDER_USD,
     TABLE_USD,
 )
-from fiatlux_task.robots.g1 import G1_INSPIRE_CFG
+from fiatlux_task.robots.g1 import G1_INSPIRE_CFG, G1_LADDER_CONTACT_BODIES
 from fiatlux_task.scenes import DressedSceneCfg
 from fiatlux_task.sensors import ego_camera_cfg, mid360_lidar_cfg, wrist_camera_cfg
 
@@ -179,6 +179,23 @@ if max(CEILING_FIXTURE_Z, WALL_MOUNT_Z) > MAX_REACHABLE_MOUNT_Z:
         f"fixture mount heights (ceiling {CEILING_FIXTURE_Z} m, wall {WALL_MOUNT_Z} m) exceed the "
         f"reach from the step ladder's top platform ({MAX_REACHABLE_MOUNT_Z:.3f} m): the Replace "
         "task would be unsolvable by construction"
+    )
+# Horizontal tolerance on "the ladder is placed where the fixture can be worked". DERIVED, not
+# chosen: standing on the top platform the robot spends most of its reach budget climbing the
+# vertical gap to the fixture, and only sqrt(reach^2 - gap^2) is left to spend sideways. Sized
+# for the CEILING mount, the worse of the two (a wall fixture sits 0.8 m lower and allows far
+# more slack), so one tolerance is safe for both.
+#   ceiling: gap 1.300 m of a 1.374 m reach -> 0.444 m sideways, 0.394 after the margin
+# The hand-picked 0.9 m this replaced accepted placements 21 cm BEYOND full stretch, i.e. the
+# ladder scored as ready while the socket could not be touched from it (issue #69).
+LADDER_READY_MARGIN = 0.05  # m, held back off the geometric bound
+LADDER_READY_XY_RADIUS = (
+    math.sqrt(G1_OVERHEAD_REACH**2 - (CEILING_FIXTURE_Z - STEP_LADDER_TOP_OFFSET[2]) ** 2) - LADDER_READY_MARGIN
+)
+if LADDER_READY_XY_RADIUS <= 0.0:
+    raise ValueError(
+        f"no horizontal slack left for the ladder placement: a {CEILING_FIXTURE_Z} m fixture eats "
+        f"the whole {G1_OVERHEAD_REACH:.3f} m reach from the {STEP_LADDER_TOP_OFFSET[2]} m ladder top"
     )
 # Must clear the room's own wall box (9.04 x 8.26 m), since each env carries its own colliding
 # room. Overlap is physically harmless (filter_collisions=True isolates each env's collision
@@ -588,9 +605,14 @@ def add_ladder_contact_sensor(scene: G1ReplaceSceneCfg) -> None:
     against a *single* filter body works in this stack (proven by
     ``verify_interactions.py``'s whole-robot ``limb_ladder_contact`` sensor), so the
     per-link-sensor workaround from the upstream ContactSensor docstring is not needed.
+
+    Bodies come from ``G1_LADDER_CONTACT_BODIES``, which names both feet and every variant's
+    palm. Do not narrow this to a regex: the two hands disagree on the palm body's name
+    (``*_hand_base_link`` vs ``*_hand_palm_link``), so any pattern spelling one of them
+    resolves to feet only on the other.
     """
     scene.ladder_contact = ContactSensorCfg(
-        prim_path="{ENV_REGEX_NS}/Robot/.*(ankle_roll|hand_base)_link",
+        prim_path="{ENV_REGEX_NS}/Robot/(" + "|".join(G1_LADDER_CONTACT_BODIES) + ")",
         filter_prim_paths_expr=["{ENV_REGEX_NS}/Ladder"],
         history_length=1,
         track_air_time=False,

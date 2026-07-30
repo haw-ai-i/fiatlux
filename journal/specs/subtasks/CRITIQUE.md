@@ -5,7 +5,11 @@ plans. Written against my own work; findings are ordered by how much damage they
 
 ## A. Confirmed defects, with numbers
 
-### A1. `ladder_contact` sees no hands at all on Dex3 — the scored variant
+**Status:** A1 and A2 are **fixed in code** on this branch and tracked as issue #69 (they were
+pre-existing, not introduced by these plans). A3 is now a blocking Phase 0 probe. A4, A5 and A6 are
+corrected in the affected subtask plans.
+
+### A1. `ladder_contact` sees no hands at all on Dex3 — the scored variant · **FIXED**
 
 `add_ladder_contact_sensor` uses:
 
@@ -24,11 +28,20 @@ permanently-free palm caps the term at 3/4 and the policy is charged for holding
 analysis is wrong from the premise up, because on Dex3 there is no palm in the denominator. I wrote a
 careful-sounding paragraph about a mechanism that does not exist.
 
-Fix: resolve the bodies from `G1_PALM_BODY_BY_VARIANT` / `G1_FOOT_BODIES` rather than a regex that
-encodes one variant's naming. Same class of bug as `palm_body_index` hardcoding
-`right_hand_base_link`, which PR #64 just fixed — the regex is that bug's twin, one file over.
+Fixed by naming the bodies explicitly from `G1_LADDER_CONTACT_BODIES` (both feet plus *every*
+variant's palm) instead of a regex that encodes one variant's naming. The sensor is built before
+`swap_robot_variant` may change the hand, so it has to name them all; names belonging to the other
+variant simply never resolve.
 
-### A2. `LADDER_READY_XY_RADIUS = 0.9` admits placements from which the fixture is unreachable
+Same class of bug as `palm_body_index` hardcoding `right_hand_base_link`, which PR #64 just fixed —
+the regex was that bug's twin, one file over. Worth a standing rule: **never spell a G1 body name
+outside `robots/g1.py`.**
+
+**Contract change:** on Dex3 the sensor now resolves 4 bodies instead of 2, so Climb's and Descend's
+`ladder_limb_contact` observation goes from 6 to 12 values and `ladder_contact_fraction`'s denominator
+from 2 to 4. Dex3 checkpoints and recorded scores for those two tasks do not transfer.
+
+### A2. `LADDER_READY_XY_RADIUS = 0.9` admits placements from which the fixture is unreachable · **FIXED**
 
 Geometry, all from existing constants:
 
@@ -46,8 +59,17 @@ full stretch. S04 can therefore *succeed* at a placement from which S14 is geome
 a cross-subtask contradiction between two gates I wrote in the same sitting, and neither plan caught
 it because each checked only its own numbers.
 
-`LADDER_READY_XY_RADIUS` should be ≈0.44 m at most, and less once the on-ladder stance is accounted
-for. This is also **pre-existing** in Carry and Replace, which both score `ladder_ready` at 0.9 m.
+Fixed by **deriving** it instead of picking it:
+`sqrt(G1_OVERHEAD_REACH² − (CEILING_FIXTURE_Z − STEP_LADDER_TOP_OFFSET[2])²) − 0.05` = **0.394 m**,
+sized for the ceiling mount (the worse of the two — a wall fixture sits 0.8 m lower and allows far
+more slack), with an import-time guard that raises if the fixture height ever eats the whole reach
+budget. Derived means it cannot drift out of agreement with the fixture height again.
+
+The audit also turned up that the constant was **defined twice** — `carry_env_cfg.py` and
+`replace_env_cfg.py` each held their own `0.9`, under a comment claiming the subtask and the full task
+"judge the ladder identically". Both now import the derived value.
+
+**Contract change:** Carry's success predicate *is* `ladder_ready`, so its scores do not transfer.
 
 ### A3. The overhead reach margin is 7.4 cm, and measured from the wrong stance
 

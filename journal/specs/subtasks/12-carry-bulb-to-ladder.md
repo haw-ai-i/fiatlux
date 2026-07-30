@@ -76,8 +76,8 @@ floor; a walkable path between them. Report whether the table sits between the b
 the ladder — the layout guarantees non-overlapping zones with `ZONE_MARGIN = 0.5`, not a clear
 straight line.
 
-Also confirm the ladder is in the ego camera frustum at t=0 from the bench-side stance and report
-if not.
+Also report whether the ladder is in the ego camera frustum at t=0 from the bench-side stance — as a
+difficulty note, not a defect (the mount is Unitree's spec; see foundation).
 
 ## Acceptance
 

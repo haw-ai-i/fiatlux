@@ -52,6 +52,7 @@ from fiatlux_task.robots.g1 import (
 from . import mdp
 from .climb_env_cfg import FALL_MIN_HEIGHT, FALL_TILT_LIMIT
 from .scene_cfg import (
+    LADDER_READY_XY_RADIUS,
     ROOM_ENV_SPACING,
     G1ReplaceSceneCfg,
     add_ego_camera,
@@ -64,7 +65,6 @@ from .scene_cfg import (
 ##
 
 LADDER_TILT_LIMIT = 0.6  # rad; the A-frame stands at 0, real climbing wobble stays well under
-LADDER_READY_XY_RADIUS = 0.9  # m; ladder top horizontally within working reach of the fixture
 REMOVAL_CLEARANCE = 0.10  # m; old-bulb plug this far from the seat counts as removed
 DISPOSAL_THRESHOLD = 0.25  # m; old bulb within this of the crate origin counts as disposed
 SEAT_POS_THRESHOLD = 0.015  # m; fresh-bulb seating tolerance (Insert's validated values)

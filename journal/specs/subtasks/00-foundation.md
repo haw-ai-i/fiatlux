@@ -437,14 +437,22 @@ in this codebase (there is not one example of even two-level `@configclass` env-
 today), scoring is undefined, and only 4 of the 7 existing tasks have a runner cfg at all so every new
 subtask needs one written from scratch.
 
-**Two decisions must be made before that slice starts, not during it:**
+**One decision must be made before that slice starts, not during it:**
 
-1. **The ego camera mount.** Every plan says "confirm the target is in the ego frustum at t=0; if not,
-   report it and stop". The 46°-down mount is a known open question. As written, up to fifteen agents
-   stop on the same unresolved decision. Decide it once.
-2. **Spike the cfg hierarchy** — base + one intermediate + one leaf, confirm all five managers
-   construct and that term ordering matches field declaration order. Cheap now, expensive after
-   fifteen files exist.
+- **Spike the cfg hierarchy** — base + one intermediate + one leaf, confirm all five managers
+  construct and that term ordering matches field declaration order. Cheap now, expensive after
+  fifteen files exist.
+
+### Settled: the ego camera stays on Unitree's mount
+
+The camera is already attached to the G1 USD's own `d435_link` with zero positional offset and
+identity rotation — Unitree's authored RealSense D435 housing, fixed to the torso (the G1 has no neck
+joint). Its downward pitch is therefore **the hardware spec, not a tuning choice**, and the FOV is
+already matched to the real D435's published 69.4° horizontal.
+
+So no plan may adjust it, and no plan may stop on it. If a subtask's target is outside the frustum at
+t=0, that is a true fact about what the real robot can see, not a setup defect: record it as task
+difficulty and continue. This closes the open question the earlier drafts deferred fifteen times.
 
 ## What counts as done
 

@@ -72,7 +72,7 @@ the bulb enclosed in the hand; the crate on the floor in its zone, upright, rest
 (not sunk into it — the crate is kinematic and spawned at `BIN_POSITION[2]`, so confirm the
 authored origin is its floor-contact plane); a clear walkable path from robot to crate.
 
-Confirm the crate is in the ego camera frustum at t=0 and report if it is not.
+Report whether the crate is in the ego camera frustum at t=0 — as a difficulty note, not a defect (the mount is Unitree's spec; see foundation).
 
 ## Acceptance
 

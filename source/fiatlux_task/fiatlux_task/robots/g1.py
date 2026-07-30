@@ -291,6 +291,13 @@ G1_PALM_BODY_BY_VARIANT: dict[str, str] = {
     "dex3": G1_DEX3_PALM_BODIES[1],
 }
 
+# Limbs the ladder-contact sensor watches: both feet plus EVERY variant's palm body. The
+# sensor is built at cfg-build time, before ``swap_robot_variant`` may change the hand, so it
+# has to name them all; names belonging to the other variant simply never resolve. Spelling
+# only one variant's palm makes the sensor silently degrade to feet-only on the other -- which
+# is what ``.*(ankle_roll|hand_base)_link`` did on Dex3 (issue #69).
+G1_LADDER_CONTACT_BODIES: list[str] = [*G1_FOOT_BODIES, *G1_PALM_BODIES, *G1_DEX3_PALM_BODIES]
+
 G1_DEX3_CFG = G1_INSPIRE_CFG.replace(
     spawn=G1_INSPIRE_CFG.spawn.replace(usd_path=G1_DEX3_USD, func=_spawn_g1_dex3_with_filtered_hand_mounts),
     actuators={

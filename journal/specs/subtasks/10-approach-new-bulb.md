@@ -72,7 +72,7 @@ bulb is on the table's *reachable* side — the bulb offset is applied relative 
 and the table's yaw is not randomized, so this should hold, but the robot approaches from wherever
 the crate zone is, which is sampled.
 
-Confirm the table and bulb are in the ego camera frustum at t=0; report if not.
+Report whether the table and bulb are in the ego camera frustum at t=0 — as a difficulty note, not a defect (the mount is Unitree's spec; see foundation).
 
 ## Acceptance
 

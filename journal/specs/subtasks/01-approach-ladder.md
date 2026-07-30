@@ -78,11 +78,13 @@ New: `base_ladder_distance`, `base_facing_entity`, `arrived_at_ladder`,
 
 Frames must show: robot standing, both feet flat on the floor; the ladder fully deployed,
 upright, all four feet on the floor; a clear walkable gap between them with no prop in the path;
-and **the ladder inside the ego camera frustum at t=0** — the ego camera is mounted 46° down,
-which is the true hardware mount, so confirm rather than assume. Report the measured gap.
+and **whether the ladder is inside the ego camera frustum at t=0**. Report the measured gap.
 
-If the ladder is not visible at spawn, report it as a start-state finding and stop — do not
-adjust the camera. The mount is a benchmark-wide decision, not S01's to make.
+**Do not adjust the camera, and do not stop if the ladder is out of frame.** The ego camera is
+mounted on the G1 USD's own `d435_link` with zero offset — Unitree's authored RealSense housing —
+so its downward pitch *is* the hardware spec. A target out of frame is a fact about the real robot's
+field of view, not a setup defect. Record it and continue; it is legitimate task difficulty and
+belongs in the results, not in a camera tweak.
 
 ## Acceptance
 
