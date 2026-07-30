@@ -180,14 +180,9 @@ if max(CEILING_FIXTURE_Z, WALL_MOUNT_Z) > MAX_REACHABLE_MOUNT_Z:
         f"reach from the step ladder's top platform ({MAX_REACHABLE_MOUNT_Z:.3f} m): the Replace "
         "task would be unsolvable by construction"
     )
-# Horizontal tolerance on "the ladder is placed where the fixture can be worked". DERIVED, not
-# chosen: standing on the top platform the robot spends most of its reach budget climbing the
-# vertical gap to the fixture, and only sqrt(reach^2 - gap^2) is left to spend sideways. Sized
-# for the CEILING mount, the worse of the two (a wall fixture sits 0.8 m lower and allows far
-# more slack), so one tolerance is safe for both.
-#   ceiling: gap 1.300 m of a 1.374 m reach -> 0.444 m sideways, 0.394 after the margin
-# The hand-picked 0.9 m this replaced accepted placements 21 cm BEYOND full stretch, i.e. the
-# ladder scored as ready while the socket could not be touched from it (issue #69).
+# Horizontal tolerance on the ladder placement (m, ~0.394): the reach left over the ceiling
+# mount's vertical gap. Sized for the ceiling, the tighter of the two mounts, so it covers the wall
+# case too. Derived, not tunable.
 LADDER_READY_MARGIN = 0.05  # m, held back off the geometric bound
 LADDER_READY_XY_RADIUS = (
     math.sqrt(G1_OVERHEAD_REACH**2 - (CEILING_FIXTURE_Z - STEP_LADDER_TOP_OFFSET[2]) ** 2) - LADDER_READY_MARGIN
@@ -610,10 +605,8 @@ def add_ladder_contact_sensor(scene: G1ReplaceSceneCfg) -> None:
     ``verify_interactions.py``'s whole-robot ``limb_ladder_contact`` sensor), so the
     per-link-sensor workaround from the upstream ContactSensor docstring is not needed.
 
-    Bodies come from ``G1_LADDER_CONTACT_BODIES``, which names both feet and every variant's
-    palm. Do not narrow this to a regex: the two hands disagree on the palm body's name
-    (``*_hand_base_link`` vs ``*_hand_palm_link``), so any pattern spelling one of them
-    resolves to feet only on the other.
+    Bodies come from ``G1_LADDER_CONTACT_BODIES``, not a regex: the two hands disagree on the palm
+    body's name, so any pattern spelling one variant's resolves to feet only on the other.
     """
     scene.ladder_contact = ContactSensorCfg(
         prim_path="{ENV_REGEX_NS}/Robot/(" + "|".join(G1_LADDER_CONTACT_BODIES) + ")",

@@ -242,11 +242,16 @@ Every plan says "confirm the target is in the ego frustum at t=0; if not, report
 46°-down mount is a known open question from an earlier session. As written, up to 15 agents stop on
 the same unresolved decision. Decide it once, before S01.
 
-### D6. Retiring Carry/Climb/Descend is asserted without a migration list
+### D6. ~~Retiring Carry/Climb/Descend is asserted without a migration list~~ — WITHDRAWN
 
-`TASK_IDS`, `CarryPPORunnerCfg`, `ClimbPPORunnerCfg`, the registrations, `verify_scene.py`'s
-iteration and any recorded baselines all touch those three ids. "Separate commit" is the right
-instinct; the plan should enumerate what breaks.
+Moot: **nothing is retired.** The coarse tasks span several mode switches with no episode boundary
+to help, which is a strictly harder and genuinely different capability — coordination across
+transitions rather than competence within one mode. Keeping both tiers turns the family into a
+difficulty ladder that localizes *which* capability a policy lacks. See the foundation.
+
+What survives of this finding: shared constants now retune both tiers at once (tightening
+`LADDER_READY_XY_RADIUS` is a contract change for Carry and Replace, not just S04), and scoring must
+never average across tiers.
 
 ## What survives
 

@@ -329,21 +329,50 @@ observation group, say — is contract-breaking for **all fifteen** at once and 
 That is the honest accounting (the observation really did change for every task), and it is a
 reason to keep only genuinely invariant material in the base.
 
-## Fate of the existing tasks
+## Nothing is retired — the two tiers measure different things
 
-The new chain supersedes three current tasks and leaves the rest alone:
+**Every existing task stays registered.** An earlier draft proposed retiring Carry, Climb and
+Descend as "superseded"; that was wrong, and the reason is the point of having both tiers.
+
+The existing tasks are **coarser on purpose**. Carry alone spans approach, grasp, transport under
+load, and place — it requires the policy to *sequence four mode switches by itself*, with no episode
+boundary handing it the next start state. That is a strictly harder problem than any of the four
+subtasks it decomposes into, and it is a different capability: **coordination across mode
+transitions**, not competence within one mode.
+
+So the family becomes a **difficulty ladder**, and the two tiers answer different questions:
+
+| Tier | Question it answers |
+|---|---|
+| the 15 subtasks | Can the policy do each mode at all? Isolates *where* it fails. |
+| Carry / Climb / Descend | Can it chain several modes without an episode boundary to help? |
+| `FIATLUX-Replace-v0` | Can it do the whole job end to end, unaided? |
+
+That progression is worth more than any single tier. A policy scoring well on the subtasks and zero
+on Carry localizes the deficit precisely to transition handling — a diagnosis neither tier gives
+alone, and exactly the kind of finding the GR00T baseline could not produce (0% everywhere tells you
+nothing about which capability is missing).
 
 | Existing | Fate |
 |---|---|
-| `FIATLUX-Carry-v0` | superseded by S01–S04. Keep registered until all four pass, then retire. |
-| `FIATLUX-Climb-v0` | superseded by S05. Same. |
-| `FIATLUX-Descend-v0` | superseded by S15. Same. |
-| `FIATLUX-Insert-v0`, `-Install-v0`, `-Remove-v0` | **keep.** Tabletop manipulation drills at bench height; they are not steps of the ladder chain and their calibrated bench geometry (`TABLETOP_SURFACE_Z = 0.9941`) is the reference S11/S14 borrow from. |
-| `FIATLUX-Replace-v0` | **keep, unchanged.** The flat full task is the benchmark; the 15 subtasks are the decomposition, not a replacement. |
-| `FIATLUX-Base-v0` | keep (scene-only scaffold). |
+| `FIATLUX-Carry-v0` | **keep.** Approach + grasp + carry + place with no boundaries between them — the multi-transition test for what S01–S04 isolate. |
+| `FIATLUX-Climb-v0` | **keep.** Fixed-layout climb; S05's is ladder-pose-relative and follows a placement, so they are not the same task. |
+| `FIATLUX-Descend-v0` | **keep.** Same relationship to S15. |
+| `FIATLUX-Insert-v0`, `-Install-v0`, `-Remove-v0` | **keep.** Tabletop manipulation drills at bench height; their calibrated bench geometry (`TABLETOP_SURFACE_Z = 0.9941`) is the reference S11/S14 borrow from. |
+| `FIATLUX-Replace-v0` | **keep, unchanged.** The flat full task is the benchmark; the 15 are its decomposition, not its replacement. |
+| `FIATLUX-Base-v0` | **keep** (scene-only scaffold). |
 
-Retirement is a separate commit from the additions, so a bisect can tell "new subtask broke"
-from "removing the old task broke something that depended on it".
+Consequences to accept deliberately:
+
+- **Shared constants change both tiers at once.** Tightening `LADDER_READY_XY_RADIUS` retunes Carry
+  and Replace as well as S04, because they import it. That is correct — it was a geometric error in
+  all three — but it means a fix in the subtask work is a contract change for the coarse tier too,
+  and must be reported as one.
+- **The `SubtaskEnvCfg` base is not retrofitted onto the old tasks in this work.** They keep their
+  own duplicated cfg blocks for now. Migrating them is a separate, later change, and doing it
+  would bump their versions.
+- **Scoring must not mix tiers.** A cross-tier average is meaningless: the subtasks and Carry are
+  not independent samples of the same difficulty. Report per tier.
 
 ## Visual start-state validation — mandatory, per subtask
 

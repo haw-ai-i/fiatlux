@@ -95,8 +95,9 @@ As foundation, plus: `handoff:S04->S05` and `handoff:S05->S06` pass · a scripte
 (`LADDER_STANCE_JOINTS`) registers non-zero `ladder_contact` on the feet, proving the sensor and
 the ladder's collider actually meet · the settle soak does not tip the ladder.
 
-## Supersedes
+## Relationship to `FIATLUX-Climb-v0` — both stay
 
-`FIATLUX-Climb-v0`. Keep it registered until S05 passes, then retire in a separate commit.
-The differences are deliberate: live-ladder success gate instead of a hardcoded xy centre, and a
-dynamic ladder with a tipping termination.
+Not a replacement. `FIATLUX-Climb-v0` climbs a *kinematic* ladder at a fixed layout position with a
+hardcoded success centre; this subtask climbs a *dynamic* ladder wherever a placement left it, with
+the gate derived from the ladder's live pose and a tipping termination. Different physics, different
+difficulty, both kept — see the foundation's difficulty-ladder note.
