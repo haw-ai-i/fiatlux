@@ -23,7 +23,7 @@ holding it, unbroken.
 
 | Condition | Value |
 |---|---|
-| robot root within xy radius of the ladder root | `LADDER_APPROACH_RADIUS` (S01's constant) |
+| robot root within xy radius of the ladder root | `LADDER_MOUNT_RADIUS` — **not** the grasp radius |
 | facing error to ladder bearing | < 0.5 rad |
 | root speed | < 1.0 m/s |
 | **bulb still held** | hand↔bulb contact > 2 N |
@@ -52,10 +52,16 @@ demolishing the thing you are about to climb must not score.
 
 ## Reuse
 
-`base_ladder_distance`, `LADDER_APPROACH_RADIUS`, `base_facing_entity` (all S01's),
+`base_ladder_distance`, `base_facing_entity` (both from the approach-the-ladder subtask),
 `BULB_IN_ROOT_STANDING` (S11's), `object_dropped`, `FRESH_BULB_DROP_HEIGHT`, `ladder_tipped`,
 `hand_contact_force_l2`, `distance_progress`, `completion_bonus`.
-New: `arrived_at_ladder_with_bulb`.
+New: `arrived_at_ladder_with_bulb`, `LADDER_MOUNT_RADIUS`.
+
+**Do not reuse `LADDER_APPROACH_RADIUS`.** That constant answers "close enough to reach out and
+grasp a rail", which is an arm's-reach question. This subtask ends about to *climb*, which is a
+foot-placement question — the robot must be at the ladder's step-facing side within stepping
+distance, which is a different and probably shorter standoff. An earlier draft borrowed the grasp
+constant without noticing they are different requirements.
 
 Almost nothing new — S12 is S01's navigation with a payload condition and a drop termination
 bolted on. That is the intended shape: the shared logic lives in `mdp/rewards.py` and the two cfgs

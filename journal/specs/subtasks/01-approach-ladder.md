@@ -45,7 +45,11 @@ the ladder, knocking it over, and landing inside the radius must not score.
 *vertical*. Measure the G1's horizontal reach to a rail at grasp height by FK, then set the
 radius so a robot inside it can touch a rail without stepping. The A-frame footprint is
 0.68 × 1.11 m and the ladder root is at its base centre, so expect ~0.7–0.9 m. Freeze it with a
-`CALIBRATED` note; S02 consumes the same constant.
+`CALIBRATED` note; the grab-the-ladder subtask consumes the same constant.
+
+This radius means **"close enough to grasp a rail"** and nothing else. The carry-bulb-to-ladder
+subtask needs "close enough to start climbing", which is a foot-placement question — it gets its own
+`LADDER_MOUNT_RADIUS`.
 
 ## Rewards
 

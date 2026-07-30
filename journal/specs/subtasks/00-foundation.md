@@ -6,8 +6,15 @@ visual validation gate every subtask agent must pass.
 
 ## The rule
 
-**Every switch between navigation, balance, and grasping is a subtask boundary.** Nothing else
-is. A subtask is one mode; the moment the robot must change mode, the episode is over.
+**Every switch between navigation, balance, and grasping is a subtask boundary.** A subtask is one
+mode; the moment the robot must change mode, the episode is over.
+
+Read that as a **mnemonic for the list, not a rule that generates it.** The modes are not mutually
+exclusive and this document's own headers admit it — carrying the ladder is "navigation (loaded)",
+i.e. navigating *while* grasping, and removing the old bulb is "grasping on balance". If a subtask can
+be two modes at once then "a switch between modes" does not by itself define a boundary. **The
+fifteen-item list is the specification** (reviewed and endorsed as such); the rule describes its
+shape. Do not "correct" the list by applying the rule literally.
 
 This is a property of the environment. No plan may reference a WBC, a VLA, an ONNX locomotion
 pair, or policy stitching — those are solution structure. Each subtask is a standalone
@@ -108,6 +115,26 @@ already uses for `LADDER_STANCE_ROOT_POS` / `LADDER_STANCE_ROOT_ROT` / `LADDER_S
 `TOP_ROBOT_POSITION`, calibrated exactly the way `poses.py` documents: run the probe, iterate the
 constants until the contacts register, freeze with a `CALIBRATED <date>` note.
 
+### Two calibrated artefacts, not six
+
+The deterministic poses must be **shared, not authored per subtask.** Four subtasks start with the
+robot balanced on the upper steps (remove-the-old-bulb, descend-with-bulb, screw-in, climb-down),
+differing only in whether a payload is in the hand; three start standing on the floor with a payload
+(carry-the-ladder, carry-bulb-to-disposal, carry-bulb-to-ladder).
+
+So there are exactly two calibrated artefacts, each with an optional payload offset:
+
+| Artefact | Used by |
+|---|---|
+| **one on-ladder stance** (root pose + joints) | remove-the-old-bulb, descend-with-bulb, screw-in, climb-down |
+| **one standing cradle** (payload offset in the robot root frame) | carry-the-ladder, carry-bulb-to-disposal, carry-bulb-to-ladder, climb-with-bulb |
+
+This is the cheapest risk reduction available in the whole plan. Every hand-calibrated state is a
+chance to freeze something physically wrong, and this project's recent history is a catalogue of
+exactly that — a bulb 13 cm from the palm, a palm body 4 cm off, a bulb pinched outside the hand and
+reported as held, twice. Six chances become two. Whichever subtask lands first measures and freezes
+them; the rest import.
+
 **This is explicitly a for-now decision.** Widening those start states later means generating a pool
 of physics-validated states offline (or harvesting them from a controller that solves the
 predecessor) and drawing an index at reset. Nothing here forecloses that: the mechanism below reads
@@ -161,8 +188,17 @@ Three new event terms:
 
 ### Phase 0 probes (blocking, do these first)
 
-Three numbers do not exist yet. Measure them once, freeze them with a `CALIBRATED <date>` note,
-and record the probe command in the constant's comment:
+Four numbers do not exist yet. Measure them once, freeze them with a `CALIBRATED <date>` note,
+and record the probe command in the constant's comment.
+
+**Probe 0 gates five of the fifteen subtasks, so do it first: overhead reach from the on-ladder
+stance.** `G1_OVERHEAD_REACH = 1.3738` was measured standing on flat ground with the arm straight up
+and every other arm joint at zero. The ladder top is at 1.70 m and the ceiling fixture at 3.00 m, so
+the gap to cover is 1.30 m and the nominal margin is **7.4 cm** — measured from a stance the robot is
+never in when it matters. Re-measure with the balanced on-ladder crouch, leaning, one hand occupied.
+If it comes out under 1.30 m, then climb, remove-the-old-bulb, climb-with-bulb, screw-in and
+climb-down are all unsolvable at the current fixture height and `CEILING_FIXTURE_Z` has to move
+before any of them is authored.
 
 1. **`BULB_IN_ROOT_STANDING`** — bulb root pose in the robot root frame for `ARM_CRADLE` +
    `HAND_CRADLE_DEX3`, robot standing. Derive it from the already-validated palm-frame
@@ -326,6 +362,23 @@ PYTHONPATH= OMNI_KIT_ACCEPT_EULA=YES .venv/bin/python3 -u scripts/verify_scene.p
 ffmpeg -i logs/<mp4> -vf "select='not(mod(n,30))'" -vsync 0 /tmp/.../frame_%02d.jpg
 ```
 
+**Renders catch what nobody thought to assert; they cannot adjudicate millimetres.** At 1280×720 on an
+orbit camera, nobody can distinguish 3 mm of interpenetration from contact, and "enclosed by the
+digits" is a judgement call. So every visual item below is paired with the numeric check that actually
+decides it, and **both must be reported**:
+
+| Visual claim | The check that decides it |
+|---|---|
+| "nothing intersects" | `omni.physx` `overlap_mesh` shape-level overlap, reporting offending pairs |
+| "resting, not floating" | settle soak: < 2 mm drift, < 1 cm/s, over 150 steps |
+| "the payload is held" | filtered hand↔object contact force, non-zero on ≥ 2 digit bodies |
+| "touching the floor / a step" | contact force on the relevant body, non-zero |
+| "in the ego frustum" | project the target's world position through the camera intrinsics |
+
+The earlier draft made frames *the* gate because coded checks had produced false confidence twice. That
+was an overcorrection: the lesson was to use both, since renders and assertions fail in opposite
+directions.
+
 Then read the frames and confirm, in writing:
 
 1. Every entity touches what it is supposed to touch — feet on floor or on a specific step,
@@ -373,6 +426,26 @@ This needs a decision before any number is quoted. Options, not resolved here: p
 independent reporting with no aggregate; difficulty-weighted aggregate; or longest-prefix (how far
 along the chain a policy gets), which matches how the task actually reads.
 
+## Sequencing: one vertical slice before fifteen files
+
+Take **approach-the-ladder end to end through all three consumers** — env, start state, success gate,
+visual *and* numeric validation, `PPORunnerCfg`, a scripted baseline, and an entry in whatever scoring
+scheme gets decided — and only then start the second subtask.
+
+Without that, three risks get discovered fifteen times instead of once: the cfg hierarchy is unproven
+in this codebase (there is not one example of even two-level `@configclass` env-cfg inheritance
+today), scoring is undefined, and only 4 of the 7 existing tasks have a runner cfg at all so every new
+subtask needs one written from scratch.
+
+**Two decisions must be made before that slice starts, not during it:**
+
+1. **The ego camera mount.** Every plan says "confirm the target is in the ego frustum at t=0; if not,
+   report it and stop". The 46°-down mount is a known open question. As written, up to fifteen agents
+   stop on the same unresolved decision. Decide it once.
+2. **Spike the cfg hierarchy** — base + one intermediate + one leaf, confirm all five managers
+   construct and that term ordering matches field declaration order. Cheap now, expensive after
+   fifteen files exist.
+
 ## What counts as done
 
 ## Not in scope: "move the ladder back" (S16)
@@ -384,6 +457,14 @@ One consequence to record rather than hide: the chain is therefore **not idempot
 state leaves the ladder under the fixture, not where it started, so the world cannot be replayed
 without a reset. That is fine for 15 independent envs and would matter only if the chain were ever
 run twice back-to-back.
+
+## Episode lengths are provisional
+
+Every horizon in the fifteen plans except the navigation ones is a guess. The only measured datum is
+the walk probe — 2.43 m in ~8 s at ~0.5 m/s — which justifies the navigation horizons and nothing
+else. The manipulation-under-balance numbers (screw-in at 40 s, remove-the-old-bulb at 30 s) have no
+evidence behind them and must be labelled provisional until a scripted baseline or a real rollout
+sets them.
 
 ## Blockers
 

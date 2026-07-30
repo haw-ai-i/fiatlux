@@ -20,18 +20,23 @@ crate, facing it, old bulb in hand (`BULB_IN_ROOT_STANDING`), crate on the floor
 |---|---|---|
 | bulb within the disposal threshold of the crate origin | `DISPOSAL_THRESHOLD = 0.25` m | `old_bulb_disposed` |
 | bulb at rest | lin vel < 0.05 m/s, ang vel < 0.10 rad/s | new |
-| bulb inside the crate, not on its rim | root z within 0.03 m of `BIN_BULB_INTERIOR_Z - BULB_STAND_Z_OFFSET` | `assets.py` |
+| bulb inside the crate, not on its rim | bulb AABB centre inside the crate's interior AABB | measured at spawn |
 | **released** — zero hand↔old_bulb contact | < 1 N | filtered channel |
 | bulb not broken | peak contact never exceeded the glass bound | `GLASS_CONTACT_LIMIT_N` |
 | robot standing | `FALL_MIN_HEIGHT`, `FALL_TILT_LIMIT` | base |
 | sustained | 1.0 s | `sustained` |
 
-The height condition earns its place: `old_bulb_disposed` is a 25 cm sphere around the crate
+The containment condition earns its place: `old_bulb_disposed` is a 25 cm sphere around the crate
 *origin*, and the crate is only 0.17 m tall, so a bulb balanced on the rim or resting on the floor
-beside it satisfies the distance test. `BIN_BULB_INTERIOR_Z = 0.055` is the measured interior
-floor and `BULB_STAND_Z_OFFSET = 0.036259` puts the root below it — the same arithmetic
-`BIN_BULB_POSITION` already uses for the Install preset's bulb-in-crate spawn. Reuse that constant
-rather than re-deriving it.
+beside it satisfies the distance test.
+
+**It must be containment, not a height equality.** An earlier draft required the root z within 3 cm
+of `BIN_BULB_INTERIOR_Z - BULB_STAND_Z_OFFSET` = 0.0187 m, which silently assumes the bulb ends
+*standing on its cap*: a bulb lying on its glass reads root z = `0.055 + BULB_LIE_Z_OFFSET` =
+**0.0946 m** and fails. `poses.py` argues this bulb self-rights onto its flat cap, so the window was
+not necessarily unsatisfiable — but a bulb wedged against a crate wall or still settling would fail a
+gate that should only be asking whether it is in the crate. Test the AABBs; it holds in every
+orientation.
 
 Note the interaction with `old_bulb_dropped`, which is deliberately *not* a plain height gate for
 exactly this reason: legitimately disposing the bulb also ends near the floor, so "dropped"

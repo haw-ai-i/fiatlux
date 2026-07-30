@@ -91,10 +91,23 @@ range from this stance is worth checking before writing rewards); the socket mou
 within reach from the stance. Use `--record_view fixture` — it is the only view that shows an
 overhead mount properly.
 
-Report the measured distance from the held bulb's cap to the socket seat point in the start pose. If
-it exceeds the arm's reach from the on-ladder stance, that is a start-state defect and the chain's
-`MAX_REACHABLE_MOUNT_Z = STEP_LADDER_TOP_OFFSET[2] + G1_OVERHEAD_REACH` assertion needs
-re-examining against the *on-ladder* stance rather than a standing one.
+Report the measured distance from the held bulb's cap to the socket seat point in the start pose.
+
+**This is a blocking probe for the whole ladder half of the chain, not just this subtask.** The margin
+is 7.4 cm and measured from the wrong stance:
+
+| Quantity | Value |
+|---|---|
+| ladder top → ceiling fixture | 1.30 m |
+| `G1_OVERHEAD_REACH` | 1.3738 m |
+| margin straight up | **0.074 m** |
+
+`G1_OVERHEAD_REACH` was measured standing on a flat surface, arm straight up, every other arm joint
+at zero. The robot here is in a balanced crouch on a ladder step, leaning, one hand holding a bulb it
+must not crush — each of which costs vertical reach. If the on-ladder reach comes out below 1.30 m,
+then climb, remove-the-old-bulb, climb-with-bulb, screw-in and climb-down are **all** unsolvable at
+`CEILING_FIXTURE_Z = 3.0` and the constant has to move. Measure it before any of those five is
+authored. Tracked as **#69**.
 
 ## Acceptance
 

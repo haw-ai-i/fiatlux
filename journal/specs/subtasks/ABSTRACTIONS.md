@@ -175,7 +175,23 @@ vacuously** — the exact bug behind `fragility:gentle_not_broken` passing at 0.
 would make S06 score 100% for a bulb falling out of an inverted socket under gravity.
 
 So: `all_of([...])` over plain predicates, plus `sustained(pred, seconds)`, with the gate expressed
-as reviewable data rather than prose. Then it is **enforceable**, which is the point:
+as reviewable data rather than prose.
+
+**One trap to design around, because it breaks the naive version.** `sustained` is *stateful* — it
+holds a counter — while `completion_bonus` calls `predicate_fn(env, **params)` as a plain callable, so
+a stateful predicate cannot simply be dropped in as one. Worse, if the gate is implemented as a
+`ManagerTermBase`, then the **termination manager and the reward manager each instantiate their own
+copy**, with independent counters, reset independently, evaluated at different points in the step. They
+will usually agree and will occasionally not — which makes the "one wiring site, therefore no drift"
+claim above false exactly where it matters most.
+
+Two acceptable resolutions, pick one explicitly:
+
+- compute the gate **once per step** in a single owner and have both managers read the cached result; or
+- keep every gate predicate **stateless** and put `sustained` only on the termination, accepting that
+  the reward's bonus fires on the instantaneous predicate.
+
+Given that, it is **enforceable**, which is the point:
 
 `tests/test_subtask_contract.py` (no GPU, no `isaacsim_ci` marker) asserts —
 

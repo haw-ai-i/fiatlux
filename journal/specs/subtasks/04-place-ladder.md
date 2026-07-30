@@ -18,12 +18,29 @@ and lifted, ladder top within `LADDER_READY_XY_RADIUS` of the seat point.
 
 | Condition | Value |
 |---|---|
-| `ladder_ready(xy_radius=0.9, tilt_limit=0.6)` | existing predicate |
+| `ladder_ready(xy_radius=`**`0.40`**`, tilt_limit=0.6)` | existing predicate, **retuned** |
 | ladder feet on the floor | root z within 0.02 m of `LADDER_POSITION[2]` |
 | ladder at rest | lin vel < 0.05 m/s, ang vel < 0.10 rad/s |
 | **released** — zero hand↔ladder contact | < 1 N |
 | robot standing | `FALL_MIN_HEIGHT`, `FALL_TILT_LIMIT` |
 | sustained | **1.0 s** (`sustained`) |
+
+**`LADDER_READY_XY_RADIUS` must come down from 0.9 m to ~0.40 m.** At 0.9 m the gate accepts a
+placement from which the fixture cannot be reached at all, so this subtask would succeed while making
+the screw-in subtask geometrically impossible:
+
+| Quantity | Value |
+|---|---|
+| ladder top (`STEP_LADDER_TOP_OFFSET[2]`) | 1.70 m |
+| ceiling fixture (`CEILING_FIXTURE_Z`) | 3.00 m |
+| vertical gap to cover | 1.30 m |
+| standing overhead reach (`G1_OVERHEAD_REACH`) | 1.3738 m |
+| required reach at 0.9 m offset | **1.581 m** — 21 cm beyond full stretch |
+| max horizontal offset still reachable | **0.444 m** |
+
+0.40 m leaves a little margin under that bound. Note this is a **pre-existing** defect: Carry and
+Replace both score `ladder_ready` at 0.9 m today, so retuning it is a benchmark-contract change for
+those two as well. Tracked as **#69**.
 
 Release plus at-rest, sustained for a full second, is what distinguishes *placed* from *held in
 the right place*. The 1 s debounce is deliberately longer than elsewhere: a ladder that is stable

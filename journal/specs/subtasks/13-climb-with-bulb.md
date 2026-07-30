@@ -38,11 +38,15 @@ one hand and two feet.
 This is the most physically demanding subtask in the chain and the plan should say so up front
 rather than discover it. Two consequences for the implementation:
 
-1. **`ladder_contact_fraction` must not penalize the occupied hand.** It returns the *mean* over
-   the sensor's bodies in contact, so a permanently-free palm caps the term at 3/4 and the policy
-   is charged for holding the bulb — the same class of error as charging the policy for its arm
-   resting on a bench. Either scope the sensor's bodies to feet + the free palm, or compare against
-   a 3-body denominator. Do not leave it averaging over a body that cannot participate.
+1. **`ladder_contact_fraction` must not penalize the occupied hand** — *once the sensor bug below is
+   fixed*. It returns the mean over the sensor's bodies in contact, so with palms present a
+   permanently-occupied palm would cap the term at 3/4 and charge the policy for holding the bulb —
+   the same class of error as charging it for an arm resting on a bench. Scope the sensor's bodies to
+   feet + the free palm, or use a 3-body denominator.
+
+   An earlier draft asserted this as a live problem. It is not, yet: on Dex3 the sensor currently
+   resolves **no palms at all** (see below), so the denominator is 2 feet. The concern becomes real
+   the moment that is fixed, which is why both belong in the same change.
 2. **The grip must survive climbing accelerations**, which is a stronger requirement than S03's or
    S12's steady walk. See Acceptance.
 
@@ -85,6 +89,18 @@ Then render the intended *arrival* state — robot on the upper steps, bulb in h
 bulb clears the ladder's rails and steps in that pose. A bulb held in a fist that has to pass
 through a rail on the way up makes the subtask geometrically impossible, and that is worth knowing
 before any reward is written.
+
+## Blocking sensor fix — `ladder_contact` sees no hands on Dex3
+
+`add_ladder_contact_sensor` uses `prim_path=".../Robot/.*(ankle_roll|hand_base)_link"`. That matches
+Inspire's `*_hand_base_link` palms but **not Dex3's `*_hand_palm_link`** — so on the variant the
+benchmark scores, the sensor resolves only the two ankle links and `ladder_contact_fraction` averages
+over feet alone. The palms-on-the-ladder half of the bootstrap reward does not exist.
+
+Fix it before scoring anything on that channel: resolve the bodies from `G1_PALM_BODY_BY_VARIANT` and
+`G1_FOOT_BODIES` instead of a regex that encodes one variant's naming. This is the twin of the
+`palm_body_index` bug PR #64 fixed, one file over, and it is live in Climb and Descend today.
+Tracked as **#69**.
 
 ## Acceptance
 

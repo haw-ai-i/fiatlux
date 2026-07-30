@@ -23,15 +23,22 @@ of the floor without tipping it.
 
 | Condition | Value |
 |---|---|
-| hand↔ladder contact on ≥ 2 hand bodies | > 5 N each, filtered channel |
-| ladder root lifted above its start z | > 0.03 m |
-| ladder not tipped | `LADDER_TILT_LIMIT = 0.6` |
+| **hand carries the ladder's weight** | filtered hand↔ladder force > 0.8 · mg = **57 N** |
+| all four ladder feet clear of the floor | foot body z > 0.02 m each |
+| ladder near-vertical | tilt < 0.15 rad |
 | robot standing | `FALL_MIN_HEIGHT`, `FALL_TILT_LIMIT` |
-| sustained | 0.5 s (`sustained` helper, foundation) |
+| sustained | 0.5 s |
 
-**Lift is the gate, not contact.** Contact alone is satisfied by leaning on the ladder; taking
-its weight is what a grasp is. The 3 cm threshold is above the ladder's resting contact jitter
-and well below a carry height.
+**The load is the gate.** An earlier draft used "ladder root lifted > 0.03 m", which is broken: the
+root sits at the A-frame's base centre, so *tilting* the ladder raises it. With a half-footprint of
+0.34 m, a 3 cm root rise needs only `asin(0.03/0.34)` = **5.1°** of lean, while `ladder_tipped` does
+not fire until 34° — so the gate was satisfied by leaning on the ladder, the exact degenerate
+solution it was written to exclude.
+
+Measuring the force the hand carries says what was actually meant. `mg = 7.25 × 9.81 = 71 N`; the
+0.8 factor leaves room for the ladder's other foot still grazing the floor mid-lift. Foot clearance
+uses the ladder's **foot body positions**, not its root — a body whose origin is inside the support
+polygon cannot distinguish lifting from tipping.
 
 ## Sensing
 

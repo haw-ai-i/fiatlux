@@ -75,6 +75,18 @@ This start state is the chain's terminal scene and doubles as the visual accepta
 whole task. Render it carefully and keep the frames — it is the "what does success look like"
 reference for the benchmark.
 
+## Blocking sensor fix — `ladder_contact` sees no hands on Dex3
+
+`add_ladder_contact_sensor` uses `prim_path=".../Robot/.*(ankle_roll|hand_base)_link"`. That matches
+Inspire's `*_hand_base_link` palms but **not Dex3's `*_hand_palm_link`** — so on the variant the
+benchmark scores, the sensor resolves only the two ankle links and `ladder_contact_fraction` averages
+over feet alone. The palms-on-the-ladder half of the bootstrap reward does not exist.
+
+Fix it before scoring anything on that channel: resolve the bodies from `G1_PALM_BODY_BY_VARIANT` and
+`G1_FOOT_BODIES` instead of a regex that encodes one variant's naming. This is the twin of the
+`palm_body_index` bug PR #64 fixed, one file over, and it is live in Climb and Descend today.
+Tracked as **#69**.
+
 ## Acceptance
 
 As foundation, plus: the settle soak leaves the seated bulb seated (drift < 2 mm, `bulb_seated`
