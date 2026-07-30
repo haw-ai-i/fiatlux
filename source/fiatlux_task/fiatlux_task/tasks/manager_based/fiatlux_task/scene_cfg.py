@@ -474,6 +474,10 @@ class G1ReplaceSceneCfg(DressedSceneCfg):
     # >> the 50 N fragility threshold) into every episode's peak contact force.
     hand_contact: ContactSensorCfg = ContactSensorCfg(
         prim_path="{ENV_REGEX_NS}/Robot/(right_hand_.*|right_wrist_.*|R_.*)",
+        # FILTERED to the manipulated object: this channel means "force on the bulb", and the
+        # net force does not -- it also carries whatever furniture the arm rests against and
+        # the robot's own colliders. Presets with a second bulb extend this list.
+        filter_prim_paths_expr=["{ENV_REGEX_NS}/Bulb"],
         history_length=1,
         track_air_time=False,
     )
@@ -1019,6 +1023,12 @@ def apply_replace_preset(
         ),
         init_state=RigidObjectCfg.InitialStateCfg(pos=fixture_pos, rot=fixture_quat),
     )
+
+    # The old bulb is manipulated too, so the hand-contact channel must count it.
+    scene.hand_contact.filter_prim_paths_expr = [
+        *scene.hand_contact.filter_prim_paths_expr,
+        "{ENV_REGEX_NS}/OldBulb",
+    ]
 
     # Disposal crate: the old bulb's destination, in its own sampled zone.
     _add_parts_bin(scene, position=(disposal_center[0], disposal_center[1], BIN_POSITION[2]))

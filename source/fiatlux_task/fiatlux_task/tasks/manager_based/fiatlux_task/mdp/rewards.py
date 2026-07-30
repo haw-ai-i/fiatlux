@@ -145,10 +145,15 @@ def object_dropped(
 
 
 def hand_contact_force_l2(env: ManagerBasedRLEnv, sensor_cfg: SceneEntityCfg) -> torch.Tensor:
-    """Penalize squared net contact force on the grasping hand (compliance)."""
+    """Penalize squared contact force on the grasping hand (compliance).
+
+    Force on the OBJECT, not the sensor's net force: the net also carries whatever scenery the
+    arm rests against, which would charge the policy for standing near the bench.
+    """
+    from .observations import object_contact_forces
+
     sensor: ContactSensor = env.scene.sensors[sensor_cfg.name]
-    net = sensor.data.net_forces_w  # (N, B, 3)
-    return torch.sum(torch.square(net), dim=(1, 2))
+    return torch.sum(torch.square(object_contact_forces(sensor)), dim=(1, 2))
 
 
 # ---------------------------------------------------------------------------
