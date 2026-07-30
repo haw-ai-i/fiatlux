@@ -6,7 +6,7 @@ plans. Written against my own work; findings are ordered by how much damage they
 ## A. Confirmed defects, with numbers
 
 **Status:** A1 and A2 are **fixed in code** on this branch and tracked as issue #69 (they were
-pre-existing, not introduced by these plans). A3 is now a blocking Phase 0 probe. A4, A5 and A6 are
+pre-existing, not introduced by these plans). A3 is fixed (fixture lowered to 2.2 m). A4, A5 and A6 are
 corrected in the affected subtask plans.
 
 ### A1. `ladder_contact` sees no hands at all on Dex3 — the scored variant · **FIXED**
@@ -71,17 +71,24 @@ The audit also turned up that the constant was **defined twice** — `carry_env_
 
 **Contract change:** Carry's success predicate *is* `ladder_ready`, so its scores do not transfer.
 
-### A3. The overhead reach margin is 7.4 cm, and measured from the wrong stance
+### A3. The overhead reach margin is 7.4 cm, and measured from the wrong stance · **FIXED**
 
 1.3738 − 1.30 = **0.074 m** of margin straight up. But `G1_OVERHEAD_REACH` is measured with the
 robot *standing on a flat surface, arm straight up, all other arm joints zero*. The robot at S14 is
 in a balanced crouch on a ladder step, leaning, with one hand holding a bulb it must not crush. Every
 one of those costs vertical reach.
 
-The plans treat `CEILING_FIXTURE_Z = 3.0` as settled and only S14 mentions re-measuring. It should be
-the other way round: **this is a Phase 0 blocking probe for the whole ladder half of the chain**, and
-if the on-ladder reach comes out below 1.30 m then S05/S06/S13/S14/S15 are all unsolvable at the
-current fixture height and the constant has to move.
+Quantified without a probe: Climb's gate accepts a pelvis at 1.700 m, so feet at 0.910 m and
+fingertips at 2.284 m against a 3.00 m fixture — **0.716 m short**, while the guard passed because it
+assumed feet on the 1.70 m top platform (pelvis 2.49 m), a stance no task requires.
+
+Fixed by deriving the bound from the working stance and lowering the fixture to **2.200 m**, with
+guards on both sides: reachable from the stance, and above standing floor reach so the ladder stays
+necessary. `LADDER_WORK_PELVIS_Z` is now the single definition of that height and Climb imports it as
+its `SUCCESS_HEIGHT`, so clearing the climb gate and being able to work the fixture are one condition.
+
+**Contract change:** the scene geometry moved, so Replace, Carry, Climb and Descend scores do not
+transfer.
 
 ### A4. S02's grasp gate is satisfied by nudging the ladder 5 degrees
 

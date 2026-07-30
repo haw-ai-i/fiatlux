@@ -188,17 +188,29 @@ Three new event terms:
 
 ### Phase 0 probes (blocking, do these first)
 
-Four numbers do not exist yet. Measure them once, freeze them with a `CALIBRATED <date>` note,
+Three numbers do not exist yet. Measure them once, freeze them with a `CALIBRATED <date>` note,
 and record the probe command in the constant's comment.
 
-**Probe 0 gates five of the fifteen subtasks, so do it first: overhead reach from the on-ladder
-stance.** `G1_OVERHEAD_REACH = 1.3738` was measured standing on flat ground with the arm straight up
-and every other arm joint at zero. The ladder top is at 1.70 m and the ceiling fixture at 3.00 m, so
-the gap to cover is 1.30 m and the nominal margin is **7.4 cm** — measured from a stance the robot is
-never in when it matters. Re-measure with the balanced on-ladder crouch, leaning, one hand occupied.
-If it comes out under 1.30 m, then climb, remove-the-old-bulb, climb-with-bulb, screw-in and
-climb-down are all unsolvable at the current fixture height and `CEILING_FIXTURE_Z` has to move
-before any of them is authored.
+**Probe 0 is no longer needed — the reach gap was settled from existing constants.** The fixture
+was at 3.00 m while `MAX_REACHABLE_MOUNT_Z` was computed from the robot's *feet on the ladder's
+1.70 m top platform*, a stance no task requires. Climb's own success gate accepts a pelvis at
+1.70 m, i.e. feet at 0.91 m on a middle step, from which the fingertips reach 2.284 m — leaving the
+fixture **0.72 m out of reach** while the import-time guard passed.
+
+Now derived from the stance the tasks actually work from:
+
+| Constant | Value |
+|---|---|
+| `LADDER_WORK_PELVIS_Z` (= Climb's `SUCCESS_HEIGHT`) | 1.700 m |
+| `LADDER_WORK_FOOT_Z` | 0.910 m |
+| `MAX_REACHABLE_MOUNT_Z` | 2.284 m |
+| `CEILING_FIXTURE_Z` = `WALL_MOUNT_Z` | **2.200 m** (8.4 cm margin) |
+| `LADDER_READY_XY_RADIUS` | 0.422 m |
+
+Two import-time guards now bracket the fixture height from both sides: it must be **reachable** from
+the working stance, and it must remain **above standing floor reach** (1.374 m) so the ladder is
+still required. Clearing the climb gate and being able to work the fixture are now the same
+condition, which is what the earlier split of those two numbers failed to guarantee.
 
 1. **`BULB_IN_ROOT_STANDING`** — bulb root pose in the robot root frame for `ARM_CRADLE` +
    `HAND_CRADLE_DEX3`, robot standing. Derive it from the already-validated palm-frame

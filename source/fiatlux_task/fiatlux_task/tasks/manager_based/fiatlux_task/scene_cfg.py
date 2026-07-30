@@ -168,24 +168,36 @@ ROOM_FLOOR_MAX = (4.0, 4.2)
 # CEILING_FIXTURE_Z rather than floating unsupported at the reach height.
 ROOM_CEILING_Z = 4.179
 ROOM_WALL_TOP_Z = 3.989
-CEILING_FIXTURE_Z = 3.0  # fixture height: reachable from the step ladder's top step
-WALL_MOUNT_Z = 2.2  # reach height for a wall-mounted fixture
-# Highest point a fixture may be mounted at and still be worked on: the ladder's top platform
-# plus the robot's measured overhead reach. Asserted at import -- a render looks identical
-# whether the bulb is 5 cm inside reach or 5 cm outside it.
-MAX_REACHABLE_MOUNT_Z = STEP_LADDER_TOP_OFFSET[2] + G1_OVERHEAD_REACH
+CEILING_FIXTURE_Z = 2.2  # fixture height, both mount kinds: workable from LADDER_WORK_FOOT_Z
+WALL_MOUNT_Z = 2.2
+# The stance the at-height tasks work FROM: the pelvis height Climb's success gate accepts (the
+# upper-step pose less its tolerance), and the foot height that implies. Reach is measured from
+# here, not from the ladder's top platform -- a policy that only just clears the climb gate still
+# has to be able to do the job, and it clears it standing on a middle step.
+LADDER_TOP_STANCE_TOLERANCE = 0.15  # m; Climb's SUCCESS_HEIGHT slack below TOP_ROBOT_POSITION
+LADDER_WORK_PELVIS_Z = TOP_ROBOT_POSITION[2] - LADDER_TOP_STANCE_TOLERANCE
+LADDER_WORK_FOOT_Z = LADDER_WORK_PELVIS_Z - _ROBOT_Z
+# Highest point a fixture may be mounted at and still be worked on. Asserted at import -- a render
+# looks identical whether the bulb is 5 cm inside reach or 5 cm outside it.
+MAX_REACHABLE_MOUNT_Z = LADDER_WORK_FOOT_Z + G1_OVERHEAD_REACH
 if max(CEILING_FIXTURE_Z, WALL_MOUNT_Z) > MAX_REACHABLE_MOUNT_Z:
     raise ValueError(
         f"fixture mount heights (ceiling {CEILING_FIXTURE_Z} m, wall {WALL_MOUNT_Z} m) exceed the "
-        f"reach from the step ladder's top platform ({MAX_REACHABLE_MOUNT_Z:.3f} m): the Replace "
-        "task would be unsolvable by construction"
+        f"reach from the ladder working stance ({MAX_REACHABLE_MOUNT_Z:.3f} m, feet at "
+        f"{LADDER_WORK_FOOT_Z:.3f} m): the at-height tasks would be unsolvable by construction"
     )
-# Horizontal tolerance on the ladder placement (m, ~0.394): the reach left over the ceiling
-# mount's vertical gap. Sized for the ceiling, the tighter of the two mounts, so it covers the wall
-# case too. Derived, not tunable.
+# A fixture must still REQUIRE the ladder, or the ladder-handling and climbing subtasks are
+# pointless for that draw.
+if min(CEILING_FIXTURE_Z, WALL_MOUNT_Z) <= G1_OVERHEAD_REACH:
+    raise ValueError(
+        f"fixture mount heights (ceiling {CEILING_FIXTURE_Z} m, wall {WALL_MOUNT_Z} m) are within "
+        f"standing floor reach ({G1_OVERHEAD_REACH:.3f} m): the ladder would be unnecessary"
+    )
+# Horizontal tolerance on the ladder placement (m, ~0.422): the reach left over the fixture's
+# vertical gap above the working stance. Derived, not tunable.
 LADDER_READY_MARGIN = 0.05  # m, held back off the geometric bound
 LADDER_READY_XY_RADIUS = (
-    math.sqrt(G1_OVERHEAD_REACH**2 - (CEILING_FIXTURE_Z - STEP_LADDER_TOP_OFFSET[2]) ** 2) - LADDER_READY_MARGIN
+    math.sqrt(G1_OVERHEAD_REACH**2 - (CEILING_FIXTURE_Z - LADDER_WORK_FOOT_Z) ** 2) - LADDER_READY_MARGIN
 )
 if LADDER_READY_XY_RADIUS <= 0.0:
     raise ValueError(

@@ -50,6 +50,7 @@ from fiatlux_task.robots.g1 import G1_FINGER_JOINT_PATTERNS, G1_WAIST_JOINT_PATT
 
 from . import mdp
 from .scene_cfg import (
+    LADDER_WORK_PELVIS_Z,
     ROOM_ENV_SPACING,
     TOP_ROBOT_POSITION,
     G1ReplaceSceneCfg,
@@ -63,9 +64,9 @@ from .scene_cfg import (
 # Task geometry
 ##
 
-# Success gate derived from the descend task's start pose (pelvis at the upper
-# steps): slightly below it so a solid stance on the top steps scores.
-SUCCESS_HEIGHT = TOP_ROBOT_POSITION[2] - 0.15  # 1.70 m
+# Success gate: the shared ladder working stance -- the pelvis height fixtures are sized to be
+# reachable from, so clearing this gate and being able to work the fixture are the same condition.
+SUCCESS_HEIGHT = LADDER_WORK_PELVIS_Z  # 1.70 m
 SUCCESS_XY = (TOP_ROBOT_POSITION[0], TOP_ROBOT_POSITION[1])
 SUCCESS_XY_RADIUS = 0.6  # m; with the max-speed cap, rejects ballistic fly-throughs
 SUCCESS_MAX_SPEED = 1.5  # m/s
