@@ -19,7 +19,13 @@ from isaaclab.managers import TerminationTermCfg as DoneTerm
 from isaaclab.utils import configclass
 
 from .. import mdp
-from ..scene_cfg import LADDER_APPROACH_RADIUS, add_ego_camera, add_mid360_lidar, apply_replace_preset
+from ..scene_cfg import (
+    LADDER_APPROACH_RADIUS,
+    add_ego_camera,
+    add_mid360_lidar,
+    apply_replace_preset,
+    face_robot_at,
+)
 from ..subtask_env_cfg import (
     ARRIVAL_FACING_TOLERANCE,
     ARRIVAL_MAX_SPEED,
@@ -62,6 +68,8 @@ class S01ApproachLadderEnvCfg(NavigateSubtaskCfg):
     def __post_init__(self) -> None:
         super().__post_init__()
         apply_replace_preset(self.scene)
+        # The preset aims the robot at the table; this subtask's target is the ladder.
+        face_robot_at(self.scene, self.scene.ladder.init_state.pos[:2])
         add_ego_camera(self.scene)
         add_mid360_lidar(self.scene)
         # ~2x the 2.43 m robot->ladder traverse measured at ~0.5 m/s.

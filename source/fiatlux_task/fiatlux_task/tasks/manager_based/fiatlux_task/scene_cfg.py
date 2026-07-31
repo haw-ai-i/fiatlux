@@ -621,6 +621,17 @@ def apply_at_height_preset(scene: G1ReplaceSceneCfg, robot_at: str = "base") -> 
     add_ceiling_pendant(scene, ELEVATED_SOCKET_POSITION[0], ELEVATED_SOCKET_POSITION[1], ELEVATED_SOCKET_POSITION[2])
 
 
+def face_robot_at(scene: G1ReplaceSceneCfg, target: Vec2) -> None:
+    """Point the robot's spawn yaw at a floor target (x, y).
+
+    ``apply_replace_preset`` aims the robot at the table, which is the full task's first target. A
+    subtask whose first target is something else must re-aim, or its own facing gate starts
+    unsatisfiable and the target starts outside the ego camera's frustum.
+    """
+    x, y = scene.robot.init_state.pos[0], scene.robot.init_state.pos[1]
+    scene.robot.init_state.rot = _quat_z_deg(math.degrees(math.atan2(target[1] - y, target[0] - x)))
+
+
 def add_ladder_contact_sensor(scene: G1ReplaceSceneCfg) -> None:
     """Feet + palms filtered against the kinematic ladder (climb / descend tasks).
 
