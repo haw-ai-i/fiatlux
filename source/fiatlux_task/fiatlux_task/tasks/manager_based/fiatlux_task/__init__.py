@@ -137,6 +137,23 @@ gym.register(
     },
 )
 
+##
+# Subtask family (issue #66): one mode per episode, one module/class/id each.
+##
+
+gym.register(
+    id="FIATLUX-S01-ApproachLadder-v0",
+    entry_point="isaaclab.envs:ManagerBasedRLEnv",
+    disable_env_checker=True,
+    kwargs={
+        "env_cfg_entry_point": f"{__name__}.subtasks.s01_approach_ladder_env_cfg:S01ApproachLadderEnvCfg",
+    },
+)
+
+SUBTASK_IDS = [
+    "FIATLUX-S01-ApproachLadder-v0",
+]
+
 # Convenience list for scripts/tests that iterate the ladder family. Every member except
 # Base is RL now; Base is the shared scene-only cfg (no task, deliberately non-RL).
 TASK_IDS = [

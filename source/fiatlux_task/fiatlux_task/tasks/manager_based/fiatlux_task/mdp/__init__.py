@@ -53,6 +53,10 @@ from .observations import (  # noqa: F401
     root_pose_w,
 )
 from .rewards import (  # noqa: F401
+    LADDER_TILT_LIMIT,
+    arrived_at_ladder,
+    base_facing_error,
+    base_ladder_distance,
     bulb_fixture_distance,
     bulb_seated,
     climb_height_progress,

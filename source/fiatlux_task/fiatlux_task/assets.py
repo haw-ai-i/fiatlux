@@ -89,6 +89,12 @@ STEP_LADDER_TOP_OFFSET = (0.0, 0.0, 1.70)
 # highest finger body 1.3738. Bounds how high a fixture may be mounted and still be worked on.
 G1_OVERHEAD_REACH = 1.3738
 
+# Horizontal fingertip offset from the pelvis, arm reaching forward at rail height. MEASURED by an
+# FK sweep over forward arm poses (best: right shoulder pitch -0.9, elbow 0.6 -> 0.5045 m at
+# z=0.974; note negative shoulder pitch raises the arm, so a -1.57 "straight out" pose is overhead
+# and reaches only 0.287 m horizontally). Bounds how far from a graspable rail the robot may stand.
+G1_HORIZONTAL_REACH = 0.5045
+
 # Elevated fixture for the at-height presets: the SAME socket half as the bench tasks, just
 # mounted inverted. One socket everywhere means one set of mating constants and one seating
 # rule; a decorative chandelier has no matching socket and cannot be seated into at all.

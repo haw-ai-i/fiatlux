@@ -58,6 +58,7 @@ from fiatlux_task.assets import (
     CRATE_USD,
     ELEVATED_SOCKET_USD,
     FIATLUX_ASSETS_DIR,
+    G1_HORIZONTAL_REACH,
     G1_OVERHEAD_REACH,
     SOCKET_USD,
     STEP_LADDER_RIGID_USD,
@@ -204,6 +205,14 @@ if LADDER_READY_XY_RADIUS <= 0.0:
         f"no horizontal slack left for the ladder placement: a {CEILING_FIXTURE_Z} m fixture eats "
         f"the whole {G1_OVERHEAD_REACH:.3f} m reach from the {STEP_LADDER_TOP_OFFSET[2]} m ladder top"
     )
+# How far from the ladder's ROOT the robot may stand and still reach a rail: horizontal arm reach
+# plus the root-to-near-rail offset, less a margin. The A-frame's footprint is 0.68 x 1.11 m, so the
+# near rail is 0.34 m out on the narrow axis -- the conservative choice, since the ladder's yaw is
+# sampled. Means "close enough to grasp a rail" only; mounting the ladder is a foot-placement
+# question and gets its own constant.
+LADDER_NEAR_RAIL_OFFSET = 0.34  # m, half the A-frame's narrow footprint axis
+LADDER_APPROACH_RADIUS = G1_HORIZONTAL_REACH + LADDER_NEAR_RAIL_OFFSET - 0.05
+
 # Must clear the room's own wall box (9.04 x 8.26 m), since each env carries its own colliding
 # room. Overlap is physically harmless (filter_collisions=True isolates each env's collision
 # group) but makes any render with num_envs > 1 unreadable.
