@@ -488,6 +488,10 @@ class G1ReplaceSceneCfg(DressedSceneCfg):
     # Hand bodies only: this channel feeds the recorded fragility scoring, and a broader
     # match (leg/foot bodies) would put the robot's own ground reaction (~170 N standing,
     # >> the 50 N fragility threshold) into every episode's peak contact force.
+    # PhysX logs "Filter pattern ... did not match the correct number of entries" on construction:
+    # it wants one filter prim per sensor body. Benign -- force_matrix_w is still allocated at
+    # (envs, bodies, targets, 3) and populates (verify_interactions --scenario fragility reads
+    # 218.5 N through it).
     hand_contact: ContactSensorCfg = ContactSensorCfg(
         prim_path="{ENV_REGEX_NS}/Robot/(right_hand_.*|right_wrist_.*|R_.*)",
         # FILTERED to the manipulated object: this channel means "force on the bulb", and the
