@@ -23,8 +23,9 @@ Layers, of which this file is the first two:
 
 Leaves supply their behaviour through the declared hook fields (``success_predicate``,
 ``progress_distance_fn``), which ``__post_init__`` validates and wires in ONE place, so the
-``success`` termination and the ``success_bonus`` reward cannot drift onto different predicates.
-A leaf that forgets a hook fails at construction rather than training against a base default.
+``success`` termination owns the gate outright; ``success_bonus`` reads that term's flag rather than
+re-evaluating it, so the two cannot drift even when the gate is stateful. A leaf that forgets a hook
+fails at construction rather than running on a base default.
 
 ``ClassVar`` does not work for those hooks: ``@configclass`` ignores the annotation and makes them
 ordinary dataclass fields (verified). Fields are fine -- plain functions work as defaults without
@@ -238,14 +239,10 @@ class SubtaskEnvCfg(ManagerBasedRLEnvCfg):
         super().__post_init__()
         if self.success_predicate is None:
             raise ValueError(f"{type(self).__name__} must set success_predicate")
-        params = dict(self.success_params or {})
-        # One wiring site, so the termination and the bonus cannot end up on different predicates.
+        # Only the termination carries the gate. success_bonus reads its result (see mdp/gates.py),
+        # so there is one definition of success even when the gate is stateful.
         self.terminations.success.func = self.success_predicate
-        self.terminations.success.params = params
-        bonus = getattr(self.rewards, "success_bonus", None)
-        if bonus is not None:
-            bonus.params["predicate_fn"] = self.success_predicate
-            bonus.params["predicate_params"] = dict(params)
+        self.terminations.success.params = dict(self.success_params or {})
 
         # Family control rate (50 Hz).
         self.decimation = 4
@@ -277,8 +274,9 @@ class NavigateRewardsCfg(SubtaskRewardsCfg):
     approach_progress = RewTerm(
         func=mdp.distance_progress, weight=500.0, params={"distance_fn": mdp.base_ladder_distance}
     )
-    # Canonical name for the completion bonus, and the one SubtaskEnvCfg.__post_init__ wires.
-    success_bonus = RewTerm(func=mdp.completion_bonus, weight=500.0, params={"predicate_fn": mdp.time_out})
+    # Canonical name for the completion bonus. Reads the success termination's flag rather than
+    # re-evaluating the gate, so a stateful gate cannot end up with two disagreeing counters.
+    success_bonus = RewTerm(func=mdp.success_term_fired, weight=500.0)
 
 
 @configclass
