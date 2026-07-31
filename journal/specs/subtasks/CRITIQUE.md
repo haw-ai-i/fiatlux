@@ -237,11 +237,10 @@ manipulation-under-balance numbers are guesses and should be labelled provisiona
 
 ### D4. No vertical slice, so the abstraction stack is untested until it is 15 files deep
 
-The plans order work by what is unblocked (S01, S05, S10) but never say "finish one subtask through
-all three consumers before authoring the next". With VLA + RL + scripted all in scope, S01 should go
-end to end — env, start state, gate, visual+numeric validation, `PPORunnerCfg`, scripted baseline,
-score entry — and only then should S02 begin. Otherwise B2's hierarchy risk, D2's scoring gap and the
-runner-cfg requirement are all discovered fifteen times.
+The plans order work by what is unblocked (S01, S05, S10) but never say "finish one subtask before
+authoring the next". S01 should go end to end — env, start state, gate, visual+numeric validation,
+score entry — and only then should S02 begin. Otherwise B2's hierarchy risk and D2's scoring gap are
+discovered fifteen times.
 
 ### D5. The ego-camera decision is deferred into 15 separate discoveries
 

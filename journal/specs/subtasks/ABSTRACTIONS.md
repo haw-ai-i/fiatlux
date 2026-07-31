@@ -123,33 +123,53 @@ wiring in one place:
 ```python
 @configclass
 class SubtaskEnvCfg(ManagerBasedRLEnvCfg):
-    # leaf contract -- ClassVar, so configclass does not treat these as scene/serializable fields
-    success_predicate: ClassVar[Callable | None] = None
-    progress_distance_fn: ClassVar[Callable | None] = None
-    payload: ClassVar[str | None] = None          # "bulb" | "old_bulb" | "ladder" | None
+    # leaf contract; plain fields, defaulting to None
+    success_predicate: Callable | None = None
+    success_params: dict | None = None
+    payload: str | None = None                    # "bulb" | "old_bulb" | "ladder" | None
 
     def __post_init__(self) -> None:
         super().__post_init__()
-        for name in ("success_predicate", "progress_distance_fn"):
-            if getattr(self, name) is None:
-                raise ValueError(f"{type(self).__name__} must set {name}")
+        if self.success_predicate is None:
+            raise ValueError(f"{type(self).__name__} must set success_predicate")
+        params = dict(self.success_params or {})
         # ONE wiring site: the success termination and the success bonus cannot drift apart
-        self.terminations.success.params["predicate_fn"] = self.success_predicate
-        self.rewards.success_bonus.params["predicate_fn"] = self.success_predicate
-        self.rewards.approach_progress.params["distance_fn"] = self.progress_distance_fn
+        self.terminations.success.func = self.success_predicate
+        self.terminations.success.params = params
+        bonus = getattr(self.rewards, "success_bonus", None)
+        if bonus is not None:
+            bonus.params["predicate_fn"] = self.success_predicate
+            bonus.params["predicate_params"] = dict(params)
 ```
 
-Two properties this buys. A leaf that forgets a hook **fails at construction** instead of training
-against a parent's default. And the `success`-termination / `success_bonus` pair is wired from a
-single source, which closes the existing Climb/Descend double-declaration.
+Two properties this buys. A leaf that forgets a hook **fails at construction** rather than silently
+running on a parent default. And the `success`-termination / `success_bonus` pair is wired from a
+single source, which closes the Climb/Descend double-declaration.
 
-`ClassVar` rather than a dataclass field because these are callables and a subtask's identity is its
-class, not an instance value — it also sidesteps any question about `configclass`'s `to_dict()`
-handling of function objects. Callables inside cfg trees are already normal here (`RewardTermCfg.func`,
-`distance_progress`'s `distance_fn` param), but keeping them off the field list costs nothing.
-Verify the `ClassVar` behaviour against this Isaac Lab's `configclass` before committing to it; the
-fallback is a plain field, which the family already uses for non-entity metadata (`scene_preset`,
-`orbit_center`).
+**Plain fields, not `ClassVar`.** An earlier draft specified `ClassVar` so the hooks would stay off
+the dataclass field list. Measured: `@configclass` **ignores the annotation** and makes them ordinary
+fields regardless. That turns out to be the better outcome — a field can be overridden per instance,
+and `to_dict()` skips the callables anyway — and plain functions work as defaults without binding as
+methods, so no `staticmethod` wrapper is needed. Both confirmed by construction.
+
+### Verified against this Isaac Lab, not assumed
+
+The hierarchy had no precedent in this repo — all six existing RL cfgs derive straight from
+`ManagerBasedRLEnvCfg` and re-declare everything — so it was built and checked before being relied on:
+
+| Behaviour | Result |
+|---|---|
+| three-level subclassing, inherited nested obs groups | works |
+| base field order preserved, subclass fields appended | works — so a subclass event term runs *after* the base's |
+| leaf overriding an inherited scalar | works |
+| inherited field set to `None` (the drop-a-term idiom) | works |
+| nested cfg not shared between instances | works |
+| `to_dict()` omits the callables | works |
+| missing hook raises at construction | works |
+| `ClassVar` keeps a hook off the field list | **no** — annotation ignored |
+
+Also settled, because the gate design depends on it: `termination_manager.compute()` runs **before**
+`reward_manager.compute()` in `ManagerBasedRLEnv.step`.
 
 ## Payload is a parameter, not a mixin
 
@@ -159,7 +179,7 @@ and multiple inheritance. **Do not.** `configclass` is dataclass machinery, and 
 there means fighting MRO field ordering with defaults — for an axis that is genuinely a parameter,
 not a type.
 
-Instead: `payload: ClassVar[str | None]` on the base, with `payload_held`, `payload_dropped` and
+Instead: `payload: str | None` on the base, with `payload_held`, `payload_dropped` and
 `place_payload_in_hand` **declared as fields defaulting to `None`**, populated by the base's
 `__post_init__` when `payload` is set. Setting declared fields to `None` is the family's established
 idiom (`scene.ladder = None`, `disable_randomization`); adding attributes that were never declared

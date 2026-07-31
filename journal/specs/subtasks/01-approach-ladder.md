@@ -91,6 +91,7 @@ belongs in the results, not in a camera tweak.
 Registered and constructs · `verify_scene.py --task FIATLUX-S01-ApproachLadder-v0` all checks
 pass · settle drift < 2 mm · visual checklist reported frame by frame · `handoff:S01->S02`
 passes · zero-action and random-action rollouts complete without a solver explosion.
+No runner cfg and no scripted baseline: these envs are for policy evaluation (see foundation).
 
 ## Notes
 

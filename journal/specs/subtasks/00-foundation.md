@@ -438,21 +438,24 @@ Plus two numeric gates, both already-established patterns:
   < 2 mm and ends below 1 cm/s. A start state that needs settling gets fixed at the constant.
 - **retention** (loaded subtasks only) — the payload is still in the hand after the soak.
 
-## Three consumers, and what each one requires
+## What these envs are for
 
-These envs serve **VLA evaluation, per-subtask RL, and scripted baselines** — all three. That is
-worth stating because the three want different things and it is easy to build for one and discover
-the others are unserved:
+**Policy evaluation — they are the benchmark.** Not an RL training suite and not a home for scripted
+controllers. That decides where the effort goes:
 
-| Consumer | What it needs | Consequence |
-|---|---|---|
-| **Zero-shot VLA eval** | correct start states, correct success gates, clean feeds, the frozen `policy` obs group | Dense shaping is invisible to it. Start-state fidelity and gate correctness are the whole deliverable. |
-| **Per-subtask RL** | dense progress channels, balanced weights, a `PPORunnerCfg` with `obs_groups` routing | Only 4 of 7 existing tasks have a runner cfg at all. Each new subtask needs one, or `scripts/rsl_rl/{train,play}.py` cannot touch it. |
-| **Scripted baselines** | a reachable success gate and enough privileged state to drive to it | Establishes a non-zero reference. The WBC walk probe already proved this works for navigation; nothing comparable exists for the manipulation subtasks. |
+- **Start-state fidelity and success-gate correctness are the deliverable.** A gate that fires on the
+  wrong thing, or a start state that is physically impossible, corrupts every number the benchmark
+  produces. This is where the visual and numeric validation below earns its cost.
+- **Reward channels exist for the score breakdown, not for training.** `replace_env_cfg` documents
+  the per-term episode sums in `extras['log']` as the breakdown, which is why the canonical names
+  matter. Weight balancing for trainability is not in scope.
+- **No `PPORunnerCfg` per subtask.** Nothing here needs `scripts/rsl_rl/{train,play}.py` to reach it.
+- **No scripted baseline per subtask.**
 
-The scripted baseline is the cheapest guard against the worst failure mode: a subtask nobody can
-solve, where "0%" cannot be distinguished from "broken". A scripted controller that reaches the gate
-proves the gate is reachable. **Where a subtask has no scripted baseline, its 0% means nothing.**
+One consequence to hold onto, since dropping the scripted baseline removes the guard against it: a
+subtask nobody can solve reports 0%, and **0% cannot be distinguished from a broken subtask by the
+score alone.** The validation gates are therefore the only thing standing between a real result and
+a meaningless one — which is an argument for taking them seriously, not for adding baselines back.
 
 ## Scoring is not yet defined — open
 
@@ -469,14 +472,10 @@ along the chain a policy gets), which matches how the task actually reads.
 
 ## Sequencing: one vertical slice before fifteen files
 
-Take **approach-the-ladder end to end through all three consumers** — env, start state, success gate,
-visual *and* numeric validation, `PPORunnerCfg`, a scripted baseline, and an entry in whatever scoring
-scheme gets decided — and only then start the second subtask.
-
-Without that, three risks get discovered fifteen times instead of once: the cfg hierarchy is unproven
-in this codebase (there is not one example of even two-level `@configclass` env-cfg inheritance
-today), scoring is undefined, and only 4 of the 7 existing tasks have a runner cfg at all so every new
-subtask needs one written from scratch.
+Take **approach-the-ladder end to end** — env, start state, success gate, visual *and* numeric
+validation, and an entry in whatever scoring scheme gets decided — and only then start the second
+subtask. Otherwise the cfg-hierarchy risk and the undefined scoring get discovered fifteen times
+instead of once.
 
 **One decision must be made before that slice starts, not during it:**
 
@@ -512,8 +511,7 @@ run twice back-to-back.
 Every horizon in the fifteen plans except the navigation ones is a guess. The only measured datum is
 the walk probe — 2.43 m in ~8 s at ~0.5 m/s — which justifies the navigation horizons and nothing
 else. The manipulation-under-balance numbers (screw-in at 40 s, remove-the-old-bulb at 30 s) have no
-evidence behind them and must be labelled provisional until a scripted baseline or a real rollout
-sets them.
+evidence behind them and must be labelled provisional until a real rollout sets them.
 
 ## Blockers
 
