@@ -20,6 +20,13 @@ comparison:
 | payload drop termination | `bulb_dropped`, `fresh_bulb_dropped`, `old_bulb_dropped` | three names |
 | light randomization | `randomize_light` vs `randomize_sky_intensity` + `randomize_key_light` | two shapes |
 
+The subtask family then reproduced the completion-bonus drift in a new form. `success_bonus` was
+declared on the navigate tier instead of the shared base, so the grasp and place leaves — S02, S04,
+S09, S11 — shipped with a success gate and no completion reward at all. One name, correctly chosen,
+declared one layer too low. Fixed by moving it to `SubtaskRewardsCfg`; the rule is that a canonical
+channel is declared **where every subtask inherits it**, and anything less is the same defect with
+better naming.
+
 Plus outright gaps: `reset_robot_joints` is absent only from Carry; `reset_robot_root` only from
 Carry/Install/Remove; `randomize_material_tint` is absent from Descend although
 `journal/specs/domain-randomization.md` says all three axes are ON for scaffold envs

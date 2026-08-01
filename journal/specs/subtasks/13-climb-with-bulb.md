@@ -118,3 +118,22 @@ already the calibrated value and 1.3 exceeds the glass bound.
 **PR #64** — the still-held condition and the fragility penalty read the filtered channel.
 Highest risk of the chain's four loaded subtasks. Recommend implementing it **after** S03 and S12,
 so their retention measurements are in hand before this one is attempted.
+
+## As built
+
+`subtasks/s13_climb_with_bulb_env_cfg.py`, on `subtask_tiers.balance.ClimbSubtaskCfg`. Constructs.
+
+The scoped contact fraction this plan predicted is implemented as
+`balance.LOADED_LADDER_CONTACT_BODIES` — feet plus both variants' *left* palm, passed to
+`add_ladder_contact_sensor`, which now takes a body list. Names belonging to the absent hand
+variant never resolve, so the live denominator is three.
+
+The gate is `mdp.all_of` over the S05 climb conjunct, `payload_held`, `object_lifted` at
+`FRESH_BULB_DROP_HEIGHT`, `robot_standing` and `ladder_near_vertical`.
+
+`BULB_IN_ROOT_ON_LADDER` was **not** measured here — S13 consumes `BULB_IN_ROOT_STANDING` as its
+start state and produces the on-ladder pose only as an end state, so the deliverable stays with
+S06. Both remain `UNCALIBRATED`.
+
+Not validated. The retention-under-motion gate — the measurement that decides whether this subtask
+is viable at all — has not been run.

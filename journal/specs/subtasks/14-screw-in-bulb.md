@@ -123,3 +123,26 @@ tested explicitly with a scripted release · `handoff:S13->S14` and `handoff:S14
 - **`verify_interactions --scenario socket` is 3/6**, all three being bulb↔socket contact (137 N,
   never settles). Same root cause. Not an S14 regression.
 - **PR #64** — the fragility bound and the release detection read the filtered channel.
+
+## As built
+
+`subtasks/s14_screw_in_bulb_env_cfg.py`, on `subtask_tiers.mate.MateSubtaskCfg`. Constructs.
+
+The axis-alignment term is **new** (`mate_terms.bulb_axis_alignment_tanh`), not a rewrite of
+`object_socket_orientation_tanh`. That function is live in Insert, Install and Replace, and
+rebuilding it would move their reward surfaces silently; that change belongs to the ticket that
+owns C.2. Weight and kernel width are the family's existing 0.3 / 0.3.
+
+Retained-after-release is expressed by putting `place_terms.object_released` inside the debounced
+conjunction: `sustained` requires every conjunct to hold continuously for 1.0 s, so the seating
+must survive the release rather than being re-checked after it.
+
+The fragility bound is a termination, not a gate conjunct — same reasoning as S06.
+
+The accumulated-signed-roll term this plan suggests considering is **not** implemented. It needs
+per-env state and a reset path, and nothing in this branch can exercise it.
+
+The blocking reach probe this plan calls out — on-ladder overhead reach against the fixture height
+— has not been run. `CEILING_FIXTURE_Z` moved to 2.2 m earlier in this branch, which was derived
+from `LADDER_WORK_FOOT_Z + G1_OVERHEAD_REACH` rather than measured from a balanced on-ladder
+stance, so the margin is still unverified.

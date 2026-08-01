@@ -102,3 +102,23 @@ headroom left).
 **PR #64** — the still-held condition and the fragility penalty read the filtered channel.
 **#54** — inherits S06's provisional start state: if the bulb cannot be removed and held, S07's
 start state cannot be reached by the chain, though it can still be authored and validated directly.
+
+## As built
+
+`subtasks/s07_descend_with_bulb_env_cfg.py`, on `subtask_tiers.balance.DescendSubtaskCfg`.
+Constructs.
+
+`balance_terms.descended_from_ladder` takes the xy centre from the ladder's live root and the
+height bound as an absolute floor-stance pelvis height — the ladder's feet stand on the same floor
+the robot lands on, so only the centre needs the live pose.
+
+Two departures from this plan. The drop gate is `mdp.object_dropped`, not `old_bulb_dropped`: the
+latter exempts a bulb resting in the disposal crate, which is a disposal-task concern and not this
+one. And the held threshold is the family's `GRIP_FORCE_THRESHOLD_N` (1 N), not the 2 N written
+above — see the foundation's as-built note.
+
+The contact bootstrap divides by feet plus the free left palm; the right hand is occupied for the
+whole episode.
+
+Not validated, and the retention gate this plan calls the real risk has not been run. The start
+state currently places the bulb beside an open hand, so it falls at reset.

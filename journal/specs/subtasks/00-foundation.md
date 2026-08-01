@@ -496,6 +496,79 @@ difficulty and continue. This closes the open question the earlier drafts deferr
 
 ## What counts as done
 
+## As built — what the fifteen actually are, and what the plan got wrong
+
+All fifteen exist, are registered, and construct (15/15). What follows is only where the code
+diverges from these plans, or where writing it turned up something the plans did not know.
+
+**The completion bonus was missing from four shipped subtasks.** `success_bonus` was declared on
+the navigate tier alone, so S02, S04, S09 and S11 — grasp and place leaves, all written and
+verified before this was noticed — had a sparse success gate and no sparse reward for reaching it.
+Nothing failed loudly: the `success` termination still fired, episodes still ended, the log still
+carried a `success` row. Only the reward was absent. It now lives on `SubtaskRewardsCfg`, which is
+where the ABSTRACTIONS "one canonical name per channel" rule always implied it belonged; declaring
+it one layer down defeated the rule while appearing to follow it.
+
+Worth generalizing: a channel promised by a base class and declared in a sibling is invisible to
+every check that reads a leaf. The construction harness now prints each cfg's full reward and
+termination name sets, which is what surfaced it.
+
+**`ladder_contact_fraction` charges a loaded policy for holding its payload.** S13's plan raised
+this and predicted it would become live once the Dex3 palm-naming fix landed. It did. The term
+means over the sensor's bodies, so a hand occupied for the whole episode caps it below 1.0 with no
+action available to recover the difference. `add_ladder_contact_sensor` now takes a body list;
+S07 and S13 pass feet plus the free palm. S05 and S15 keep all four.
+
+The wider lesson the plans should have stated once instead of four times: any *fraction over
+bodies* term encodes an assumption about which limbs are free, and that assumption changes per
+subtask. The denominator is part of the task definition, not a sensor detail.
+
+**The fragility bound cannot be a success conjunct.** Both S06 and S14 specified "peak grip never
+exceeded `GLASS_CONTACT_LIMIT_N`" as a gate condition. A conjunct is read at the scoring step, so a
+bulb crushed at second three and seated at second twenty still scores — the condition as specified
+tests the grip at the wrong moment, and tracking a peak would need state inside a predicate that
+`all_of` instantiates as a plain function. It is a **termination** instead: crossing the bound ends
+the episode and puts the gate out of reach for the rest of it. Same shape as `ladder_tipped`, and
+for the same reason.
+
+**Two sustain windows in the mate mode, not one.** Taking hold (S06) only has to prove the grasp is
+not a glancing contact — the grasp tier's 0.5 s. Leaving something installed (S14) has to prove it
+stays there once the hand is off — the place tier's 1.0 s. These are different claims about
+physics and the plans were right to give them different numbers; the tier names them
+`MATE_GRASP_SUSTAIN_SECONDS` and `MATE_RELEASE_SUSTAIN_SECONDS` rather than picking one.
+
+**The held-force threshold was specified as 2 N and shipped as 1 N.** S06, S07 and S13 each wrote
+"hand↔bulb contact > 2 N"; `nav_terms.GRIP_FORCE_THRESHOLD_N` is 1.0, chosen as the mirror of the
+place tier's release cutoff. Both numbers are provisional and neither is derived from anything, so
+the family uses one — otherwise "still held" and "let go" would describe an overlapping band of
+forces in which a payload is both.
+
+**S14's alignment is a new term, not a rewrite of the old one.** The plan asked for
+`object_socket_orientation_tanh` to be rebuilt on the mating axis. That function is live in Insert,
+Install and Replace, and rebuilding it would silently move their reward surfaces.
+`mate_terms.bulb_axis_alignment_tanh` is the axis-angle form and only S14 uses it. Rebuilding the
+shared one belongs to the scene-physics ticket that owns C.2, not here.
+
+**The ladder subtasks draw their layout with `couple_ladder_to_fixture=True`.** The preset's own
+docstring calls coupling a debug/curriculum aid, which is true for the full task — positioning the
+ladder is part of it. For S05–S07 and S13–S15 the ladder has *already been positioned*, so the
+coupled draw is the chain's state and the uncoupled one would be wrong. The flag's docstring
+describes the caller it was written for, not the flag.
+
+**Still open, unchanged by this work:**
+
+- **The grip-pose gap.** No subtask pins the grasping hand. Every loaded start state places its
+  payload beside an open hand, so it falls at reset and the still-held conjuncts are false from
+  step one — S03, S07, S08, S12, S13, S14. The envs are correct; the start states are not
+  reachable without hand retention. Explicitly deferred.
+- **Every payload pose is `UNCALIBRATED`** (`grasp_poses.py`), including the two the balance and
+  mate subtasks consume.
+- **Nothing has been rendered.** Thirteen of fifteen start states have never been looked at, and
+  the one bug the numeric checks missed on S01 — the robot facing 3.05 rad from its target, with
+  seven checks passing — was caught only by a rendered ego frame.
+- **Scoring is still undefined.** See the section above; five of fifteen are "walk to X", so an
+  unweighted mean hands a walk-only policy a third of the benchmark.
+
 ## Not in scope: "move the ladder back" (S16)
 
 Raised in review: the chain could end by returning the ladder to storage. Skipped, because it is

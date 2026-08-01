@@ -101,3 +101,20 @@ Not a replacement. `FIATLUX-Climb-v0` climbs a *kinematic* ladder at a fixed lay
 hardcoded success centre; this subtask climbs a *dynamic* ladder wherever a placement left it, with
 the gate derived from the ladder's live pose and a tipping termination. Different physics, different
 difficulty, both kept — see the foundation's difficulty-ladder note.
+
+## As built
+
+`subtasks/s05_climb_ladder_env_cfg.py`, on `subtask_tiers.balance.ClimbSubtaskCfg`. Constructs.
+
+The gate is `mdp.all_of` over three conjuncts — `balance_terms.climbed_to_ladder_top` (height slack
+0.15 m below the live top point, 0.6 m xy, 1.5 m/s), `place_terms.robot_standing`,
+`grasp_terms.ladder_near_vertical` — with no `sustained` wrapper; the speed cap already excludes a
+fly-through and the fall gates are separate terminations.
+
+The stance is placed by rotating the workshop preset's own validated `CLIMB_ROBOT_POSITION` offset
+onto the sampled ladder yaw, not by copying its world coordinates. The blocking Dex3 palm-naming
+fix landed earlier in this branch, so the contact bootstrap keeps its full four-body denominator
+here — both hands are free.
+
+Not validated: no render, no rollout. Nobody has confirmed which side of the ladder the robot
+lands on for a given draw.

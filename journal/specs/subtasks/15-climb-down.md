@@ -99,3 +99,20 @@ region is the chain's declared terminal state.
 bulb falls out of the socket at t=0 and both the start state and the `bulb_seated` success condition
 are unreachable. Author it, validate everything else, and mark the seated conditions
 **provisional** — the same handling as S06 and S14.
+
+## As built
+
+`subtasks/s15_climb_down_env_cfg.py`, on `subtask_tiers.balance.DescendSubtaskCfg`. Constructs.
+
+Shares `balance_terms.descended_from_ladder` with S07 and differs only in the gate, as intended.
+`mdp.bulb_unseated` is the negated seating predicate, added beside `bulb_seated`; it is both the
+termination and the penalty, since `all_of` conjoins and cannot negate.
+
+Start state composed from `scene_cfg.seat_bulb_in_fixture` (bulb root pose == socket root pose, no
+offset arithmetic at any mount orientation) and `park_old_bulb_in_crate`.
+
+Both hands are free, so the contact bootstrap keeps all four bodies.
+
+Not validated. This start state is the chain's terminal scene and the "what does success look like"
+reference for the whole benchmark, and nobody has rendered it. Blocked on #54: without retention
+the fresh bulb leaves the socket at t=0 and the gate is unreachable.

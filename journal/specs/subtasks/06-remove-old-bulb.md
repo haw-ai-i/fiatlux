@@ -99,3 +99,21 @@ on-ladder stance carries a torso lean, so this is *not* the standing value from 
 - **`verify_interactions --scenario socket` is 3/6**, all three failures being bulb↔socket
   contact — the same root cause. Do not treat those as S06 regressions.
 - **PR #64** — the held condition and the fragility bounds both read the filtered channel.
+
+## As built
+
+`subtasks/s06_remove_old_bulb_env_cfg.py`, on `subtask_tiers.mate.MateSubtaskCfg` — the balance
+tier plus manipulation channels, since this is manipulation performed while balancing. Constructs.
+
+The held conjunct is in the gate, as this plan insists. The zero-action rollout that must score 0
+has not been run.
+
+The fragility bound moved out of the gate and into a termination (`mate_terms.grip_force_exceeded`
+at `GLASS_CONTACT_LIMIT_N`), plus a matching penalty. As a success conjunct it would have been read
+only at the scoring step, so a bulb crushed on the way and taken anyway would still score.
+
+No `ladder_contact` bootstrap: it pays for limbs *on* the ladder, and the job here is to get a hand
+off it and onto the fixture.
+
+`BULB_IN_ROOT_ON_LADDER` — this subtask's deliverable for the chain — is still the uncalibrated
+geometric estimate in `grasp_poses.py`. Not measured.
