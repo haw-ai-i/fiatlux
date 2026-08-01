@@ -164,10 +164,42 @@ gym.register(
     kwargs={"env_cfg_entry_point": f"{__name__}.subtasks.s09_dispose_bulb_env_cfg:S09DisposeBulbEnvCfg"},
 )
 
+gym.register(
+    id="FIATLUX-S03-CarryLadder-v0",
+    entry_point="isaaclab.envs:ManagerBasedRLEnv",
+    disable_env_checker=True,
+    kwargs={"env_cfg_entry_point": f"{__name__}.subtasks.s03_carry_ladder_env_cfg:S03CarryLadderEnvCfg"},
+)
+
+gym.register(
+    id="FIATLUX-S08-CarryBulbToDisposal-v0",
+    entry_point="isaaclab.envs:ManagerBasedRLEnv",
+    disable_env_checker=True,
+    kwargs={"env_cfg_entry_point": f"{__name__}.subtasks.s08_carry_bulb_to_disposal_env_cfg:S08CarryBulbToDisposalEnvCfg"},
+)
+
+gym.register(
+    id="FIATLUX-S10-ApproachNewBulb-v0",
+    entry_point="isaaclab.envs:ManagerBasedRLEnv",
+    disable_env_checker=True,
+    kwargs={"env_cfg_entry_point": f"{__name__}.subtasks.s10_approach_new_bulb_env_cfg:S10ApproachNewBulbEnvCfg"},
+)
+
+gym.register(
+    id="FIATLUX-S12-CarryBulbToLadder-v0",
+    entry_point="isaaclab.envs:ManagerBasedRLEnv",
+    disable_env_checker=True,
+    kwargs={"env_cfg_entry_point": f"{__name__}.subtasks.s12_carry_bulb_to_ladder_env_cfg:S12CarryBulbToLadderEnvCfg"},
+)
+
 SUBTASK_IDS = [
     "FIATLUX-S01-ApproachLadder-v0",
+    "FIATLUX-S03-CarryLadder-v0",
     "FIATLUX-S04-PlaceLadder-v0",
+    "FIATLUX-S08-CarryBulbToDisposal-v0",
     "FIATLUX-S09-DisposeBulb-v0",
+    "FIATLUX-S10-ApproachNewBulb-v0",
+    "FIATLUX-S12-CarryBulbToLadder-v0",
 ]
 
 # Convenience list for scripts/tests that iterate the ladder family. Every member except
