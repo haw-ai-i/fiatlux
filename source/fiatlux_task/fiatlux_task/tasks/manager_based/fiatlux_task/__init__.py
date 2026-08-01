@@ -150,8 +150,24 @@ gym.register(
     },
 )
 
+gym.register(
+    id="FIATLUX-S04-PlaceLadder-v0",
+    entry_point="isaaclab.envs:ManagerBasedRLEnv",
+    disable_env_checker=True,
+    kwargs={"env_cfg_entry_point": f"{__name__}.subtasks.s04_place_ladder_env_cfg:S04PlaceLadderEnvCfg"},
+)
+
+gym.register(
+    id="FIATLUX-S09-DisposeBulb-v0",
+    entry_point="isaaclab.envs:ManagerBasedRLEnv",
+    disable_env_checker=True,
+    kwargs={"env_cfg_entry_point": f"{__name__}.subtasks.s09_dispose_bulb_env_cfg:S09DisposeBulbEnvCfg"},
+)
+
 SUBTASK_IDS = [
     "FIATLUX-S01-ApproachLadder-v0",
+    "FIATLUX-S04-PlaceLadder-v0",
+    "FIATLUX-S09-DisposeBulb-v0",
 ]
 
 # Convenience list for scripts/tests that iterate the ladder family. Every member except
