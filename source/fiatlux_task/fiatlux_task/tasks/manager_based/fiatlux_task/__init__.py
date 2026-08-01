@@ -192,13 +192,29 @@ gym.register(
     kwargs={"env_cfg_entry_point": f"{__name__}.subtasks.s12_carry_bulb_to_ladder_env_cfg:S12CarryBulbToLadderEnvCfg"},
 )
 
+gym.register(
+    id="FIATLUX-S02-GrabLadder-v0",
+    entry_point="isaaclab.envs:ManagerBasedRLEnv",
+    disable_env_checker=True,
+    kwargs={"env_cfg_entry_point": f"{__name__}.subtasks.s02_grab_ladder_env_cfg:S02GrabLadderEnvCfg"},
+)
+
+gym.register(
+    id="FIATLUX-S11-GrabNewBulb-v0",
+    entry_point="isaaclab.envs:ManagerBasedRLEnv",
+    disable_env_checker=True,
+    kwargs={"env_cfg_entry_point": f"{__name__}.subtasks.s11_grab_new_bulb_env_cfg:S11GrabNewBulbEnvCfg"},
+)
+
 SUBTASK_IDS = [
     "FIATLUX-S01-ApproachLadder-v0",
+    "FIATLUX-S02-GrabLadder-v0",
     "FIATLUX-S03-CarryLadder-v0",
     "FIATLUX-S04-PlaceLadder-v0",
     "FIATLUX-S08-CarryBulbToDisposal-v0",
     "FIATLUX-S09-DisposeBulb-v0",
     "FIATLUX-S10-ApproachNewBulb-v0",
+    "FIATLUX-S11-GrabNewBulb-v0",
     "FIATLUX-S12-CarryBulbToLadder-v0",
 ]
 
