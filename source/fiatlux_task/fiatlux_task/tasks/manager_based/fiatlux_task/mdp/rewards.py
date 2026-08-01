@@ -129,6 +129,19 @@ def bulb_seated(
     return (_bulb_socket_pos_error(env) < pos_threshold) & (_bulb_socket_ori_error(env) < ori_threshold)
 
 
+def bulb_unseated(
+    env: ManagerBasedRLEnv,
+    pos_threshold: float = 0.015,
+    ori_threshold: float = 0.2,
+) -> torch.Tensor:
+    """The negation of :func:`bulb_seated`, for a gate that must END if the bulb comes loose.
+
+    A subtask that starts with the bulb already installed measures keeping it there, so leaving
+    the socket is a termination rather than an unmet success conjunct.
+    """
+    return ~bulb_seated(env, pos_threshold, ori_threshold)
+
+
 def object_dropped(
     env: ManagerBasedRLEnv,
     asset_cfg: SceneEntityCfg,

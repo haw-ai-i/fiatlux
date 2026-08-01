@@ -75,6 +75,12 @@ def hand_bulb_distance(env: ManagerBasedRLEnv) -> torch.Tensor:
     return torch.norm(_right_hand_pos_w(env) - bulb.data.root_pos_w, dim=1)
 
 
+def hand_old_bulb_distance(env: ManagerBasedRLEnv) -> torch.Tensor:
+    """Distance (m) from the right hand to the seated old bulb; S06's reach signal."""
+    old_bulb: RigidObject = env.scene["old_bulb"]
+    return torch.norm(_right_hand_pos_w(env) - old_bulb.data.root_pos_w, dim=1)
+
+
 # ---------------------------------------------------------------------------
 # Contact force -- generic, sensor_cfg must be filtered to ONE target prim
 # ---------------------------------------------------------------------------

@@ -632,7 +632,29 @@ def face_robot_at(scene: G1ReplaceSceneCfg, target: Vec2) -> None:
     scene.robot.init_state.rot = _quat_z_deg(math.degrees(math.atan2(target[1] - y, target[0] - x)))
 
 
-def add_ladder_contact_sensor(scene: G1ReplaceSceneCfg) -> None:
+def park_old_bulb_in_crate(scene: G1ReplaceSceneCfg) -> None:
+    """Move the old bulb from the fixture to the bottom of the disposal crate.
+
+    ``apply_replace_preset`` starts the old bulb seated, which is the state the first half of the
+    chain works from. Every subtask downstream of the disposal starts with it already thrown away
+    and the fixture empty; both facts come from this one move.
+    """
+    bin_pos = scene.bin.init_state.pos
+    scene.old_bulb.init_state.pos = (bin_pos[0], bin_pos[1], BIN_BULB_INTERIOR_Z - BULB_STAND_Z_OFFSET)
+    scene.old_bulb.init_state.rot = (1.0, 0.0, 0.0, 0.0)
+
+
+def seat_bulb_in_fixture(scene: G1ReplaceSceneCfg) -> None:
+    """Start the fresh bulb seated in the fixture, whatever its mount orientation.
+
+    Seated is the fixture's own pose: both halves are authored assembled at identity
+    (``SOCKET_SEAT_OFFSET == BULB_PLUG_OFFSET``), so there is no offset arithmetic per mount kind.
+    """
+    scene.bulb.init_state.pos = scene.socket.init_state.pos
+    scene.bulb.init_state.rot = scene.socket.init_state.rot
+
+
+def add_ladder_contact_sensor(scene: G1ReplaceSceneCfg, bodies: list[str] | None = None) -> None:
     """Feet + palms filtered against the kinematic ladder (climb / descend tasks).
 
     Not a class field: presets without a ``Ladder`` prim (tabletop) could not resolve
@@ -643,9 +665,13 @@ def add_ladder_contact_sensor(scene: G1ReplaceSceneCfg) -> None:
 
     Bodies come from ``G1_LADDER_CONTACT_BODIES``, not a regex: the two hands disagree on the palm
     body's name, so any pattern spelling one variant's resolves to feet only on the other.
+
+    ``bodies`` narrows that set. ``mdp.ladder_contact_fraction`` divides by the sensor's body
+    count, so a hand that is occupied for the whole episode caps the term below 1.0 and charges
+    the policy for holding its payload; a subtask whose hands are busy passes its feet alone.
     """
     scene.ladder_contact = ContactSensorCfg(
-        prim_path="{ENV_REGEX_NS}/Robot/(" + "|".join(G1_LADDER_CONTACT_BODIES) + ")",
+        prim_path="{ENV_REGEX_NS}/Robot/(" + "|".join(bodies or G1_LADDER_CONTACT_BODIES) + ")",
         filter_prim_paths_expr=["{ENV_REGEX_NS}/Ladder"],
         history_length=1,
         track_air_time=False,

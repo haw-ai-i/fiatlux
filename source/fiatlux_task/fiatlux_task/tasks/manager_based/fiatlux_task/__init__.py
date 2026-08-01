@@ -206,16 +206,64 @@ gym.register(
     kwargs={"env_cfg_entry_point": f"{__name__}.subtasks.s11_grab_new_bulb_env_cfg:S11GrabNewBulbEnvCfg"},
 )
 
+gym.register(
+    id="FIATLUX-S05-ClimbLadder-v0",
+    entry_point="isaaclab.envs:ManagerBasedRLEnv",
+    disable_env_checker=True,
+    kwargs={"env_cfg_entry_point": f"{__name__}.subtasks.s05_climb_ladder_env_cfg:S05ClimbLadderEnvCfg"},
+)
+
+gym.register(
+    id="FIATLUX-S07-DescendWithBulb-v0",
+    entry_point="isaaclab.envs:ManagerBasedRLEnv",
+    disable_env_checker=True,
+    kwargs={"env_cfg_entry_point": f"{__name__}.subtasks.s07_descend_with_bulb_env_cfg:S07DescendWithBulbEnvCfg"},
+)
+
+gym.register(
+    id="FIATLUX-S13-ClimbWithBulb-v0",
+    entry_point="isaaclab.envs:ManagerBasedRLEnv",
+    disable_env_checker=True,
+    kwargs={"env_cfg_entry_point": f"{__name__}.subtasks.s13_climb_with_bulb_env_cfg:S13ClimbWithBulbEnvCfg"},
+)
+
+gym.register(
+    id="FIATLUX-S15-ClimbDown-v0",
+    entry_point="isaaclab.envs:ManagerBasedRLEnv",
+    disable_env_checker=True,
+    kwargs={"env_cfg_entry_point": f"{__name__}.subtasks.s15_climb_down_env_cfg:S15ClimbDownEnvCfg"},
+)
+
+gym.register(
+    id="FIATLUX-S06-RemoveOldBulb-v0",
+    entry_point="isaaclab.envs:ManagerBasedRLEnv",
+    disable_env_checker=True,
+    kwargs={"env_cfg_entry_point": f"{__name__}.subtasks.s06_remove_old_bulb_env_cfg:S06RemoveOldBulbEnvCfg"},
+)
+
+gym.register(
+    id="FIATLUX-S14-ScrewInBulb-v0",
+    entry_point="isaaclab.envs:ManagerBasedRLEnv",
+    disable_env_checker=True,
+    kwargs={"env_cfg_entry_point": f"{__name__}.subtasks.s14_screw_in_bulb_env_cfg:S14ScrewInBulbEnvCfg"},
+)
+
 SUBTASK_IDS = [
     "FIATLUX-S01-ApproachLadder-v0",
     "FIATLUX-S02-GrabLadder-v0",
     "FIATLUX-S03-CarryLadder-v0",
     "FIATLUX-S04-PlaceLadder-v0",
+    "FIATLUX-S05-ClimbLadder-v0",
+    "FIATLUX-S06-RemoveOldBulb-v0",
+    "FIATLUX-S07-DescendWithBulb-v0",
     "FIATLUX-S08-CarryBulbToDisposal-v0",
     "FIATLUX-S09-DisposeBulb-v0",
     "FIATLUX-S10-ApproachNewBulb-v0",
     "FIATLUX-S11-GrabNewBulb-v0",
     "FIATLUX-S12-CarryBulbToLadder-v0",
+    "FIATLUX-S13-ClimbWithBulb-v0",
+    "FIATLUX-S14-ScrewInBulb-v0",
+    "FIATLUX-S15-ClimbDown-v0",
 ]
 
 # Convenience list for scripts/tests that iterate the ladder family. Every member except

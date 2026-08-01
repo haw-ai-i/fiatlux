@@ -60,6 +60,7 @@ from .rewards import (  # noqa: F401
     base_ladder_distance,
     bulb_fixture_distance,
     bulb_seated,
+    bulb_unseated,
     climb_height_progress,
     climbed_to_target,
     com_sway_l2,

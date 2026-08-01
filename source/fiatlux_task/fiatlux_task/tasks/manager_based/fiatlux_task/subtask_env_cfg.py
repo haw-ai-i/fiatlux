@@ -174,8 +174,13 @@ class SubtaskRewardsCfg:
     rather than using ``mdp.is_terminated`` (which would also punish success) or
     ``mdp.is_terminated_term`` (which reads a sticky log and would repeat every step after the
     first fall).
+
+    ``success_bonus`` is the canonical name for the completion bonus. It reads the ``success``
+    termination's flag rather than re-evaluating the gate, so the two cannot drift even when the
+    gate is stateful, and it pays exactly on the terminating step.
     """
 
+    success_bonus = RewTerm(func=mdp.success_term_fired, weight=500.0)
     robot_fall = RewTerm(
         func=mdp.fall_terminated,
         weight=-200.0,
@@ -274,9 +279,6 @@ class NavigateRewardsCfg(SubtaskRewardsCfg):
     approach_progress = RewTerm(
         func=mdp.distance_progress, weight=500.0, params={"distance_fn": mdp.base_ladder_distance}
     )
-    # Canonical name for the completion bonus. Reads the success termination's flag rather than
-    # re-evaluating the gate, so a stateful gate cannot end up with two disagreeing counters.
-    success_bonus = RewTerm(func=mdp.success_term_fired, weight=500.0)
 
 
 @configclass
