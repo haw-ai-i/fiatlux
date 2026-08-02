@@ -259,6 +259,30 @@ _DEX3_HAND_ORDER = [
 G1_DEX3_LEFT_HAND_JOINTS = [f"left_{j}" for j in _DEX3_HAND_ORDER]
 G1_DEX3_RIGHT_HAND_JOINTS = [f"right_{j}" for j in _DEX3_HAND_ORDER]
 G1_DEX3_FINGER_JOINT_PATTERNS = [".*_hand_(thumb|index|middle)_._joint"]
+# Dex3-1 open (fingers extended = 0) / power-grasp presets (rad), probed from the joint-position
+# limits. The two hands are MIRRORED: right index/middle curl toward + (limits [0, +1.6]), left toward
+# - (limits [-1.6, 0]); the thumb opposes. Used by the teleop harness's binary grip. Tune magnitudes if
+# the grasp over/under-closes.
+G1_DEX3_HAND_OPEN = dict.fromkeys(G1_DEX3_RIGHT_HAND_JOINTS, 0.0)
+G1_DEX3_HAND_GRASP = {
+    "right_hand_index_0_joint": 1.2,
+    "right_hand_index_1_joint": 1.3,
+    "right_hand_middle_0_joint": 1.2,
+    "right_hand_middle_1_joint": 1.3,
+    "right_hand_thumb_0_joint": 0.8,
+    "right_hand_thumb_1_joint": 0.4,
+    "right_hand_thumb_2_joint": -1.2,
+}
+G1_DEX3_LEFT_HAND_OPEN = dict.fromkeys(G1_DEX3_LEFT_HAND_JOINTS, 0.0)
+G1_DEX3_LEFT_HAND_GRASP = {
+    "left_hand_index_0_joint": -1.2,
+    "left_hand_index_1_joint": -1.3,
+    "left_hand_middle_0_joint": -1.2,
+    "left_hand_middle_1_joint": -1.3,
+    "left_hand_thumb_0_joint": -0.8,
+    "left_hand_thumb_1_joint": 0.4,
+    "left_hand_thumb_2_joint": 1.2,
+}
 
 G1_DEX3_CFG = G1_INSPIRE_CFG.replace(
     spawn=G1_INSPIRE_CFG.spawn.replace(usd_path=G1_DEX3_USD, func=sim_utils.spawn_from_usd),

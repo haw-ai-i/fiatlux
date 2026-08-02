@@ -92,7 +92,8 @@ TABLETOP_ROBOT_POSITION = (0.60, 0.58, _ROBOT_Z)
 TABLETOP_ROBOT_YAW_DEG = -90.0
 # ehjsdz base_link origin sits 0.48 m above the lamp's feet, so z=1.47 rests it on the
 # ~0.99 m tabletop; the bulblampF socket seat is then ~1.50 m (base_link + 3.3 cm).
-TABLETOP_SOCKET_POSITION = (0.45, 0.10, 1.47)
+TABLETOP_SOCKET_POSITION = (0.45, 0.10, 1.47)  # z=1.47 rests the lamp feet on the ~0.99 m tabletop
+# (NOTE: the Insert-Teleop env overrides socket pos in insert_teleop_env_cfg.__post_init__; edit there.)
 TABLETOP_BULB_POSITION = (0.30, 0.18, 1.05)
 
 # -- carry preset: the B1K straight ladder (shfvtl) *stored* by the room wall in its

@@ -34,7 +34,20 @@ from isaaclab.sim.utils import clone
 from isaaclab.utils import configclass
 
 from fiatlux_task.assets import OMNI_BULB_USD, OMNI_SOCKET_USD
-from fiatlux_task.robots.g1 import G1_ARM_JOINTS, G1_EE_BODY, G1_HAND_GRASP, G1_HAND_JOINTS, G1_HAND_OPEN
+from fiatlux_task.robots.g1 import (
+    G1_ARM_JOINTS,
+    G1_DEX3_HAND_GRASP,
+    G1_DEX3_HAND_OPEN,
+    G1_DEX3_LEFT_HAND_GRASP,
+    G1_DEX3_LEFT_HAND_JOINTS,
+    G1_DEX3_LEFT_HAND_OPEN,
+    G1_DEX3_RIGHT_HAND_JOINTS,
+    G1_EE_BODY,
+    G1_HAND_GRASP,
+    G1_HAND_JOINTS,
+    G1_HAND_OPEN,
+    swap_robot_variant,
+)
 
 from .g1_bulb_env_cfg import G1BulbInsertEnvCfg
 from .scene_cfg import _quat_x_deg, _spawn_usd_as_rigid_body
@@ -62,13 +75,37 @@ def _spawn_omni_rigid(prim_path, cfg, translation=None, orientation=None):
     root but then cannot author rigid/mass props onto the (instanced) collider prims. De-instancing
     the spawned prim first makes the whole subtree editable, so the rigid body actually forms.
     """
-    from pxr import UsdPhysics
+    from pxr import PhysxSchema, Usd, UsdPhysics
 
     prim = _spawn_from_usd_file(prim_path, cfg.usd_path, cfg, translation, orientation)
     prim.SetInstanceable(False)
     UsdPhysics.RigidBodyAPI.Apply(prim)
     if cfg.rigid_props is not None:
         schemas.modify_rigid_body_properties(prim.GetPath(), cfg.rigid_props)
+
+    # Re-cook the bulb's convex decomposition so the hulls hug the true surface instead of bulging
+    # over the screw threads. The stock hulls make the base collide ~0.033 m wide -- exactly the
+    # socket bore mouth -- so it jams. shrink_wrap + a high hull/voxel budget slims the base to
+    # ~0.029 m (clears the bore) while the wider glass still stops on the rim. Doing this instead of a
+    # negative rest_offset avoids thinning the dynamic collider (which tunnels it through the table).
+    for child in Usd.PrimRange(prim):
+        if not child.HasAPI(UsdPhysics.MeshCollisionAPI):
+            continue
+        approx = UsdPhysics.MeshCollisionAPI(child).GetApproximationAttr().Get()
+        if approx != "convexDecomposition":
+            continue
+        dapi = PhysxSchema.PhysxConvexDecompositionCollisionAPI.Apply(child)
+        dapi.CreateShrinkWrapAttr(True)
+        dapi.CreateMaxConvexHullsAttr(64)
+        dapi.CreateHullVertexLimitAttr(64)
+        dapi.CreateVoxelResolutionAttr(500000)
+        dapi.CreateErrorPercentageAttr(1.0)
+
+    if cfg.collision_props is not None:
+        # Recurses to every collider under the (de-instanced) subtree: sets a small contact offset
+        # appropriate for this 0.007-scale asset (rest_offset stays 0 -- the tightened decomposition
+        # above, not a thinned skin, is what lets the base enter the bore).
+        schemas.modify_collision_properties(prim.GetPath(), cfg.collision_props)
     if cfg.mass_props is not None:
         UsdPhysics.MassAPI.Apply(prim)
         schemas.modify_mass_properties(prim.GetPath(), cfg.mass_props)
@@ -123,23 +160,39 @@ class G1BulbInsertTeleopEnvCfg(G1BulbInsertEnvCfg):
             scale=(0.007, 0.007, 0.007),
             rigid_props=sim_utils.RigidBodyPropertiesCfg(kinematic_enabled=True),
         )
-        self.scene.socket.init_state.pos = (0.48, 0.12, 0.88)
+        self.scene.socket.init_state.pos = (0.51, 0.35, 0.80)  # centered between the two hands, at arm's length,
+        # lowered to ~hand-rest height (right x~0.38, left x~0.64) -- reachable by either arm, clear of rest zone
         self.scene.socket.init_state.rot = upright
         self.scene.bulb.spawn = sim_utils.UsdFileCfg(
             usd_path=OMNI_BULB_USD,
             func=_spawn_omni_rigid,
-            scale=(0.007, 0.007, 0.007),
+            # Bulb scaled slightly smaller than the socket (0.006 vs the socket's 0.007) so its narrower
+            # glass clears more of the socket mouth and the dark screw base sinks deeper into the socket
+            # (a more "screwed-in" look) instead of the glass resting proud on the rim. Deliberately
+            # breaks the asset's 1:1 bulb/socket ratio -- see the socket spawn above (still 0.007).
+            scale=(0.006, 0.006, 0.006),
             rigid_props=sim_utils.RigidBodyPropertiesCfg(
                 kinematic_enabled=False,
-                solver_position_iteration_count=16,
-                solver_velocity_iteration_count=1,
+                solver_position_iteration_count=64,
+                solver_velocity_iteration_count=4,
+                max_depenetration_velocity=0.5,
             ),
+            # Make the bulb hand-insertable. The stock convex-decomposition hulls bulge over the screw
+            # threads, so the bulb's base (true surface radius ~0.02 m) collides ~0.033 m wide and jams
+            # on the socket-bore mouth (~0.033 m inner radius) -- it can't be pushed in. Instead of
+            # thinning the collider (negative rest_offset tunnels the dynamic bulb through the table),
+            # _spawn_omni_rigid re-cooks the decomposition with shrink-wrap + a high hull count so the
+            # hulls hug the true surface: the base slims to ~0.029 m (clears the bore) while the wider
+            # glass (~0.041 m) still rests on the rim. rest_offset stays 0 (no tunneling); the tiny
+            # contact_offset suits this 0.007-scale asset.
+            collision_props=sim_utils.CollisionPropertiesCfg(contact_offset=0.002, rest_offset=0.0),
             mass_props=sim_utils.MassPropertiesCfg(mass=0.10),
         )
-        # Spawn just above the surface so it barely drops -- a taller drop lets the thin bulb bounce
-        # and roll to an unpredictable spot, breaking the open-loop grasp. y kept inside the table's
-        # near edge (y=0.281) so it rests on the surface instead of teetering off it.
-        self.scene.bulb.init_state.pos = (0.34, 0.24, 0.93)
+        # Spawn essentially resting on the surface (~1 cm above) so it barely drops. The smaller 0.006
+        # bulb has a thinner collider that will TUNNEL through the kinematic table if dropped from a
+        # height (verified: a 5 cm spawn drop fell through on some resets), so keep the drop tiny.
+        # y kept inside the table's near edge (y=0.281) so it rests on the surface, not teetering off.
+        self.scene.bulb.init_state.pos = (0.34, 0.24, 0.89)
         self.scene.bulb.init_state.rot = upright
 
         # NOTE: use the robot's tuned per-joint arm gains (_ARM_STIFFNESS/_ARM_DAMPING/_ARM_ARMATURE
@@ -195,6 +248,16 @@ class G1BulbInsertTeleopEnvCfg(G1BulbInsertEnvCfg):
         self.terminations.time_out = None
         self.terminations.success = None
         self.terminations.bulb_dropped = None
+
+        # Silence the PhysX "PxRigidDynamic::setLinearVelocity: Body must be non-kinematic!" spam on
+        # reset. Isaac Lab's reset events write a (zero) velocity to every entity, but the socket and
+        # table are KINEMATIC and reject velocity writes -- harmless (they just ignore it and stay put)
+        # but it floods the console. Neither moves during stationary teleop, so we simply don't reset
+        # them: drop the whole-scene reset and the socket pose-randomizer, leaving only the resets for
+        # what the operator actually disturbs -- the arm (reset_robot_joints) and the bulb (reset_bulb).
+        # Bonus: the socket now stays parked at its fixed, reachable spot instead of jumping +-5 cm.
+        self.events.reset_all = None
+        self.events.reset_socket = None
 
         # XR scene anchor: the sim-world pose (on the floor) that maps to the origin of the headset's
         # local frame -- i.e. where the scene appears relative to the standing operator. Set near the
@@ -283,3 +346,28 @@ class G1BulbInsertTeleopEnvCfg(G1BulbInsertEnvCfg):
                 ),
             }
         )
+
+
+def apply_dex3_hands(env_cfg) -> None:
+    """Switch a *parsed* Insert-Teleop env cfg from Inspire to Dex3 hands, in place.
+
+    The stock ``swap_robot_variant`` only re-points reward/termination/event terms, but this teleop
+    env also hardcodes Inspire hand joints in (a) the ``joint_pos``/``joint_vel`` observations and
+    (b) the binary-grip actions -- so we patch those to the Dex3 joints + Dex3 open/grasp presets too.
+    Call from the launcher after ``parse_env_cfg`` (e.g. ``--hand dex3``); Inspire is the default.
+    """
+    swap_robot_variant(env_cfg, "dex3")
+    # swap_robot_variant keeps only prim_path + init_state, so it drops the teleop robot spawn overrides
+    # -- re-apply them or the free-legged Dex3 base has no balance controller and tips over.
+    env_cfg.scene.robot.spawn.articulation_props.fix_root_link = True  # bolt pelvis to world (fixed base)
+    env_cfg.scene.robot.spawn.articulation_props.enabled_self_collisions = False  # calm finger self-contact
+    # observations: joint_pos/joint_vel scope arm + (Inspire) hand joints -> use the Dex3 hand joints
+    for _obs in (env_cfg.observations.policy.joint_pos, env_cfg.observations.policy.joint_vel):
+        _obs.params["asset_cfg"].joint_names = list(G1_ARM_JOINTS) + list(G1_DEX3_RIGHT_HAND_JOINTS)
+    # actions: repoint the binary grip to the Dex3 finger joints + Dex3 open/grasp
+    env_cfg.actions.hand_action.joint_names = list(G1_DEX3_RIGHT_HAND_JOINTS)
+    env_cfg.actions.hand_action.open_command_expr = dict(G1_DEX3_HAND_OPEN)
+    env_cfg.actions.hand_action.close_command_expr = dict(G1_DEX3_HAND_GRASP)
+    env_cfg.actions.left_hand_action.joint_names = list(G1_DEX3_LEFT_HAND_JOINTS)
+    env_cfg.actions.left_hand_action.open_command_expr = dict(G1_DEX3_LEFT_HAND_OPEN)
+    env_cfg.actions.left_hand_action.close_command_expr = dict(G1_DEX3_LEFT_HAND_GRASP)

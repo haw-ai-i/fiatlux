@@ -1,31 +1,26 @@
 #!/usr/bin/env bash
-# One-command clean restart of the fiatlux XR teleop stack (CloudXR runtime + Isaac Lab sim).
+# Launch the LOCO-MANIP-in-REAL-INSERT-ENV stack over CloudXR: CloudXR runtime (Process A, env
+# `vr_teleop`) + the real FIATLUX-Insert-Teleop env with SONIC legs (Process B = sonic_insert_teleop.py,
+# env `env_isaaclab`). Walk up to the table with the LEFT stick + insert with the tuned arm teleop.
+# Mirrors restart_sonic_vr.sh but runs the real-env merge driver.
 #
-# Reconnecting a headset to a still-running session degrades CloudXR's controller pose stream
-# (its device-config handshake goes flaky), which brings back the "arm moves randomly" behaviour.
-# The reliable fix is a fresh runtime + fresh sim + fresh connect -- this script does exactly that.
-#
-# Usage:  bash scripts/restart_xr_teleop.sh
-# Env overrides: NV_CXR_ENDPOINT_IP (tailnet IP), FIATLUX_TASK, FIATLUX_TELEOP_DEVICE, DISPLAY
+# Env overrides: NV_CXR_ENDPOINT_IP (tailnet IP), NV_CXR_MEDIA_PORT, DISPLAY.
 set -u
-
 TAILNET_IP="${NV_CXR_ENDPOINT_IP:-100.112.32.21}"
 MEDIA_PORT="${NV_CXR_MEDIA_PORT:-47998}"
-TASK="${FIATLUX_TASK:-FIATLUX-Insert-Teleop-v0}"
-DEVICE="${FIATLUX_TELEOP_DEVICE:-controller_rel}"
-HAND="${FIATLUX_HAND:-inspire}"          # inspire (5-finger) | dex3 (Unitree 3-finger)
+TASK="${FIATLUX_TASK:-FIATLUX-Insert-Teleop-v0}"   # e.g. FIATLUX-Carry-Teleop-v0
+HAND="${FIATLUX_HAND:-dex3}"                       # dex3 | inspire
 REPO="$HOME/robotica_project/fiatlux/fiatlux"
 LOGDIR="/tmp/fiatlux-xr"; mkdir -p "$LOGDIR"
-
 source ~/miniconda3/etc/profile.d/conda.sh
 
 echo "[1/5] stopping existing sim + runtime..."
-for p in $(pgrep -f "scripts/xr_teleop.py" || true); do kill "$p" 2>/dev/null || true; done
+for p in $(pgrep -f "scripts/sonic_teleop.py" || true) $(pgrep -f "scripts/sonic_drive.py" || true) $(pgrep -f "scripts/xr_teleop.py" || true); do kill "$p" 2>/dev/null || true; done
 for p in $(ss -tlnp 2>/dev/null | grep -E ":48322|:49100" | grep -oE "pid=[0-9]+" | grep -oE "[0-9]+" | sort -u); do
   kill "$p" 2>/dev/null || true
 done
 sleep 5
-for p in $(pgrep -f "scripts/xr_teleop.py" || true) $(pgrep -f "isaacteleop.cloudxr" || true); do
+for p in $(pgrep -f "scripts/sonic_teleop.py" || true) $(pgrep -f "isaacteleop.cloudxr" || true); do
   kill -9 "$p" 2>/dev/null || true
 done
 sleep 2
@@ -47,24 +42,23 @@ if ss -tln 2>/dev/null | grep -q ":48322"; then echo "   runtime up (48322 + 491
   echo "   !! runtime failed -- see $LOGDIR/runtime.log"; exit 1; fi
 conda deactivate
 
-echo "[4/5] starting Isaac Lab sim (task=$TASK device=$DEVICE hand=$HAND)..."
+echo "[4/5] starting Isaac Lab real-Insert-env sim (sonic_insert_teleop.py)..."
 conda activate env_isaaclab
 source ~/.cloudxr/run/cloudxr.env
 cd "$REPO"
 export PYTHONPATH="$REPO/source/fiatlux_task"
 export DISPLAY="${DISPLAY:-:1001}"
-rm -f /dev/shm/carb-RStringInternals-* /dev/shm/sem.carb-RStringInternals-* /dev/shm/sem.carbonite-sharedmemory 2>/dev/null || true
-nohup python -u scripts/xr_teleop.py --task "$TASK" --teleop_device "$DEVICE" --hand "$HAND" > "$LOGDIR/sim.log" 2>&1 &
-for _ in $(seq 1 150); do grep -q "Teleop ready" "$LOGDIR/sim.log" 2>/dev/null && break; sleep 2; done
-if grep -q "Teleop ready" "$LOGDIR/sim.log"; then echo "   sim ready"; else
-  echo "   sim not ready yet -- watch: tail -f $LOGDIR/sim.log"; fi
+echo "   task=$TASK hand=$HAND"
+nohup python -u scripts/sonic_teleop.py --task "$TASK" --hand "$HAND" > "$LOGDIR/sonic_insert.log" 2>&1 &
+for _ in $(seq 1 150); do grep -q "Teleop ready" "$LOGDIR/sonic_insert.log" 2>/dev/null && break; sleep 2; done
+if grep -q "Teleop ready" "$LOGDIR/sonic_insert.log"; then echo "   sim ready"; else
+  echo "   sim not ready yet -- watch: tail -f $LOGDIR/sonic_insert.log"; fi
 
+echo "[5/5] READY."
 cat <<EOF
-
-[5/5] DONE.
-  1. In the Isaac Sim window: AR panel -> Start AR.
-  2. On the Pico browser: https://$TAILNET_IP:48322/client/   (accept cert -> Advanced -> Proceed)
+  1. In the Isaac Sim window: AR panel -> Output OpenXR, Runtime System OpenXR Runtime -> Start AR.
+  2. On the Pico browser: https://$TAILNET_IP:48322/client/  (accept cert -> Advanced -> Proceed)
      Settings: Server IP $TAILNET_IP, Port 48322, Device Profile Pico 4 Ultra -> Connect.
-  3. Hold grip to move an arm, trigger to grasp, R to reset.
-  Logs: $LOGDIR/runtime.log , $LOGDIR/sim.log
+  3. Walk to the table (LEFT stick) + insert (controller_rel arm teleop: grip-clutch + move, trigger grasp).
+  Logs: $LOGDIR/runtime.log , $LOGDIR/sonic_insert.log
 EOF

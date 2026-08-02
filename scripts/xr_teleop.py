@@ -50,6 +50,13 @@ parser.add_argument(
 parser.add_argument("--task", type=str, default="FIATLUX-Insert-Teleop-v0", help="Name of the task.")
 parser.add_argument("--sensitivity", type=float, default=1.0, help="Sensitivity factor.")
 parser.add_argument(
+    "--hand",
+    type=str,
+    default="inspire",
+    choices=["inspire", "dex3"],
+    help="G1 hand variant: inspire (default 5-finger) or dex3 (Unitree 3-finger).",
+)
+parser.add_argument(
     "--enable_pinocchio",
     action="store_true",
     default=False,
@@ -124,6 +131,12 @@ def main() -> None:
     # parse configuration
     env_cfg = parse_env_cfg(args_cli.task, device=args_cli.device, num_envs=args_cli.num_envs)
     env_cfg.env_name = args_cli.task
+    if args_cli.hand.lower() == "dex3":
+        # swap the G1 to Dex3 hands (robot + observations + grip actions + Dex3 grasp presets)
+        from fiatlux_task.tasks.manager_based.fiatlux_task.insert_teleop_env_cfg import apply_dex3_hands
+
+        apply_dex3_hands(env_cfg)
+        print("Hand variant: Dex3 (Unitree 3-finger).")
     if not isinstance(env_cfg, ManagerBasedRLEnvCfg):
         raise ValueError(
             "Teleoperation is only supported for ManagerBasedRLEnv environments. "
@@ -192,6 +205,49 @@ def main() -> None:
         "click 'Start AR', then connect the headset. Press 'R' to reset."
     )
 
+    # Passive insertion monitor -- PHYSICS does the inserting. The human lowers the bulb into the
+    # socket themselves: the socket is a concave triangle-mesh collider (a real hole) and the bulb's
+    # convex decomposition is shrink-wrapped so the screw base clears the bore. This block NEVER moves
+    # the bulb (no auto-snap / no weld) -- it only detects and reports when the bulb is seated.
+    # "Seated" = the bulb root is (a) centered on the socket axis and (b) at the seated height (base
+    # dropped into the bore, not perched on the rim), and (c) settled (low speed). Measured headless
+    # (the slightly-smaller 0.006 bulb): a centered drop settles at dz ~= +0.004 relative to the socket
+    # root, dxy ~= 0.000; a base resting on the flat socket top (not in the hole) sits higher, so the
+    # upper dz bound rejects it.
+    _SEAT_DZ_LO = -0.030  # bulb root vs socket root: lower bound (allow a touch deeper)
+    _SEAT_DZ_HI = 0.028   # ... upper bound -- above this the base is perched on the rim, not in the bore
+    _SEAT_DXY = 0.020     # centered in the bore (m)
+    _SEAT_VMAX = 0.08     # settled, not mid-flight (m/s)
+
+    _seat_state = {"seated": False, "dbg": 0}
+    try:
+        _bulb = env.scene["bulb"]
+        _socket = env.scene["socket"]
+        _seat_ok = True
+    except Exception as _e:  # noqa: BLE001
+        logger.warning(f"Insertion monitor disabled (bulb/socket not found): {_e}")
+        _seat_ok = False
+
+    def _update_bulb_seat() -> None:
+        """Report-only. Never moves the bulb -- the human inserts it via physics."""
+        if not _seat_ok:
+            return
+        sroot = _socket.data.root_pos_w[0]
+        broot = _bulb.data.root_pos_w[0]
+        dz = float(broot[2] - sroot[2])
+        dxy = float(torch.norm(broot[:2] - sroot[:2]))
+        spd = float(torch.norm(_bulb.data.root_lin_vel_w[0]))
+        inserted = (_SEAT_DZ_LO < dz < _SEAT_DZ_HI) and (dxy < _SEAT_DXY) and (spd < _SEAT_VMAX)
+        if inserted and not _seat_state["seated"]:
+            _seat_state["seated"] = True
+            print("Bulb inserted into socket.", flush=True)
+        elif _seat_state["seated"] and (dz > _SEAT_DZ_HI + 0.03 or dxy > _SEAT_DXY + 0.02):
+            _seat_state["seated"] = False  # pulled back out
+            print("Bulb removed from socket.", flush=True)
+        _seat_state["dbg"] += 1
+        if _seat_state["dbg"] % 30 == 0:  # TEMP: watch insertion progress (dz sinks negative as it goes in)
+            print(f"[SEAT] dz={dz:+.3f} dxy={dxy:.3f} spd={spd:.3f} seated={int(_seat_state['seated'])}", flush=True)
+
     while simulation_app.is_running():
         try:
             with torch.inference_mode():
@@ -199,6 +255,7 @@ def main() -> None:
                 if action is not None and teleoperation_active:
                     actions = action.repeat(env.num_envs, 1)
                     env.step(actions)
+                    _update_bulb_seat()
                 else:
                     # keep rendering (and streaming to the headset) while inactive / awaiting tracking
                     env.sim.render()
@@ -207,6 +264,7 @@ def main() -> None:
                     should_reset = False
                     env.reset()
                     _reset_teleop()
+                    _seat_state["seated"] = False  # insertion state clears on reset
                     print("Environment reset complete")
         except KeyboardInterrupt:
             break

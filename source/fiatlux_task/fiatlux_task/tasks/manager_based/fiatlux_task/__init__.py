@@ -69,6 +69,17 @@ gym.register(
     },
 )
 
+# Teleoperation variant of Carry (ladder-positioning): bimanual arm IK + Dex3 grip on the ladder
+# scene, driven by scripts/sonic_teleop.py (SONIC legs + whole-body teleop). See carry_teleop_env_cfg.
+gym.register(
+    id="FIATLUX-Carry-Teleop-v0",
+    entry_point="isaaclab.envs:ManagerBasedRLEnv",
+    disable_env_checker=True,
+    kwargs={
+        "env_cfg_entry_point": f"{__name__}.carry_teleop_env_cfg:CarryTeleopEnvCfg",
+    },
+)
+
 gym.register(
     id="FIATLUX-Climb-v0",
     entry_point="isaaclab.envs:ManagerBasedRLEnv",
