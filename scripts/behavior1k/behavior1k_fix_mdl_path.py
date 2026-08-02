@@ -87,8 +87,10 @@ def main():
         if n > 0:
             touched += 1
             total += n
-    print(f"[{'rewrote' if apply else 'would rewrite'} {total} sourceAsset(s) across {touched}/{len(files)} files]",
-          flush=True)
+    print(
+        f"[{'rewrote' if apply else 'would rewrite'} {total} sourceAsset(s) across {touched}/{len(files)} files]",
+        flush=True,
+    )
 
 
 if __name__ == "__main__":

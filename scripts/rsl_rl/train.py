@@ -17,9 +17,7 @@ import cli_args  # isort: skip
 
 # add argparse arguments
 parser = argparse.ArgumentParser(description="Train an RL agent with RSL-RL.")
-parser.add_argument(
-    "--video", action="store_true", default=False, help="Record videos during training."
-)
+parser.add_argument("--video", action="store_true", default=False, help="Record videos during training.")
 parser.add_argument(
     "--video_length",
     type=int,
@@ -32,9 +30,7 @@ parser.add_argument(
     default=2000,
     help="Interval between video recordings (in steps).",
 )
-parser.add_argument(
-    "--num_envs", type=int, default=None, help="Number of environments to simulate."
-)
+parser.add_argument("--num_envs", type=int, default=None, help="Number of environments to simulate.")
 parser.add_argument("--task", type=str, default=None, help="Name of the task.")
 parser.add_argument(
     "--agent",
@@ -43,11 +39,14 @@ parser.add_argument(
     help="Name of the RL agent configuration entry point.",
 )
 parser.add_argument(
-    "--seed", type=int, default=None, help="Seed used for the environment"
+    "--seed",
+    type=int,
+    default=0,
+    help="Seed for the environment, the agent, and the Replace room layout. -1 draws one at "
+    "random and reports it. Defaults to 0 rather than the agent cfg's own seed so that one "
+    "flag governs every draw in the run, including the layout.",
 )
-parser.add_argument(
-    "--max_iterations", type=int, default=None, help="RL Policy training iterations."
-)
+parser.add_argument("--max_iterations", type=int, default=None, help="RL Policy training iterations.")
 parser.add_argument(
     "--distributed",
     action="store_true",
@@ -124,6 +123,7 @@ if version.parse(installed_version) < version.parse(RSL_RL_VERSION):
 
 import logging
 import os
+import random
 import time
 from datetime import datetime
 
@@ -151,6 +151,7 @@ from isaaclab_tasks.utils.hydra import hydra_task_config
 logger = logging.getLogger(__name__)
 
 import fiatlux_task.tasks  # noqa: F401
+from fiatlux_task.tasks.manager_based.fiatlux_task.scene_cfg import set_layout_seed
 
 torch.backends.cuda.matmul.allow_tf32 = True
 torch.backends.cudnn.allow_tf32 = True
@@ -166,27 +167,17 @@ def main(
     """Train with RSL-RL agent."""
     # override configurations with non-hydra CLI arguments
     agent_cfg = cli_args.update_rsl_rl_cfg(agent_cfg, args_cli)
-    env_cfg.scene.num_envs = (
-        args_cli.num_envs if args_cli.num_envs is not None else env_cfg.scene.num_envs
-    )
+    env_cfg.scene.num_envs = args_cli.num_envs if args_cli.num_envs is not None else env_cfg.scene.num_envs
     agent_cfg.max_iterations = (
-        args_cli.max_iterations
-        if args_cli.max_iterations is not None
-        else agent_cfg.max_iterations
+        args_cli.max_iterations if args_cli.max_iterations is not None else agent_cfg.max_iterations
     )
 
     # set the environment seed
     # note: certain randomizations occur in the environment initialization so we set the seed here
     env_cfg.seed = agent_cfg.seed
-    env_cfg.sim.device = (
-        args_cli.device if args_cli.device is not None else env_cfg.sim.device
-    )
+    env_cfg.sim.device = args_cli.device if args_cli.device is not None else env_cfg.sim.device
     # check for invalid combination of CPU device with distributed training
-    if (
-        args_cli.distributed
-        and args_cli.device is not None
-        and "cpu" in args_cli.device
-    ):
+    if args_cli.distributed and args_cli.device is not None and "cpu" in args_cli.device:
         raise ValueError(
             "Distributed training is not supported when using CPU device. "
             "Please use GPU device (e.g., --device cuda) for distributed training."
@@ -228,15 +219,11 @@ def main(
 
     # Skip USD xform mirroring during training; no visual, per-env USD writes
     # add overhead at scale. Teleop/play/record keep the default (True).
-    if hasattr(env_cfg, "events") and hasattr(
-        env_cfg.events, "randomize_board_and_parts"
-    ):
+    if hasattr(env_cfg, "events") and hasattr(env_cfg.events, "randomize_board_and_parts"):
         env_cfg.events.randomize_board_and_parts.params["sync_usd_xforms"] = False
 
     # create isaac environment
-    env = gym.make(
-        args_cli.task, cfg=env_cfg, render_mode="rgb_array" if args_cli.video else None
-    )
+    env = gym.make(args_cli.task, cfg=env_cfg, render_mode="rgb_array" if args_cli.video else None)
 
     # convert to single-agent instance if required by the RL algorithm
     if isinstance(env.unwrapped, DirectMARLEnv):
@@ -244,9 +231,7 @@ def main(
 
     # save resume path before creating a new log_dir
     if agent_cfg.resume or agent_cfg.algorithm.class_name == "Distillation":
-        resume_path = get_checkpoint_path(
-            log_root_path, agent_cfg.load_run, agent_cfg.load_checkpoint
-        )
+        resume_path = get_checkpoint_path(log_root_path, agent_cfg.load_run, agent_cfg.load_checkpoint)
 
     # wrap for video recording
     if args_cli.video:
@@ -267,13 +252,9 @@ def main(
 
     # create runner from rsl-rl
     if agent_cfg.class_name == "OnPolicyRunner":
-        runner = OnPolicyRunner(
-            env, agent_cfg.to_dict(), log_dir=log_dir, device=agent_cfg.device
-        )
+        runner = OnPolicyRunner(env, agent_cfg.to_dict(), log_dir=log_dir, device=agent_cfg.device)
     elif agent_cfg.class_name == "DistillationRunner":
-        runner = DistillationRunner(
-            env, agent_cfg.to_dict(), log_dir=log_dir, device=agent_cfg.device
-        )
+        runner = DistillationRunner(env, agent_cfg.to_dict(), log_dir=log_dir, device=agent_cfg.device)
     else:
         raise ValueError(f"Unsupported runner class: {agent_cfg.class_name}")
     # write git state to logs
@@ -289,9 +270,7 @@ def main(
     dump_yaml(os.path.join(log_dir, "params", "agent.yaml"), agent_cfg)
 
     # run training
-    runner.learn(
-        num_learning_iterations=agent_cfg.max_iterations, init_at_random_ep_len=True
-    )
+    runner.learn(num_learning_iterations=agent_cfg.max_iterations, init_at_random_ep_len=True)
 
     print(f"Training time: {round(time.time() - start_time, 2)} seconds")
 
@@ -300,6 +279,12 @@ def main(
 
 
 if __name__ == "__main__":
+    # hydra builds env_cfg before main's body runs, and the Replace room layout is drawn
+    # during that build -- so the layout's seed has to be declared here or the run is not
+    # reproducible. -1 is resolved now so the layout and the agent share one concrete seed.
+    if args_cli.seed == -1:
+        args_cli.seed = random.randint(0, 10000)
+    set_layout_seed(args_cli.seed)
     # run the main function
     main()  # pyright: ignore[reportCallIssue]
     # close sim app

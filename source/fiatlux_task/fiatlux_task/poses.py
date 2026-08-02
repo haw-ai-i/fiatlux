@@ -20,6 +20,8 @@ actuator gains they were tuned against -- when either changes, re-run the probes
 Joint name sources: ``robots/g1.py`` (``G1_ARM_JOINTS``, ``G1_HAND_JOINTS``).
 """
 
+from .robots.g1 import G1_DEX3_RIGHT_HAND_JOINTS, G1_FINGER_JOINTS, G1_HAND_JOINTS, G1_THUMB_JOINTS
+
 # ---------------------------------------------------------------------------
 # Right arm, palm-down press poses over the bench table.
 # CALIBRATED 2026-07-04 against g1_29dof_with_inspire_rev_1_0 + arm gains
@@ -56,28 +58,58 @@ ARM_PRESS_CRUSH: dict[str, float] = {
 }
 
 # Fingers spread flat for the press (no curl -- the palm face does the work).
-HAND_FLAT: dict[str, float] = dict.fromkeys(
-    (
-        "R_index_proximal_joint",
-        "R_index_intermediate_joint",
-        "R_middle_proximal_joint",
-        "R_middle_intermediate_joint",
-        "R_ring_proximal_joint",
-        "R_ring_intermediate_joint",
-        "R_pinky_proximal_joint",
-        "R_pinky_intermediate_joint",
-        "R_thumb_proximal_yaw_joint",
-        "R_thumb_proximal_pitch_joint",
-        "R_thumb_intermediate_joint",
-        "R_thumb_distal_joint",
-    ),
-    0.0,
-)
+HAND_FLAT: dict[str, float] = dict.fromkeys(G1_HAND_JOINTS, 0.0)
+
+# Right arm/hand, palm-UP cradle: the bulb held IN the hand, not pressed against the
+# bench. CALIBRATED 2026-07-22 against the Omniverse bulb; re-probe if either changes.
+# Constraints the values sit inside:
+#   * wrist roll +1.57 faces the palm up (its surface is the hand link's local -x); the
+#     palm still sits 9-13 deg off level, which no wrist joint removes;
+#   * the hand must close around a bulb already in it -- an open palm holds nothing;
+#   * curl is bounded on BOTH sides: below ~1.0 the bulb slips, at 1.3 the grip exceeds
+#     the 50 N break threshold, and past 1.4 the closing fingers eject it;
+#   * measure grip only with the material pinned (it is a startup randomization).
+# The thumb tops out at 0.6 rad on its pitch joint, hence its own smaller target.
+ARM_CRADLE: dict[str, float] = {**ARM_PRESS_HOVER, "right_wrist_roll_joint": 1.57}
+HAND_CRADLE: dict[str, float] = {
+    **dict.fromkeys(G1_FINGER_JOINTS, 1.0),
+    **dict.fromkeys(G1_THUMB_JOINTS, 0.6),
+}
+
+# ---------------------------------------------------------------------------
+# Dex3 equivalents. The benchmark scores this hand -- it is the only variant GR00T
+# released a checkpoint for -- so the scenarios run on it and Inspire is the opt-in.
+#
+# A different hand, not a renaming: 3 digits, not 5, and every joint range is signed
+# and asymmetric (thumb_2 is [-1.745, 0], so its curl is NEGATIVE while the fingers'
+# is positive). Ranges, from the USD:
+#   index_0/middle_0  [0, +1.571]   index_1/middle_1  [0, +1.745]
+#   thumb_0 [-1.047, +1.047] (swings the thumb into opposition)
+#   thumb_1 [-1.047, +0.611]   thumb_2 [-1.745, 0]
+# ---------------------------------------------------------------------------
+HAND_FLAT_DEX3: dict[str, float] = dict.fromkeys(G1_DEX3_RIGHT_HAND_JOINTS, 0.0)
+_DEX3_CURL = 1.2
+HAND_CRADLE_DEX3: dict[str, float] = {
+    "right_hand_index_0_joint": _DEX3_CURL,
+    "right_hand_index_1_joint": _DEX3_CURL,
+    "right_hand_middle_0_joint": _DEX3_CURL,
+    "right_hand_middle_1_joint": _DEX3_CURL,
+    # thumb swung across the fingers, then curled onto the object
+    "right_hand_thumb_0_joint": 0.9,
+    "right_hand_thumb_1_joint": 0.3,
+    "right_hand_thumb_2_joint": -_DEX3_CURL,
+}
+
+HAND_FLAT_BY_VARIANT: dict[str, dict[str, float]] = {"inspire": HAND_FLAT, "dex3": HAND_FLAT_DEX3}
+HAND_CRADLE_BY_VARIANT: dict[str, dict[str, float]] = {"inspire": HAND_CRADLE, "dex3": HAND_CRADLE_DEX3}
 
 # Bulb release orientation (w, x, y, z): lying on its side on the table (the
 # ymomhw bulb is an elongated ~25 cm body; upright it topples). Long axis along
 # world y so any settling roll runs along x, away from the near table edge.
 BULB_LYING_QUAT: tuple[float, float, float, float] = (0.7071068, 0.7071068, 0.0, 0.0)
+# Upright on its screw cap: the bulb's own stable axis, and the only orientation the hand
+# retains -- laid across the fingers it is pinched against the palm and squirts out.
+BULB_UPRIGHT_QUAT: tuple[float, float, float, float] = (1.0, 0.0, 0.0, 0.0)
 
 # ---------------------------------------------------------------------------
 # Ladder stance: FREE-root lean -- feet on the ground at the A-frame's base,

@@ -47,24 +47,31 @@ parser.add_argument(
     default="zero",
     help="Policy spec: zero | random | <path>.pt | rsl_rl[:<ckpt>].",
 )
+parser.add_argument("--checkpoint", type=str, default=None, help="Checkpoint path for rsl_rl policies.")
 parser.add_argument(
-    "--checkpoint", type=str, default=None, help="Checkpoint path for rsl_rl policies."
-)
-parser.add_argument(
-    "--instruction", type=str, default=None,
+    "--instruction",
+    type=str,
+    default=None,
     help="Language instruction for VLA policies (groot); default: the task's canonical sentence.",
 )
 parser.add_argument(
-    "--robot", type=str, default="inspire", choices=["inspire", "dex3"],
+    "--robot",
+    type=str,
+    default="inspire",
+    choices=["inspire", "dex3"],
     help="G1 hand variant. dex3 matches GR00T's REAL_G1 embodiment.",
+)
+parser.add_argument(
+    "--no_randomize",
+    action="store_true",
+    default=False,
+    help="Deterministic canonical spawns: strip the task's reset-time randomization terms.",
 )
 parser.add_argument("--episodes", type=int, default=20, help="Episodes to evaluate.")
 parser.add_argument("--num_envs", type=int, default=None, help="Parallel envs.")
 parser.add_argument("--seed", type=int, default=0, help="Evaluation seed.")
 parser.add_argument("--output", type=str, default=None, help="Optional JSON output path.")
-parser.add_argument(
-    "--disable_fabric", action="store_true", default=False, help="Use USD I/O."
-)
+parser.add_argument("--disable_fabric", action="store_true", default=False, help="Use USD I/O.")
 # Benchmark telemetry flags (--wandb, --wandb_project, ...); mirrors fiatlux_task.telemetry.
 parser.add_argument("--wandb", action="store_true", default=False, help="Stream the score breakdown to wandb.")
 parser.add_argument("--wandb_project", type=str, default="fiatlux", help="wandb project name.")
@@ -93,6 +100,7 @@ import fiatlux_task.tasks  # noqa: F401
 import gymnasium as gym
 import torch
 from fiatlux_task.policy import make_policy
+from fiatlux_task.tasks.manager_based.fiatlux_task.scene_cfg import set_layout_seed
 from fiatlux_task.telemetry import ScoreLogger
 
 import isaaclab_tasks  # noqa: F401
@@ -100,9 +108,10 @@ from isaaclab_tasks.utils import parse_env_cfg
 
 
 def main():
-    # Scene-build randomization (the replace preset's room layout) draws from the global
-    # `random` stream at cfg-build time; seed it here so the benchmark's determinism
-    # contract (same --task/--seed/--policy -> same numbers) covers the layout too.
+    # The replace preset's room layout is drawn at cfg-build time, so its seed must be
+    # declared before parse_env_cfg -- this is what puts the layout under the benchmark's
+    # same-task/seed/policy -> same-numbers contract.
+    set_layout_seed(args_cli.seed)
     random.seed(args_cli.seed)
     env_cfg = parse_env_cfg(
         args_cli.task,
@@ -115,11 +124,11 @@ def main():
         from fiatlux_task.robots.g1 import swap_robot_variant
 
         swap_robot_variant(env_cfg, args_cli.robot)
+    if args_cli.no_randomize:
+        env_cfg.disable_randomization()
     env = gym.make(args_cli.task, cfg=env_cfg).unwrapped
 
-    policy = make_policy(
-        args_cli.policy, env, checkpoint=args_cli.checkpoint, instruction=args_cli.instruction
-    )
+    policy = make_policy(args_cli.policy, env, checkpoint=args_cli.checkpoint, instruction=args_cli.instruction)
     # All metric definitions (success, episode stats, score breakdown) live in
     # fiatlux_task.telemetry; this loop only feeds it raw step artifacts.
     score_logger = ScoreLogger.from_args(args_cli)

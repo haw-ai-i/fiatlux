@@ -16,8 +16,12 @@ ladder. Dressing randomization is off here -- homogeneous envs keep
 ``replicate_physics=True`` for training scale.
 
 Design notes (kept deliberately simple and hardware-minded for later sim-to-real):
-- **Actions** are joint-position targets on the G1 arm (optionally hand), which
-  map directly onto commands the Unitree SDK can consume on the real robot.
+- **Actions** are a single whole-body joint-position term (all DoF, like
+  Climb/Carry/Replace) so any policy artifact -- including the GR00T baseline's
+  ``GearWbcDecoder``, which assumes one ``joint_pos`` action term sized to
+  ``robot.num_joints`` -- runs unmodified across the whole task family. The task
+  itself only rewards/observes the arm+hand joints; the legs have nothing driving
+  them off their spawn default unless a policy (or the WBC) chooses to move them.
 - **Observations** are split into a default *sensor-realizable* ``policy`` group
   (proprioception + wrist camera + contact forces) and a separate *privileged*
   group (ground-truth bulb/socket pose) used only by the critic and scripted
@@ -28,7 +32,6 @@ now; they get factored into shared manipulation blocks when the at-fixture
 Install task becomes their second consumer (unification spec, Phase 4).
 """
 
-import isaaclab.sim as sim_utils
 from isaaclab.envs import ManagerBasedRLEnvCfg
 from isaaclab.managers import EventTermCfg as EventTerm
 from isaaclab.managers import ObservationGroupCfg as ObsGroup
@@ -36,7 +39,6 @@ from isaaclab.managers import ObservationTermCfg as ObsTerm
 from isaaclab.managers import RewardTermCfg as RewTerm
 from isaaclab.managers import SceneEntityCfg
 from isaaclab.managers import TerminationTermCfg as DoneTerm
-from isaaclab.sensors import TiledCameraCfg
 from isaaclab.utils import configclass
 from isaaclab.utils.noise import AdditiveUniformNoiseCfg as Unoise
 
@@ -48,7 +50,13 @@ from fiatlux_task.robots.g1 import (
 
 from . import mdp
 from .climb_env_cfg import FALL_MIN_HEIGHT, FALL_TILT_LIMIT
-from .scene_cfg import G1ReplaceSceneCfg, apply_tabletop_preset
+from .scene_cfg import (
+    ROOM_ENV_SPACING,
+    G1ReplaceSceneCfg,
+    add_ego_camera,
+    add_wrist_camera,
+    apply_tabletop_preset,
+)
 
 ##
 # MDP settings
@@ -57,18 +65,15 @@ from .scene_cfg import G1ReplaceSceneCfg, apply_tabletop_preset
 
 @configclass
 class ActionsCfg:
-    """Joint-position targets on the G1 arm (hardware-realizable for sim-to-real)."""
+    """Whole-body joint-position targets (hardware-realizable for sim-to-real).
 
-    arm_action = mdp.JointPositionActionCfg(
+    Matches the ``[".*"]`` convention Climb/Carry/Replace use -- one action term
+    covering every joint -- so the family shares a single action-space contract.
+    """
+
+    joint_pos = mdp.JointPositionActionCfg(
         asset_name="robot",
-        joint_names=G1_ARM_JOINTS,
-        scale=0.5,
-        use_default_offset=True,
-    )
-    # Right Inspire-hand finger targets, so the policy can grasp/release the bulb.
-    hand_action = mdp.JointPositionActionCfg(
-        asset_name="robot",
-        joint_names=G1_HAND_JOINTS,
+        joint_names=[".*"],
         scale=0.5,
         use_default_offset=True,
     )
@@ -84,20 +89,12 @@ class ObservationsCfg:
 
         joint_pos = ObsTerm(
             func=mdp.joint_pos_rel,
-            params={
-                "asset_cfg": SceneEntityCfg(
-                    "robot", joint_names=G1_ARM_JOINTS + G1_HAND_JOINTS
-                )
-            },
+            params={"asset_cfg": SceneEntityCfg("robot", joint_names=G1_ARM_JOINTS + G1_HAND_JOINTS)},
             noise=Unoise(n_min=-0.01, n_max=0.01),
         )
         joint_vel = ObsTerm(
             func=mdp.joint_vel_rel,
-            params={
-                "asset_cfg": SceneEntityCfg(
-                    "robot", joint_names=G1_ARM_JOINTS + G1_HAND_JOINTS
-                )
-            },
+            params={"asset_cfg": SceneEntityCfg("robot", joint_names=G1_ARM_JOINTS + G1_HAND_JOINTS)},
             noise=Unoise(n_min=-0.01, n_max=0.01),
         )
         eef_pose = ObsTerm(
@@ -128,12 +125,8 @@ class ObservationsCfg:
     class PrivilegedCfg(ObsGroup):
         """Ground-truth ("cheat") observations for the critic / scripted baselines."""
 
-        bulb_pose = ObsTerm(
-            func=mdp.root_pose_w, params={"asset_cfg": SceneEntityCfg("bulb")}
-        )
-        socket_pose = ObsTerm(
-            func=mdp.root_pose_w, params={"asset_cfg": SceneEntityCfg("socket")}
-        )
+        bulb_pose = ObsTerm(func=mdp.root_pose_w, params={"asset_cfg": SceneEntityCfg("bulb")})
+        socket_pose = ObsTerm(func=mdp.root_pose_w, params={"asset_cfg": SceneEntityCfg("socket")})
 
         def __post_init__(self):
             self.enable_corruption = False
@@ -145,7 +138,14 @@ class ObservationsCfg:
 
 @configclass
 class EventCfg:
-    """Reset-time randomization."""
+    """Reset-time randomization.
+
+    ``reset_all`` restores every asset's default state first (cfg order) -- without it
+    the robot's *root* pose is never reset (only its joints), so any episode ending in
+    a fall leaves the next episode starting with the robot already on the floor. The
+    randomizing terms below then re-pose their own assets on top of the defaults, the
+    same layering Climb/Carry/Replace use.
+    """
 
     # Restores every entity -- including the robot ROOT -- to init_state; must run
     # first (cfg order) so the per-asset randomizations below apply on top. Isaac Lab
@@ -207,6 +207,10 @@ class EventCfg:
         params={"asset_cfgs": [SceneEntityCfg("room")]},
     )
 
+    # Grip friction for the hands (startup, through the PhysX view -- see
+    # mdp.hand_grip_material_event for why this cannot be a USD material bind).
+    randomize_hand_material = mdp.hand_grip_material_event()
+
 
 @configclass
 class RewardsCfg:
@@ -214,17 +218,24 @@ class RewardsCfg:
 
     # -- Bulb -> socket position tracking (coarse / fine / sharp) --
     align_position = RewTerm(
-        func=mdp.object_socket_distance, weight=-1.0,
+        func=mdp.object_socket_distance,
+        weight=-1.0,
     )
     align_position_tanh = RewTerm(
-        func=mdp.object_socket_distance_tanh, weight=0.5, params={"std": 0.1},
+        func=mdp.object_socket_distance_tanh,
+        weight=0.5,
+        params={"std": 0.1},
     )
     seat_position_exp = RewTerm(
-        func=mdp.object_socket_distance_exp, weight=1.0, params={"sigma": 0.02},
+        func=mdp.object_socket_distance_exp,
+        weight=1.0,
+        params={"sigma": 0.02},
     )
     # -- Orientation alignment (bulb axis vs socket axis) --
     align_orientation = RewTerm(
-        func=mdp.object_socket_orientation_tanh, weight=0.3, params={"std": 0.3},
+        func=mdp.object_socket_orientation_tanh,
+        weight=0.3,
+        params={"std": 0.3},
     )
     # -- Sparse seated bonus --
     seated_bonus = RewTerm(
@@ -237,6 +248,12 @@ class RewardsCfg:
         func=mdp.hand_contact_force_l2,
         weight=-1.0e-3,
         params={"sensor_cfg": SceneEntityCfg("hand_contact")},
+    )
+    # -- penalty for the fall itself (fires once; see fell_below/fell_over above) --
+    robot_fall = RewTerm(
+        func=mdp.fall_terminated,
+        weight=-200.0,
+        params={"minimum_height": FALL_MIN_HEIGHT, "limit_angle": FALL_TILT_LIMIT},
     )
     # -- Smoothness / safety --
     action_rate = RewTerm(func=mdp.action_rate_l2, weight=-1.0e-4)
@@ -297,7 +314,7 @@ class G1BulbInsertEnvCfg(ManagerBasedRLEnvCfg):
     # training scale. Cloning stays in USD (not fabric): the hand_contact sensor's PhysX
     # contact-reporter API cannot attach to fabric-cloned env prims.
     scene: G1ReplaceSceneCfg = G1ReplaceSceneCfg(
-        num_envs=1, env_spacing=4.0, replicate_physics=True, clone_in_fabric=False
+        num_envs=1, env_spacing=ROOM_ENV_SPACING, replicate_physics=True, clone_in_fabric=False
     )
     observations: ObservationsCfg = ObservationsCfg()
     actions: ActionsCfg = ActionsCfg()
@@ -315,35 +332,39 @@ class G1BulbInsertEnvCfg(ManagerBasedRLEnvCfg):
 
         # Wrist-mounted RGB camera (sensor-realizable observation). Requires launching
         # with --enable_cameras.
-        self.scene.wrist_camera = TiledCameraCfg(
-            prim_path="{ENV_REGEX_NS}/Robot/" + G1_EE_BODY + "/wrist_camera",
-            spawn=sim_utils.PinholeCameraCfg(
-                focal_length=22.48,
-                horizontal_aperture=20.955,
-                clipping_range=(0.05, 5.0),
-            ),
-            height=224,
-            width=224,
-            data_types=["rgb"],
-            offset=TiledCameraCfg.OffsetCfg(
-                pos=(0.05, 0.0, 0.0), rot=(1.0, 0.0, 0.0, 0.0), convention="ros"
-            ),
-        )
+        add_wrist_camera(self.scene)
+        # Head-mounted RGB camera, unused by this task's own reward/observation terms but
+        # needed by any whole-body/VLA policy (GR00T's ego view) run across the family --
+        # GrootPolicy looks up ``scene["ego_camera"]`` unconditionally.
+        add_ego_camera(self.scene)
 
         self.decimation = 4
         self.sim.render_interval = self.decimation
         self.episode_length_s = 15.0
-        # Control-rate parity with the pre-unification env (30 Hz); the family base runs
-        # 50 Hz -- reconciling is a deliberate, separate decision (unification spec).
-        self.sim.dt = 1.0 / 120.0
+        # family control rate (50 Hz; the GEAR-WBC decoders enforce it)
+        self.sim.dt = 1.0 / 200.0
         # PhysX solver floors from the family base: without them the uncontrolled robot
         # picks up multi-hundred-m/s kicks against the kinematic table (verify_scene
         # finding, Phase 0). Stabilization further damps the PD-vs-table wedge impulses
         # when the robot lies collapsed against the furniture.
         self.sim.physx.solver_type = 1
         self.sim.physx.min_position_iteration_count = 8
-        self.sim.physx.min_velocity_iteration_count = 4
+        self.sim.physx.min_velocity_iteration_count = 1  # floor, not a target:
+        # per-body counts above it are kept; see FamilyBaseEnvCfg.solver_velocity_iterations
         self.sim.physx.bounce_threshold_velocity = 0.2
         self.sim.physx.enable_stabilization = True
         self.viewer.eye = (2.0, 2.0, 2.0)
         self.viewer.lookat = (0.45, 0.0, 1.1)
+
+    def disable_randomization(self) -> None:
+        """Deterministic canonical spawns (debug / basic testing; ``--no_randomize``).
+
+        Strips the reset-time randomization terms; ``reset_all`` stays -- restoring
+        default state between episodes is correctness, not noise.
+        """
+        self.events.reset_robot_joints = None
+        self.events.reset_socket = None
+        self.events.reset_bulb = None
+        self.events.randomize_light = None
+        # A randomization too, though not a reset term.
+        self.events.randomize_hand_material = mdp.hand_grip_material_event(randomize=False)

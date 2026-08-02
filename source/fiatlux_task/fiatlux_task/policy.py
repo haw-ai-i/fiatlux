@@ -99,8 +99,7 @@ def make_policy(
             # The standard contract: the sensor-realizable group must exist and is the
             # ONLY thing consumed -- privileged/cheat state is never touched.
             assert isinstance(obs, dict) and "policy" in obs, (
-                "basic_standard requires a 'policy' observation group (the standard, "
-                "sensor-realizable mode)"
+                "basic_standard requires a 'policy' observation group (the standard, sensor-realizable mode)"
             )
             _ = obs["policy"]
             return torch.zeros(action_shape, device=device)

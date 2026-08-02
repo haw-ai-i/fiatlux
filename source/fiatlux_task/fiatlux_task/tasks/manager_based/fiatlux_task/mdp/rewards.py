@@ -19,6 +19,11 @@ Ladder climb (``FIATLUX-Climb-v0``) — ascent terms:
 - a whole-body CoM sway penalty,
 - an at-the-top success predicate (also the success termination).
 
+Ladder descent (``FIATLUX-Descend-v0``) — the mirror image of the climb terms: a
+progressive best-*lowest*-height reward (``descend_height_progress``) and an at-the-
+bottom success predicate (``descended_to_target``); reuses climb's contact/sway terms
+and fall gate unchanged.
+
 Full replacement (``FIATLUX-Replace-v0``) — the scored full task:
 - named distance channels (ladder top → fixture, fresh bulb → fixture, old bulb clearance
   from the fixture, old bulb → disposal crate),
@@ -26,6 +31,12 @@ Full replacement (``FIATLUX-Replace-v0``) — the scored full task:
   spawn distances cannot dominate the score),
 - sparse completion predicates (ladder in range, old bulb removed / disposed, full success),
 - a ladder-tipped predicate (penalty + termination for the dynamic ladder).
+
+Bulb removal (``FIATLUX-Remove-v0``) — the old-bulb clearance/disposal channels above,
+standalone: the ``old_bulb_*`` functions take an ``asset_cfg`` (default Replace's
+``old_bulb``) so Remove's single-bulb scene can point them at its own ``bulb`` entity.
+Scored-but-not-yet-achievable until the attach/detach mechanic lands (same gap Replace's
+own removal channel documents) -- the bulb is kinematic, so nothing can actually move it.
 """
 
 from __future__ import annotations
@@ -115,9 +126,7 @@ def bulb_seated(
     ori_threshold: float = 0.2,
 ) -> torch.Tensor:
     """True where the bulb is within position *and* orientation tolerance of the socket."""
-    return (_bulb_socket_pos_error(env) < pos_threshold) & (
-        _bulb_socket_ori_error(env) < ori_threshold
-    )
+    return (_bulb_socket_pos_error(env) < pos_threshold) & (_bulb_socket_ori_error(env) < ori_threshold)
 
 
 def object_dropped(
@@ -135,13 +144,16 @@ def object_dropped(
 # ---------------------------------------------------------------------------
 
 
-def hand_contact_force_l2(
-    env: ManagerBasedRLEnv, sensor_cfg: SceneEntityCfg
-) -> torch.Tensor:
-    """Penalize squared net contact force on the grasping hand (compliance)."""
+def hand_contact_force_l2(env: ManagerBasedRLEnv, sensor_cfg: SceneEntityCfg) -> torch.Tensor:
+    """Penalize squared contact force on the grasping hand (compliance).
+
+    Force on the OBJECT, not the sensor's net force: the net also carries whatever scenery the
+    arm rests against, which would charge the policy for standing near the bench.
+    """
+    from .observations import object_contact_forces
+
     sensor: ContactSensor = env.scene.sensors[sensor_cfg.name]
-    net = sensor.data.net_forces_w  # (N, B, 3)
-    return torch.sum(torch.square(net), dim=(1, 2))
+    return torch.sum(torch.square(object_contact_forces(sensor)), dim=(1, 2))
 
 
 # ---------------------------------------------------------------------------
@@ -149,26 +161,20 @@ def hand_contact_force_l2(
 # ---------------------------------------------------------------------------
 
 
-def joint_acc_l2(
-    env: ManagerBasedRLEnv, asset_cfg: SceneEntityCfg = SceneEntityCfg("robot")
-) -> torch.Tensor:
+def joint_acc_l2(env: ManagerBasedRLEnv, asset_cfg: SceneEntityCfg = SceneEntityCfg("robot")) -> torch.Tensor:
     """Penalize joint accelerations (L2 squared) for smoother motion."""
     asset: Articulation = env.scene[asset_cfg.name]
     return torch.sum(torch.square(asset.data.joint_acc[:, asset_cfg.joint_ids]), dim=1)
 
 
-def joint_pos_limits(
-    env: ManagerBasedRLEnv, asset_cfg: SceneEntityCfg = SceneEntityCfg("robot")
-) -> torch.Tensor:
+def joint_pos_limits(env: ManagerBasedRLEnv, asset_cfg: SceneEntityCfg = SceneEntityCfg("robot")) -> torch.Tensor:
     """Penalize joints that exceed their soft position limits."""
     asset: Articulation = env.scene[asset_cfg.name]
     out_of_limits = -(
-        asset.data.joint_pos[:, asset_cfg.joint_ids]
-        - asset.data.soft_joint_pos_limits[:, asset_cfg.joint_ids, 0]
+        asset.data.joint_pos[:, asset_cfg.joint_ids] - asset.data.soft_joint_pos_limits[:, asset_cfg.joint_ids, 0]
     ).clip(max=0.0)
     out_of_limits += (
-        asset.data.joint_pos[:, asset_cfg.joint_ids]
-        - asset.data.soft_joint_pos_limits[:, asset_cfg.joint_ids, 1]
+        asset.data.joint_pos[:, asset_cfg.joint_ids] - asset.data.soft_joint_pos_limits[:, asset_cfg.joint_ids, 1]
     ).clip(min=0.0)
     return torch.sum(out_of_limits, dim=1)
 
@@ -205,18 +211,59 @@ class climb_height_progress(ManagerTermBase):
         z = asset.data.root_pos_w[ids, 2] - self._env.scene.env_origins[ids, 2]
         self._best_z[ids] = z
 
-    def __call__(
-        self, env: ManagerBasedRLEnv, asset_cfg: SceneEntityCfg = SceneEntityCfg("robot")
-    ) -> torch.Tensor:
+    def __call__(self, env: ManagerBasedRLEnv, asset_cfg: SceneEntityCfg = SceneEntityCfg("robot")) -> torch.Tensor:
         z = _root_pos_env(env, asset_cfg)[:, 2]
         gain = (z - self._best_z).clamp(min=0.0)
         self._best_z = torch.maximum(self._best_z, z)
         return gain
 
 
-def ladder_contact_fraction(
-    env: ManagerBasedRLEnv, sensor_cfg: SceneEntityCfg, threshold: float = 1.0
+class descend_height_progress(ManagerTermBase):
+    """Progressive-descent reward: the positive increment of the episode's best (lowest)
+    root height reached. Mirrors ``climb_height_progress`` exactly but pays height *lost*
+    instead of gained, since Descend starts high and must come back down under control."""
+
+    def __init__(self, cfg: RewardTermCfg, env: ManagerBasedRLEnv):
+        super().__init__(cfg, env)
+        self._best_z = torch.zeros(env.num_envs, device=env.device)
+
+    def reset(self, env_ids: Sequence[int] | None = None) -> None:
+        ids = slice(None) if env_ids is None else env_ids
+        asset: Articulation = self._env.scene["robot"]
+        z = asset.data.root_pos_w[ids, 2] - self._env.scene.env_origins[ids, 2]
+        self._best_z[ids] = z
+
+    def __call__(self, env: ManagerBasedRLEnv, asset_cfg: SceneEntityCfg = SceneEntityCfg("robot")) -> torch.Tensor:
+        z = _root_pos_env(env, asset_cfg)[:, 2]
+        drop = (self._best_z - z).clamp(min=0.0)
+        self._best_z = torch.minimum(self._best_z, z)
+        return drop
+
+
+def descended_to_target(
+    env: ManagerBasedRLEnv,
+    maximum_height: float,
+    xy_center: tuple[float, float],
+    xy_radius: float,
+    max_speed: float = 1.5,
+    asset_cfg: SceneEntityCfg = SceneEntityCfg("robot"),
 ) -> torch.Tensor:
+    """True where the root has come back down below ``maximum_height`` near the ladder base.
+
+    Mirrors ``climbed_to_target``'s horizontal gate and speed cap (rejects a solver-kicked
+    robot flying through the success region) with the height gate inverted. Also the
+    ``success`` termination."""
+    asset: Articulation = env.scene[asset_cfg.name]
+    pos = _root_pos_env(env, asset_cfg)
+    low = pos[:, 2] < maximum_height
+    dx = pos[:, 0] - xy_center[0]
+    dy = pos[:, 1] - xy_center[1]
+    near = (dx.square() + dy.square()) < xy_radius**2
+    calm = asset.data.root_lin_vel_w.norm(dim=-1) < max_speed
+    return low & near & calm
+
+
+def ladder_contact_fraction(env: ManagerBasedRLEnv, sensor_cfg: SceneEntityCfg, threshold: float = 1.0) -> torch.Tensor:
     """Fraction of the sensor's bodies in contact with its filtered prim (the ladder).
 
     Reads the filtered ``force_matrix_w`` of one multi-body contact sensor (feet +
@@ -244,9 +291,7 @@ class com_sway_l2(ManagerTermBase):
         masses = asset.data.default_mass.to(env.device)  # (N, B)
         self._mass_frac = (masses / masses.sum(dim=-1, keepdim=True)).unsqueeze(-1)
 
-    def __call__(
-        self, env: ManagerBasedRLEnv, asset_cfg: SceneEntityCfg = SceneEntityCfg("robot")
-    ) -> torch.Tensor:
+    def __call__(self, env: ManagerBasedRLEnv, asset_cfg: SceneEntityCfg = SceneEntityCfg("robot")) -> torch.Tensor:
         asset: Articulation = env.scene[asset_cfg.name]
         com_vel = (asset.data.body_com_lin_vel_w * self._mass_frac).sum(dim=1)  # (N, 3)
         return torch.sum(torch.square(com_vel[:, :2]), dim=1)
@@ -314,9 +359,16 @@ def _ladder_top_point_w(env: ManagerBasedRLEnv) -> torch.Tensor:
     return ladder.data.root_pos_w + quat_apply(ladder.data.root_quat_w, offset)
 
 
-def _old_bulb_plug_point_w(env: ManagerBasedRLEnv) -> torch.Tensor:
-    """World position of the old bulb's plug (bulblampM metalink)."""
-    old_bulb: RigidObject = env.scene["old_bulb"]
+def _old_bulb_plug_point_w(
+    env: ManagerBasedRLEnv, asset_cfg: SceneEntityCfg = SceneEntityCfg("old_bulb")
+) -> torch.Tensor:
+    """World position of the (kinematic, "seated") bulb's plug (bulblampM metalink).
+
+    ``asset_cfg`` defaults to Replace's ``old_bulb`` entity; Remove's standalone scene
+    names the same kinematic stand-in ``bulb`` (it has no separate fresh bulb), so its
+    cfg passes ``asset_cfg=SceneEntityCfg("bulb")`` through every function below.
+    """
+    old_bulb: RigidObject = env.scene[asset_cfg.name]
     offset = torch.tensor(BULB_PLUG_OFFSET, device=env.device).expand(env.num_envs, 3)
     return old_bulb.data.root_pos_w + quat_apply(old_bulb.data.root_quat_w, offset)
 
@@ -331,15 +383,21 @@ def bulb_fixture_distance(env: ManagerBasedRLEnv) -> torch.Tensor:
     return _bulb_socket_pos_error(env)
 
 
-def old_bulb_fixture_clearance(env: ManagerBasedRLEnv) -> torch.Tensor:
+def old_bulb_fixture_clearance(
+    env: ManagerBasedRLEnv, asset_cfg: SceneEntityCfg = SceneEntityCfg("old_bulb")
+) -> torch.Tensor:
     """Distance (m) of the old bulb's plug from the fixture's socket seat (0 = still seated)."""
-    return torch.norm(_old_bulb_plug_point_w(env) - _seat_point_w(env), dim=1)
+    return torch.norm(_old_bulb_plug_point_w(env, asset_cfg) - _seat_point_w(env), dim=1)
 
 
-def old_bulb_disposal_distance(env: ManagerBasedRLEnv) -> torch.Tensor:
+def old_bulb_disposal_distance(
+    env: ManagerBasedRLEnv,
+    asset_cfg: SceneEntityCfg = SceneEntityCfg("old_bulb"),
+    bin_cfg: SceneEntityCfg = SceneEntityCfg("bin"),
+) -> torch.Tensor:
     """Distance (m) from the old bulb to the disposal crate's origin."""
-    old_bulb: RigidObject = env.scene["old_bulb"]
-    crate: RigidObject = env.scene["bin"]
+    old_bulb: RigidObject = env.scene[asset_cfg.name]
+    crate: RigidObject = env.scene[bin_cfg.name]
     return torch.norm(old_bulb.data.root_pos_w - crate.data.root_pos_w, dim=1)
 
 
@@ -423,6 +481,22 @@ class completion_bonus(ManagerTermBase):
         return fire.float()
 
 
+def removal_bulb_fixture_clearance(env: ManagerBasedRLEnv) -> torch.Tensor:
+    """``old_bulb_fixture_clearance`` bound to Remove's standalone ``bulb`` entity.
+
+    ``distance_progress``'s ``distance_fn`` must be a bare module-level ``(env) -> Tensor``
+    callable (no lambdas/closures -- see its docstring), so the ``asset_cfg`` override
+    needed for Remove's single-bulb scene (named ``bulb``, not Replace's ``old_bulb``)
+    is baked into this thin wrapper instead of passed as an extra param.
+    """
+    return old_bulb_fixture_clearance(env, asset_cfg=SceneEntityCfg("bulb"))
+
+
+def removal_bulb_disposal_distance(env: ManagerBasedRLEnv) -> torch.Tensor:
+    """``old_bulb_disposal_distance`` bound to Remove's standalone ``bulb`` entity."""
+    return old_bulb_disposal_distance(env, asset_cfg=SceneEntityCfg("bulb"))
+
+
 def ladder_ready(env: ManagerBasedRLEnv, xy_radius: float, tilt_limit: float) -> torch.Tensor:
     """True where the (upright) ladder's top is horizontally within reach of the fixture."""
     delta = _ladder_top_point_w(env) - _seat_point_w(env)
@@ -430,18 +504,29 @@ def ladder_ready(env: ManagerBasedRLEnv, xy_radius: float, tilt_limit: float) ->
     return near & ~ladder_tipped(env, tilt_limit)
 
 
-def old_bulb_removed(env: ManagerBasedRLEnv, clearance_threshold: float) -> torch.Tensor:
+def old_bulb_removed(
+    env: ManagerBasedRLEnv, clearance_threshold: float, asset_cfg: SceneEntityCfg = SceneEntityCfg("old_bulb")
+) -> torch.Tensor:
     """True where the old bulb has cleared the fixture's socket by ``clearance_threshold``."""
-    return old_bulb_fixture_clearance(env) > clearance_threshold
+    return old_bulb_fixture_clearance(env, asset_cfg) > clearance_threshold
 
 
-def old_bulb_disposed(env: ManagerBasedRLEnv, distance_threshold: float) -> torch.Tensor:
+def old_bulb_disposed(
+    env: ManagerBasedRLEnv,
+    distance_threshold: float,
+    asset_cfg: SceneEntityCfg = SceneEntityCfg("old_bulb"),
+    bin_cfg: SceneEntityCfg = SceneEntityCfg("bin"),
+) -> torch.Tensor:
     """True where the old bulb rests within ``distance_threshold`` of the disposal crate."""
-    return old_bulb_disposal_distance(env) < distance_threshold
+    return old_bulb_disposal_distance(env, asset_cfg, bin_cfg) < distance_threshold
 
 
 def old_bulb_dropped(
-    env: ManagerBasedRLEnv, min_height: float, disposal_threshold: float
+    env: ManagerBasedRLEnv,
+    min_height: float,
+    disposal_threshold: float,
+    asset_cfg: SceneEntityCfg = SceneEntityCfg("old_bulb"),
+    bin_cfg: SceneEntityCfg = SceneEntityCfg("bin"),
 ) -> torch.Tensor:
     """True where the old bulb lies at floor level *away* from the disposal crate.
 
@@ -449,9 +534,9 @@ def old_bulb_dropped(
     the floor (resting inside the crate), so "dropped" additionally requires being outside
     the crate's ``disposal_threshold``.
     """
-    old_bulb: RigidObject = env.scene["old_bulb"]
+    old_bulb: RigidObject = env.scene[asset_cfg.name]
     below = old_bulb.data.root_pos_w[:, 2] < min_height
-    return below & ~old_bulb_disposed(env, disposal_threshold)
+    return below & ~old_bulb_disposed(env, disposal_threshold, asset_cfg, bin_cfg)
 
 
 def full_replacement_success(
@@ -465,9 +550,7 @@ def full_replacement_success(
     Disposal implies removal, so the removed predicate is not re-checked. Also the
     ``success`` termination.
     """
-    return bulb_seated(env, pos_threshold, ori_threshold) & old_bulb_disposed(
-        env, disposal_threshold
-    )
+    return bulb_seated(env, pos_threshold, ori_threshold) & old_bulb_disposed(env, disposal_threshold)
 
 
 def ladder_tipped(

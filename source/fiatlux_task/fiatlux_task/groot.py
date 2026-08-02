@@ -10,7 +10,7 @@ Three policy specs, two in-process whole-body-controller decoders:
 - ``groot`` -- THE baseline: NVIDIA's Isaac-GR00T PolicyServer serving the *base*
   N1.7-3B checkpoint with the ``REAL_G1`` embodiment predicts 40-step chunks of
   upper-body targets + ``navigate_command`` + ``base_height_command`` from two
-  torso RGB frames, proprioception, and a language instruction; the *decoupled*
+  ego-view RGB frames, proprioception, and a language instruction; the *decoupled*
   GEAR whole-body controller (Balance/Walk ONNX pair, :class:`GearWbcDecoder`)
   turns the navigation/height/torso commands into 50 Hz leg+waist control while
   the VLA's arm joint targets pass through directly.
@@ -22,8 +22,8 @@ Three policy specs, two in-process whole-body-controller decoders:
   its no-VLA gate is wired here; :class:`SonicDecoder` is ready for when a
   finetuned checkpoint exists.
 
-Standard-mode note: everything consumed here is sensor-realizable -- raw torso
-camera frames, IMU (base angular velocity / projected gravity), joint state,
+Standard-mode note: everything consumed here is sensor-realizable -- raw ego-view
+camera frames (head-mounted, on ``d435_link``), IMU (base angular velocity / projected gravity), joint state,
 and wrist poses obtainable by forward kinematics from proprioception. The
 adapter reads them from the scene handles rather than the flattened ``policy``
 observation group because the models need them raw, not normalized and
@@ -39,6 +39,7 @@ speak Dex3, which this robot does not have).
 from __future__ import annotations
 
 import os
+import sys
 
 import numpy as np
 import torch
@@ -119,8 +120,22 @@ assert sorted(_ISAAC_ORDER_MUJOCO_IDX) == list(range(29))
 SONIC_JOINT_NAMES = [_SONIC_JOINTS_MUJOCO[i][0] for i in _ISAAC_ORDER_MUJOCO_IDX]
 """The 29 SONIC body joints in the policy's (IsaacLab) order."""
 
+_CONTROL_DT = 0.02  # s; the GEAR controllers' training-time control rate (50 Hz)
 _HISTORY_LEN = 10  # frames, oldest first, sampled at the 50 Hz control rate
 _TOKEN_DIM = 64
+
+
+def _require_control_rate(env, decoder: type) -> None:
+    """The released GEAR ONNX controllers are 50 Hz policies: their observation
+    histories, action scales, and (for GR00T) the frame-lookback/chunk timing all
+    assume ``env.step_dt == 0.02``. Running off-rate does not crash -- it silently
+    degrades the controller -- so the contract is enforced, not assumed."""
+    assert abs(env.step_dt - _CONTROL_DT) < 1e-6, (
+        f"{decoder.__name__} is a {1.0 / _CONTROL_DT:.0f} Hz controller; this env steps at "
+        f"{env.step_dt:.6f} s (sim.dt * decimation) -- fix the task cfg's control rate"
+    )
+
+
 SONIC_OBS_DIM = _TOKEN_DIM + _HISTORY_LEN * (3 + 29 + 29 + 29 + 3)  # = 994
 
 DEFAULT_SONIC_ONNX = os.path.expanduser("~/tools/sonic_models/policy/release/model_decoder.onnx")
@@ -159,6 +174,25 @@ def _isaac_order(field: int) -> torch.Tensor:
     return torch.tensor([per_mujoco[i] for i in _ISAAC_ORDER_MUJOCO_IDX], dtype=torch.float32)
 
 
+def retarget_torque_to_position(
+    q: torch.Tensor,
+    dq: torch.Tensor,
+    tau: torch.Tensor,
+    kp_ours: torch.Tensor,
+    kd_ours: torch.Tensor,
+) -> torch.Tensor:
+    """Solve for the position target ``q_t`` that reproduces intended torque ``tau``
+    under our own PD gains: ``kp_ours*(q_t - q) - kd_ours*dq == tau``.
+
+    Used to carry a released ONNX decoder's torque intent (computed with its own
+    training-time gains) through to the env's actuator model without touching it.
+    If ``kp_ours``/``kd_ours`` equal the decoder's own gains exactly, this reduces to
+    ``q_t == q_des`` (the decoder's own position target) -- see
+    ``tests/test_groot_adapter.py::test_retarget_reduces_to_q_des_when_gains_match``.
+    """
+    return q + (tau + kd_ours * dq) / kp_ours
+
+
 class SonicDecoder:
     """In-process GEAR-SONIC whole-body controller (the released ONNX decoder).
 
@@ -175,6 +209,7 @@ class SonicDecoder:
     def __init__(self, env, onnx_path: str | None = None):
         import onnxruntime as ort
 
+        _require_control_rate(env, type(self))
         onnx_path = onnx_path or DEFAULT_SONIC_ONNX
         if not os.path.isfile(onnx_path):
             raise FileNotFoundError(
@@ -285,7 +320,7 @@ class SonicDecoder:
         tau = self._kp_s * (q_des - q) - self._kd_s * dq
         kp_ours = data.joint_stiffness[:, self.joint_ids].clamp_min(1e-6)
         kd_ours = data.joint_damping[:, self.joint_ids]
-        q_t = q + (tau + kd_ours * dq) / kp_ours
+        q_t = retarget_torque_to_position(q, dq, tau, kp_ours, kd_ours)
         limits = data.soft_joint_pos_limits[:, self.joint_ids]
         q_t = q_t.clamp(limits[..., 0], limits[..., 1])
 
@@ -364,6 +399,12 @@ _WBC_DOF_VEL_SCALE = 0.05
 _WBC_HIST = 6
 _WBC_OBS_DIM = 86  # 3 cmd + 1 height + 3 rpy + 3 ang vel + 3 gravity + 29 q + 29 dq + 15 act
 WBC_HEIGHT_INIT = 0.74
+# g1_gear_wbc.yaml's own kps/kds (legs x2 + waist, matching _WBC_LOWER_DEFAULTS' order):
+# the WBC's training-time gains, used to compute its intended torque before that torque
+# is retargeted through the env's own PD gains (retarget_torque_to_position). Pinned to
+# the yaml by tests/test_groot_adapter.py::test_gear_wbc_gains_match_reference_yaml.
+_WBC_KP_LOWER = [150.0, 150.0, 150.0, 200.0, 40.0, 40.0] * 2 + [250.0, 250.0, 250.0]
+_WBC_KD_LOWER = [2.0, 2.0, 2.0, 4.0, 2.0, 2.0] * 2 + [5.0, 5.0, 5.0]
 
 _BODY_JOINT_NAMES = [n for n, *_ in _SONIC_JOINTS_MUJOCO]  # 29, URDF order
 _ARM_JOINT_NAMES = _BODY_JOINT_NAMES[15:29]  # left arm 7 + right arm 7
@@ -383,6 +424,7 @@ class GearWbcDecoder:
     def __init__(self, env, model_dir: str | None = None):
         import onnxruntime as ort
 
+        _require_control_rate(env, type(self))
         model_dir = model_dir or DEFAULT_WBC_DIR
         paths = [os.path.join(model_dir, name) for name in (_WBC_BALANCE, _WBC_WALK)]
         for path in paths:
@@ -402,6 +444,8 @@ class GearWbcDecoder:
         self.body_ids = torch.tensor(ids, dtype=torch.long, device=device)
         self.lower_ids = self.body_ids[:15]
         self.lower_defaults = torch.tensor(_WBC_LOWER_DEFAULTS, device=device)
+        self._kp_wbc = torch.tensor(_WBC_KP_LOWER, device=device)
+        self._kd_wbc = torch.tensor(_WBC_KD_LOWER, device=device)
         # The WBC's q observation subtracts defaults for the lower 15 only (the
         # reference pads with zeros for the arms).
         self._defaults29 = torch.zeros(29, device=device)
@@ -469,13 +513,21 @@ class GearWbcDecoder:
         act_t = torch.from_numpy(act).to(q29.device)
         self._last_action[:] = act_t
 
+        # The WBC's intended torque, retargeted through the env's own PD gains (same
+        # derivation as SonicDecoder; see retarget_torque_to_position). q29/dq29's first
+        # 15 entries are the lower body, matching lower_ids/lower_defaults/_WBC_KP_LOWER.
+        q_lower, dq_lower = q29[:, :15], dq29[:, :15]
         q_des = self.lower_defaults + act_t * _WBC_ACTION_SCALE
+        tau = self._kp_wbc * (q_des - q_lower) - self._kd_wbc * dq_lower
+        kp_ours = data.joint_stiffness[:, self.lower_ids].clamp_min(1e-6)
+        kd_ours = data.joint_damping[:, self.lower_ids]
+        q_t = retarget_torque_to_position(q_lower, dq_lower, tau, kp_ours, kd_ours)
         limits = data.soft_joint_pos_limits[:, self.lower_ids]
-        q_des = q_des.clamp(limits[..., 0], limits[..., 1])
+        q_t = q_t.clamp(limits[..., 0], limits[..., 1])
 
         env_action = torch.zeros(env.num_envs, self.robot.num_joints, device=q29.device)
         default_ours = data.default_joint_pos[:, self.lower_ids]
-        env_action[:, self.lower_ids] = (q_des - default_ours) / self.action_scale
+        env_action[:, self.lower_ids] = (q_t - default_ours) / self.action_scale
         return env_action
 
 
@@ -515,6 +567,20 @@ _QUERY_INTERVAL = 40
 _CHUNK_LEN = 40
 _FRAME_LOOKBACK = 20
 
+# REAL_G1's state.* dims, from the checkpoint's own processor_config.json
+# (processor_kwargs.modality_configs["real_g1_relative_eef_relative_joints"]["state"]),
+# not just this file's own joint slicing -- guards against a slicing change silently
+# sending the wrong-shaped state (see tests/test_groot_adapter.py).
+_STATE_KEY_DIMS = {
+    "left_wrist_eef_9d": 9,
+    "right_wrist_eef_9d": 9,
+    "left_hand": 7,
+    "right_hand": 7,
+    "left_arm": 7,
+    "right_arm": 7,
+    "waist": 3,
+}
+
 
 class _Gr00tClient:
     """Minimal client for Isaac-GR00T's PolicyServer (ZMQ REQ/REP + msgpack_numpy)."""
@@ -550,12 +616,11 @@ class _Gr00tClient:
         return action
 
 
-
 class GrootPolicy:
     """GR00T N1.7 base model (``REAL_G1`` embodiment) + decoupled whole-body control.
 
     Per chunk boundary (every ``_QUERY_INTERVAL`` env steps once the startup
-    blend has handed over): sends two torso RGB frames (t-0.4 s and t), wrist
+    blend has handed over): sends two ego-view RGB frames (t-0.4 s and t), wrist
     poses (FK from proprioception, pelvis frame, xyz + rot6d), arm/waist joint
     state, and the language instruction; receives a 40-step chunk of arm joint
     targets, waist targets, ``navigate_command`` and ``base_height_command``.
@@ -576,7 +641,7 @@ class GrootPolicy:
         self._wbc = GearWbcDecoder(env)
         self._client = _Gr00tClient(endpoint or DEFAULT_GROOT_ENDPOINT)
         self._instruction = instruction or DEFAULT_INSTRUCTION
-        self._camera = env.scene["torso_camera"]
+        self._camera = env.scene["ego_camera"]
         self.robot = env.scene["robot"]
         device = env.device
 
@@ -593,11 +658,24 @@ class GrootPolicy:
 
         from .robots.g1 import G1_DEX3_LEFT_HAND_JOINTS, G1_DEX3_RIGHT_HAND_JOINTS
 
+        # REAL_G1's action head emits 7 DoF per hand, i.e. the Dex3. On any other variant
+        # there is nothing to map those onto, so the server's hand output is discarded and
+        # the fingers hold their default pose for the whole episode -- the robot cannot
+        # grasp at all. Say so: silently running a manipulation benchmark with dead hands
+        # reads as the policy failing the task.
         dex3_names = G1_DEX3_LEFT_HAND_JOINTS + G1_DEX3_RIGHT_HAND_JOINTS
         self._hand_ids: torch.Tensor | None = None
         if set(dex3_names) <= set(self.robot.joint_names):
             hand_ids, _ = self.robot.find_joints(dex3_names, preserve_order=True)
             self._hand_ids = torch.tensor(hand_ids, dtype=torch.long, device=device)
+        else:
+            print(
+                "\n[GR00T] WARNING: this robot is not the Dex3 variant, so REAL_G1's 7-DoF-per-hand\n"
+                "        action has no mapping. The server's hand output is DISCARDED and the fingers\n"
+                "        hold their default pose -- grasping is impossible. Pass --robot dex3.\n",
+                file=sys.stderr,
+                flush=True,
+            )
 
         self._blend = _StartupBlend(
             env, self._wbc.robot, self._wbc.lower_ids, self._wbc.lower_defaults, self._wbc.action_scale
@@ -643,6 +721,9 @@ class GrootPolicy:
     def _observation(self) -> dict:
         # delta_indices [-20, 0]: the frame from 0.4 s ago and the current one.
         video = np.stack([self._frames[0], self._frames[-1]])[None]  # [B=1, T=2, H, W, 3]
+        assert video.dtype == np.uint8 and video.shape[:2] == (1, 2), (
+            f"REAL_G1 video.ego_view must be (1, 2, H, W, 3) uint8; got shape={video.shape} dtype={video.dtype}"
+        )
         q = self.robot.data.joint_pos
 
         def joints(ids) -> np.ndarray:
@@ -664,6 +745,12 @@ class GrootPolicy:
             "right_arm": joints(self._arm_ids[7:]),
             "waist": joints(self._waist_ids),
         }
+        for key, arr in state.items():
+            expected = (1, 1, _STATE_KEY_DIMS[key])
+            assert arr.shape == expected and arr.dtype == np.float32 and np.isfinite(arr).all(), (
+                f"REAL_G1 state.{key} must be {expected} float32, finite; "
+                f"got shape={arr.shape} dtype={arr.dtype} finite={np.isfinite(arr).all()}"
+            )
         return {
             "video": {"ego_view": video},
             "state": state,
@@ -679,7 +766,14 @@ class GrootPolicy:
 
         def chunk(key: str, dim: int) -> np.ndarray:
             value = action.get(key, action.get(f"action.{key}"))
-            return np.array(value, dtype=np.float32, copy=True).reshape(-1, dim)
+            assert value is not None, f"server response missing action key {key!r} (or action.{key!r})"
+            arr = np.array(value, dtype=np.float32, copy=True).reshape(-1, dim)
+            # .reshape(-1, dim) silently accepts any N whose total size factors into
+            # (N, dim); pin N to _CHUNK_LEN too, or a truncated/duplicated response
+            # would pass the reshape and only surface as a chunk-index-out-of-range
+            # bug much later (or not at all, since __call__ clamps the index).
+            assert arr.shape == (_CHUNK_LEN, dim), f"server action.{key} must be ({_CHUNK_LEN}, {dim}); got {arr.shape}"
+            return arr
 
         self._chunk = {
             "left_arm": chunk("left_arm", 7),
@@ -716,6 +810,7 @@ class GrootPolicy:
         blending = bool(blend_mask.any())
         device = env.device
         arm_action: torch.Tensor | None = None
+        hand_action: torch.Tensor | None = None
         if not blending:
             if self._steps_since_query >= _QUERY_INTERVAL:
                 self._steps_since_query = 0
@@ -746,8 +841,8 @@ class GrootPolicy:
         action = self._wbc.step(env, self._cmd, self._height, self._rpy)
         if arm_action is not None:
             action[:, self._arm_ids] = arm_action
-            if self._hand_ids is not None:
-                action[:, self._hand_ids] = hand_action
+        if hand_action is not None:
+            action[:, self._hand_ids] = hand_action
         return self._blend.override(env, action, blend_mask)
 
 

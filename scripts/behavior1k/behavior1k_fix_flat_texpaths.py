@@ -48,7 +48,7 @@ def fix(usd, apply):
             val = attr.Get()
             if isinstance(val, Sdf.AssetPath) and val.path.startswith("../material/"):
                 if apply:
-                    attr.Set(Sdf.AssetPath(val.path[len("../"):]))
+                    attr.Set(Sdf.AssetPath(val.path[len("../") :]))
                 changed += 1
     if apply and changed:
         stage.GetRootLayer().Save()
@@ -58,8 +58,10 @@ def fix(usd, apply):
 def main():
     args = [a for a in sys.argv[1:] if a != "--apply"]
     apply = "--apply" in sys.argv
-    assets_dir = os.path.abspath(args[0]) if args else str(
-        os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), "assets")
+    assets_dir = (
+        os.path.abspath(args[0])
+        if args
+        else str(os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), "assets"))
     )
 
     files = flat_usds(assets_dir)

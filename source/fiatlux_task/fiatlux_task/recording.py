@@ -36,6 +36,7 @@ from pathlib import Path
 import numpy as np
 import torch
 
+from .tasks.manager_based.fiatlux_task.mdp import observations as _obs
 from .tasks.manager_based.fiatlux_task.mdp import rewards as _rewards
 
 RECORDER_VERSION = "1.0"
@@ -96,9 +97,7 @@ class TrajectoryRecorder:
         self._ee_id = self._ee_ids[0]
 
         self._buf: dict[str, list[np.ndarray]] = {}
-        self._meta = self._build_meta(
-            policy_spec=policy_spec, seed=seed, checkpoint=checkpoint, ee_name=ee_names[0]
-        )
+        self._meta = self._build_meta(policy_spec=policy_spec, seed=seed, checkpoint=checkpoint, ee_name=ee_names[0])
 
     # -- capture ---------------------------------------------------------------
     def record_step(self, obs, actions, reward, terminated, truncated) -> None:
@@ -122,7 +121,7 @@ class TrajectoryRecorder:
             "bulb_lin_vel": bulb.data.root_lin_vel_w,
             "socket_pos": socket.data.root_pos_w,
             "socket_quat": socket.data.root_quat_w,
-            "contact_force": contact.data.net_forces_w,  # (N, B, 3)
+            "contact_force": _obs.object_contact_forces(contact),  # (N, B, 3), objects only
             "policy_obs": obs["policy"] if isinstance(obs, dict) else obs,
             "reward": reward,
             "pos_error": _rewards._bulb_socket_pos_error(env),
@@ -152,9 +151,7 @@ class TrajectoryRecorder:
             start = 0
             for t in range(t_steps):
                 if done[t, e]:
-                    episodes.append(
-                        {k: v[start : t + 1, e] for k, v in stacked.items()}
-                    )
+                    episodes.append({k: v[start : t + 1, e] for k, v in stacked.items()})
                     start = t + 1
         return episodes
 
