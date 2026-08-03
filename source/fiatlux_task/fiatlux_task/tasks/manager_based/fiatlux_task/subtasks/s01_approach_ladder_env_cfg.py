@@ -25,6 +25,7 @@ from ..scene_cfg import (
     add_mid360_lidar,
     apply_replace_preset,
     face_robot_at,
+    frame_viewer_between,
 )
 from ..subtask_env_cfg import (
     ARRIVAL_FACING_TOLERANCE,
@@ -74,5 +75,4 @@ class S01ApproachLadderEnvCfg(NavigateSubtaskCfg):
         add_mid360_lidar(self.scene)
         # ~2x the 2.43 m robot->ladder traverse measured at ~0.5 m/s.
         self.episode_length_s = 20.0
-        self.viewer.eye = (4.0, 4.0, 3.0)
-        self.viewer.lookat = (0.0, 0.0, 1.0)
+        frame_viewer_between(self.viewer, self.scene.robot.init_state.pos, self.scene.ladder.init_state.pos)

@@ -24,7 +24,15 @@ from isaaclab.utils import configclass
 
 from .. import mdp
 from ..mdp import grasp_terms, place_terms
-from ..scene_cfg import LADDER_MASS_KG, add_ego_camera, add_mid360_lidar, apply_replace_preset, face_robot_at
+from ..scene_cfg import (
+    LADDER_APPROACH_RADIUS,
+    LADDER_MASS_KG,
+    add_ego_camera,
+    add_mid360_lidar,
+    apply_replace_preset,
+    frame_viewer_on,
+    stand_robot_near,
+)
 from ..subtask_env_cfg import FALL_MIN_HEIGHT, FALL_TILT_LIMIT, SubtaskTerminationsCfg
 from ..subtask_tiers.grasp import GRASP_SUSTAIN_SECONDS, GraspRewardsCfg, GraspSubtaskCfg, add_grasp_contact_sensor
 
@@ -88,11 +96,11 @@ class S02GrabLadderEnvCfg(GraspSubtaskCfg):
     def __post_init__(self) -> None:
         super().__post_init__()
         apply_replace_preset(self.scene)
-        # The preset aims the robot at the table; this subtask's target is the ladder.
-        face_robot_at(self.scene, self.scene.ladder.init_state.pos[:2])
+        # The preset's own robot zone is independent of the ladder's; pull the robot into grasp
+        # range and re-aim it there instead of just at the table.
+        stand_robot_near(self.scene, self.scene.ladder.init_state.pos[:2], LADDER_APPROACH_RADIUS)
         add_ego_camera(self.scene)
         add_mid360_lidar(self.scene)
         add_grasp_contact_sensor(self.scene, self.scene.ladder.prim_path)
         self.episode_length_s = 20.0
-        self.viewer.eye = (4.0, 4.0, 3.0)
-        self.viewer.lookat = (0.0, 0.0, 1.0)
+        frame_viewer_on(self.viewer, self.scene.robot.init_state.pos)

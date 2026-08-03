@@ -40,6 +40,7 @@ from ..scene_cfg import (
     add_mid360_lidar,
     apply_replace_preset,
     face_robot_at,
+    frame_viewer_on,
 )
 from ..subtask_env_cfg import SubtaskEnvCfg, SubtaskRewardsCfg, SubtaskTerminationsCfg
 
@@ -139,8 +140,7 @@ class BalanceSubtaskCfg(SubtaskEnvCfg):
         apply_replace_preset(self.scene, couple_ladder_to_fixture=True)
         add_ego_camera(self.scene)
         add_mid360_lidar(self.scene)
-        self.viewer.eye = (4.0, 4.0, 3.0)
-        self.viewer.lookat = (0.0, 0.0, 1.0)
+        frame_viewer_on(self.viewer, self.scene.ladder.init_state.pos)
 
 
 @configclass

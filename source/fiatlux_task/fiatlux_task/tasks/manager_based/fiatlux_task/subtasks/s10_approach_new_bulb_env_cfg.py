@@ -13,7 +13,7 @@ bulb, facing it, standing -- no grip conjunct, since nothing is held yet.
 from isaaclab.utils import configclass
 
 from ..mdp.nav_terms import BULB_APPROACH_RADIUS, arrived_at_bulb, base_bulb_distance
-from ..scene_cfg import add_ego_camera, add_mid360_lidar, apply_replace_preset, face_robot_at
+from ..scene_cfg import add_ego_camera, add_mid360_lidar, apply_replace_preset, face_robot_at, frame_viewer_between
 from ..subtask_env_cfg import ARRIVAL_FACING_TOLERANCE, ARRIVAL_MAX_SPEED, NavigateSubtaskCfg
 
 
@@ -44,5 +44,4 @@ class S10ApproachNewBulbEnvCfg(NavigateSubtaskCfg):
         add_mid360_lidar(self.scene)
         # Worst-case room-diagonal traverse (~10.8 m) at the ~0.5 m/s reference speed, 2x margin.
         self.episode_length_s = 45.0
-        self.viewer.eye = (4.0, 4.0, 3.0)
-        self.viewer.lookat = (0.0, 0.0, 1.0)
+        frame_viewer_between(self.viewer, self.scene.robot.init_state.pos, self.scene.bulb.init_state.pos)

@@ -25,7 +25,15 @@ from fiatlux_task.grasp_poses import GLASS_CONTACT_LIMIT_N
 
 from .. import mdp
 from ..mdp import grasp_terms, place_terms
-from ..scene_cfg import TABLETOP_SURFACE_Z, add_ego_camera, add_mid360_lidar, apply_replace_preset, face_robot_at
+from ..mdp.nav_terms import BULB_APPROACH_RADIUS
+from ..scene_cfg import (
+    TABLETOP_SURFACE_Z,
+    add_ego_camera,
+    add_mid360_lidar,
+    apply_replace_preset,
+    frame_viewer_on,
+    stand_robot_near,
+)
 from ..subtask_env_cfg import FALL_MIN_HEIGHT, FALL_TILT_LIMIT, SubtaskTerminationsCfg
 from ..subtask_tiers.grasp import GRASP_SUSTAIN_SECONDS, GraspRewardsCfg, GraspSubtaskCfg, add_grasp_contact_sensor
 
@@ -106,11 +114,11 @@ class S11GrabNewBulbEnvCfg(GraspSubtaskCfg):
     def __post_init__(self) -> None:
         super().__post_init__()
         apply_replace_preset(self.scene)
-        # The preset aims the robot at the table; this subtask's target is the bulb on it.
-        face_robot_at(self.scene, self.scene.bulb.init_state.pos[:2])
+        # The preset's own robot zone is independent of the table's; pull the robot into grasp
+        # range of the bulb instead of just aiming it at the table.
+        stand_robot_near(self.scene, self.scene.bulb.init_state.pos[:2], BULB_APPROACH_RADIUS)
         add_ego_camera(self.scene)
         add_mid360_lidar(self.scene)
         add_grasp_contact_sensor(self.scene, self.scene.bulb.prim_path)
         self.episode_length_s = 20.0
-        self.viewer.eye = (4.0, 4.0, 3.0)
-        self.viewer.lookat = (0.0, 0.0, 1.0)
+        frame_viewer_on(self.viewer, self.scene.robot.init_state.pos)

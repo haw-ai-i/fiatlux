@@ -93,21 +93,48 @@ BULB_IN_ROOT_STANDING: tuple[Vec3, Quat] = ((0.485, -0.150, 0.237), (1.0, 0.0, 0
 BULB_IN_ROOT_ON_LADDER: tuple[Vec3, Quat] = ((0.487, -0.150, 0.240), (0.994522, 0.0, -0.104528, 0.0))
 
 # Ladder held by one rail, upright, alongside the robot's right leg and clear of it, at the
-# moment ``ladder_grasped`` fires. Produced by S02, consumed by S03.
+# moment ``ladder_grasped`` fires. Produced by S02, consumed by S03 and S04.
 #
-# UNCALIBRATED -- must be measured. Composed from: the ladder's root at its base centre with
-# the base authored at z=0; the pelvis 0.79 m above the feet, so a base 0.06 m clear of the
-# floor sits at -0.73; the base centre 0.62 m to the robot's right, which puts the near feet at
-# y = -0.62 + 0.34 = -0.28, i.e. 0.13 m outside the right foot's outer edge; and yaw 90 deg so
-# the A-frame's NARROW axis (0.68 m) spans left-right and its 1.11 m spread runs fore-aft. At
-# yaw 0 the spread axis would put the near feet at y = -0.065, through the legs.
+# UNCALIBRATED -- geometric estimate, not contact-verified. Two measurements, not a guess:
+# the rail's location off ``assets.STEP_LADDER_RIGID_USD``'s collision mesh (vertex-cloud
+# clustering, not the bounding box -- a rigid, non-foldable 4-rail A-frame): local
+# (x=0.270, y=-0.408) at 0.50 m up from the base. And the right hand's FK position, arm at its
+# DEFAULT pose (``G1_INSPIRE_CFG.init_state``, no override needed -- an earlier elbow-bent
+# attempt turned out to violate ``right_elbow_joint``'s own limit, caught by env creation, not
+# by this comment): (0.200, -0.149, 0.095) in the pelvis frame. Base ends up ~0.39 m off the
+# floor.
 #
-# Probe: a scripted one-rail grasp -- ``verify_interactions.py --scenario ladder_grasp --probe``
-# (does not exist yet; it is S02's deliverable) -- closing the hand on a rail, lifting until all
-# four feet clear the floor, then printing the in-root pose. Take it from the scripted grasp,
-# never from a policy rollout.
+# Probe: ``verify_interactions.py --scenario ladder_grasp --probe`` (does not exist yet; S02's
+# deliverable) -- closing the hand on the rail, lifting until all feet clear the floor, then
+# printing the in-root pose from the scripted grasp, never a policy rollout.
 #
-# Open risk, not resolved here: at ``LADDER_MASS_KG`` = 7.25 a one-rail grasp may not hold, in
-# which case this pose is two-handed and the whole geometry changes. That is a measurement, and
-# S02 must report it rather than assume it.
-LADDER_IN_ROOT_CARRIED: tuple[Vec3, Quat] = ((0.150, -0.620, -0.730), (0.707107, 0.0, 0.0, 0.707107))
+# Open risk: whether a one-rail grip holds ``LADDER_MASS_KG`` = 7.25 without swinging past
+# ``ladder_near_vertical``'s tolerance, and whether ``LADDER_CARRY_ARM_JOINT_POS`` (itself an
+# uncalibrated 75%-closed guess) wraps the rail rather than clipping through it.
+LADDER_IN_ROOT_CARRIED: tuple[Vec3, Quat] = ((-0.208, -0.419, -0.405), (0.707107, 0.0, 0.0, 0.707107))
+
+# Inspire-hand finger pose for the carry above: fingers closed 75% of each joint's own travel
+# toward its upper limit (curl-positive, confirmed by a rendered comparison against the
+# untouched left hand). No arm-joint entries -- the default pose IS the carry pose. The same
+# 75%-toward-upper-limit guess tried on Dex3's ``right_hand_*_joint`` rendered with the fingers
+# still fully extended -- disconfirmed, so no Dex3 entries here; a Dex3 rollout keeps default
+# (open) fingers until someone works out its actual curl direction.
+#
+# Merge into ``robot.init_state.joint_pos`` (regex-keyed, already carries the family's
+# bent-knee entries) rather than assigning over it. Safe across a later ``--robot dex3`` swap:
+# ``swap_robot_variant`` strips any hand-marker key foreign to the incoming variant before
+# reattaching ``init_state`` (``robots.g1._drop_foreign_hand_joint_pos``).
+LADDER_CARRY_ARM_JOINT_POS: dict[str, float] = {
+    "R_index_proximal_joint": 1.275,
+    "R_index_intermediate_joint": 1.275,
+    "R_middle_proximal_joint": 1.275,
+    "R_middle_intermediate_joint": 1.275,
+    "R_pinky_proximal_joint": 1.275,
+    "R_pinky_intermediate_joint": 1.275,
+    "R_ring_proximal_joint": 1.275,
+    "R_ring_intermediate_joint": 1.275,
+    "R_thumb_proximal_yaw_joint": 0.95,
+    "R_thumb_proximal_pitch_joint": 0.425,
+    "R_thumb_intermediate_joint": 0.6,
+    "R_thumb_distal_joint": 0.9,
+}

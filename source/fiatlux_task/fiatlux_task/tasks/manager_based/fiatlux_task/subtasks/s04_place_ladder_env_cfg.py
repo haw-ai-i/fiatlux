@@ -16,8 +16,11 @@ from isaaclab.managers import SceneEntityCfg
 from isaaclab.managers import TerminationTermCfg as DoneTerm
 from isaaclab.utils import configclass
 
+from fiatlux_task.grasp_poses import LADDER_CARRY_ARM_JOINT_POS, LADDER_IN_ROOT_CARRIED
+
 from .. import mdp
 from ..mdp import place_terms
+from ..mdp.nav_terms import compose_carried_pose
 from ..scene_cfg import (
     LADDER_NEAR_RAIL_OFFSET,
     LADDER_READY_XY_RADIUS,
@@ -25,6 +28,7 @@ from ..scene_cfg import (
     add_mid360_lidar,
     apply_replace_preset,
     face_robot_at,
+    frame_viewer_on,
 )
 from ..subtask_env_cfg import FALL_MIN_HEIGHT, FALL_TILT_LIMIT, SubtaskTerminationsCfg
 from ..subtask_tiers.place import (
@@ -105,11 +109,21 @@ class S04PlaceLadderEnvCfg(PlaceSubtaskCfg):
     def __post_init__(self) -> None:
         super().__post_init__()
         apply_replace_preset(self.scene)
-        # The preset aims the robot at the table; this subtask's target is the ladder.
-        face_robot_at(self.scene, self.scene.ladder.init_state.pos[:2])
+        # S03's end state: the ladder starts already held, at the carry offset from the robot's
+        # own (randomized) root pose -- not at the preset's independently-sampled ladder zone --
+        # with the robot facing the fixture it is about to set the ladder down at.
+        face_robot_at(self.scene, self.scene.socket.init_state.pos[:2])
+        self.scene.ladder.init_state.pos, self.scene.ladder.init_state.rot = compose_carried_pose(
+            self.scene.robot.init_state.pos, self.scene.robot.init_state.rot, LADDER_IN_ROOT_CARRIED
+        )
+        # The arm that's carrying it, matching the pose LADDER_IN_ROOT_CARRIED was measured
+        # against -- merge, don't assign: this dict only names right-arm/right-hand joints.
+        self.scene.robot.init_state.joint_pos = {
+            **self.scene.robot.init_state.joint_pos,
+            **LADDER_CARRY_ARM_JOINT_POS,
+        }
         add_ego_camera(self.scene)
         add_mid360_lidar(self.scene)
         add_release_contact_sensor(self.scene, self.scene.ladder.prim_path)
         self.episode_length_s = 20.0
-        self.viewer.eye = (4.0, 4.0, 3.0)
-        self.viewer.lookat = (0.0, 0.0, 1.0)
+        frame_viewer_on(self.viewer, self.scene.robot.init_state.pos)

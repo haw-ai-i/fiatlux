@@ -18,7 +18,7 @@ and a failed grip already fails the arrival gate's own grip conjunct -- nothing 
 
 from isaaclab.utils import configclass
 
-from fiatlux_task.grasp_poses import LADDER_IN_ROOT_CARRIED
+from fiatlux_task.grasp_poses import LADDER_CARRY_ARM_JOINT_POS, LADDER_IN_ROOT_CARRIED
 
 from .. import mdp
 from ..mdp.nav_terms import (
@@ -27,8 +27,24 @@ from ..mdp.nav_terms import (
     arrived_carrying_ladder,
     compose_carried_pose,
 )
-from ..scene_cfg import LADDER_READY_XY_RADIUS, add_ego_camera, add_mid360_lidar, apply_replace_preset, face_robot_at
+from ..scene_cfg import (
+    LADDER_READY_XY_RADIUS,
+    add_ego_camera,
+    add_mid360_lidar,
+    apply_replace_preset,
+    face_robot_at,
+    frame_viewer_on,
+)
 from ..subtask_env_cfg import ARRIVAL_FACING_TOLERANCE, ARRIVAL_MAX_SPEED, NavigateSubtaskCfg
+
+# TODO(carry-attach): S03/S04 start states place the ladder correctly (see
+# LADDER_IN_ROOT_CARRIED) but nothing physically holds it there -- a free 7.25 kg rigid body at
+# one point of hand contact falls within a few physics steps under gravity. A UsdPhysics.FixedJoint
+# weld (mdp.attach_terms.weld_to_body) was prototyped and shelved: attaching directly to a G1
+# articulation link (right_hand_base_link, not a free body) hits PhysX errors ("Body must be
+# non-kinematic", "disjointed body transforms") that look like a real maximal-joint/articulation-
+# link incompatibility, not a parameter bug. Needs either the correct PhysX API for attaching to
+# an articulation link, or a kinematic-object approach, before re-attempting. See attach_terms.py.
 
 
 @configclass
@@ -59,11 +75,16 @@ class S03CarryLadderEnvCfg(NavigateSubtaskCfg):
         self.scene.ladder.init_state.pos, self.scene.ladder.init_state.rot = compose_carried_pose(
             self.scene.robot.init_state.pos, self.scene.robot.init_state.rot, LADDER_IN_ROOT_CARRIED
         )
+        # The arm that's carrying it, matching the pose LADDER_IN_ROOT_CARRIED was measured
+        # against -- merge, don't assign: this dict only names right-arm/right-hand joints.
+        self.scene.robot.init_state.joint_pos = {
+            **self.scene.robot.init_state.joint_pos,
+            **LADDER_CARRY_ARM_JOINT_POS,
+        }
         add_grip_contact_sensor(self.scene, self.scene.ladder.prim_path)
         add_ego_camera(self.scene)
         add_mid360_lidar(self.scene)
         # Worst-case room-diagonal traverse (~10.8 m) at the ~0.5 m/s reference speed, 2x margin;
         # conservative for a carrying leg.
         self.episode_length_s = 45.0
-        self.viewer.eye = (4.0, 4.0, 3.0)
-        self.viewer.lookat = (0.0, 0.0, 1.0)
+        frame_viewer_on(self.viewer, self.scene.robot.init_state.pos)

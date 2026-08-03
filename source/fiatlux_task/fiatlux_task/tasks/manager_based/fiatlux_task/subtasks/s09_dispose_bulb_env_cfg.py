@@ -15,8 +15,16 @@ from isaaclab.utils import configclass
 
 from .. import mdp
 from ..mdp import place_terms
+from ..mdp.nav_terms import DISPOSAL_ARRIVAL_RADIUS
 from ..replace_env_cfg import DISPOSAL_THRESHOLD
-from ..scene_cfg import BIN_BULB_INTERIOR_Z, add_ego_camera, add_mid360_lidar, apply_replace_preset, face_robot_at
+from ..scene_cfg import (
+    BIN_BULB_INTERIOR_Z,
+    add_ego_camera,
+    add_mid360_lidar,
+    apply_replace_preset,
+    frame_viewer_on,
+    stand_robot_near,
+)
 from ..subtask_env_cfg import FALL_MIN_HEIGHT, FALL_TILT_LIMIT
 from ..subtask_tiers.place import (
     AT_REST_ANG_VEL_LIMIT,
@@ -69,11 +77,11 @@ class S09DisposeBulbEnvCfg(PlaceSubtaskCfg):
     def __post_init__(self) -> None:
         super().__post_init__()
         apply_replace_preset(self.scene)
-        # The preset aims the robot at the table; this subtask's target is the disposal crate.
-        face_robot_at(self.scene, self.scene.bin.init_state.pos[:2])
+        # The preset's own robot zone is independent of the bin's; pull the robot to where it
+        # would be holding the old bulb it starts this subtask already carrying.
+        stand_robot_near(self.scene, self.scene.bin.init_state.pos[:2], DISPOSAL_ARRIVAL_RADIUS)
         add_ego_camera(self.scene)
         add_mid360_lidar(self.scene)
         add_release_contact_sensor(self.scene, self.scene.old_bulb.prim_path)
         self.episode_length_s = 20.0
-        self.viewer.eye = (4.0, 4.0, 3.0)
-        self.viewer.lookat = (0.0, 0.0, 1.0)
+        frame_viewer_on(self.viewer, self.scene.robot.init_state.pos)

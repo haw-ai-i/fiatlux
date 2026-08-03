@@ -46,6 +46,7 @@ from typing import Literal, cast
 
 import isaaclab.sim as sim_utils
 from isaaclab.assets import ArticulationCfg, AssetBaseCfg, RigidObjectCfg
+from isaaclab.envs.common import ViewerCfg
 from isaaclab.sensors import ContactSensorCfg
 from isaaclab.sim import schemas
 from isaaclab.sim.spawners.from_files.from_files import _spawn_from_usd_file
@@ -630,6 +631,80 @@ def face_robot_at(scene: G1ReplaceSceneCfg, target: Vec2) -> None:
     """
     x, y = scene.robot.init_state.pos[0], scene.robot.init_state.pos[1]
     scene.robot.init_state.rot = _quat_z_deg(math.degrees(math.atan2(target[1] - y, target[0] - x)))
+
+
+def stand_robot_near(scene: G1ReplaceSceneCfg, target: Vec2, standoff: float) -> None:
+    """Pull the robot's sampled spawn in to within ``standoff`` of ``target`` and face it.
+
+    ``apply_replace_preset`` draws the robot's spawn from its own floor zone, independent of
+    every other occupant -- correct for the navigate leaves (S01/S03/S08/S10/S12), whose whole
+    job is covering that gap, but wrong for a leaf that starts a grasp or a release (S02/S04/S09/
+    S11): those are written assuming a predecessor already carried the robot into range, an
+    assumption only the full chained curriculum enforces. Built standalone, as every one of these
+    envs is for training, eval, and this render, the robot's own random zone can land metres from
+    the object it is meant to already be holding or reaching for. No-ops if the sampled spawn is
+    already within ``standoff``, so a draw that happens to land close is left alone.
+    """
+    rx, ry, rz = scene.robot.init_state.pos
+    tx, ty = target
+    dx, dy = tx - rx, ty - ry
+    dist = math.hypot(dx, dy)
+    if dist > standoff:
+        ux, uy = dx / dist, dy / dist
+        scene.robot.init_state.pos = (tx - ux * standoff, ty - uy * standoff, rz)
+    face_robot_at(scene, target)
+
+
+_ROOM_FLOOR_CENTER = (
+    (ROOM_FLOOR_MIN[0] + ROOM_FLOOR_MAX[0]) / 2.0,
+    (ROOM_FLOOR_MIN[1] + ROOM_FLOOR_MAX[1]) / 2.0,
+)
+_ROOM_VIEWER_MARGIN = 0.3  # m, keeps the eye off the wall plane itself
+
+
+def frame_viewer_on(
+    viewer: ViewerCfg, target: tuple[float, float, float], distance: float = 3.5, height: float = 2.5
+) -> None:
+    """Point the debug/recording viewer at ``target`` instead of a fixed world coordinate.
+
+    The Replace layout randomizes every subtask's floor zones and, for the fixture-coupled
+    ladder/mate/balance tier, the fixture's wall or ceiling mount too -- a camera hardcoded at
+    the room's origin only happens to frame the action when a draw lands nearby. ``target`` must
+    be a position already resolved by the preset (the robot's or ladder's ``init_state.pos``),
+    so this has to run after ``apply_replace_preset``/``apply_at_height_preset``, not before.
+
+    The eye sits ``distance`` out from ``target`` back towards the room's floor center, not at a
+    fixed azimuth: a wall-mounted fixture can land within a couple of metres of the room's own
+    wall, and a fixed-angle offset (the first version of this fix) walks the eye straight through
+    that wall into the empty exterior -- every render came back a flat, featureless grey. Framing
+    from the center side keeps the eye on the room's interior for any wall or ceiling mount, and
+    the room-bounds clamp is what actually guarantees it for the pathological cases (target
+    already near the center, distance overshooting the opposite wall).
+    """
+    tx, ty, tz = target
+    dx, dy = _ROOM_FLOOR_CENTER[0] - tx, _ROOM_FLOOR_CENTER[1] - ty
+    norm = math.hypot(dx, dy)
+    ux, uy = (dx / norm, dy / norm) if norm > 1e-6 else (0.7071067811865476, 0.7071067811865476)
+    ex = min(max(tx + ux * distance, ROOM_FLOOR_MIN[0] + _ROOM_VIEWER_MARGIN), ROOM_FLOOR_MAX[0] - _ROOM_VIEWER_MARGIN)
+    ey = min(max(ty + uy * distance, ROOM_FLOOR_MIN[1] + _ROOM_VIEWER_MARGIN), ROOM_FLOOR_MAX[1] - _ROOM_VIEWER_MARGIN)
+    viewer.eye = (ex, ey, tz + height)
+    viewer.lookat = (tx, ty, tz + 1.0)  # chest height, not the target's (often floor-level) z
+
+
+def frame_viewer_between(
+    viewer: ViewerCfg, a: tuple[float, float, float], b: tuple[float, float, float], height: float = 2.7
+) -> None:
+    """:func:`frame_viewer_on` for a subtask defined by two points (a start and a destination).
+
+    Framing on ``a`` alone (e.g. the robot) leaves the destination that gives the clip its
+    meaning out of frame whenever the two are more than a couple of metres apart -- which they
+    usually are, since covering that gap is the subtask. Frames the midpoint instead, with the
+    eye pulled back enough to fit both points regardless of how far apart the random layout put
+    them.
+    """
+    mx, my, mz = (a[0] + b[0]) / 2.0, (a[1] + b[1]) / 2.0, min(a[2], b[2])
+    separation = math.hypot(a[0] - b[0], a[1] - b[1])
+    frame_viewer_on(viewer, (mx, my, mz), distance=max(separation / 2.0 + 2.0, 3.5), height=height)
 
 
 def park_old_bulb_in_crate(scene: G1ReplaceSceneCfg) -> None:

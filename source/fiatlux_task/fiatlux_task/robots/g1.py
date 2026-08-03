@@ -334,6 +334,21 @@ _HAND_REMAPS["inspire"] = {tuple(v): list(k) for k, v in _HAND_REMAPS["dex3"].it
 # unrecognized list containing one can be told apart from a variant-agnostic list (arm,
 # waist, leg joints -- identical names on every G1 variant) that never needed remapping.
 _HAND_NAME_MARKERS = ("R_", "L_", "_hand_")
+# Same markers, split by which variant they name -- Inspire's fingers are ``R_``/``L_``
+# prefixed, Dex3's contain ``_hand_``. Neither marker occurs in any arm/waist/leg joint name.
+_HAND_MARKERS_BY_VARIANT: dict[str, tuple[str, ...]] = {"inspire": ("R_", "L_"), "dex3": ("_hand_",)}
+
+
+def _drop_foreign_hand_joint_pos(joint_pos: dict[str, float], variant: str) -> dict[str, float]:
+    """Strip ``init_state.joint_pos`` entries authored for a hand variant other than ``variant``.
+
+    ``swap_robot_variant`` carries the old ``init_state`` over unchanged; a finger-pose entry a
+    task authored for the Inspire hand (``R_index_proximal_joint``, ...) would otherwise resolve
+    against zero joints on a swapped-in Dex3 robot, and ``resolve_matching_names_values`` is
+    strict by default -- that is a crash on env creation, not a silent no-op.
+    """
+    foreign_markers = [m for v, ms in _HAND_MARKERS_BY_VARIANT.items() if v != variant for m in ms]
+    return {k: v for k, v in joint_pos.items() if not any(m in k for m in foreign_markers)}
 
 
 def swap_robot_variant(env_cfg, variant: str) -> None:
@@ -353,7 +368,10 @@ def swap_robot_variant(env_cfg, variant: str) -> None:
     if variant not in G1_VARIANTS:
         raise ValueError(f"unknown G1 variant {variant!r}; choose from {sorted(G1_VARIANTS)}")
     robot = env_cfg.scene.robot
-    env_cfg.scene.robot = G1_VARIANTS[variant].replace(prim_path=robot.prim_path, init_state=robot.init_state)
+    init_state = robot.init_state.replace(
+        joint_pos=_drop_foreign_hand_joint_pos(dict(robot.init_state.joint_pos), variant)
+    )
+    env_cfg.scene.robot = G1_VARIANTS[variant].replace(prim_path=robot.prim_path, init_state=init_state)
 
     remap_table = _HAND_REMAPS[variant]
 
