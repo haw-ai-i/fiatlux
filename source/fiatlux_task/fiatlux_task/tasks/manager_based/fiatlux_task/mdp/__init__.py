@@ -46,6 +46,7 @@ from .attach import (  # noqa: F401
     fresh_bulb_attached,
     old_bulb_attached,
     old_bulb_disposal_distance_pinned,
+    old_bulb_disposed_after_release,
     old_bulb_dropped_after_release,
     old_bulb_release_clearance,
     old_bulb_removed_after_release,

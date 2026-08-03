@@ -41,9 +41,9 @@ def replace_score_distances(env: ManagerBasedRLEnv) -> torch.Tensor:
     clearance from the fixture seat, old bulb -> disposal crate. These mirror the channels
     the reward terms normalize, exposed so a cheatcode policy can read the score geometry.
     The two old-bulb columns are the RAW geometry; the reward terms gate the same
-    quantities on attachment state (``old_bulb_release_clearance`` and
-    ``old_bulb_disposal_distance_pinned``), so a still-attached bulb reads as seated there
-    while these columns keep reporting live distance.
+    quantities on bayonet-channel state (``old_bulb_release_clearance`` and
+    ``old_bulb_disposal_distance_pinned``), so a guided bulb reads as seated there while
+    these columns keep reporting live distance.
 
     Returns:
         Tensor of shape (num_envs, 4).

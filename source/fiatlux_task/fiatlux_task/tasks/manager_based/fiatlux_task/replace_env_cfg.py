@@ -32,15 +32,13 @@ Design notes (full-task benchmark plan, ``journal/specs/full-task-benchmark-plan
   ending physical event. **Both bulbs are dynamic**, seated in the fixture by contact rather
   than pinned kinematic, so removal and disposal are real physical events.
 
-  What ``mdp.bulb_attachment`` adds on top (unification spec Phase 4, issue #54) is the
-  SCREW GATE, not basic retention: the socket's exact-mesh open hole already holds a bulb
-  by contact even inverted -- measured, a detached bulb in a ceiling mount settles 1.9 mm
-  and stays. Without the state machine the bulb simply lifts out, so removal is a pick-up
-  rather than an unscrew. With it, the old bulb starts held at the seat pose and is freed
-  only by the unscrew gate (palm proximity + accumulated wrist roll); the fresh bulb becomes
-  held once the screw-in gate fires (seated + palm proximity + wrist roll into an empty
-  socket). Slaving also makes a held bulb survive disturbance that contact would not -- it
-  re-seats after a 16 cm shove (``verify_attach``).
+  ``mdp.bulb_attachment`` overlays a bayonet channel on that contact geometry. During
+  insertion the bulb can translate only along the socket axis and cannot rotate. At full
+  depth, starting a bulb twist switches the constraint: axial travel is locked and only
+  bulb rotation is allowed.
+  Removal is the exact reverse, rotate then eject. The state machine reads bulb motion,
+  never wrist pose, and samples its configured insertion depth / rotation angle per env
+  when ranges are supplied for domain randomization.
   ``fresh_bulb_inserted`` and ``success`` read the attachment state, not the raw seating
   geometry, so every score channel is genuinely achievable. Remove/Install do not yet gate
   on attachment: their bulbs are dynamic and simply lift out of / drop into the socket, so
@@ -86,8 +84,8 @@ SEAT_POS_THRESHOLD = 0.015  # m; fresh-bulb seating tolerance (Insert's validate
 SEAT_ORI_THRESHOLD = 0.2  # rad
 FRESH_BULB_DROP_HEIGHT = 0.4  # m; the fresh bulb's working heights are table (~1.0) and up
 OLD_BULB_DROP_HEIGHT = 0.15  # m; must clear a bulb resting *inside* the floor crate (~0.1)
-GRASP_RADIUS = 0.12  # m; palm-to-bulb distance that counts as gripping for the screw gates
-SCREW_ANGLE = math.pi  # rad of ratcheted wrist roll to (un)screw a bulb (~2 strokes)
+BAYONET_INSERTION_DEPTH = 0.034  # m; travel from socket mouth to fully seated
+BAYONET_ROTATION_ANGLE = 0.5 * math.pi  # rad; quarter turn from released to locked
 
 ##
 # MDP settings
@@ -176,19 +174,18 @@ class ObservationsCfg:
 class EventCfg:
     """Reset-time randomization (the room layout itself randomizes per scene build)."""
 
-    # The attach/detach state machine (issue #54): integrates the wrist-roll screw gates
-    # and holds attached bulbs at the fixture's seat pose. Zero interval -> every env step
-    # (its accumulators are only correct when integrated every step).
+    # The attach/detach state machine (issue #54) projects the bulb onto mutually exclusive
+    # axial and rotational channels. Zero interval -> enforce the channel every env step.
     bulb_attachment = EventTerm(
         func=mdp.bulb_attachment,
         mode="interval",
         interval_range_s=(0.0, 0.0),
         params={
-            "grasp_radius": GRASP_RADIUS,
-            "screw_angle": SCREW_ANGLE,
-            "unscrew_sign": -1.0,
-            "pos_threshold": SEAT_POS_THRESHOLD,
-            "ori_threshold": SEAT_ORI_THRESHOLD,
+            "insertion_depth": BAYONET_INSERTION_DEPTH,
+            "rotation_angle": BAYONET_ROTATION_ANGLE,
+            "rotation_sign": 1.0,
+            "radial_tolerance": SEAT_POS_THRESHOLD,
+            "orientation_tolerance": SEAT_ORI_THRESHOLD,
         },
     )
     reset_all = EventTerm(func=mdp.reset_scene_to_default, mode="reset")
@@ -261,8 +258,8 @@ class RewardsCfg:
         params={"distance_fn": mdp.bulb_fixture_distance},
     )
     # Attach-aware old-bulb channels (issue #54): terminations/rewards run before the
-    # interval event re-seats a held bulb, so the raw-geometry channels could latch a
-    # transient mid-step shove of the attached bulb as permanent progress.
+    # interval event projects a guided bulb, so raw geometry could latch a transient
+    # mid-step shove before the bulb has exited the insertion channel.
     old_bulb_removal = RewTerm(
         func=mdp.distance_progress,
         weight=250.0,
@@ -288,8 +285,8 @@ class RewardsCfg:
             },
         },
     )
-    # Attach-aware (issue #54): pays on the screw-in gate, not on transiting the geometric
-    # success zone (the seating tolerances are enforced inside the gate).
+    # Attach-aware (issue #54): pays only after full insertion and bulb rotation, not on
+    # transiting the geometric success zone.
     fresh_bulb_inserted = RewTerm(
         func=mdp.completion_bonus,
         weight=250.0,
@@ -307,8 +304,8 @@ class RewardsCfg:
         func=mdp.completion_bonus,
         weight=250.0,
         params={
-            "predicate_fn": mdp.old_bulb_disposed,
-            "predicate_params": {"distance_threshold": DISPOSAL_THRESHOLD},
+            "predicate_fn": mdp.old_bulb_disposed_after_release,
+            "predicate_params": {"disposal_threshold": DISPOSAL_THRESHOLD},
         },
     )
     # Full success terminates the episode on the same step, so the raw predicate pays once.

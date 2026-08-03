@@ -22,18 +22,21 @@ return to it (plus the reset jitter below).
   default; `ReplaceEnvCfg.couple_ladder_to_fixture = True` is an explicit debug/curriculum
   opt-in that spawns it reachably near the fixture.
 - **Both bulbs are dynamic**, governed by the `mdp.bulb_attachment` state machine
-  (unification spec Phase 4, issue #54): the old bulb starts held at the seat pose and is
-  freed by the unscrew gate (palm within grasp radius + accumulated wrist roll); the fresh
-  bulb becomes held once the screw-in gate fires (seated within tolerance + palm proximity
-  + wrist roll, into an empty socket). `fresh_bulb_inserted` and `success` read the
-  attachment state, so every score channel is achievable. Remove/Install do not yet gate on attachment: their bulbs are dynamic and simply lift out of / drop into the socket, so neither requires unscrewing.
+  (unification spec Phase 4, issue #54). It models a bayonet channel from the bulb pose:
+  insertion permits only axial translation; at full depth, starting a twist locks
+  translation and permits only rotation. Removal reverses the sequence: rotate, then
+  eject axially.
+  The insertion depth and locking angle are scalar-or-range parameters, sampled per env
+  at reset when ranges are configured. `fresh_bulb_inserted` and `success` read the
+  attachment state, so every score channel is achievable. Remove/Install do not yet use
+  this mechanic: their bulbs simply lift out of / drop into the socket.
 
 ## Goal
 
 Insert the fresh bulb into the fixture, remove the old bulb from the fixture, and place
-the old bulb in the disposal crate. Full success = fresh bulb **attached** (seated AND
-screwed in, per ``mdp.bulb_attachment``) **and** old bulb in the crate. Seating alone no
-longer scores: a bulb resting in the socket without the screw-in gate firing is not done.
+the old bulb in the disposal crate. Full success = fresh bulb **attached** (fully inserted
+and rotated through the configured lock angle, per `mdp.bulb_attachment`) **and** old bulb
+in the crate. Seating alone no longer scores.
 
 ## Actions
 

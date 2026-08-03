@@ -1,272 +1,234 @@
-# Issue #54 — Bulb Attachment/Detachment Mechanics (Phase 4)
+# Bulb Attach/Detach: Bayonet Socket Mechanic
 
-Status: IMPLEMENTED for Replace (2026-07-17) — see §0. Findings from a three-agent
-investigation (codebase survey, Isaac Lab / PhysX platform research, BEHAVIOR-1K reference
-research), 2026-07-17. Branch: `54-bulb-attach-detach-mechanics`. Issue:
-https://github.com/haw-ai-i/fiatlux/issues/54.
+Issue: https://github.com/haw-ai-i/fiatlux/issues/54
+PR: https://github.com/haw-ai-i/fiatlux/pull/65
 
-## 0. Resolution (what actually landed)
+Status: IMPLEMENTED AND VERIFIED (2026-08-03, RTX 3090 / Isaac Sim 5.1 / Isaac Lab
+2.3.2): `verify_attach.py` 21/21 + `--check-ranges` 1/1; `verify_scene.py` base
+31/31, Install 34/34, Remove 34/34, Replace 43/43.
 
-**Approach B (boolean attach + pose slaving) was implemented first**, not Approach A. The
-deciding constraint: A's load-bearing unknown (spike 3 — whether Isaac Lab 2.3.2 exposes
-per-env drive-gain tensors for a non-articulation D6 between two `RigidObject`s) can only
-be resolved on a GPU box with Isaac Sim, and B uses exclusively documented, known-working
-tensorized APIs (`write_root_pose_to_sim` / `write_root_velocity_to_sim` on dynamic
-bodies — the same calls episode resets use). A remains the follow-up once its spike runs.
-
-Landed in:
-
-- `mdp/attach.py` (new) — `bulb_attachment` every-step event term (FSM + accumulators +
-  pose slaving) and the attach-aware predicates `old_bulb_attached`,
-  `fresh_bulb_attached`, `attached_replacement_success`.
-- `replace_env_cfg.py` — event term wired (`mode="interval"`,
-  `interval_range_s=(0.0, 0.0)` = every step); `fresh_bulb_inserted` and
-  `success`/`success_bonus` now read attachment state (`GRASP_RADIUS = 0.12` m,
-  `SCREW_ANGLE = π` rad, ratcheted, `unscrew_sign = -1.0`).
-- `scene_cfg.py` — the replace preset's old bulb spawns dynamic (fresh bulb's solver
-  tuning) instead of `kinematic_enabled=True`.
-- `scripts/verify_scene.py` — the old bulb moved from the kinematic-props static check to
-  the dynamic-props bounds check; its z-bound allows the 3.0 m ceiling mount.
-- `docs/task_spec.md`, `docs/roadmap.md` — stand-in caveats replaced.
-
-Design deltas from §5 as-specced, made during implementation:
-
-- The screw gates ratchet (only strokes in the screw direction count) rather than
-  accumulate net signed roll — return strokes during re-gripping must not cancel
-  progress. Wiggling can farm the accumulator without net bulb rotation; accepted for
-  v0 (strictly harder than B1K's zero-screw model) and noted in the module docstring.
-- Fresh-bulb attach additionally requires the old bulb to be detached (one socket, one
-  bulb; also prevents slaving both bulbs into the same pose).
-- Single hand (right palm body + right wrist-roll joint, configurable) rather than
-  either-hand: the `hand_contact` sensor is already right-hand-only.
-- Post-review fix (Codex review, 2026-07-17, verified against the v2.3.2 source):
-  `ManagerBasedRLEnv.step` computes terminations/rewards *before* interval events, so the
-  managers see a held bulb wherever that step's physics left it — a hard mid-step shove
-  could latch false removal/disposal progress before the seat-pose write corrected it.
-  The old-bulb score channels are now attach-aware (`old_bulb_release_clearance`,
-  `old_bulb_removed_after_release`, `old_bulb_disposal_distance_pinned`,
-  `old_bulb_dropped_after_release`): a held bulb reads as seated, by definition.
-- **Verified on GPU** (RTX 3090, Isaac Sim 5.1 / Isaac Lab 2.3.2): `verify_attach.py`
-  11/11 and all eight `verify_scene.py` presets pass against the Omniverse LightBulb pair
-  that landed on `main`. The seated-bulb jitter feared below did not materialise: `main`'s
-  socket keeps its screw hole OPEN via an exact triangle-mesh collider, so a seated bulb
-  rests instead of being depenetrated out. Superseded first-run checklist, kept for the
-  record:
-  `verify_scene.py` for the replace preset; watch for seated-bulb jitter against the
-  socket colliders (the slaved dynamic bulb may interpenetrate where the kinematic one
-  sat passively — `max_depenetration_velocity=1.0` caps ejection); confirm the
-  `(0.0, 0.0)` interval fires every step; scripted-unscrew sanity run for the gates.
+---
 
 ## 1. Problem statement
 
-`FIATLUX-Replace-v0` is physically unsolvable:
+`FIATLUX-Replace-v0` requires the old bulb to start "screwed into" the fixture yet be
+removable, and the fresh bulb to become "screwed in" once installed. Plain rigid-body
+physics provides neither:
 
-- The **old bulb** is spawned with `kinematic_enabled=True`
-  (`scene_cfg.py:773-782`, inside `apply_replace_preset`), locking it in world space. No
-  policy can remove it, so `old_bulb_removal`, `old_bulb_disposal_progress`,
-  `old_bulb_removed`, `old_bulb_disposed`, and therefore `full_replacement_success` /
-  the `success` termination are scored-but-unachievable (acknowledged in
-  `replace_env_cfg.py:31-34` and `docs/task_spec.md:24-27`).
-- The **fresh bulb**'s insertion is a purely geometric check — `bulb_seated`
-  (`mdp/rewards.py:112-120`): plug-vs-seat position error < 0.015 m AND orientation error
-  < 0.2 rad. No physical bond is ever created; the bulb can be knocked out after
-  "success".
+- The old bulb was a kinematic stand-in. No policy could move it, so every
+  removal/disposal score channel and the `success` termination were
+  scored-but-unachievable.
+- Fresh-bulb "insertion" was a purely geometric seating check. A bulb could be waved
+  through the success zone or knocked out of it after scoring.
 
-The design intent already exists: `journal/specs/task-family-unification.md:170-182`
-(Phase 4, DEFERRED) calls for a shared `mdp/attach.py` util that makes/breaks a
-`FixedJoint` between bulb and socket seat pose, **gated by alignment + accumulated wrist
-roll ("screw")** — explicitly NOT threaded geometry. Per the Phase 3.5 regrouping, the
-same mechanic must anchor at the table lamp's seat pose for the bench tasks
-(Remove/Install) and the elevated fixture for Replace.
+An attachment mechanic must make both events real. It must be driven by the **bulb's
+motion**, not by robot state: any proxy signal (e.g. wrist pose) can be satisfied
+without the bulb actually moving, which rewards a gesture instead of a manipulation.
 
-## 2. Current state of the codebase (survey findings)
+## 2. Requirements
 
-### Scene & assets
+The socket is modeled as a **bayonet mount**, driven entirely by the bulb's pose
+relative to the socket:
 
-> **Superseded.** This section describes the BEHAVIOR-1K pair the investigation was written
-> against. `main` has since replaced it with the two halves of the Omniverse Sample-Scenes
-> `LightBulb` (`assets.py`), authored assembled at identity so "seated" is simply *bulb root
-> pose == socket root pose* — the offsets quoted below no longer apply, and the metalink
-> reasoning is moot because the new socket has a real open hole. The state machine itself is
-> unchanged: it reads `SOCKET_SEAT_OFFSET`/`BULB_PLUG_OFFSET`, whatever they point at.
+- **Install**: insert, then rotate — the bulb, not the wrist.
+- **Remove**: rotate back, then eject.
+- While the bulb travels along the socket axis it **cannot rotate**.
+- Once it has started rotating (at full depth) it **cannot travel along the axis**.
+- `insertion_depth` and `rotation_angle` are **parametric** and per-env randomizable
+  for domain randomization.
 
-- Bulb = B1K `kfmkwd`, socket/lamp = B1K `ehjsdz` — **this exact pair is a registered
-  attachment pair in BEHAVIOR-1K** (`attachment_combinations.json`: `light_bulb-kfmkwd` ↔
-  `table_lamp-ehjsdz`), and was manually verified insert/detach-able via the API
-  (`journal/syncs/2026.07.11.transcript.md:98`).
-- `spawn_b1k_single_body` (`scenes.py:40-48`) deactivates all `meta__*` prims — including
-  the B1K **attachment metalinks** whose frames are the natural joint anchor points. Their
-  transforms survive as baked constants: `SOCKET_SEAT_OFFSET=(0,0,0.0326)`,
-  `BULB_PLUG_OFFSET=(0.0635,0,-0.0225)` (`assets.py:52-53`).
-- Everything clones via `{ENV_REGEX_NS}` with `replicate_physics=True`
-  (`replace_env_cfg.py:384`); `@clone` spawn funcs author env-0's template **before**
-  replication — so anything authored at spawn time replicates for free, while per-env
-  runtime USD edits fight the shared physics view.
-- Existing pattern for authoring physics schemas at spawn: `_spawn_usd_as_rigid_body`
-  (`scene_cfg.py:244-278`); `PhysxSchema` confirmed importable
-  (`scripts/omniverse/omniverse_ladder_playground.py:243,257`).
+The two motion regimes are mutually exclusive, so the required order is structural,
+not reward-shaped: no sequence of pushes can free a locked bulb, and no fresh bulb
+counts as installed until it has bottomed out and turned through the lock angle. How
+the robot produces bulb rotation (finger friction, palm contact) is left to contact
+physics — the mechanic constrains only the bulb.
 
-### MDP terms & grasping
+Non-functional requirements:
 
-- Seat/plug frame helpers: `_seat_point_w`, `_plug_point_w`, `_old_bulb_plug_point_w`
-  (`rewards.py:56-67, 317-321`). Success chain: `bulb_seated` → `fresh_bulb_inserted` +
-  `full_replacement_success` (= seated AND old bulb within 0.25 m of the crate);
-  removal gate: fixture clearance > 0.10 m.
-- **No grasp mechanic exists** — grasping is emergent friction (12 Inspire finger DoF,
-  torque capped at 2.0 N·m, `g1.py:168`). The `hand_contact` sensor
-  (`scene_cfg.py:371-375`) has no `filter_prim_paths_expr` against the bulb; the climb
-  task's filtered `ladder_contact` sensor (`scene_cfg.py:518-532`) is the pattern if a
-  real bulb-contact channel is wanted.
-- Timing hazard: `distance_progress` (`rewards.py:346-395`) captures `d0` at reset; the
-  `away_threshold` branch for `old_bulb_removal` assumes the bulb starts seated (d0≈0) —
-  only holds if the attach mechanic keeps it seated until deliberately released.
-- Isaac Lab pinned at **2.3.2.post1** (`pyproject.toml:18`). No joint/attach code exists
-  anywhere in `source/`.
+- Compatible with the GPU-vectorized pipeline: per-env state, no runtime USD edits.
+- Throughput regression at standard env counts within noise.
+- No coupling to robot morphology or joint naming.
+- Existing score-channel and telemetry contracts (term names) unchanged.
 
-## 3. Reference design — BEHAVIOR-1K / OmniGibson `AttachedTo`
+## 3. Asset geometry
 
-(Read from `omnigibson/object_states/attached_to.py` + `utils/usd_utils.py:create_joint`.)
+Bulb and socket are the two halves of the Omniverse Sample-Scenes `LightBulb`
+(`assets.py`: `LightBulb_bulb_z_rigid.usda` / `LightBulb_socket_z_static.usda`;
+regenerate with `scripts/omniverse/omniverse_bulb_rigid.py`).
 
-- **FSM shape (transferable):** per step while unattached: contact scan → for the first
-  compatible male(child)/female(parent) metalink pair whose poses satisfy
-  **pos_diff < 0.05 m AND orn_diff < 15°**, teleport child so frames coincide,
-  `keep_still()` both, create a `UsdPhysics.FixedJoint` (child male link ↔ parent female
-  link, `excludeFromArticulation=True`) with `physics:breakForce=5000 N` /
-  `physics:breakTorque=10000 N·m` (tunable; their demo uses 500). Detach is PhysX's own
-  `JOINT_BREAK` event → delete joint prim → wake bodies.
-- **No screwing exists in OmniGibson.** Screw-type and snap-type attachments collapse to
-  the same aligned-→-instant-fixed-joint model. The wrist-roll "screw" gate in our
-  unification spec is an addition on top, not a port.
-- **Mechanism does NOT transfer:** their attach path stops/plays the sim, edits the USD
-  stage at runtime, and carries an in-code warning that `create_joint` crashes under
-  multi-GPU when triggered from contact callbacks. Built for ~1 CPU-ish env. What
-  transfers is the FSM shape and the threshold constants, not the joint plumbing.
+- The socket hole is genuinely open: exact-triangle-mesh colliders
+  (`physics:approximation = "none"`), so a lowered bulb nests and rests by contact.
+  Exact meshes are illegal on dynamic bodies, so the socket stays static/kinematic.
+- Both halves are authored assembled at identity: seated ⇔ bulb root pose == socket
+  root pose; `SOCKET_SEAT_OFFSET == BULB_PLUG_OFFSET == (0, 0, 0.036259)`.
+- The mating axis is explicit: `BULB_PLUG_AXIS == SOCKET_SEAT_AXIS == +Z`;
+  `verify_scene` re-measures the offsets from geometry at runtime.
+- Both bulbs spawn dynamic; authored masses (bulb 35 g, fixture 0.30 kg).
 
-## 4. Platform constraints — Isaac Lab / PhysX on GPU (verdicts on the issue's options)
+Contact geometry alone already provides retention (a bulb rests in the hole, even
+inverted — measured 1.9 mm settle in a ceiling mount). The mechanic adds the ordering
+constraint that makes removal an unscrew rather than a pick-up.
 
-The decisive fact (PhysX 5.x Direct-GPU API docs): **all joints except the D6 joint are
-unsupported by the Direct-GPU (tensorized) pipeline.** Consequences:
+## 4. Design: state machine
 
-| Issue option | Verdict | Why |
-| --- | --- | --- |
-| 1. Breakable joints | **REJECT** | Break events are CPU callbacks; no tensorized per-env break query; breakable fixed/revolute joints not a supported Direct-GPU type; known PhysX bug (#200): re-added broken joints resurrect unbroken → fragile episode resets. Unconfirmed whether breakForce is honored at all under the GPU solver. |
-| 2. Runtime joint create/destroy | **REJECT for per-env use** | Works as a one-off via `PhysxSchema.PhysxPhysicsAttachment` + `PhysxAutoAttachmentAPI` (Isaac Lab discussion #4189; avoids the snap-to-init-pose bug of `physx_utils.createJoint`, since USD poses go stale during GPU sim). But it is a USD stage edit + physics re-parse — impractical per-env at RL scale. Fine only for startup/global authoring. |
-| 3. Kinematic toggling | **REJECT** | `write_root_pose_to_sim` fails on kinematic bodies mid-sim on GPU (Isaac Lab issues #3646, #2069); `kinematic_enabled` is a spawn-time USD property with no documented per-env runtime tensor toggle. This is exactly the operation that is broken. |
+Per bulb, per env. Persistent state: `phase` and the lock angle `theta` (current
+rotation toward locked, in `[0, rotation_angle]`). The axial coordinate is read from
+the live pose each step, never stored.
 
-Also rejected: Isaac Sim `SurfaceGripper` (CPU-only as of 5.0/5.1 — kills GPU throughput).
+```
+             enter channel                    bottomed + twist begins
+   FREE  ────────────────────────▶  AXIAL  ─────────────────────────▶  ROTATING
+    ▲    aligned, socket empty        │ ▲                                  │
+    │                                 │ │      theta back to 0             │
+    └─────────────────────────────────┘ └──────────────────────────────────┘
+             travel past depth
+             (ejected)
+```
 
-**The two mechanisms that DO work at vectorized-GPU scale:**
+- **FREE** — unconstrained rigid body. Physics owns it entirely.
+- **AXIAL** — the insertion channel. The bulb keeps only its axial coordinate,
+  clamped to `[0, insertion_depth]` measured from the seat; lateral offset and all
+  rotation relative to the socket are projected away. Entered from FREE when the plug
+  point is inside the channel mouth, the bulb is aligned within tolerance, and the
+  socket holds no other bulb; entered from ROTATING when `theta` returns to 0.
+- **ROTATING** — the lock groove. Position pinned at full depth; the bulb keeps only
+  twist about the socket axis, tracked as `theta` and clamped to
+  `[0, rotation_angle]`. Entered from AXIAL when the bulb is at full depth and its
+  twist moves in the locking direction.
 
-- **Factory-style — no attach event at all.** NVIDIA's Factory/AutoMate tasks (nut-bolt
-  screwing, insertion) model threading as pure SDF collision + friction on GPU; screwing
-  is emergent contact. Physically faithful, zero USD edits, but high sim-tuning cost and
-  needs thread-quality collision meshes our B1K assets don't have.
-- **Persistent per-env D6 joint with tensor-toggled drives.** Author one D6 joint
-  (socket seat frame ↔ bulb plug frame) on the env-0 template at spawn; represent
-  attached/detached by raising/zeroing the joint's drive stiffness/damping/maxForce via
-  GPU tensors (shape `(num_envs, …)`) — no stage edits, no stop/play, per-env divergence
-  for free. The D6 is the one joint type with a GPU constraint shader.
+Attachment is derived, not stored:
 
-## 5. Proposed design
+- `old_bulb_attached` = `phase == ROTATING` (resets there with
+  `theta = rotation_angle` — locked).
+- `fresh_bulb_attached` = `phase == ROTATING and theta >= rotation_angle`.
 
-### Approach A (primary): per-env D6 "virtual screw" joints + explicit FSM
+Removal is therefore ROTATING → (theta→0) → AXIAL → (travel past depth) → FREE;
+installation is the exact reverse.
 
-One pre-authored D6 joint per bulb per env (old bulb ↔ socket, fresh bulb ↔ socket),
-frames at the baked seat/plug offsets, all 6 axes free (no limits), drives OFF by
-default. A new tensorized attach manager (`mdp/attach.py`) owns a per-env boolean state
-per joint and flips drive gains:
+### Parameters (all on the event term)
 
-- **ATTACHED** (old bulb at reset; fresh bulb after successful install): high
-  stiffness/damping/maxForce on all 6 drive axes, drive target = seat pose → the bulb is
-  held rigidly-ish in the socket, yet remains a dynamic body (rewards/obs unchanged,
-  `d0≈0` assumption in `distance_progress` preserved).
-- **DETACHED**: all drive gains/maxForce zeroed → joint imposes no constraint; bulb is
-  free to carry/dispose.
+| name                    | default   | meaning                                               |
+| ----------------------- | --------- | ----------------------------------------------------- |
+| `insertion_depth`       | `0.034` m | seat-to-mouth travel (measured socket geometry)       |
+| `rotation_angle`        | `π/2` rad | released → locked twist (quarter turn)                |
+| `rotation_sign`         | `+1`      | which twist direction locks                           |
+| `radial_tolerance`      | `0.015` m | channel-entry lateral tolerance (= seating tolerance) |
+| `orientation_tolerance` | `0.2` rad | channel-entry axis-alignment tolerance                |
+| `seat_tolerance`        | `0.004` m | "bottomed" gate: locking may begin within this axial distance of the seat (contact stops the bulb slightly short of exact zero) |
 
-Gates (per unification spec Phase 4, thresholds seeded from B1K):
+`insertion_depth` and `rotation_angle` accept a scalar or a `(low, high)` range;
+ranges are sampled independently per env at every reset. This is the domain
+randomization hook — no other code changes are needed to randomize the socket
+geometry.
 
-- **Detach (unscrew) gate**, old bulb: hand within grasp proximity of the bulb (position
-  check, optionally a filtered bulb contact sensor) AND **accumulated wrist roll** past a
-  threshold (e.g. ≥ 2π of rolling motion in the unscrew direction while in proximity) →
-  zero the drives. PhysX break events are NOT used; the "break" is our own gate.
-- **Attach (screw-in) gate**, fresh bulb: `bulb_seated`-style alignment (reuse existing
-  0.015 m / 0.2 rad tolerances — tighter than B1K's 5 cm / 15°, keep ours) held for N
-  consecutive steps AND accumulated wrist roll → raise the drives. `bulb_seated` success
-  then additionally requires the ATTACHED state, closing the "knock it out after
-  success" hole.
+## 5. Design: enforcement by per-step pose projection
 
-Implementation shape:
+Alternatives considered and rejected for the GPU-vectorized pipeline:
 
-1. **`mdp/attach.py` (new)** — `BulbAttachmentManager` (or event-term pair): per-env
-   state tensors, wrist-roll accumulator, gate predicates, drive-gain writes; `reset()`
-   restores old-bulb=ATTACHED / fresh-bulb=DETACHED. Exported via `mdp/__init__.py`.
-2. **`scene_cfg.py`** — spawn `old_bulb` **dynamic** (drop `kinematic_enabled=True`);
-   author both D6 joints on the template at spawn (extend the `_spawn_usd_as_rigid_body`
-   pattern or a dedicated spawn func; `PhysxSchema` available). Same change mirrored in
-   `apply_remove_preset` / `apply_install_preset` (bench lamp seat pose).
-3. **`replace_env_cfg.py`** — wire the manager (EventCfg interval term or custom
-   manager, `EventCfg` at 157-186 is the hook point); re-verify `old_bulb_removal`
-   `away_threshold`, `old_bulb_dropped`, and disposal terms now that the bulb is
-   genuinely free; gate `bulb_seated` on ATTACHED.
-4. **`remove_env_cfg.py` / `install_env_cfg.py`** — promote to `ManagerBasedRLEnvCfg`
-   with the shared util (their `:35` TODOs), as separate follow-up issues if needed.
-5. Optional: filtered bulb contact sensor (clone the `ladder_contact` pattern) if the
-   proximity gate proves too weak a grasp proxy.
+| mechanism                    | verdict        | why                                                                                                        |
+| ---------------------------- | -------------- | ---------------------------------------------------------------------------------------------------------- |
+| breakable joints             | reject         | break events are CPU callbacks; not a supported Direct-GPU type; broken-joint resurrect bug (PhysX #200)   |
+| runtime joint create/destroy | reject per-env | USD stage edit + physics re-parse; impractical at RL scale                                                 |
+| `kinematic_enabled` toggling | reject         | spawn-time property; per-env runtime pose writes to kinematic bodies broken on GPU (Isaac Lab #3646/#2069) |
+| Factory-style SDF threads    | out of scope   | physically faithful, but needs thread-quality collision meshes + heavy contact tuning                      |
 
-### Approach B (fallback): boolean attach + per-step pose slaving
+All joints except D6 are unsupported by the PhysX Direct-GPU pipeline; a persistent
+per-env D6 with tensor-toggled drives remains a possible physical backend, deferred
+pending an on-GPU spike.
 
-If free-axis-zero-drive D6 joints turn out to still constrain or destabilize the solver:
-no joints at all; "attached" is a per-env boolean, and the attach manager writes the
-seated pose/zero velocity to the (dynamic) bulb every step via `write_root_state_to_sim`
-while attached. Same gates, same FSM. Less physical (no compliance, no force feedback
-through the fixture), known-working tensor path.
+Enforcement is therefore **projection**: an every-step event term
+(`mode="interval"`, `interval_range_s=(0.0, 0.0)`) that
 
-### Out of scope (recorded for the roadmap)
+1. reads the bulb pose in the socket frame (axial coordinate, lateral offset, twist),
+2. advances the state machine,
+3. writes back the projected pose and velocity through the tensorized
+   `write_root_pose_to_sim` / `write_root_velocity_to_sim` — pose components the
+   current phase forbids are removed; velocity is projected onto the allowed axis
+   (linear-axial in AXIAL, angular-twist in ROTATING, with a hard stop at
+   `theta = rotation_angle`).
 
-Factory-style SDF thread simulation — the physically-faithful end state, but requires
-thread-geometry collision meshes and heavy contact tuning; revisit if/when realism of the
-screw interaction itself becomes a benchmark goal.
+No USD edits, no joints, no per-env stage state — the same API surface episode resets
+already use, valid per-env on GPU.
 
-## 6. Validation spikes (do these first)
+## 6. Design constraints
 
-1. **Zero-drive D6 is truly free**: 2-env headless scene, bulb + socket + D6 with zeroed
-   drives → bulb must fall/behave as unconstrained; then raise gains per-env via tensor →
-   one env's bulb holds seated, the other falls. This validates the whole of Approach A.
-2. **Template-authored joints replicate** under `replicate_physics=True` and survive
-   `reset()` (watch for PhysX issue #200-adjacent resurrect/state bugs — we never
-   delete joints, so we expect to dodge it; confirm).
-3. **Drive-gain writes are per-env addressable** in Isaac Lab 2.3.2's tensor API for a
-   non-articulation D6 between two `RigidObject`s (this is the least-documented part —
-   if the manager-based API only exposes articulation joint drives, we may need
-   `omni.physics.tensors` views directly).
-4. **Wrist-roll accumulator** signal quality: log accumulated roll during scripted/replay
-   motion to pick the unscrew threshold.
+- **No robot state.** The state machine reads two rigid-body poses (bulb, socket) and
+  nothing else — no palm bodies, wrist joints, grasp radii, or roll accumulators.
+- **One code path for both bulbs.** Old and fresh bulb differ only in reset phase
+  (`ROTATING`+locked vs `FREE`): same advance function, same projection, applied to
+  different state slices.
+- **No hidden bookkeeping flags.** `theta` integrates against the twist of the pose
+  the projection last wrote (or the spawn pose), so transition and reset steps need
+  no special-casing.
+- **Scoring reads state, not geometry.** `fresh_bulb_inserted` and `success` gate on
+  `fresh_bulb_attached`; the old-bulb channels gate on `phase != FREE`. Because
+  `ManagerBasedRLEnv.step` computes rewards/terminations before interval events, a
+  mid-step shove of a constrained bulb is visible to scoring before projection
+  corrects it; while constrained, the old-bulb distance channels therefore report the
+  seat pose, preventing the best-progress latches from paying transient displacement.
 
-## 7. Acceptance criteria
+## 7. Implementation scope
 
-- Old bulb: dynamic at reset, held seated; a policy (or scripted motion) that grasps and
-  rolls the wrist past threshold frees it; it can then be carried and dropped in the
-  crate → `old_bulb_removed`, `old_bulb_disposed` fire.
-- Fresh bulb: aligning it to the seat and rolling the wrist engages ATTACHED; `success`
-  (`full_replacement_success`) is reachable end-to-end in `FIATLUX-Replace-v0`.
-- No per-env USD stage edits at runtime; throughput regression at standard env counts
-  within noise.
-- `verify_scene` and existing reward/obs tests updated; the
-  "scored-but-not-yet-achievable" caveats removed from `replace_env_cfg.py` docstring,
-  `docs/task_spec.md`, `docs/roadmap.md`.
+- `mdp/attach.py` — the `bulb_attachment` event term (FSM + projection), derived
+  attachment predicates, and the constrained-aware old-bulb score channels.
+- `replace_env_cfg.py` — event wiring with `BAYONET_INSERTION_DEPTH` /
+  `BAYONET_ROTATION_ANGLE` (+ sign, tolerances); reward and termination term names
+  unchanged, so telemetry/recording contracts are untouched.
+- `scene_cfg.py` — docstrings (the old bulb already spawns dynamic).
+- `scripts/verify_attach.py` — policy-free verification driving bulb poses with robot
+  actions zero (§8).
+- Docs (`task_spec.md`, `roadmap.md`, module docstrings).
 
-## 8. Open questions
+Out of scope: porting the mechanic to Remove/Install (their bulbs still lift straight
+out), and any joint-based (D6) backend.
 
-- Does Isaac Lab 2.3.2 expose drive-gain tensors for a loose (non-articulation) D6
-  between two RigidObjects, or do we drop to raw `omni.physics.tensors`? (Spike 3.)
-- Drive target pose while ATTACHED: fixed seat pose vs. current-pose-at-attach (B1K
-  teleports child to exact alignment; we can snap via drive target instead — decide
-  during spike 1).
-- Should detach also have a force-based escape hatch (pull hard enough = B1K's
-  5000 N intent) in addition to wrist roll, so non-screw strategies aren't dead ends?
-- Unscrew direction sign convention for the accumulated-roll gate (per-hand handedness).
+## 8. Verification
 
-## 9. Key sources
+`scripts/verify_attach.py`, policy-free, robot actions zero, driving bulb poses
+directly (GPU host required):
+
+1. Old bulb starts attached; pulling it along the axis while locked produces no
+   axial displacement.
+2. Rotating the locked old bulb to `theta = 0`, then pulling: it travels, and cannot
+   be rotated while traveling (applied twist during AXIAL is rejected).
+3. Reversing mid-unlock re-locks (theta clamps, no state corruption).
+4. Past `insertion_depth` the old bulb is FREE (moves freely under physics).
+5. A fresh bulb never engages an occupied socket, nor a misaligned entry.
+6. Fresh bulb aligned into the empty socket: engages AXIAL; twist during travel is
+   rejected; at full depth, twist through `rotation_angle` → `fresh_bulb_attached`;
+   with the old bulb in the crate, the `success` termination fires.
+7. `(low, high)` parameter ranges sample per env and re-sample on reset
+   (`--check-ranges`; a second `ManagerBasedRLEnv` build hangs Isaac Sim in-process,
+   so this check runs as its own invocation).
+
+Plus `scripts/verify_scene.py` across presets (regression) and ruff.
+
+## 9. Acceptance criteria
+
+- The old bulb can be freed only via rotate-then-eject, then carried and dropped in
+  the crate → `old_bulb_removed`, `old_bulb_disposed` fire.
+- The fresh bulb counts as installed only via insert-then-rotate →
+  `fresh_bulb_inserted` and `success` (`attached_replacement_success`) are reachable
+  end-to-end in `FIATLUX-Replace-v0`.
+- `insertion_depth` / `rotation_angle` randomize per env from ranges with no code
+  changes.
+- No per-env USD edits at runtime; throughput regression within noise.
+- The verification checklist in §8 passes on a GPU host.
+
+## 10. Open questions
+
+- **Tolerance while constrained**: entry uses `radial_tolerance`, but once in AXIAL
+  the projection is exact (lateral ≡ 0). Acceptable for v1; a compliant channel
+  (project only the excess) is a possible refinement if the hard writes fight the
+  solver.
+- **Escape velocity**: projection zeroes forbidden velocity components each step, so
+  a violent yank cannot accumulate escape speed — but the bulb also cannot be
+  "broken out". Accepted: breakage is not part of this task's contract (fragility is
+  scored via hand contact force separately).
+- **`rotation_sign` handedness** vs the G1's preferred wrist direction — to be chosen
+  from teleop/scripted attempts; it is one parameter.
+
+## 11. References
 
 - PhysX Direct-GPU API (D6-only): https://nvidia-omniverse.github.io/PhysX/physx/5.4.0/docs/DirectGPUAPI.html
 - Isaac Lab discussions/issues: #4189 (runtime attachment), #883 (startup FixedJoint),
@@ -275,6 +237,6 @@ screw interaction itself becomes a benchmark goal.
   broken-joint resurrect bug: https://github.com/NVIDIA-Omniverse/PhysX/issues/200
 - Factory (SDF screwing, no attach events): https://developer.nvidia.com/blog/advancing-robotic-assembly-with-a-novel-simulation-approach-using-nvidia-isaac/
 - OmniGibson `AttachedTo`: https://github.com/StanfordVL/OmniGibson/blob/main/OmniGibson/omnigibson/object_states/attached_to.py
-  (+ `utils/usd_utils.py` `create_joint`, `examples/object_states/attachment_demo.py`)
-- In-repo: `journal/specs/task-family-unification.md` Phase 4; issue
-  https://github.com/haw-ai-i/fiatlux/issues/54
+- In-repo: `journal/specs/task-family-unification.md` Phase 4. Earlier revisions of
+  this file (git history) hold the original platform investigation, the superseded
+  wrist-roll design, and the asset-migration analysis.

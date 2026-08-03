@@ -99,9 +99,8 @@ def _bulb_socket_axis_error(env: ManagerBasedRLEnv) -> torch.Tensor:
 
     Unlike :func:`_bulb_socket_ori_error` this ignores rotation ABOUT the mating axis,
     which ``assets.BULB_PLUG_AXIS`` defines as free -- that rotation *is* the screwing
-    motion. A full-frame comparison makes a bulb turning with the wrist read as
-    misaligned within a fraction of a turn, which would make a screw-in gate that also
-    demands alignment impossible to satisfy (issue #54).
+    motion. A full-frame comparison makes rotation about the mating axis read as
+    misalignment, so it is not appropriate during the rotation stage (issue #54).
     """
     bulb: RigidObject = env.scene["bulb"]
     socket: RigidObject = env.scene["socket"]

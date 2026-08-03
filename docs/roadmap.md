@@ -44,12 +44,13 @@ descoping still stands — it is one flat RL episode, chaining is solution struc
   `docs/task_spec.md` / `docs/scoring.md`.
 - Policy stitching / staged-curriculum chaining: not planned (solution structure).
 - Old-bulb attach/detach mechanic (unification spec Phase 4): LANDED for Replace
-  (issue #54, 2026-07-17) as the `mdp.bulb_attachment` state machine — per-env boolean
-  attachment + seated-pose slaving, gated by palm proximity and accumulated wrist roll
-  (see `journal/specs/issue-54-bulb-attach-detach.md`). All Replace score channels are
-  now achievable. Follow-ups: the physical D6-joint backend (spec Approach A, needs an
-  on-GPU spike), and putting Remove/Install on the same mechanic -- their bulbs are
-  already dynamic, but nothing gates screw/unscrew there yet.
+  (issue #54, revised 2026-07-31) as the `mdp.bulb_attachment` bayonet state machine.
+  It constrains each bulb to axial-only insertion/ejection or rotation-only locking,
+  switching only when the bulb itself moves at the fully inserted junction. Insertion
+  depth and lock angle are per-env scalar-or-range parameters for future domain
+  randomization. All Replace score channels are achievable. Follow-up: put Remove/Install
+  on the same mechanic; their bulbs are already dynamic but currently lift straight out
+  of / drop straight into the socket.
 
 ## 3. Learned-policy support
 

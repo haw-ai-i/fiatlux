@@ -439,8 +439,8 @@ class G1ReplaceSceneCfg(DressedSceneCfg):
     )
     # Old bulb, seated in the elevated fixture (replace preset only). Dynamic, so removing
     # it is a real physical event; built by apply_replace_preset. "Screwed in" is the
-    # mdp.bulb_attachment state machine, which holds it at the seat pose until the unscrew
-    # gate fires (issue #54).
+    # mdp.bulb_attachment bayonet state machine, which pins it at the seat until the bulb
+    # itself is rotated to the release angle and travels out of the channel (issue #54).
     old_bulb: RigidObjectCfg | None = None
     # Rod a ceiling-mounted fixture hangs from (see add_ceiling_pendant). Only the presets
     # that mount overhead spawn it; wall mounts and the bench have no pendant.
@@ -924,8 +924,8 @@ def apply_replace_preset(
     knocked-over ladder is a real, penalized event in this task. The old bulb starts seated
     and DYNAMIC at the fixture's own pose (both halves are authored assembled at identity,
     so no offset arithmetic is needed at any mount orientation). Because the fixture is
-    inverted here, the bulb is held by the seat constraint -- ``mdp.bulb_attachment``, which
-    slaves an attached bulb to the seat pose until the unscrew gate fires (issue #54).
+    inverted here, the bulb is held by ``mdp.bulb_attachment`` at the locked end of its
+    bayonet channel until the bulb itself rotates to the release angle (issue #54).
 
     Args:
         couple_ladder_to_fixture: place the ladder's zone reachably relative to wherever the
