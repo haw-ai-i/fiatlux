@@ -6,18 +6,20 @@
 """``FIATLUX-S06-RemoveOldBulb-v0`` -- free the old bulb from the fixture while on the ladder.
 
 Starts from S05's end state: the robot balanced on the upper steps with hands free, the old bulb
-seated in the inverted fixture above, at the fixture's own pose (both halves authored assembled at
-identity).
+locked in the fixture's bayonet channel (``mdp.bulb_attachment`` resets it ``ROTATING`` at full
+lock angle -- issue #54, wired once for the tier in ``subtask_tiers.mate.MateEventCfg``).
 
-**The held conjunct is the entire subtask.** Clearance alone is satisfied by the bulb falling out
-of an inverted socket under gravity -- which, with #54 unimplemented, is exactly what happens at
-t=0 with no action at all, so a clearance-only gate would score 100% for a policy that does
-nothing. A zero-action rollout must score 0.
+**The held conjunct is the entire subtask.** A gate that only checked geometric clearance from the
+fixture could be satisfied by the bulb sitting anywhere the bayonet projection allows without ever
+being taken -- ``old_bulb_removed_after_release`` requires the attach state machine to have
+actually left the channel (``_phase != ROTATING``), which only happens if something rotates it
+through the unlock angle and pulls it clear. A zero-action rollout scores 0.
 
 ``removal_progress`` uses the away-from formulation: the bulb starts AT the fixture, so the
-normalized ``(d0 - d) / d0`` form would divide by ~zero.
-
-BLOCKED on #54 (bulb attach/detach). The success gate is PROVISIONAL until it lands.
+normalized ``(d0 - d) / d0`` form would divide by ~zero. It reads the attach-aware
+``old_bulb_release_clearance``, pinned to 0 while the bulb is still constrained, per
+``mdp.attach``'s own ordering caveat (rewards run before the interval projection step, so raw
+geometry can transiently read clear a step before the bulb has actually exited the channel).
 """
 
 from isaaclab.managers import RewardTermCfg as RewTerm
@@ -37,7 +39,7 @@ _OLD_BULB = SceneEntityCfg("old_bulb")
 # The success gate, as reviewable data (mdp.all_of) rather than a hand-written conjunction --
 # an omitted conjunct here is a gate that passes vacuously.
 OLD_BULB_TAKEN_CONJUNCTS = [
-    (mdp.old_bulb_removed, {"clearance_threshold": REMOVAL_CLEARANCE, "asset_cfg": _OLD_BULB}),
+    (mdp.old_bulb_removed_after_release, {"clearance_threshold": REMOVAL_CLEARANCE}),
     (payload_held, {"sensor_cfg": SceneEntityCfg("grip_contact"), "force_threshold": GRIP_FORCE_THRESHOLD_N}),
     (grasp_terms.object_lifted, {"asset_cfg": _OLD_BULB, "min_height": OLD_BULB_DROP_HEIGHT}),
     (place_terms.robot_standing, {"minimum_height": FALL_MIN_HEIGHT, "limit_angle": FALL_TILT_LIMIT}),
@@ -53,8 +55,11 @@ class S06RewardsCfg(MateRewardsCfg):
     removal_progress = RewTerm(
         func=mdp.distance_progress,
         weight=500.0,
-        params={"distance_fn": mdp.old_bulb_fixture_clearance, "away_threshold": REMOVAL_CLEARANCE},
+        params={"distance_fn": mdp.old_bulb_release_clearance, "away_threshold": REMOVAL_CLEARANCE},
     )
+    # Not attach-aware: the bayonet projection pins the bulb near fixture height for the
+    # entire ROTATING/AXIAL phase, well above OLD_BULB_DROP_HEIGHT, so there is no transient
+    # mid-step value near this threshold for the interval projection to correct.
     bulb_dropped = RewTerm(
         func=mdp.object_dropped, weight=-200.0, params={"asset_cfg": _OLD_BULB, "min_height": OLD_BULB_DROP_HEIGHT}
     )
