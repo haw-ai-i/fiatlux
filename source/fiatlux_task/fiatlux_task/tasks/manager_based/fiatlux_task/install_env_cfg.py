@@ -11,7 +11,7 @@ beside the bench (instead of Insert's bulb-at-hand-height tabletop start).
 
 Since Install's preset (``apply_install_preset``) uses the exact same scene entity
 names as Insert's tabletop preset (``bulb``, ``socket``) and a plain *dynamic*
-(non-kinematic) bulb -- unlike Remove's kinematic stand-in -- this task's Actions /
+(non-kinematic) bulb -- as Remove's now is too -- this task's Actions /
 Observations / Rewards / Terminations are Insert's own, unchanged: the extra distance
 from the floor crate to the socket is exactly what ``mdp.object_socket_distance*``
 already rewards, just over a larger starting gap. See ``g1_bulb_env_cfg.py`` for the

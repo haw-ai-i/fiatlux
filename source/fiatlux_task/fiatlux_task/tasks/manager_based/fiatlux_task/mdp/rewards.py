@@ -35,8 +35,9 @@ Full replacement (``FIATLUX-Replace-v0``) — the scored full task:
 Bulb removal (``FIATLUX-Remove-v0``) — the old-bulb clearance/disposal channels above,
 standalone: the ``old_bulb_*`` functions take an ``asset_cfg`` (default Replace's
 ``old_bulb``) so Remove's single-bulb scene can point them at its own ``bulb`` entity.
-Scored-but-not-yet-achievable until the attach/detach mechanic lands (same gap Replace's
-own removal channel documents) -- the bulb is kinematic, so nothing can actually move it.
+Achievable: Remove's bulb is dynamic and rests in the socket's open hole, so it lifts
+straight out. What is missing there is the *unscrew gate* -- Replace routes these channels
+through ``mdp.bulb_attachment`` (issue #54), Remove does not yet.
 """
 
 from __future__ import annotations
@@ -50,7 +51,13 @@ from isaaclab.managers import ManagerTermBase, SceneEntityCfg
 from isaaclab.sensors import ContactSensor
 from isaaclab.utils.math import quat_apply, quat_error_magnitude
 
-from fiatlux_task.assets import BULB_PLUG_OFFSET, SOCKET_SEAT_OFFSET, STEP_LADDER_TOP_OFFSET
+from fiatlux_task.assets import (
+    BULB_PLUG_AXIS,
+    BULB_PLUG_OFFSET,
+    SOCKET_SEAT_AXIS,
+    SOCKET_SEAT_OFFSET,
+    STEP_LADDER_TOP_OFFSET,
+)
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Sequence
@@ -85,6 +92,25 @@ def _bulb_socket_pos_error(env: ManagerBasedRLEnv) -> torch.Tensor:
     origins: seating means the plug reaches the socket, and the two origins are offset by
     the plug geometry even when fully mated (issue #29)."""
     return torch.norm(_plug_point_w(env) - _seat_point_w(env), dim=1)
+
+
+def _bulb_socket_axis_error(env: ManagerBasedRLEnv) -> torch.Tensor:
+    """Angle (rad) between the bulb's plug axis and the socket's seat axis.
+
+    Unlike :func:`_bulb_socket_ori_error` this ignores rotation ABOUT the mating axis,
+    which ``assets.BULB_PLUG_AXIS`` defines as free -- that rotation *is* the screwing
+    motion. A full-frame comparison makes rotation about the mating axis read as
+    misalignment, so it is not appropriate during the rotation stage (issue #54).
+    """
+    bulb: RigidObject = env.scene["bulb"]
+    socket: RigidObject = env.scene["socket"]
+    n = env.num_envs
+    plug = torch.tensor(BULB_PLUG_AXIS, device=env.device).expand(n, 3)
+    seat = torch.tensor(SOCKET_SEAT_AXIS, device=env.device).expand(n, 3)
+    a = quat_apply(bulb.data.root_quat_w, plug)
+    b = quat_apply(socket.data.root_quat_w, seat)
+    cos = (a * b).sum(dim=1) / (a.norm(dim=1) * b.norm(dim=1)).clamp(min=1e-9)
+    return torch.acos(cos.clamp(-1.0, 1.0))
 
 
 def _bulb_socket_ori_error(env: ManagerBasedRLEnv) -> torch.Tensor:
@@ -375,11 +401,11 @@ def _ladder_top_point_w(env: ManagerBasedRLEnv) -> torch.Tensor:
 def _old_bulb_plug_point_w(
     env: ManagerBasedRLEnv, asset_cfg: SceneEntityCfg = SceneEntityCfg("old_bulb")
 ) -> torch.Tensor:
-    """World position of the (kinematic, "seated") bulb's plug (bulblampM metalink).
+    """World position of the seated bulb's plug point.
 
     ``asset_cfg`` defaults to Replace's ``old_bulb`` entity; Remove's standalone scene
-    names the same kinematic stand-in ``bulb`` (it has no separate fresh bulb), so its
-    cfg passes ``asset_cfg=SceneEntityCfg("bulb")`` through every function below.
+    names its single (dynamic) seated bulb ``bulb``, so its cfg passes
+    ``asset_cfg=SceneEntityCfg("bulb")`` through every function below.
     """
     old_bulb: RigidObject = env.scene[asset_cfg.name]
     offset = torch.tensor(BULB_PLUG_OFFSET, device=env.device).expand(env.num_envs, 3)

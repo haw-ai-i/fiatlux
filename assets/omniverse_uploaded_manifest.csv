@@ -99,31 +99,31 @@ omniverse_ladder,work_platform,stationaryworkplatform_a04,SimReady WH01,m,open,p
 omniverse_ladder,ladder,Ladder,Residential,cm,open,passed,task_asset,
 omniverse_climb,climb_structure,Mezzanine_A,Warehouse,cm,-,pending,scene_dressing,38-piece kit with built-in ladders + elevated decks
 omniverse_climb,climb_structure,OfficeSet_A,Warehouse,cm,-,pending,scene_dressing,63-piece kit with built-in ladders + elevated decks
-omniverse_lamp,table_lamp,AshleyLamp,Residential,cm,-,n/a,scene_dressing,"fused model, no separable bulb"
-omniverse_lamp,table_lamp,BlackLamp,Residential,cm,-,n/a,scene_dressing,"fused model, no separable bulb"
-omniverse_lamp,table_lamp,BlackTableLamp,Residential,cm,-,n/a,scene_dressing,"fused model, no separable bulb"
-omniverse_lamp,table_lamp,BubbleLampLarge,Residential,cm,-,n/a,scene_dressing,"fused model, no separable bulb"
-omniverse_lamp,table_lamp,BubbleLampSmall,Residential,cm,-,n/a,scene_dressing,"fused model, no separable bulb"
-omniverse_lamp,table_lamp,Colbert,Residential,cm,-,n/a,scene_dressing,"fused model, no separable bulb"
-omniverse_lamp,table_lamp,Cramer,Residential,cm,-,n/a,scene_dressing,"fused model, no separable bulb"
-omniverse_lamp,table_lamp,Dylan,Residential,cm,-,n/a,scene_dressing,"fused model, no separable bulb"
-omniverse_lamp,table_lamp,Finn,Residential,cm,-,n/a,scene_dressing,"fused model, no separable bulb"
-omniverse_lamp,table_lamp,Isabelle,Residential,cm,-,n/a,scene_dressing,"fused model, no separable bulb"
-omniverse_lamp,table_lamp,Jackson,Residential,cm,-,n/a,scene_dressing,"fused model, no separable bulb"
-omniverse_lamp,table_lamp,Mechant,Residential,cm,-,n/a,scene_dressing,"fused model, no separable bulb"
-omniverse_lamp,table_lamp,Theory,Residential,cm,-,n/a,scene_dressing,"fused model, no separable bulb"
-omniverse_lamp,floor_lamp,ArcFloorLamp,Residential,cm,-,n/a,scene_dressing,"fused model, no separable bulb"
-omniverse_lamp,floor_lamp,BrassFloorLamp,Residential,cm,-,n/a,scene_dressing,"fused model, no separable bulb"
-omniverse_lamp,floor_lamp,Candice,Residential,cm,-,n/a,scene_dressing,"fused model, no separable bulb"
-omniverse_lamp,floor_lamp,FloorLamp,Residential,cm,-,n/a,scene_dressing,"fused model, no separable bulb"
-omniverse_lamp,floor_lamp,VintageFloorLamp,Residential,cm,-,n/a,scene_dressing,"fused model, no separable bulb"
-omniverse_lamp,chandelier,Chandelier_Spiral,Residential,cm,-,n/a,scene_dressing,"fused model, no separable bulb"
-omniverse_lamp,chandelier,chandelier_A,Residential,cm,-,n/a,scene_dressing,"fused model, no separable bulb"
-omniverse_lamp,outdoor_light,3-TierPathLight,Residential,cm,-,n/a,scene_dressing,"fused model, no separable bulb"
-omniverse_lamp,outdoor_light,AgedCopperPathLight,Residential,cm,-,n/a,scene_dressing,"fused model, no separable bulb"
-omniverse_lamp,outdoor_light,CircularBollard,Residential,cm,-,n/a,scene_dressing,"fused model, no separable bulb"
-omniverse_lamp,outdoor_light,CircularWallSconce,Residential,cm,-,n/a,scene_dressing,"fused model, no separable bulb"
-omniverse_lamp,outdoor_light,GardenSpotlight,Residential,cm,-,n/a,scene_dressing,"fused model, no separable bulb"
-omniverse_lamp,outdoor_light,SquareBollard,Residential,cm,-,n/a,scene_dressing,"fused model, no separable bulb"
-omniverse_lamp,outdoor_light,WallSconce,Residential,cm,-,n/a,scene_dressing,"fused model, no separable bulb"
+omniverse_lamp,table_lamp,AshleyLamp,Residential,cm,-,n/a,scene_dressing,no separable bulb prim; Y-up (unlike every other lamp here)
+omniverse_lamp,table_lamp,BlackLamp,Residential,cm,-,n/a,scene_dressing,"PAIR (loose): bulb Bulb_metal (r0.0113) + Bulb_glass (dia0.068) + Filament; 14.5mm axial overlap with Bulb_socket. But vertex profiling shows Bulb_socket is a SEALED cylinder (r0.0177, capped at z0.5294 and z0.5633) -- not an open bore, and 6.4mm radial slop; base interpenetrates rather than seats. Bulb split across 3 prims. Coaxial, Z-up. Geometry-level finding: like every ArchVis lamp it ships NO authored colliders, so it is not task-ready as-is (the env uses Sample-Scenes LightBulb, whose socket has usable ones). Kept as scene_dressing."
+omniverse_lamp,table_lamp,BlackTableLamp,Residential,cm,-,n/a,scene_dressing,separable bulb prim BlackTableLamp_Bulb (dia0.0474); no distinct socket prim
+omniverse_lamp,table_lamp,BubbleLampLarge,Residential,cm,-,n/a,scene_dressing,"no separable bulb prim; glassbase is the fixture shell, not a lamp"
+omniverse_lamp,table_lamp,BubbleLampSmall,Residential,cm,-,n/a,scene_dressing,"no separable bulb prim; glassbase is the fixture shell, not a lamp"
+omniverse_lamp,table_lamp,Colbert,Residential,cm,-,n/a,scene_dressing,"PAIR: Colbert_Glass (dia0.027) + interiorGlass/Filament under Colbert_LightbulbAttachment (z0.4964-0.5308). Off-axis (x=-0.056); small bulb. Geometry-level finding: like every ArchVis lamp it ships NO authored colliders, so it is not task-ready as-is (the env uses Sample-Scenes LightBulb, whose socket has usable ones). Kept as scene_dressing."
+omniverse_lamp,table_lamp,Cramer,Residential,cm,-,n/a,scene_dressing,separable bulb prim Glass (dia0.0271); no distinct socket prim
+omniverse_lamp,table_lamp,Dylan,Residential,cm,-,n/a,scene_dressing,socket-side parts only (inlet/holder); bulb absent from the model
+omniverse_lamp,table_lamp,Finn,Residential,cm,-,n/a,scene_dressing,separable bulb prim FinnTableLamp_Glass (dia0.181); no distinct socket prim
+omniverse_lamp,table_lamp,Isabelle,Residential,cm,-,n/a,scene_dressing,"PAIR: IsabelleTableLamp_Bulb (dia0.0463, z0.4829-0.5497) in lampBase holder (z0.4149-0.5007). Coaxial, Z-up. Geometry-level finding: like every ArchVis lamp it ships NO authored colliders, so it is not task-ready as-is (the env uses Sample-Scenes LightBulb, whose socket has usable ones). Kept as scene_dressing."
+omniverse_lamp,table_lamp,Jackson,Residential,cm,-,n/a,scene_dressing,separable bulb prims Glass1-3 + Filament1-2 (dia0.0454); no distinct socket prim
+omniverse_lamp,table_lamp,Mechant,Residential,cm,-,n/a,scene_dressing,separable bulb prim Bulb (dia0.0704); no distinct socket prim; identical geometry to UPSTREAM Sample_Scenes OldAttic/Props/TableLamp.usd (not mirrored to the bucket)
+omniverse_lamp,table_lamp,Theory,Residential,cm,-,n/a,scene_dressing,"PAIR: Bulb_metal/Bulb_glass/Filaments with Bulb_prongs holder (z0.3917-0.4076); bulb offset in -y, points sideways. Geometry-level finding: like every ArchVis lamp it ships NO authored colliders, so it is not task-ready as-is (the env uses Sample-Scenes LightBulb, whose socket has usable ones). Kept as scene_dressing."
+omniverse_lamp,floor_lamp,ArcFloorLamp,Residential,cm,-,n/a,scene_dressing,separable bulb prim ArcFloorLamp_Glass (dia0.0514); no distinct socket prim
+omniverse_lamp,floor_lamp,BrassFloorLamp,Residential,cm,-,n/a,scene_dressing,separable bulb prim BrassFloorLamp_Bulb (dia0.0403); no distinct socket prim
+omniverse_lamp,floor_lamp,Candice,Residential,cm,-,n/a,scene_dressing,separable bulb prims glass + Filaments (dia0.0514); no distinct socket prim
+omniverse_lamp,floor_lamp,FloorLamp,Residential,cm,-,n/a,scene_dressing,separable bulb prims incandescent_bulb_glass + LightbulbInterior (dia0.120); no distinct socket prim
+omniverse_lamp,floor_lamp,VintageFloorLamp,Residential,cm,-,n/a,scene_dressing,socket-side parts only (BulpBase/MetalHolder); bulb absent from the model
+omniverse_lamp,chandelier,Chandelier_Spiral,Residential,cm,-,n/a,scene_dressing,no separable bulb prim
+omniverse_lamp,chandelier,chandelier_A,Residential,cm,-,n/a,scene_dressing,"PAIR: lightbulb is ONE prim (dia0.0693, z-0.0714..+0.0536), neck r0.0159-0.0166 seats into lightbulb_cap -- an OPEN bore (shell, open bottom / closed top) whose r tapers 0.0179->0.0163 tracking the neck at ~1mm clearance; cap in turn sits in lightbulb_support's central hole (r0.0173). Concentric to 4dp. Ceiling-native bulb-down; origin at the bulb. Geometry-level finding: like every ArchVis lamp it ships NO authored colliders, so it is not task-ready as-is (the env uses Sample-Scenes LightBulb, whose socket has usable ones). Kept as scene_dressing."
+omniverse_lamp,outdoor_light,3-TierPathLight,Residential,cm,-,n/a,scene_dressing,separable bulb prim glass (dia0.0877); no distinct socket prim
+omniverse_lamp,outdoor_light,AgedCopperPathLight,Residential,cm,-,n/a,scene_dressing,separable bulb prim AgedGlass (dia0.100); no distinct socket prim
+omniverse_lamp,outdoor_light,CircularBollard,Residential,cm,-,n/a,scene_dressing,separable bulb prim CircularBollard_Glass (dia0.106); no distinct socket prim
+omniverse_lamp,outdoor_light,CircularWallSconce,Residential,cm,-,n/a,scene_dressing,separable bulb prim CircularWallSconce_lightbulb (dia0.134); no distinct socket prim
+omniverse_lamp,outdoor_light,GardenSpotlight,Residential,cm,-,n/a,scene_dressing,separable bulb prims GardenSpotlight_Glass01/GlassDetail (dia0.060); no distinct socket prim
+omniverse_lamp,outdoor_light,SquareBollard,Residential,cm,-,n/a,scene_dressing,no separable bulb prim
+omniverse_lamp,outdoor_light,WallSconce,Residential,cm,-,n/a,scene_dressing,separable bulb prim glass (dia0.0985); no distinct socket prim
 omniverse_bulb,light_bulb,LightBulb,Sample Scenes,cm,-,pending,task_asset,separable /World/Geom/BulbGrp (glass+screw base); NO socket joint (would author one)

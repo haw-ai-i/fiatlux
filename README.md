@@ -10,8 +10,8 @@ extension — no ROS, no distributed harness — so it plugs into the standard
 > standard/cheatcode observation modes. The **insertion** (`FIATLUX-Insert-v0`) and
 > **climbing** (`FIATLUX-Climb-v0`) subtasks are functional RL tasks kept as
 > development aids; the rest of the family exists as loadable non-RL scene
-> **scaffolds**. The old bulb's unscrew mechanic is still a kinematic stand-in, so
-> Replace's removal/disposal score channels are wired but not yet achievable. See
+> **scaffolds**. The old bulb's unscrew mechanic is implemented (`mdp.bulb_attachment`),
+> so Replace's removal and disposal score channels are now achievable. See
 > [docs/roadmap.md](docs/roadmap.md).
 
 ## Task hierarchy
