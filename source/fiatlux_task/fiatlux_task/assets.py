@@ -27,7 +27,11 @@ G1_USD = os.path.join(FIATLUX_ASSETS_DIR, "unitree_g1", "wholebody_inspire", "g1
 G1_DEX3_USD = os.path.join(FIATLUX_ASSETS_DIR, "unitree_g1", "wholebody_dex3", "g1_29dof_with_dex3_rev_1_0.usd")
 
 # Bulb + fixture: the two halves of the Omniverse Sample-Scenes ``LightBulb``, the only
-# separable modelled bulb-in-a-socket in any Omniverse pack. The socket's colliders are an
+# TASK-READY bulb-in-a-socket in any Omniverse pack. It is not the only *separable* one --
+# a prim-level survey of all 14 packs found five geometric pairs (see
+# ``assets/omniverse_uploaded_manifest.csv``; ``chandelier_A`` even has an open ~1 mm
+# clearance bore) -- but every ArchVis lamp ships without colliders, and this is the pair
+# whose socket has usable ones. The socket's colliders are an
 # exact triangle mesh (``physics:approximation = "none"``) so the screw hole stays OPEN -- a
 # bulb lowered in nests and rests. Keep it: a convex hull closes the hole, and an exact mesh
 # is illegal on a dynamic body, so the socket can never be anything but static/kinematic.

@@ -25,9 +25,10 @@ One family, one scene (``scene_cfg.G1ReplaceSceneCfg``), preset layouts per task
   termination set unchanged -- same entities, larger starting gap). FUNCTIONAL, RL.
 - ``FIATLUX-Remove-v0``  : unscrew / remove the seated bulb (``remove_env_cfg.py``,
   Replace's own removal/disposal reward channels, parametrized onto this scene's
-  standalone ``bulb`` entity). RL, but **scored-not-yet-achievable**: the bulb is
-  kinematic (no attach/detach mechanic yet -- unification spec Phase 4), so no policy
-  can move it. Same documented gap as Replace's own removal channel.
+  standalone ``bulb`` entity). RL and achievable -- the bulb is dynamic and lifts out of
+  the socket's open hole -- but nothing gates unscrewing here, so it scores "pick it up
+  and bin it". Replace gates removal on ``mdp.bulb_attachment`` (issue #54); porting that
+  term here is what would make this a genuine unscrew task.
 - ``FIATLUX-Base-v0``    : the shared scene-only cfg, deliberately **non-RL**
   (:class:`base_env_cfg.FamilyBaseEnvCfg` -- observation/action/event managers only, no
   task to reward). Not a task; ``verify_scene.py``'s default target.

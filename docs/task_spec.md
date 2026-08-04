@@ -21,15 +21,22 @@ return to it (plus the reset jitter below).
   penalized, episode-ending event. Ladder placement is *independent* of the fixture by
   default; `ReplaceEnvCfg.couple_ladder_to_fixture = True` is an explicit debug/curriculum
   opt-in that spawns it reachably near the fixture.
-- The **old bulb is kinematic**: the "screwed in" stand-in until the attach/detach
-  mechanic exists (unification spec Phase 4). Its removal/disposal channels are scored
-  and reported but not yet achievable by any policy — the same gap Remove/Install carry.
+- **Both bulbs are dynamic**, governed by the `mdp.bulb_attachment` state machine
+  (unification spec Phase 4, issue #54). It models a bayonet channel from the bulb pose:
+  insertion permits only axial translation; at full depth, starting a twist locks
+  translation and permits only rotation. Removal reverses the sequence: rotate, then
+  eject axially.
+  The insertion depth and locking angle are scalar-or-range parameters, sampled per env
+  at reset when ranges are configured. `fresh_bulb_inserted` and `success` read the
+  attachment state, so every score channel is achievable. Remove/Install do not yet use
+  this mechanic: their bulbs simply lift out of / drop into the socket.
 
 ## Goal
 
 Insert the fresh bulb into the fixture, remove the old bulb from the fixture, and place
-the old bulb in the disposal crate. Full success = fresh bulb seated **and** old bulb in
-the crate.
+the old bulb in the disposal crate. Full success = fresh bulb **attached** (fully inserted
+and rotated through the configured lock angle, per `mdp.bulb_attachment`) **and** old bulb
+in the crate. Seating alone no longer scores.
 
 ## Actions
 
@@ -84,8 +91,8 @@ at 1.0). Completion bonuses pay once per episode.
 | `old_bulb_removal` (+) | dense | old-bulb clearance from the seat vs an absolute 0.10 m threshold (its d0 ≈ 0, so toward-style normalization can't apply) |
 | `old_bulb_disposal_progress` (+) | dense | old bulb → disposal crate, normalized progress |
 | `ladder_ready` (+) | completion | upright ladder top horizontally within 0.9 m of the fixture |
-| `fresh_bulb_inserted` (+) | completion | fresh bulb seated (Insert's 1.5 cm / 0.2 rad tolerances) |
-| `old_bulb_removed` (+) | completion | old bulb cleared the seat by 0.10 m |
+| `fresh_bulb_inserted` (+) | completion | fresh bulb screwed in (the attach gate; Insert's 1.5 cm / 0.2 rad seating tolerances are enforced at attach time) |
+| `old_bulb_removed` (+) | completion | old bulb unscrewed and cleared the seat by 0.10 m (a held bulb reads as seated) |
 | `old_bulb_disposed` (+) | completion | old bulb within 0.25 m of the crate |
 | `success_bonus` (+) | sparse | full replacement (fires on the terminating step) |
 | `robot_fall`, `ladder_tipped`, `fresh_bulb_dropped`, `old_bulb_dropped` (−) | penalty | each fires once — the same predicate also terminates |
@@ -94,8 +101,8 @@ at 1.0). Completion bonuses pay once per episode.
 
 ## Success & termination
 
-- **Success** (`full_replacement_success`): fresh bulb seated **and** old bulb within
-  0.25 m of the disposal crate.
+- **Success** (`attached_replacement_success`): fresh bulb screwed in (attachment state,
+  not raw seating geometry) **and** old bulb within 0.25 m of the disposal crate.
 - **Robot fall**: root below 0.35 m or tilt beyond 1.0 rad (family thresholds).
 - **Ladder tipped**: ladder up-axis beyond 0.6 rad from vertical.
 - **Fresh bulb dropped**: below 0.4 m. **Old bulb dropped**: below 0.15 m *and* away
