@@ -25,11 +25,24 @@ SIMART_REF="${SIMART_REF:-c8d0829f37153feda9e0792131078a47fc15010d}"
 clone_at() {
     local url="$1" ref="$2" dest="$3"
     if [ -d "$dest/.git" ]; then
-        echo "==> $(basename "$dest") already present at $(git -C "$dest" rev-parse --short HEAD)"
+        local head
+        head="$(git -C "$dest" rev-parse HEAD)"
+        if [ "$head" = "$ref" ]; then
+            echo "==> $(basename "$dest") already present at ${head:0:7}"
+        else
+            # The whole point of pinning is that stages/ and usd/ cite specific
+            # upstream line numbers -- a drifted checkout is the failure mode
+            # this guard exists for, so say so instead of shrugging.
+            echo "==> WARNING: $(basename "$dest") is at ${head:0:7}, expected ${ref:0:7}."
+            echo "    The pipeline was validated against the pinned commit; either"
+            echo "    'git -C $dest checkout $ref' or export the matching *_REF."
+        fi
         return
     fi
     echo "==> cloning $(basename "$dest") from $url"
-    git clone "$url" "$dest"
+    # blob:none fetches history metadata but no file contents until checkout --
+    # about an order of magnitude less traffic than a full clone for a pinned ref.
+    git clone --filter=blob:none "$url" "$dest"
     git -C "$dest" checkout --quiet "$ref"
     echo "    checked out $(git -C "$dest" rev-parse --short HEAD)"
 }
@@ -68,8 +81,10 @@ if [ -f "$PATCH" ]; then
         echo "==> patches/simart_infer.patch already applied"
     else
         echo "==> WARNING: patches/simart_infer.patch does not apply cleanly."
-        echo "    SimArt may have moved; stage 3 will still run if you export"
-        echo "    SIMART_ATTN_IMPL is unnecessary and flash_attn is installed."
+        echo "    SimArt has probably moved past the pinned commit. Without the"
+        echo "    patch, stage 3 needs a working flash_attn build (upstream"
+        echo "    hardcodes attn_implementation=flash_attention_2) and loses the"
+        echo "    SIMART_ATTN_IMPL / SIMART_SEED overrides."
     fi
 fi
 

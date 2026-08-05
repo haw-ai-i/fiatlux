@@ -51,14 +51,20 @@ pipi torch==2.5.1 torchvision==0.20.1 torchaudio==2.5.1 \
     --index-url https://download.pytorch.org/whl/cu124
 
 # requirements.txt lines 1-2 are Tencent/Aliyun mirrors that are slow or
-# unreachable from here; strip them and resolve against PyPI.  deepspeed is
-# training-only and needs a compiler pass we do not want for inference.
-echo "==> Hunyuan3D requirements (mirrors stripped, deepspeed dropped, bpy re-pinned)"
+# unreachable from here; strip them and resolve against PyPI.  Also dropped, on
+# the same "not needed for inference" argument the repo applies to nothing else:
+# deepspeed (training-only, wants a compiler), and the demo/server stack
+# (gradio, fastapi, uvicorn, pythreejs, tb_nightly) -- stage1_shape.py imports
+# none of it, only gradio_app.py / api_server.py do, and we never run those.
+echo "==> Hunyuan3D requirements (mirrors + demo stack stripped, bpy re-pinned)"
 REQ="$(mktemp)"; trap 'rm -f "$REQ"' EXIT
-grep -v -e '^--extra-index-url' -e '^deepspeed' -e '^bpy' "$HY/requirements.txt" > "$REQ"
+grep -v -e '^--extra-index-url' -e '^deepspeed' -e '^bpy' \
+        -e '^gradio' -e '^fastapi' -e '^uvicorn' -e '^pythreejs' -e '^tb_nightly' \
+        "$HY/requirements.txt" > "$REQ"
 pipi -r "$REQ"
 pipi "bpy==${BPY_VERSION:-4.2.23}"        # see the header: bpy==4.0 is gone from PyPI
-pipi pybind11 ninja                       # needed by the two native builds below
+# (pybind11 and ninja are already pinned by requirements.txt lines 5-6 -- do NOT
+# re-install them unpinned here, that risks drifting the C++ build's headers.)
 # pytorch-lightning 1.9.5 -> lightning_fabric/__init__.py does
 # `__import__("pkg_resources").declare_namespace(__name__)`.  uv venvs ship no
 # setuptools, and declare_namespace is gone in setuptools >= 81, so pin below it.

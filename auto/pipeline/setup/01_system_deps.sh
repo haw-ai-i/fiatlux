@@ -24,8 +24,7 @@ sudo DEBIAN_FRONTEND=noninteractive apt-get install -y -qq \
     python3-dev \
     libgl1 libglx0 libegl1 libgles2 libglib2.0-0 \
     libxrender1 libxi6 libxxf86vm1 libxfixes3 libxkbcommon-x11-0 \
-    libsm6 libxext6 \
-    libeigen3-dev libcgal-dev
+    libsm6 libxext6
 
 if command -v nvcc >/dev/null 2>&1; then
     echo "==> nvcc already present: $(nvcc --version | tail -1)"
@@ -34,9 +33,10 @@ fi
 
 echo "==> apt: CUDA toolkit ${CUDA_VER} (for nvcc)"
 KEYRING=/tmp/cuda-keyring_1.1-1_all.deb
-wget -q -O "$KEYRING" \
+[ -f "$KEYRING" ] || wget -q -O "$KEYRING" \
     https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2204/x86_64/cuda-keyring_1.1-1_all.deb
 sudo dpkg -i "$KEYRING"
+rm -f "$KEYRING"
 sudo apt-get update -qq
 # toolkit only -- NOT `cuda`, which would drag in a second driver and can
 # conflict with the running 580.126.09 one.

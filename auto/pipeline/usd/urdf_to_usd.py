@@ -44,7 +44,6 @@ from __future__ import annotations
 
 import argparse
 import json
-import math
 import os
 import re
 import shutil
@@ -107,6 +106,38 @@ def _v3d(a):
     return Gf.Vec3d(float(a[0]), float(a[1]), float(a[2]))
 
 
+def _new_stage(path, root_name):
+    """Fresh layer with the house stage metadata and a root Xform as defaultPrim."""
+    if os.path.exists(path):
+        os.remove(path)
+    stage = Usd.Stage.CreateNew(path)
+    UsdGeom.SetStageUpAxis(stage, UsdGeom.Tokens.z)
+    UsdGeom.SetStageMetersPerUnit(stage, 1.0)
+    UsdPhysics.SetStageKilogramsPerUnit(stage, 1.0)
+    root = UsdGeom.Xform.Define(stage, Sdf.Path(f"/{root_name}"))
+    stage.SetDefaultPrim(root.GetPrim())
+    return stage, root
+
+
+def _floor_offset(pts):
+    """Translation putting the XY bbox centre and the Z minimum at the origin."""
+    return np.array([-(pts[:, 0].max() + pts[:, 0].min()) / 2.0,
+                     -(pts[:, 1].max() + pts[:, 1].min()) / 2.0,
+                     -pts[:, 2].min()])
+
+
+def _record_bake(prim, frame_rot, scale_m, t_align):
+    """customData on the root so the baked transform stays auditable/reversible."""
+    prim.SetCustomDataByKey("simart:scale_m", float(scale_m))
+    prim.SetCustomDataByKey("simart:frame_rot", frame_rot)
+    prim.SetCustomDataByKey("simart:floor_offset", _v3d(t_align))
+
+
+def _cap(caps, pid):
+    """Per-part captions lookup, defensive against a malformed prediction."""
+    return caps.get(str(pid), {}) if isinstance(caps, dict) else {}
+
+
 # ==========================================================================
 # Report
 # ==========================================================================
@@ -162,7 +193,7 @@ class Report:
 # ==========================================================================
 # Parsing helpers
 # ==========================================================================
-def parse_scale_m(raw, report: Report, unit="auto"):
+def parse_scale_m(raw, unit="auto"):
     """Turn the MLLM's free-text ``object_captions.scale`` into metres.
 
     The geometry SimArt segments is normalised to a max bbox extent of exactly
@@ -327,7 +358,7 @@ def author_physics_material(stage, root_path):
     return mat
 
 
-def author_pbr_material(stage, root_path, textures, report: Report):
+def author_pbr_material(stage, root_path, textures):
     """UsdPreviewSurface + UsdUVTexture + UsdPrimvarReader_float2.
 
     One material shared by every part.  SimArt's per-part OBJ export runs
@@ -617,7 +648,7 @@ def convert(args) -> Report:
                     "-> renormalising; check that stage 2 ran")
         renorm_shift, renorm_div = centre, extent
 
-    scale_m, prov = parse_scale_m(obj_caps.get("scale"), report, args.scale_unit)
+    scale_m, prov = parse_scale_m(obj_caps.get("scale"), args.scale_unit)
     if args.scale_m:
         scale_m, prov = args.scale_m, f"--scale-m {args.scale_m}"
     elif scale_m is None:
@@ -636,18 +667,12 @@ def convert(args) -> Report:
 
     worldP = {n: to_world(geo[n][0]) for n in geo}
     stacked = np.vstack(list(worldP.values()))
-    if args.floor_align:
-        t_align = np.array([-(stacked[:, 0].max() + stacked[:, 0].min()) / 2.0,
-                            -(stacked[:, 1].max() + stacked[:, 1].min()) / 2.0,
-                            -stacked[:, 2].min()])
-    else:
-        t_align = np.zeros(3)
+    t_align = _floor_offset(stacked) if args.floor_align else np.zeros(3)
     for n in worldP:
         worldP[n] = worldP[n] + t_align
-    stacked = np.vstack(list(worldP.values()))
     report.floor_offset = t_align.round(6).tolist()
-    report.bbox_world_min = stacked.min(0).round(6).tolist()
-    report.bbox_world_max = stacked.max(0).round(6).tolist()
+    report.bbox_world_min = (stacked.min(0) + t_align).round(6).tolist()
+    report.bbox_world_max = (stacked.max(0) + t_align).round(6).tolist()
 
     # Link frame origins: the joint's ABSOLUTE anchor (see module docstring).
     origins = {n: np.zeros(3) for n in links}
@@ -657,20 +682,11 @@ def convert(args) -> Report:
     # ---- stage -------------------------------------------------------------
     out_dir = os.path.dirname(os.path.abspath(args.out)) or "."
     os.makedirs(out_dir, exist_ok=True)
-    if os.path.exists(args.out):
-        os.remove(args.out)
-    stage = Usd.Stage.CreateNew(args.out)
-    UsdGeom.SetStageUpAxis(stage, UsdGeom.Tokens.z)
-    UsdGeom.SetStageMetersPerUnit(stage, 1.0)
-    UsdPhysics.SetStageKilogramsPerUnit(stage, 1.0)
-
-    root_name = Tf.MakeValidIdentifier(args.name or robot_name)
-    root = UsdGeom.Xform.Define(stage, Sdf.Path(f"/{root_name}"))
+    stage, root = _new_stage(args.out, Tf.MakeValidIdentifier(args.name or robot_name))
     root_path = root.GetPath()
-    stage.SetDefaultPrim(root.GetPrim())
 
     textures = stage_textures(args, out_dir, report)
-    pbr = author_pbr_material(stage, root_path, textures, report)
+    pbr = author_pbr_material(stage, root_path, textures)
     phys = author_physics_material(stage, root_path)
 
     single = len(geo) == 1
@@ -685,8 +701,8 @@ def convert(args) -> Report:
     # for a ~13 kg fibreglass object).  Real-world mass is something the user
     # usually does know, so allow pinning it and back out a uniform density.
     uniform_rho = None
+    vols = {n: mesh_volume(worldP[n] - origins[n], geo[n][2]) for n in links}
     if args.total_mass:
-        vols = {n: mesh_volume(worldP[n] - origins[n], geo[n][2]) for n in links}
         tot = sum(vols.values())
         if tot > 1e-9:
             uniform_rho = float(np.clip(args.total_mass / tot, *DENSITY_CLAMP))
@@ -699,7 +715,7 @@ def convert(args) -> Report:
     for name in sorted(links, key=lambda n: (n != base, n)):
         P, VT, PF, TF = geo[name]
         pid = pid_of(name)
-        cap = caps.get(str(pid), {}) if isinstance(caps, dict) else {}
+        cap = _cap(caps, pid)
         pts = worldP[name] - origins[name]
 
         lp = root_path.AppendChild(Tf.MakeValidIdentifier(name))
@@ -718,7 +734,7 @@ def convert(args) -> Report:
         author_mesh(stage, lp.AppendChild("mesh"), pts, VT, PF, TF, pbr, phys, args.collision)
         prim_of[name] = lp
 
-        vol = mesh_volume(pts, PF)
+        vol = vols[name]
         report.links.append(LinkInfo(
             pid=str(pid), prim=str(lp), n_points=len(pts), n_faces=len(PF),
             density=rho, volume_m3=round(vol, 8), mass_kg=round(rho * vol, 5),
@@ -738,7 +754,7 @@ def convert(args) -> Report:
             if parent not in prim_of:
                 continue
             pid = pid_of(child)
-            cap = caps.get(str(pid), {}) if isinstance(caps, dict) else {}
+            cap = _cap(caps, pid)
             jtype = j["type"]
             if jtype == "floating":
                 jtype = {"fixed": "fixed", "spherical": "spherical",
@@ -837,10 +853,7 @@ def convert(args) -> Report:
             fj.CreateLocalPos0Attr(_v3f(origins[base]))
             fj.CreateLocalPos1Attr(Gf.Vec3f(0.0, 0.0, 0.0))
 
-    # Keep the bake auditable/reversible.
-    root.GetPrim().SetCustomDataByKey("simart:scale_m", float(scale_m))
-    root.GetPrim().SetCustomDataByKey("simart:frame_rot", args.frame_rot)
-    root.GetPrim().SetCustomDataByKey("simart:floor_offset", _v3d(t_align))
+    _record_bake(root.GetPrim(), args.frame_rot, scale_m, t_align)
     root.GetPrim().SetCustomDataByKey("simart:limit_convention", args.limit_convention)
     root.GetPrim().SetCustomDataByKey("simart:source_urdf", os.path.abspath(args.urdf))
 
@@ -902,6 +915,10 @@ def convert_rigid(args) -> Report:
     flip_v = False
     if src.lower().endswith(".obj"):
         P, VT, PF, TF = sanitize(*read_obj(src))
+        if not args.textures and not args.albedo:
+            # Hunyuan's textured .obj carries its own map naming convention;
+            # stage_textures knows how to walk it from the .obj path.
+            args.textures = src
     else:
         import trimesh
         m = trimesh.load(src, force="mesh", process=False)
@@ -920,9 +937,9 @@ def convert_rigid(args) -> Report:
     if ext > 0:
         pts = pts / ext * scale_m            # normalise then scale to real size
     report.scale_m, report.scale_provenance = scale_m, f"--scale-m {scale_m}" if args.scale_m else "1.0 default"
-    if args.floor_align:
-        pts -= np.array([(pts[:, 0].max() + pts[:, 0].min()) / 2,
-                         (pts[:, 1].max() + pts[:, 1].min()) / 2, pts[:, 2].min()])
+    t_align = _floor_offset(pts) if args.floor_align else np.zeros(3)
+    pts = pts + t_align
+    report.floor_offset = t_align.round(6).tolist()
     report.bbox_world_min = pts.min(0).round(6).tolist()
     report.bbox_world_max = pts.max(0).round(6).tolist()
 
@@ -931,27 +948,25 @@ def convert_rigid(args) -> Report:
     stem = os.path.splitext(os.path.basename(args.out))[0]
     ext_out = os.path.splitext(args.out)[1] or ".usda"
     static_path = os.path.join(out_dir, f"{stem}_static{ext_out}")
+    if os.path.exists(args.out):
+        os.remove(args.out)
 
-    for p in (static_path, args.out):
-        if os.path.exists(p):
-            os.remove(p)
-
-    stage = Usd.Stage.CreateNew(static_path)
-    UsdGeom.SetStageUpAxis(stage, UsdGeom.Tokens.z)
-    UsdGeom.SetStageMetersPerUnit(stage, 1.0)
-    UsdPhysics.SetStageKilogramsPerUnit(stage, 1.0)
-    root_name = Tf.MakeValidIdentifier(args.name or stem)
-    root = UsdGeom.Xform.Define(stage, Sdf.Path(f"/{root_name}"))
-    stage.SetDefaultPrim(root.GetPrim())
+    stage, root = _new_stage(static_path, Tf.MakeValidIdentifier(args.name or stem))
+    root_name = root.GetPrim().GetName()
     textures = stage_textures(args, out_dir, report)
-    pbr = author_pbr_material(stage, root.GetPath(), textures, report)
+    pbr = author_pbr_material(stage, root.GetPath(), textures)
     phys = author_physics_material(stage, root.GetPath())
     author_mesh(stage, root.GetPath().AppendChild("mesh"), pts, VT, PF, TF,
                 pbr, phys, args.collision, flip_v=flip_v)
+    _record_bake(root.GetPrim(), args.frame_rot, scale_m, t_align)
     stage.GetRootLayer().Save()
 
-    rho = args.density or DENSITY_DEFAULT
     vol = mesh_volume(pts, PF)
+    if args.total_mass and vol > 1e-9:
+        # Same contract as the articulated path: pin the real mass, derive density.
+        rho = float(np.clip(args.total_mass / vol, *DENSITY_CLAMP))
+    else:
+        rho = args.density or DENSITY_DEFAULT
     report.links.append(LinkInfo(pid="0", prim=str(root.GetPath()) + "/mesh",
                                  n_points=len(pts), n_faces=len(PF), density=rho,
                                  volume_m3=round(vol, 8), mass_kg=round(rho * vol, 5),
@@ -975,13 +990,48 @@ def convert_rigid(args) -> Report:
 
 
 # ==========================================================================
+def score_prediction(urdf_path, json_path):
+    """Cheap structural score for best-of-N attempt selection (no USD authored).
+
+    SimArt samples (temperature 0.7), so repeated runs articulate differently;
+    the driver runs N attempts and keeps the highest score.  Moving joints are
+    weighted hardest because they are the whole point of the articulated path;
+    unusable part meshes are penalised harder than they help, so a prediction
+    with many broken parts cannot beat a clean smaller one.
+    """
+    try:
+        links, joints, _ = load_urdf(urdf_path)
+    except Exception as exc:
+        return {"valid": False, "error": str(exc), "score": -1000}
+    usable = 0
+    for meta in links.values():
+        path = meta["mesh"]
+        if path and os.path.isfile(path):
+            P, _, PF, _ = sanitize(*read_obj(path))
+            if P is not None:
+                usable += 1
+    moving = degenerate = 0
+    for j in joints.values():
+        if j["type"] in ("revolute", "prismatic"):
+            a = np.asarray(j["axis"], float)
+            if np.isfinite(a).all() and np.linalg.norm(a) > 1e-9:
+                moving += 1
+            else:
+                degenerate += 1
+    total = len(links)
+    score = moving * 10 + usable - degenerate * 5 - (total - usable) * 5
+    return {"valid": usable > 0, "links": total, "usable_links": usable,
+            "moving_joints": moving, "degenerate_axes": degenerate,
+            "score": score}
+
+
 def main():
     ap = argparse.ArgumentParser(
         description="Convert a SimArt URDF (+ prediction JSON) into an Isaac-Sim-ready USD.",
         formatter_class=argparse.ArgumentDefaultsHelpFormatter)
     ap.add_argument("--urdf", help="SimArt URDF (topology + part mesh paths)")
     ap.add_argument("--json", help="SimArt prediction JSON (scale, density, limits)")
-    ap.add_argument("--out", required=True, help="output .usd/.usda")
+    ap.add_argument("--out", help="output .usd/.usda (required unless --score)")
     ap.add_argument("--name", default=None, help="root prim name")
     ap.add_argument("--scale-m", type=float, default=None,
                     help="real-world max bbox extent in metres (overrides the JSON)")
@@ -1008,8 +1058,13 @@ def main():
     ap.add_argument("--no-floor-align", dest="floor_align", action="store_false")
     ap.add_argument("--textures", default=None,
                     help="Hunyuan3D textured .obj, or a directory of PBR maps")
-    ap.add_argument("--albedo"), ap.add_argument("--metallic")
-    ap.add_argument("--roughness"), ap.add_argument("--normal-map", dest="normal_map")
+    ap.add_argument("--albedo")
+    ap.add_argument("--metallic")
+    ap.add_argument("--roughness")
+    ap.add_argument("--normal-map", dest="normal_map")
+    ap.add_argument("--score", action="store_true",
+                    help="print a JSON quality score for the URDF+JSON and exit "
+                         "(used by the driver's --attempts selection)")
     ap.add_argument("--rigid", action="store_true", help="single-body mode, bypassing SimArt")
     ap.add_argument("--mesh", help="[--rigid] source .obj/.glb")
     ap.add_argument("--density", type=float, default=None, help="[--rigid] kg/m^3")
@@ -1017,6 +1072,17 @@ def main():
                     help="pin the object's real mass in kg; overrides the predicted "
                          "per-part densities with a uniform one derived from mesh volume")
     args = ap.parse_args()
+
+    if args.score:
+        if not args.urdf:
+            ap.error("--score requires --urdf")
+        if not args.json:
+            cand = os.path.splitext(args.urdf)[0] + ".json"
+            args.json = cand if os.path.isfile(cand) else None
+        print(json.dumps(score_prediction(args.urdf, args.json)))
+        return
+    if not args.out:
+        ap.error("--out is required")
 
     if args.rigid:
         if not args.mesh:

@@ -36,10 +36,17 @@ pipi accelerate==1.7.0 transformers==4.57.0 trimesh==4.5.3 \
      qwen-vl-utils==0.0.14 scipy==1.14.1 open3d==0.19.0 numpy==1.26.4 tqdm \
      "huggingface_hub[cli]" hf_xet
 
-echo "==> flash-attn (best effort; sdpa fallback is wired in via patch 01)"
-pipi flash_attn==2.7.4.post1 --no-build-isolation 2>/dev/null \
-    && echo "   flash_attn OK" \
-    || echo "   flash_attn unavailable -> stage 3 will run with SIMART_ATTN_IMPL=sdpa"
+# flash_attn is OPT-IN: the patch makes the attention backend selectable with
+# sdpa as the default, and a source build here is ~30 min for an exact
+# torch/CPython/CUDA match -- not a cost to pay silently on every setup.
+if [ "${SIMART_BUILD_FLASH_ATTN:-0}" = "1" ]; then
+    echo "==> flash-attn (SIMART_BUILD_FLASH_ATTN=1)"
+    pipi flash_attn==2.7.4.post1 --no-build-isolation \
+        && echo "   flash_attn OK -> run stage 3 with --attn flash_attention_2" \
+        || echo "   flash_attn build FAILED (see errors above); sdpa still works"
+else
+    echo "==> flash-attn skipped (sdpa default; set SIMART_BUILD_FLASH_ATTN=1 to build)"
+fi
 
 # ---------------------------------------------------------------- checkpoints
 # infer.py's defaults are --model_path ./checkpoints/simart_mllm and

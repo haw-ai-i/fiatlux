@@ -86,52 +86,43 @@ def preflight(texture: bool):
     print("  custom_rasterizer / mesh_inpaint_processor / bpy: OK")
 
 
-def main():
-    ap = argparse.ArgumentParser(description="Hunyuan3D-2.1: image -> textured mesh")
-    ap.add_argument("--image", required=True)
-    ap.add_argument("--out-dir", required=True)
-    ap.add_argument("--name", default="object")
-    ap.add_argument("--no-texture", dest="texture", action="store_false", default=True)
-    ap.add_argument("--steps", type=int, default=50)
-    ap.add_argument("--guidance", type=float, default=5.0)
-    ap.add_argument("--octree-resolution", type=int, default=384)
-    ap.add_argument("--num-chunks", type=int, default=8000)
-    ap.add_argument("--max-faces", type=int, default=40000)
-    ap.add_argument("--paint-views", type=int, default=6)
-    ap.add_argument("--paint-resolution", type=int, default=512)
-    ap.add_argument("--seed", type=int, default=1234)
-    ap.add_argument("--model-path", default="tencent/Hunyuan3D-2.1")
-    args = ap.parse_args()
-
-    out = os.path.abspath(args.out_dir)
-    os.makedirs(out, exist_ok=True)
-    t0 = time.time()
-    preflight(args.texture)
-
-    # basicsr (a RealESRGAN dep) imports torchvision.transforms.functional_tensor,
-    # removed in torchvision >= 0.17. This shim must land before that import.
-    from torchvision_fix import apply_fix
-    apply_fix()
-
-    import torch
-    from PIL import Image
+def load_pipelines(args, texture):
+    """Load rembg + shape (+ paint) once; batch runs amortise this ~2-3 min."""
     from hy3dshape.rembg import BackgroundRemover
     from hy3dshape.pipelines import Hunyuan3DDiTFlowMatchingPipeline
-    from hy3dshape.postprocessors import FaceReducer, FloaterRemover, DegenerateFaceRemover
-
-    print(f"\n[stage1] {args.image} -> {out}")
-    image = Image.open(args.image).convert("RGB")
-    print(f"  input {image.size}")
-    # Unconditional, unlike upstream -- see the module docstring.
-    image = BackgroundRemover()(image)
-    rgba_path = os.path.join(out, f"{args.name}_rgba.png")
-    image.save(rgba_path)
-    print(f"  background removed -> {os.path.basename(rgba_path)}")
 
     print("  loading shape pipeline ...")
     shape = Hunyuan3DDiTFlowMatchingPipeline.from_pretrained(
         args.model_path, subfolder="hunyuan3d-dit-v2-1",
         use_safetensors=False, variant="fp16", device="cuda")
+    paint = None
+    if texture:
+        from textureGenPipeline import Hunyuan3DPaintPipeline, Hunyuan3DPaintConfig
+
+        print("  loading paint pipeline ...")
+        conf = Hunyuan3DPaintConfig(args.paint_views, args.paint_resolution)  # positional; no defaults
+        conf.realesrgan_ckpt_path = os.path.join(REPO, "hy3dpaint/ckpt/RealESRGAN_x4plus.pth")
+        conf.multiview_cfg_path = os.path.join(REPO, "hy3dpaint/cfgs/hunyuan-paint-pbr.yaml")
+        conf.custom_pipeline = os.path.join(REPO, "hy3dpaint/hunyuanpaintpbr")
+        paint = Hunyuan3DPaintPipeline(conf)
+    return BackgroundRemover(), shape, paint
+
+
+def process_one(image_path, name, out, rembg, shape, paint, args):
+    """One image -> textured mesh, into `out`.  Returns the stage1 result dict."""
+    import torch
+    from PIL import Image
+
+    t0 = time.time()
+    os.makedirs(out, exist_ok=True)
+    print(f"\n[stage1] {image_path} -> {out}")
+    image = Image.open(image_path).convert("RGB")
+    print(f"  input {image.size}")
+    # Unconditional, unlike upstream -- see the module docstring.
+    image = rembg(image)
+    rgba_path = os.path.join(out, f"{name}_rgba.png")
+    image.save(rgba_path)
+    print(f"  background removed -> {os.path.basename(rgba_path)}")
 
     gen = torch.Generator(device="cuda").manual_seed(args.seed)
     mesh = shape(image=image, num_inference_steps=args.steps,
@@ -141,32 +132,22 @@ def main():
                  output_type="trimesh")[0]
     print(f"  raw mesh: {len(mesh.vertices)} verts / {len(mesh.faces)} faces")
 
+    from hy3dshape.postprocessors import FaceReducer, FloaterRemover, DegenerateFaceRemover
     mesh = FloaterRemover()(mesh)
     mesh = DegenerateFaceRemover()(mesh)
     mesh = FaceReducer()(mesh, max_facenum=args.max_faces)
     print(f"  cleaned:  {len(mesh.vertices)} verts / {len(mesh.faces)} faces")
 
-    white_glb = os.path.join(out, f"{args.name}_white.glb")
+    white_glb = os.path.join(out, f"{name}_white.glb")
     mesh.export(white_glb)
-    result = {"white_glb": white_glb, "rgba": rgba_path, "textured": bool(args.texture)}
+    result = {"white_glb": white_glb, "rgba": rgba_path, "textured": paint is not None}
 
-    del shape
-    torch.cuda.empty_cache()
-
-    if args.texture:
-        from textureGenPipeline import Hunyuan3DPaintPipeline, Hunyuan3DPaintConfig
+    if paint is not None:
         from hy3dpaint.convert_utils import create_glb_with_pbr_materials
-
-        print("  loading paint pipeline ...")
-        conf = Hunyuan3DPaintConfig(args.paint_views, args.paint_resolution)  # positional; no defaults
-        conf.realesrgan_ckpt_path = os.path.join(REPO, "hy3dpaint/ckpt/RealESRGAN_x4plus.pth")
-        conf.multiview_cfg_path = os.path.join(REPO, "hy3dpaint/cfgs/hunyuan-paint-pbr.yaml")
-        conf.custom_pipeline = os.path.join(REPO, "hy3dpaint/hunyuanpaintpbr")
-        paint = Hunyuan3DPaintPipeline(conf)
 
         # MUST end in .obj: the writer is save_obj_mesh regardless of extension,
         # and save_glb=True only does a `.replace(".obj", ".glb")` afterwards.
-        obj_path = os.path.join(out, f"{args.name}.obj")
+        obj_path = os.path.join(out, f"{name}.obj")
         obj_path = paint(mesh_path=white_glb, image_path=image,
                          output_mesh_path=obj_path, use_remesh=True,
                          save_glb=False)          # we convert ourselves, without Blender
@@ -180,18 +161,19 @@ def main():
             textures["normal"] = stem + "_normal.jpg"
         textures = {k: v for k, v in textures.items() if os.path.isfile(v)}
 
-        glb_path = os.path.join(out, f"{args.name}.glb")
+        glb_path = os.path.join(out, f"{name}.glb")
         # create_glb_with_pbr_materials writes temp.glb and mr_combined.png into
         # the CWD; run it from the output dir so it cannot litter the vendored repo.
         with chdir(out):
             create_glb_with_pbr_materials(obj_path, dict(textures), glb_path)
         for junk in ("temp.glb", "mr_combined.png"):
-            p = os.path.join(out, junk)
-            if os.path.exists(p):
-                os.remove(p)
+            jp = os.path.join(out, junk)
+            if os.path.exists(jp):
+                os.remove(jp)
 
-        result.update(obj=obj_path, glb=glb_path, textures=textures,
-                      mesh=glb_path, textured_obj=obj_path)
+        # Canonical keys only: `mesh` (the glb later stages consume) and
+        # `textured_obj` (the .obj whose stem locates the PBR maps).
+        result.update(textures=textures, mesh=glb_path, textured_obj=obj_path)
         print(f"  glb     -> {os.path.basename(glb_path)}  "
               f"({len(textures)} PBR map(s): {', '.join(textures)})")
     else:
@@ -201,6 +183,53 @@ def main():
     with open(os.path.join(out, "stage1.json"), "w") as fh:
         json.dump(result, fh, indent=2)
     print(f"[stage1] done in {result['seconds']}s -> {result['mesh']}")
+    return result
+
+
+def main():
+    ap = argparse.ArgumentParser(description="Hunyuan3D-2.1: image -> textured mesh")
+    ap.add_argument("--image", help="input image (single mode)")
+    ap.add_argument("--out-dir", help="output directory (single mode)")
+    ap.add_argument("--name", default="object")
+    ap.add_argument("--batch", help="JSON file: [{image, name, out_dir}, ...] -- one "
+                                    "process, models loaded once for all items")
+    ap.add_argument("--no-texture", dest="texture", action="store_false", default=True)
+    ap.add_argument("--steps", type=int, default=50)
+    ap.add_argument("--guidance", type=float, default=5.0)
+    ap.add_argument("--octree-resolution", type=int, default=384)
+    ap.add_argument("--num-chunks", type=int, default=8000)
+    ap.add_argument("--max-faces", type=int, default=40000)
+    ap.add_argument("--paint-views", type=int, default=6)
+    ap.add_argument("--paint-resolution", type=int, default=512)
+    ap.add_argument("--seed", type=int, default=1234)
+    ap.add_argument("--model-path", default="tencent/Hunyuan3D-2.1")
+    args = ap.parse_args()
+
+    if args.batch:
+        with open(args.batch) as fh:
+            items = json.load(fh)
+    else:
+        if not args.image or not args.out_dir:
+            ap.error("--image and --out-dir are required (or use --batch)")
+        items = [{"image": args.image, "name": args.name, "out_dir": args.out_dir}]
+
+    preflight(args.texture)
+    if args.texture and args.max_faces > 40000:
+        # hy3dpaint's remesh step hardcodes target_count=40000
+        # (hy3dpaint/utils/simplify_mesh_utils.py:23) and decimates anything
+        # above it, so a larger --max-faces silently comes back out at 40k.
+        print(f"  [WARN] --max-faces {args.max_faces} > 40000: the paint stage's "
+              "internal remesh will clip the textured mesh back to 40000 faces")
+
+    # basicsr (a RealESRGAN dep) imports torchvision.transforms.functional_tensor,
+    # removed in torchvision >= 0.17. This shim must land before that import.
+    from torchvision_fix import apply_fix
+    apply_fix()
+
+    rembg, shape, paint = load_pipelines(args, args.texture)
+    for item in items:
+        process_one(item["image"], item["name"], os.path.abspath(item["out_dir"]),
+                    rembg, shape, paint, args)
 
 
 if __name__ == "__main__":

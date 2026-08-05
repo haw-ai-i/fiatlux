@@ -44,6 +44,16 @@ PY_USD = os.path.join(VENV, "usd", "bin", "python")
 
 STAGE_DIRS = {1: "01_shape", 2: "02_normalized", 3: "03_articulate", 4: "04_usd"}
 
+# Stage-1 presets.  `high` mirrors what Hunyuan3D's own gradio_app ships
+# (8 views / 768 paint resolution); `fast` trades fidelity for wall-clock.
+QUALITY = {
+    "fast":    {"steps": 30, "octree_resolution": 256, "paint_views": 6, "paint_resolution": 512},
+    "default": {"steps": 50, "octree_resolution": 384, "paint_views": 6, "paint_resolution": 512},
+    "high":    {"steps": 50, "octree_resolution": 512, "paint_views": 8, "paint_resolution": 768},
+}
+
+IMAGE_EXTS = (".jpg", ".jpeg", ".png", ".webp")
+
 
 class Runner:
     def __init__(self, run_dir, name):
@@ -161,6 +171,9 @@ def main():
         description="image -> Hunyuan3D mesh -> SimArt articulation -> Isaac-Sim USD",
         formatter_class=argparse.ArgumentDefaultsHelpFormatter)
     ap.add_argument("--image", help="input image (required unless --from > 1)")
+    ap.add_argument("--images", help="directory of images: batch mode -- stage 1 loads "
+                                     "its models once for all of them, then stages 2-4 "
+                                     "run per object under runs/<stem>/")
     ap.add_argument("--name", default=None, help="run name; defaults to the image stem")
     ap.add_argument("--runs-dir", default=os.path.join(HERE, "runs"))
     ap.add_argument("--from", dest="from_stage", type=int, default=1, choices=[1, 2, 3, 4])
@@ -168,11 +181,16 @@ def main():
     # stage 1
     ap.add_argument("--no-texture", dest="texture", action="store_false", default=True,
                     help="skip PBR texture painting (much faster, untextured USD)")
-    ap.add_argument("--steps", type=int, default=50)
-    ap.add_argument("--octree-resolution", type=int, default=384)
+    ap.add_argument("--quality", default="default", choices=sorted(QUALITY),
+                    help="stage-1 preset; individual flags below still override it")
+    ap.add_argument("--steps", type=int, default=None)
+    ap.add_argument("--guidance", type=float, default=5.0)
+    ap.add_argument("--octree-resolution", type=int, default=None)
+    ap.add_argument("--num-chunks", type=int, default=8000)
     ap.add_argument("--max-faces", type=int, default=40000)
-    ap.add_argument("--paint-views", type=int, default=6)
-    ap.add_argument("--paint-resolution", type=int, default=512)
+    ap.add_argument("--model-path", default="tencent/Hunyuan3D-2.1")
+    ap.add_argument("--paint-views", type=int, default=None)
+    ap.add_argument("--paint-resolution", type=int, default=None)
     ap.add_argument("--seed", type=int, default=1234)
     # stage 2
     # Zero is correct, but for a different reason than SimArt's README gives.
@@ -191,6 +209,10 @@ def main():
     # stage 3
     ap.add_argument("--attn", default="sdpa", help="SIMART_ATTN_IMPL (sdpa | flash_attention_2)")
     ap.add_argument("--max-new-tokens", type=int, default=24000)
+    ap.add_argument("--attempts", type=int, default=1,
+                    help="SimArt samples its predictions (temperature 0.7), so N > 1 "
+                         "runs stage 3 N times with seeds seed..seed+N-1, scores each "
+                         "(moving joints, usable parts) and keeps the best")
     # stage 4
     ap.add_argument("--scale-m", type=float, default=None)
     ap.add_argument("--scale-unit", default="auto")
@@ -208,13 +230,20 @@ def main():
                     help="plausible real-world extent in metres, checked by verify_usd.py")
     ap.add_argument("--no-clone", dest="clone", action="store_false", default=True,
                     help="fail instead of cloning the model repos if they are absent")
+    ap.add_argument("--keep-intermediates", dest="clean", action="store_false", default=True,
+                    help="keep the ~40 MB of per-run duplicates the stages leave behind")
     args = ap.parse_args()
+
+    for k, v in QUALITY[args.quality].items():
+        if getattr(args, k) is None:
+            setattr(args, k, v)
 
     # Step zero, before any stage: the model repos must exist to be driven.
     ensure_repos(args.clone)
 
-    if args.rigid_only:
-        args.to_stage = min(args.to_stage, 4)
+    if args.images:
+        return run_batch(args)
+
     if not args.name:
         if not args.image:
             ap.error("--name is required when --image is omitted")
@@ -223,8 +252,9 @@ def main():
     run_dir = os.path.join(args.runs_dir, args.name)
     os.makedirs(run_dir, exist_ok=True)
     d = {k: os.path.join(run_dir, v) for k, v in STAGE_DIRS.items()}
-    for p in d.values():
-        os.makedirs(p, exist_ok=True)
+    needed = {1, 4} if args.rigid_only else set(range(args.from_stage, args.to_stage + 1))
+    for k in sorted(needed):
+        os.makedirs(d[k], exist_ok=True)
 
     r = Runner(run_dir, args.name)
     r.manifest.setdefault("name", args.name)
@@ -240,12 +270,16 @@ def main():
         require(PY_HUNYUAN, "the Hunyuan venv")
         src = os.path.join(run_dir, "00_input", os.path.basename(args.image))
         os.makedirs(os.path.dirname(src), exist_ok=True)
-        shutil.copyfile(args.image, src)
+        if os.path.abspath(args.image) != src:
+            shutil.copyfile(args.image, src)
         argv = [PY_HUNYUAN, os.path.join(HERE, "stages", "stage1_shape.py"),
-                "--image", os.path.abspath(args.image), "--out-dir", d[1], "--name", args.name,
-                "--steps", str(args.steps), "--octree-resolution", str(args.octree_resolution),
+                "--image", src, "--out-dir", d[1], "--name", args.name,
+                "--steps", str(args.steps), "--guidance", str(args.guidance),
+                "--octree-resolution", str(args.octree_resolution),
+                "--num-chunks", str(args.num_chunks),
                 "--max-faces", str(args.max_faces), "--paint-views", str(args.paint_views),
-                "--paint-resolution", str(args.paint_resolution), "--seed", str(args.seed)]
+                "--paint-resolution", str(args.paint_resolution), "--seed", str(args.seed),
+                "--model-path", args.model_path]
         if not args.texture:
             argv.append("--no-texture")
         # cwd MUST be the repo root: paint-pipeline config paths are relative to it.
@@ -253,6 +287,8 @@ def main():
         with open(os.path.join(d[1], "stage1.json")) as fh:
             r.manifest["stage1"] = json.load(fh)
         r.manifest["stage1"]["seconds"] = dt
+        if args.clean:
+            cleanup_stage(1, d, args.name, r)
         r.save()
 
     s1 = r.manifest.get("stage1", {})
@@ -264,16 +300,21 @@ def main():
         if not mesh:
             raise SystemExit("ERROR: --rigid-only needs stage 1 output (mesh missing from manifest)")
         out = os.path.join(d[4], f"{args.name}_rigid.usda")
+        # rx90, not none: this path feeds Hunyuan's raw Y-up glTF/OBJ directly,
+        # bypassing SimArt's internal R_x(+90) that justifies `none` elsewhere.
         argv = [PY_USD, os.path.join(HERE, "usd", "urdf_to_usd.py"), "--rigid",
                 "--mesh", s1.get("textured_obj") or mesh, "--out", out,
-                "--name", args.name, "--frame-rot", "none", "--collision", args.collision]
+                "--name", args.name, "--frame-rot", "rx90", "--collision", args.collision]
         if args.scale_m:
             argv += ["--scale-m", str(args.scale_m)]
-        if s1.get("textured_obj"):
-            argv += ["--textures", s1["textured_obj"]]
-        r.run(4, argv, cwd=HERE)
-        verify(r, out, None, None, args)
-        r.manifest["stage4"] = {"rigid_usd": out}
+        if args.total_mass:
+            argv += ["--total-mass", str(args.total_mass)]
+        dt = r.run(4, argv, cwd=HERE)
+        verify(r, out, 1, 0, args)
+        # setdefault-merge: a --rigid-only refresh must not erase the record of
+        # an articulated USD produced by an earlier full run of the same name.
+        r.manifest.setdefault("stage4", {}).update(rigid_usd=out, rigid_seconds=dt)
+        r.manifest["finished"] = datetime.datetime.now().isoformat(timespec="seconds")
         r.save()
         r.log(f"=== done -> {out}")
         return
@@ -300,6 +341,8 @@ def main():
             raise SystemExit(f"ERROR: stage 2 produced no {normalized}")
         r.manifest["stage2"] = {"normalized": normalized, "seconds": dt,
                                 "preview_dir": os.path.join(d[2], f"{args.name}_renders")}
+        if args.clean:
+            cleanup_stage(2, d, args.name, r)
         r.save()
 
     # ---------------------------------------------------------------- stage 3
@@ -311,21 +354,62 @@ def main():
         src = r.manifest.get("stage2", {}).get("normalized", normalized)
         if not os.path.isfile(src):
             raise SystemExit(f"ERROR: stage 3 needs {src}; run with --from 2")
-        argv = [PY_SIMART, os.path.join(SIMART, "inference", "infer.py"),
-                "--object_path", src, "--output_path", d[3], "--name", args.name,
-                "--max_new_tokens", str(args.max_new_tokens)]
-        if os.path.isfile(BLENDER):
-            argv += ["--blender_path", BLENDER]
-        # Both of these are required and neither is set by the repo: infer.py:29
-        # imports `vqvae` with its sys.path fix commented out, and
-        # utils/render_utils.py:70 hardcodes a CWD-relative blender script path.
-        dt = r.run(3, argv, cwd=SIMART,
-                   env={"PYTHONPATH": SIMART, "PYTHONUNBUFFERED": "1",
-                        "SIMART_ATTN_IMPL": args.attn})
-        if not os.path.isfile(urdf):
-            raise SystemExit(f"ERROR: stage 3 produced no {urdf}")
-        r.manifest["stage3"] = {"urdf": urdf, "prediction": pred, "seconds": dt,
-                                "parts_dir": os.path.join(d[3], f"{args.name}_objs")}
+        t3 = time.time()
+        attempts = []
+        for i in range(max(1, args.attempts)):
+            adir = os.path.join(d[3], "attempts", f"a{i}")
+            os.makedirs(adir, exist_ok=True)
+            if i > 0:
+                # infer.py skips its ~30 s Blender render when the PNG already
+                # exists (infer.py:224), and the render is seed-independent.
+                prev = os.path.join(d[3], "attempts", "a0", f"{args.name}_scaled.png")
+                if os.path.isfile(prev):
+                    shutil.copyfile(prev, os.path.join(adir, f"{args.name}_scaled.png"))
+            argv = [PY_SIMART, os.path.join(SIMART, "inference", "infer.py"),
+                    "--object_path", src, "--output_path", adir, "--name", args.name,
+                    "--max_new_tokens", str(args.max_new_tokens)]
+            if os.path.isfile(BLENDER):
+                argv += ["--blender_path", BLENDER]
+            # PYTHONPATH and cwd are both required and neither is set by the
+            # repo: infer.py:29 imports `vqvae` with its sys.path fix commented
+            # out, and utils/render_utils.py:70 hardcodes a CWD-relative blender
+            # script path.  SIMART_SEED pins the sampler (patched in) so runs
+            # are reproducible and attempts genuinely differ.
+            r.run(3, argv, cwd=SIMART,
+                  env={"PYTHONPATH": SIMART, "PYTHONUNBUFFERED": "1",
+                       "SIMART_ATTN_IMPL": args.attn,
+                       "SIMART_SEED": str(args.seed + i)})
+            a_urdf = os.path.join(adir, f"{args.name}.urdf")
+            if not os.path.isfile(a_urdf):
+                raise SystemExit(f"ERROR: stage 3 attempt {i} produced no {a_urdf}")
+            score = json.loads(subprocess.check_output(
+                [PY_USD, os.path.join(HERE, "usd", "urdf_to_usd.py"),
+                 "--score", "--urdf", a_urdf], text=True))
+            score["seed"] = args.seed + i
+            attempts.append(score)
+            r.log(f"    attempt {i} (seed {score['seed']}): score {score['score']} "
+                  f"({score.get('moving_joints', 0)} moving joints, "
+                  f"{score.get('usable_links', 0)}/{score.get('links', 0)} parts)")
+
+        best = max(range(len(attempts)), key=lambda i: attempts[i]["score"])
+        bdir = os.path.join(d[3], "attempts", f"a{best}")
+        for entry in (f"{args.name}.urdf", f"{args.name}.json", f"{args.name}_objs",
+                      f"{args.name}_scaled.png", f"{args.name}_scaled.glb"):
+            src_p, dst_p = os.path.join(bdir, entry), os.path.join(d[3], entry)
+            if os.path.isdir(dst_p):
+                shutil.rmtree(dst_p)
+            elif os.path.isfile(dst_p):
+                os.remove(dst_p)
+            if os.path.exists(src_p):
+                shutil.move(src_p, dst_p)
+        if len(attempts) > 1:
+            r.log(f"    kept attempt {best} of {len(attempts)}")
+        r.manifest["stage3"] = {"urdf": urdf, "prediction": pred,
+                                "seconds": round(time.time() - t3, 1),
+                                "parts_dir": os.path.join(d[3], f"{args.name}_objs"),
+                                "attempts": attempts, "chosen": best}
+        if args.clean:
+            cleanup_stage(3, d, args.name, r)
         r.save()
 
     # ---------------------------------------------------------------- stage 4
@@ -360,16 +444,21 @@ def main():
         verify(r, out, len(rep.get("links", [])) or None,
                len(rep.get("joints", [])) or None, args)
 
-        if args.rigid and s1.get("textured_obj" if args.texture else "white_glb"):
-            src = s1.get("textured_obj") or s1.get("white_glb")
+        rigid_src = s1.get("textured_obj") or s1.get("white_glb")
+        if args.rigid and rigid_src:
             rout = os.path.join(d[4], f"{args.name}_rigid.usda")
+            # rx90, not none: the rigid path feeds Hunyuan's raw Y-up mesh
+            # directly, bypassing SimArt's internal R_x(+90) that justifies
+            # `none` on the articulated path above.
             rargv = [PY_USD, os.path.join(HERE, "usd", "urdf_to_usd.py"), "--rigid",
-                     "--mesh", src, "--out", rout, "--name", f"{args.name}_rigid",
-                     "--frame-rot", "none", "--collision", args.collision,
+                     "--mesh", rigid_src, "--out", rout, "--name", f"{args.name}_rigid",
+                     "--frame-rot", "rx90", "--collision", args.collision,
                      "--scale-m", str(args.scale_m or rep.get("scale_m") or 1.0)]
-            if s1.get("textured_obj"):
-                rargv += ["--textures", s1["textured_obj"]]
+            if args.total_mass:
+                rargv += ["--total-mass", str(args.total_mass)]
             r.run(4, rargv, cwd=HERE)
+            verify(r, rout, 1, 0, args)
+            check_bbox_agreement(r, out + ".report.json", rout + ".report.json")
             r.manifest["stage4"]["rigid_usd"] = rout
         r.save()
         r.log(f"=== done -> {out}")
@@ -378,10 +467,169 @@ def main():
     r.save()
 
 
+def run_batch(args):
+    """--images <dir>: batched stage 1, then stages 2-4 per object.
+
+    Stage 1 gets all images in ONE process (its ~2-3 min of model loading
+    amortises across the batch); stages 2-4 then run per object by re-invoking
+    this script with --name <stem> --from 2, which reuses every code path above
+    verbatim.  Fails fast on the first broken object, like everything else here.
+    """
+    imgs = sorted(os.path.join(args.images, f) for f in os.listdir(args.images)
+                  if f.lower().endswith(IMAGE_EXTS))
+    if not imgs:
+        raise SystemExit(f"ERROR: no images ({', '.join(IMAGE_EXTS)}) in {args.images}")
+    names = [os.path.splitext(os.path.basename(i))[0] for i in imgs]
+    if len(set(names)) != len(names):
+        raise SystemExit("ERROR: duplicate image stems in the batch")
+    print(f"==> batch of {len(imgs)}: {', '.join(names)}")
+
+    if args.from_stage <= 1:
+        require(PY_HUNYUAN, "the Hunyuan venv")
+        items = []
+        for img, name in zip(imgs, names):
+            run_dir = os.path.join(args.runs_dir, name)
+            src = os.path.join(run_dir, "00_input", os.path.basename(img))
+            os.makedirs(os.path.dirname(src), exist_ok=True)
+            shutil.copyfile(img, src)
+            items.append({"image": src, "name": name,
+                          "out_dir": os.path.join(run_dir, STAGE_DIRS[1])})
+        batch_json = os.path.join(args.runs_dir, "_batch_stage1.json")
+        with open(batch_json, "w") as fh:
+            json.dump(items, fh, indent=2)
+        argv = [PY_HUNYUAN, os.path.join(HERE, "stages", "stage1_shape.py"),
+                "--batch", batch_json,
+                "--steps", str(args.steps), "--guidance", str(args.guidance),
+                "--octree-resolution", str(args.octree_resolution),
+                "--num-chunks", str(args.num_chunks),
+                "--max-faces", str(args.max_faces), "--paint-views", str(args.paint_views),
+                "--paint-resolution", str(args.paint_resolution), "--seed", str(args.seed),
+                "--model-path", args.model_path]
+        if not args.texture:
+            argv.append("--no-texture")
+        r = Runner(args.runs_dir, "batch")
+        r.log_path = os.path.join(args.runs_dir, "_batch_stage1.log")
+        r.manifest_path = os.path.join(args.runs_dir, "_batch_stage1.manifest.json")
+        r.run(1, argv, cwd=HUNYUAN, env={"PYTHONUNBUFFERED": "1"})
+        os.remove(batch_json)
+        # Seed each object's own manifest so the per-object child (--from 2)
+        # finds stage 1's outputs exactly where a single run would have put them.
+        for item in items:
+            rr = Runner(os.path.dirname(item["out_dir"]), item["name"])
+            with open(os.path.join(item["out_dir"], "stage1.json")) as fh:
+                rr.manifest["stage1"] = json.load(fh)
+            rr.manifest.setdefault("name", item["name"])
+            rr.save()
+            if args.clean:
+                d = {k: os.path.join(os.path.dirname(item["out_dir"]), v)
+                     for k, v in STAGE_DIRS.items()}
+                cleanup_stage(1, d, item["name"], rr)
+
+    if args.to_stage < 2:
+        return
+    passthrough = ["--from", str(max(2, args.from_stage)), "--to", str(args.to_stage),
+                   "--runs-dir", args.runs_dir, "--quality", args.quality,
+                   "--rot-x", str(args.rot_x), "--rot-y", str(args.rot_y),
+                   "--rot-z", str(args.rot_z), "--attn", args.attn,
+                   "--max-new-tokens", str(args.max_new_tokens),
+                   "--attempts", str(args.attempts), "--seed", str(args.seed),
+                   "--scale-unit", args.scale_unit,
+                   "--limit-convention", args.limit_convention,
+                   "--collision", args.collision]
+    for flag, on in (("--no-texture", not args.texture), ("--no-preview", not args.preview),
+                     ("--fixed-base", args.fixed_base), ("--no-rigid", not args.rigid),
+                     ("--keep-intermediates", not args.clean)):
+        if on:
+            passthrough.append(flag)
+    if args.scale_m:
+        passthrough += ["--scale-m", str(args.scale_m)]
+    if args.total_mass:
+        passthrough += ["--total-mass", str(args.total_mass)]
+    if args.expect_size:
+        passthrough += ["--expect-size", str(args.expect_size[0]), str(args.expect_size[1])]
+    for name in names:
+        print(f"\n==> [{name}] stages {max(2, args.from_stage)}..{args.to_stage}")
+        subprocess.check_call([sys.executable, os.path.abspath(__file__),
+                               "--name", name] + passthrough)
+    print(f"\n==> batch done: {len(names)} object(s) under {args.runs_dir}")
+
+
+def cleanup_stage(stage, d, name, r: Runner):
+    """Drop per-run files that are provably redundant (md5-identical to a kept
+    file, or written-then-never-read).  ~40 MB/run on the ladder; every removal
+    here was verified against what later stages actually read.
+
+    stage 1: white_mesh_remesh.obj -- hy3dpaint's remesh temp, written next to
+             its input and never consumed again.
+    stage 2: _input/ -- a staging copy of stage 1's glb made only to control the
+             output filename.
+    stage 3: <name>_scaled.glb -- infer.py re-normalises an already-normalised
+             mesh, so this is byte-identical to stage 2's output; and the
+             per-part material.mtl/material_0.png -- trimesh duplicates the full
+             albedo atlas into every part dir, and stage 4 deliberately ignores
+             them (it rebinds Hunyuan's original PBR maps).
+    """
+    doomed = []
+    if stage == 1:
+        doomed.append(os.path.join(d[1], "white_mesh_remesh.obj"))
+    elif stage == 2:
+        doomed.append(os.path.join(d[2], "_input"))
+    elif stage == 3:
+        doomed.append(os.path.join(d[3], "attempts"))
+        doomed.append(os.path.join(d[3], f"{name}_scaled.glb"))
+        parts = os.path.join(d[3], f"{name}_objs")
+        if os.path.isdir(parts):
+            for pid in os.listdir(parts):
+                for f in ("material.mtl", "material_0.png"):
+                    doomed.append(os.path.join(parts, pid, f))
+    freed = 0
+    for path in doomed:
+        try:
+            if os.path.isdir(path):
+                freed += sum(os.path.getsize(os.path.join(dp, f))
+                             for dp, _, fs in os.walk(path) for f in fs)
+                shutil.rmtree(path)
+            elif os.path.isfile(path):
+                freed += os.path.getsize(path)
+                os.remove(path)
+        except OSError:
+            pass
+    if freed:
+        r.log(f"    cleaned {freed / 1e6:.1f} MB of stage-{stage} intermediates")
+
+
+def check_bbox_agreement(r: Runner, art_report, rigid_report, tol=0.10):
+    """The articulated and rigid USDs describe the same object at the same scale,
+    so their world bboxes must agree.  A frame-rotation mistake shows up here as
+    an axis swap (~60% off) long before anyone opens Isaac Sim -- this exact
+    check is what the original rigid-tier Y/Z bug would have tripped."""
+    try:
+        with open(art_report) as fh:
+            a = json.load(fh)
+        with open(rigid_report) as fh:
+            b = json.load(fh)
+        ea = [hi - lo for lo, hi in zip(a["bbox_world_min"], a["bbox_world_max"])]
+        eb = [hi - lo for lo, hi in zip(b["bbox_world_min"], b["bbox_world_max"])]
+    except (OSError, KeyError, ValueError) as exc:
+        r.log(f"    [warn] bbox cross-check skipped: {exc}")
+        return
+    scale = max(max(ea), 1e-9)
+    worst = max(abs(x - y) for x, y in zip(ea, eb)) / scale
+    detail = f"articulated={[round(v, 3) for v in ea]} rigid={[round(v, 3) for v in eb]}"
+    if worst > tol:
+        r.log(f"    [FAIL] articulated/rigid bboxes disagree ({worst:.0%}): {detail}")
+        raise SystemExit(
+            "bbox cross-check failed -- the two USDs describe differently-oriented "
+            "or differently-sized objects. Inspect the *.report.json files; "
+            "use --no-rigid to skip the rigid tier if the mismatch is expected "
+            "(e.g. SimArt dropped a part).")
+    r.log(f"    bbox cross-check ok ({worst:.1%} worst-axis difference): {detail}")
+
+
 def verify(r: Runner, usd, links, joints, args):
     argv = [PY_USD, os.path.join(HERE, "usd", "verify_usd.py"), usd,
             "--collision", args.collision, "--json", usd + ".checks.json"]
-    if links:
+    if links is not None:
         argv += ["--expect-links", str(links)]
     if joints is not None:
         argv += ["--expect-joints", str(joints)]
