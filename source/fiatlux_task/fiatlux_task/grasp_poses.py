@@ -92,39 +92,53 @@ BULB_IN_ROOT_STANDING: tuple[Vec3, Quat] = ((0.485, -0.150, 0.237), (1.0, 0.0, 0
 # hand pose applied on top of ``LADDER_STANCE_JOINTS``, printing the same in-root pose.
 BULB_IN_ROOT_ON_LADDER: tuple[Vec3, Quat] = ((0.487, -0.150, 0.240), (0.994522, 0.0, -0.104528, 0.0))
 
-# Ladder held by one rail, upright, alongside the robot's right leg and clear of it, at the
-# moment ``ladder_grasped`` fires. Produced by S02, consumed by S03 and S04.
+# Ladder held by BOTH rails, upright, symmetric in front of the robot, at the moment
+# ``ladder_grasped`` fires. Produced by S02, consumed by S03 and S04. Two-handed by design, not
+# just measurement: one rail cannot resist the gravity TORQUE about a single contact point (a
+# one-hand version of this pose was tried and measured swinging/falling in
+# ``verify_interactions``-style rollouts), and the Inspire fingers' torque limit (2.0 N.m,
+# capped there after an earlier wedged-finger/saturated-PD catapult bug -- see ``robots.g1``)
+# is not independently known to generate enough one-point friction to hold
+# ``LADDER_MASS_KG`` = 7.25 at all. Two contact points removes the torque problem outright and
+# roughly doubles the available normal-force budget before the actuator cap is even a question.
 #
-# UNCALIBRATED -- geometric estimate, not contact-verified. Two measurements, not a guess:
-# the rail's location off ``assets.STEP_LADDER_RIGID_USD``'s collision mesh (vertex-cloud
-# clustering, not the bounding box -- a rigid, non-foldable 4-rail A-frame): local
-# (x=0.270, y=-0.408) at 0.50 m up from the base. And the right hand's FK position, arm at its
-# DEFAULT pose (``G1_INSPIRE_CFG.init_state``, no override needed -- an earlier elbow-bent
-# attempt turned out to violate ``right_elbow_joint``'s own limit, caught by env creation, not
-# by this comment): (0.200, -0.149, 0.095) in the pelvis frame. Base ends up ~0.39 m off the
-# floor.
+# UNCALIBRATED -- geometric estimate, not contact-verified. Composed the same way as the
+# one-hand version it replaces, doubled: the rail pair's location off
+# ``assets.STEP_LADDER_RIGID_USD``'s collision mesh (vertex-cloud clustering -- a rigid,
+# non-foldable 4-rail A-frame, mirror-symmetric about its own local x=0), local
+# (x=+-0.270, y=-0.408) at 0.50 m up from the base; and both hands' FK position with the arms
+# abducted (``right_shoulder_roll_joint`` = -0.674 rad, mirrored) enough to span that rail
+# spacing -- default (arms-at-side) spacing is only ~0.45 m against the rails' ~0.54 m, so some
+# abduction is geometrically required, not a style choice: (0.241, +-0.270, 0.145) in the pelvis
+# frame. Base ends up ~0.44 m off the floor.
 #
 # Probe: ``verify_interactions.py --scenario ladder_grasp --probe`` (does not exist yet; S02's
-# deliverable) -- closing the hand on the rail, lifting until all feet clear the floor, then
-# printing the in-root pose from the scripted grasp, never a policy rollout.
+# deliverable) -- closing both hands on their rails, lifting until all feet clear the floor,
+# then printing the in-root pose from the scripted grasp, never a policy rollout.
 #
-# Open risk: whether a one-rail grip holds ``LADDER_MASS_KG`` = 7.25 without swinging past
-# ``ladder_near_vertical``'s tolerance, and whether ``LADDER_CARRY_ARM_JOINT_POS`` (itself an
-# uncalibrated 75%-closed guess) wraps the rail rather than clipping through it.
-LADDER_IN_ROOT_CARRIED: tuple[Vec3, Quat] = ((-0.208, -0.419, -0.405), (0.707107, 0.0, 0.0, 0.707107))
+# Open risk: whether this grip actually holds without swinging past ``ladder_near_vertical``'s
+# tolerance, and whether ``LADDER_CARRY_ARM_JOINT_POS`` (itself an uncalibrated 75%-closed
+# guess, mirrored to both hands) wraps each rail rather than clipping through it.
+LADDER_IN_ROOT_CARRIED: tuple[Vec3, Quat] = ((-0.166, 0.0, -0.355), (0.707107, 0.0, 0.0, 0.707107))
 
-# Inspire-hand finger pose for the carry above: fingers closed 75% of each joint's own travel
-# toward its upper limit (curl-positive, confirmed by a rendered comparison against the
-# untouched left hand). No arm-joint entries -- the default pose IS the carry pose. The same
-# 75%-toward-upper-limit guess tried on Dex3's ``right_hand_*_joint`` rendered with the fingers
-# still fully extended -- disconfirmed, so no Dex3 entries here; a Dex3 rollout keeps default
-# (open) fingers until someone works out its actual curl direction.
+# Inspire-hand arm + finger pose for the two-handed carry above. Shoulder abduction is the part
+# that actually matters (see ``LADDER_IN_ROOT_CARRIED``); fingers close 75% of each joint's own
+# travel toward its upper limit, curl-positive, confirmed on the right hand by a rendered
+# comparison against the untouched left hand before this was two-handed -- mirrored to
+# ``L_*`` here on the (unverified but standard-for-a-mirrored-rig) assumption the left hand
+# curls the same way. The same 75%-toward-upper-limit guess tried on Dex3's
+# ``right_hand_*_joint`` rendered with the fingers still fully extended -- disconfirmed, so no
+# Dex3 entries here; a Dex3 rollout keeps default (open) fingers and arms at the sides until
+# someone works out its actual curl direction and re-derives the abduction angle for its own
+# hand geometry.
 #
 # Merge into ``robot.init_state.joint_pos`` (regex-keyed, already carries the family's
 # bent-knee entries) rather than assigning over it. Safe across a later ``--robot dex3`` swap:
 # ``swap_robot_variant`` strips any hand-marker key foreign to the incoming variant before
 # reattaching ``init_state`` (``robots.g1._drop_foreign_hand_joint_pos``).
 LADDER_CARRY_ARM_JOINT_POS: dict[str, float] = {
+    "right_shoulder_roll_joint": -0.674,
+    "left_shoulder_roll_joint": 0.674,
     "R_index_proximal_joint": 1.275,
     "R_index_intermediate_joint": 1.275,
     "R_middle_proximal_joint": 1.275,
@@ -137,4 +151,16 @@ LADDER_CARRY_ARM_JOINT_POS: dict[str, float] = {
     "R_thumb_proximal_pitch_joint": 0.425,
     "R_thumb_intermediate_joint": 0.6,
     "R_thumb_distal_joint": 0.9,
+    "L_index_proximal_joint": 1.275,
+    "L_index_intermediate_joint": 1.275,
+    "L_middle_proximal_joint": 1.275,
+    "L_middle_intermediate_joint": 1.275,
+    "L_pinky_proximal_joint": 1.275,
+    "L_pinky_intermediate_joint": 1.275,
+    "L_ring_proximal_joint": 1.275,
+    "L_ring_intermediate_joint": 1.275,
+    "L_thumb_proximal_yaw_joint": 0.95,
+    "L_thumb_proximal_pitch_joint": 0.425,
+    "L_thumb_intermediate_joint": 0.6,
+    "L_thumb_distal_joint": 0.9,
 }
