@@ -25,14 +25,15 @@ from fiatlux_task.grasp_poses import GLASS_CONTACT_LIMIT_N
 
 from .. import mdp
 from ..mdp import grasp_terms, place_terms
-from ..mdp.nav_terms import BULB_APPROACH_RADIUS
 from ..scene_cfg import (
+    TABLETOP_BULB_POSITION,
+    TABLETOP_ROBOT_POSITION,
     TABLETOP_SURFACE_Z,
     add_ego_camera,
     add_mid360_lidar,
     apply_replace_preset,
     frame_viewer_on,
-    stand_robot_near,
+    stand_robot_at_offset,
 )
 from ..subtask_env_cfg import FALL_MIN_HEIGHT, FALL_TILT_LIMIT, SubtaskTerminationsCfg
 from ..subtask_tiers.grasp import GRASP_SUSTAIN_SECONDS, GraspRewardsCfg, GraspSubtaskCfg, add_grasp_contact_sensor
@@ -40,6 +41,14 @@ from ..subtask_tiers.grasp import GRASP_SUSTAIN_SECONDS, GraspRewardsCfg, GraspS
 # The fresh bulb's resting root height on the (always z=0) table, standing on its cap -- the same
 # derivation apply_replace_preset itself uses for TABLETOP_BULB_POSITION.
 BULB_TABLETOP_REST_Z = TABLETOP_SURFACE_Z - BULB_STAND_Z_OFFSET  # m
+
+# The authored, already-validated approach vector from the non-subtask tabletop tasks -- not a
+# radius. A radius alone lets the robot approach the bulb from any direction, including from
+# under the table itself; this preserves the side the table actually has clearance on.
+BULB_APPROACH_OFFSET = (
+    TABLETOP_ROBOT_POSITION[0] - TABLETOP_BULB_POSITION[0],
+    TABLETOP_ROBOT_POSITION[1] - TABLETOP_BULB_POSITION[1],
+)
 
 # Root rise counted as "lifted": more than resting-contact/settling jitter. PROVISIONAL -- not
 # measured against the settled bulb's own jitter.
@@ -114,9 +123,10 @@ class S11GrabNewBulbEnvCfg(GraspSubtaskCfg):
     def __post_init__(self) -> None:
         super().__post_init__()
         apply_replace_preset(self.scene)
-        # The preset's own robot zone is independent of the table's; pull the robot into grasp
-        # range of the bulb instead of just aiming it at the table.
-        stand_robot_near(self.scene, self.scene.bulb.init_state.pos[:2], BULB_APPROACH_RADIUS)
+        # The preset's own robot zone is independent of the table's; place the robot at the
+        # table's own validated approach vector from the bulb, not just some radius from it
+        # (a radius alone can land the robot under the table).
+        stand_robot_at_offset(self.scene, self.scene.bulb.init_state.pos[:2], BULB_APPROACH_OFFSET)
         add_ego_camera(self.scene)
         add_mid360_lidar(self.scene)
         add_grasp_contact_sensor(self.scene, self.scene.bulb.prim_path)

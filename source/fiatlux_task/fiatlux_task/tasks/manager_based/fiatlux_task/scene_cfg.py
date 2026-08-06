@@ -657,6 +657,29 @@ def stand_robot_near(scene: G1ReplaceSceneCfg, target: Vec2, standoff: float) ->
     face_robot_at(scene, target)
 
 
+def stand_robot_at_offset(scene: G1ReplaceSceneCfg, target: Vec2, offset: Vec2) -> None:
+    """Place the robot at ``target + offset`` and face it, preserving a validated APPROACH
+    DIRECTION rather than just a distance.
+
+    ``stand_robot_near`` pulls the robot to within a radius of the target from whatever
+    direction it happens to already be on -- fine for a target with clearance on every side
+    (a free-standing ladder), wrong for one that doesn't: pulled toward ``TABLETOP_BULB_
+    POSITION`` by radius alone, a robot spawned behind the table can end up standing UNDER it,
+    clipped into the tabletop collision mesh, with the bulb nowhere near either hand (S11,
+    caught by inspecting the actual render, not assumed fixed by the radius change alone).
+
+    ``offset`` should be a validated, authored relative position -- e.g. ``TABLETOP_ROBOT_
+    POSITION[:2]`` minus ``TABLETOP_BULB_POSITION[:2]``, the same approach vector the
+    non-subtask tabletop tasks already use -- not derived here, so this function cannot repeat
+    the same mistake by construction.
+    """
+    tx, ty = target
+    ox, oy = offset
+    rz = scene.robot.init_state.pos[2]
+    scene.robot.init_state.pos = (tx + ox, ty + oy, rz)
+    face_robot_at(scene, target)
+
+
 _ROOM_FLOOR_CENTER = (
     (ROOM_FLOOR_MIN[0] + ROOM_FLOOR_MAX[0]) / 2.0,
     (ROOM_FLOOR_MIN[1] + ROOM_FLOOR_MAX[1]) / 2.0,
