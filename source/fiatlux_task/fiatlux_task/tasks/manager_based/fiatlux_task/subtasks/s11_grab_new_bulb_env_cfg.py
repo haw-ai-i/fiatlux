@@ -15,12 +15,14 @@ The glass shell is fragile (``grasp_poses.GLASS_CONTACT_LIMIT_N`` = 50 N, also
 is an UPPER bound, not a lower one -- a grip that lifts the bulb by crushing it does not count.
 """
 
+import math
+
 from isaaclab.managers import RewardTermCfg as RewTerm
 from isaaclab.managers import SceneEntityCfg
 from isaaclab.managers import TerminationTermCfg as DoneTerm
 from isaaclab.utils import configclass
 
-from fiatlux_task.assets import BULB_STAND_Z_OFFSET
+from fiatlux_task.assets import BULB_STAND_Z_OFFSET, G1_HORIZONTAL_REACH
 from fiatlux_task.grasp_poses import GLASS_CONTACT_LIMIT_N
 
 from .. import mdp
@@ -42,12 +44,20 @@ from ..subtask_tiers.grasp import GRASP_SUSTAIN_SECONDS, GraspRewardsCfg, GraspS
 # derivation apply_replace_preset itself uses for TABLETOP_BULB_POSITION.
 BULB_TABLETOP_REST_Z = TABLETOP_SURFACE_Z - BULB_STAND_Z_OFFSET  # m
 
-# The authored, already-validated approach vector from the non-subtask tabletop tasks -- not a
-# radius. A radius alone lets the robot approach the bulb from any direction, including from
-# under the table itself; this preserves the side the table actually has clearance on.
+# Which side of the table to stand on, from the non-subtask tabletop task's own layout (a
+# direction, not a distance -- standing distance alone can put the robot under the table).
+_TABLETOP_APPROACH_DX = TABLETOP_ROBOT_POSITION[0] - TABLETOP_BULB_POSITION[0]
+_TABLETOP_APPROACH_DY = TABLETOP_ROBOT_POSITION[1] - TABLETOP_BULB_POSITION[1]
+_TABLETOP_APPROACH_DIST = math.hypot(_TABLETOP_APPROACH_DX, _TABLETOP_APPROACH_DY)
+
+# Same direction, but standing close enough to actually reach the bulb: G1_HORIZONTAL_REACH is
+# the measured forward-arm reach (same constant LADDER_APPROACH_RADIUS is built from), less a
+# margin. The un-scaled tabletop offset (0.626 m) is a walking-approach distance from a scene
+# where the robot closes the gap over the episode, not a grasp-ready standing point -- at that
+# distance the bulb is 12 cm outside reach even fully extended.
 BULB_APPROACH_OFFSET = (
-    TABLETOP_ROBOT_POSITION[0] - TABLETOP_BULB_POSITION[0],
-    TABLETOP_ROBOT_POSITION[1] - TABLETOP_BULB_POSITION[1],
+    _TABLETOP_APPROACH_DX / _TABLETOP_APPROACH_DIST * (G1_HORIZONTAL_REACH - 0.05),
+    _TABLETOP_APPROACH_DY / _TABLETOP_APPROACH_DIST * (G1_HORIZONTAL_REACH - 0.05),
 )
 
 # Root rise counted as "lifted": more than resting-contact/settling jitter. PROVISIONAL -- not
