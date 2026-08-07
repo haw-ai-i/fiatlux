@@ -1042,6 +1042,19 @@ def _sample_replace_layout(
 
     Returns ``(mount, [robot, table, ladder, disposal] centers, ladder_yaw_deg)``.
 
+    Samples the SAME five zones in the SAME order regardless of ``couple_ladder_to_fixture``
+    -- robot, table, a free ladder draw, disposal, and the fixture's anchor, always reserved
+    as a fifth occupant-less zone so nothing else can land on it whichever way the ladder
+    itself is resolved. Only the ladder's returned center depends on the flag (the anchor
+    when coupled, its own free draw otherwise); everything else consumes the rng identically
+    either way. Earlier this branched on the flag by changing which/how-many zones got
+    sampled at all, which shifted every rng draw AFTER the branch -- robot, disposal, even the
+    fixture's own later-drawn attributes would silently differ between a coupled and an
+    uncoupled call at the same seed, so two subtasks that are supposed to share one stable
+    room (issue #70 discussion) did not (caught by comparing ``bin`` position across subtasks
+    at a fixed seed: identical for every uncoupled leaf, a completely different position for
+    every coupled one).
+
     Raises:
         RuntimeError: if no feasible layout is found. Every constant involved is fixed at
             import time, so this is a statement about the room's geometry, not bad luck --
@@ -1052,18 +1065,17 @@ def _sample_replace_layout(
         mount = _sample_fixture_mount(rng)
         _, _, _, wall_normal, ladder_anchor = mount
         ladder_yaw = rng.uniform(0.0, 360.0)
+        if couple_ladder_to_fixture and wall_normal is not None:
+            ladder_yaw = math.degrees(math.atan2(-wall_normal[1], -wall_normal[0]))
 
-        half_sizes = [ROBOT_ZONE_HALF_SIZE, TABLE_ZONE_HALF_SIZE, LADDER_ZONE_HALF_SIZE, DISPOSAL_ZONE_HALF_SIZE]
-        fixed: list[tuple[float, float] | None] = [None, None, None, None]
-        if couple_ladder_to_fixture:
-            fixed[2] = ladder_anchor  # the ladder starts where it is needed
-            if wall_normal is not None:
-                ladder_yaw = math.degrees(math.atan2(-wall_normal[1], -wall_normal[0]))
-        else:
-            # The ladder starts elsewhere (moving it is the task), so the anchor is held as a
-            # fifth, occupant-less zone: it only has to stay CLEAR.
-            half_sizes.append(LADDER_ZONE_HALF_SIZE)
-            fixed.append(ladder_anchor)
+        half_sizes = [
+            ROBOT_ZONE_HALF_SIZE,
+            TABLE_ZONE_HALF_SIZE,
+            LADDER_ZONE_HALF_SIZE,
+            DISPOSAL_ZONE_HALF_SIZE,
+            LADDER_ZONE_HALF_SIZE,
+        ]
+        fixed: list[tuple[float, float] | None] = [None, None, None, None, ladder_anchor]
 
         try:
             centers = _sample_nonoverlapping_centers(
@@ -1076,7 +1088,8 @@ def _sample_replace_layout(
         except LayoutInfeasible as exc:
             last = exc
             continue
-        return mount, centers[:4], ladder_yaw
+        ladder_center = ladder_anchor if couple_ladder_to_fixture else centers[2]
+        return mount, [centers[0], centers[1], ladder_center, centers[3]], ladder_yaw
     raise RuntimeError(f"no feasible Replace layout in {max_tries} draws; last failure: {last}")
 
 
