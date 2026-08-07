@@ -441,30 +441,33 @@ def old_bulb_disposal_distance(
 
 
 class distance_progress(ManagerTermBase):
-    """Normalized distance progress, paid as increments of the episode's best (each once).
+    """Potential-based shaping on normalized distance progress: pays the *change* each step.
 
-    Progress is ``(d0 - d) / d0`` clamped to [0, 1], with ``d0`` the term's ``distance_fn``
-    captured at episode reset (event-manager reset terms run before the reward-manager
-    reset, so this reads the post-randomization state). Normalizing by the *episode's own*
-    start distance means a lucky spawn that starts close cannot outscore an unlucky far
-    one -- both saturate at 1.0 on arrival -- the full-task plan's randomization-fairness
-    requirement.
+    Progress (the potential ``Phi``) is ``(d0 - d) / d0`` clamped to [0, 1], with ``d0`` the
+    term's ``distance_fn`` captured at episode reset (event-manager reset terms run before
+    the reward-manager reset, so this reads the post-randomization state). Normalizing by
+    the *episode's own* start distance means a lucky spawn that starts close cannot outscore
+    an unlucky far one -- both saturate at 1.0 on arrival -- the full-task plan's
+    randomization-fairness requirement.
 
     With ``away_threshold`` set, the channel measures progress *away* from a point
     instead: ``d / away_threshold`` clamped to [0, 1]. The d0 normalization cannot apply
     there (the old bulb starts *at* the fixture, d0 ~ 0), so an absolute clearance
     threshold bounds it.
 
-    Paying best-progress increments (the ``climb_height_progress`` scheme) rather than the
-    level keeps the episode total equal to the final achieved progress: loitering at high
-    progress earns nothing, and ``Episode_Reward/<term>`` reads directly as achieved
-    normalized progress (times weight, per unit episode time).
+    Each step pays ``Phi(s') - Phi(s)`` (Ng, Harada & Russell 1999) rather than a
+    permanently-banked best-so-far increment: approaching pays positive, retreating pays
+    *negative*, and holding still nets ~0. That directly fixes the best-so-far scheme's
+    exploit -- almost reaching the target and then fully leaving still banked full credit,
+    since the increment can never go down. Summed over an episode this telescopes to
+    ``Phi(final) - Phi(initial)``, so the total reflects final position, not a historical
+    peak, while every single step still carries a real, dense gradient.
     """
 
     def __init__(self, cfg: RewardTermCfg, env: ManagerBasedRLEnv):
         super().__init__(cfg, env)
         self._initial = torch.ones(env.num_envs, device=env.device)
-        self._best = torch.zeros(env.num_envs, device=env.device)
+        self._prev_phi = torch.zeros(env.num_envs, device=env.device)
 
     def reset(self, env_ids: Sequence[int] | None = None) -> None:
         ids = slice(None) if env_ids is None else env_ids
@@ -473,8 +476,8 @@ class distance_progress(ManagerTermBase):
         # floor d0: a spawn already at the target must read "done" (1.0), not divide by ~0
         self._initial[ids] = d.clamp_min(1e-3)
         away = self.cfg.params.get("away_threshold")
-        # seed best with the spawn's own progress so reset state never pays
-        self._best[ids] = 0.0 if away is None else (d / away).clamp(0.0, 1.0)
+        # seed Phi with the spawn's own potential so the first step's difference is well-formed
+        self._prev_phi[ids] = 0.0 if away is None else (d / away).clamp(0.0, 1.0)
 
     def __call__(
         self,
@@ -484,12 +487,12 @@ class distance_progress(ManagerTermBase):
     ) -> torch.Tensor:
         d = distance_fn(env)
         if away_threshold is None:
-            progress = ((self._initial - d) / self._initial).clamp(0.0, 1.0)
+            phi = ((self._initial - d) / self._initial).clamp(0.0, 1.0)
         else:
-            progress = (d / away_threshold).clamp(0.0, 1.0)
-        gain = (progress - self._best).clamp(min=0.0)
-        self._best = torch.maximum(self._best, progress)
-        return gain
+            phi = (d / away_threshold).clamp(0.0, 1.0)
+        shaped = phi - self._prev_phi
+        self._prev_phi = phi
+        return shaped
 
 
 class completion_bonus(ManagerTermBase):
