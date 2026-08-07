@@ -17,10 +17,19 @@ pose rather than from ``LADDER_POSITION``.
 
 The A-frame's steps face one way, so both stances are placed along the ladder's own step-facing
 direction at the sampled yaw; a stance behind the ladder cannot be climbed from.
+
+The bayonet attach/detach state machine (issue #54, ``mdp.bulb_attachment``) is wired here, not
+just on the mate tier: the old bulb starts locked in the fixture on EVERY subtask in this file
+(S05's and S07's and S13's start state has it there just as much as S06's does), and nothing but
+that event keeps it from falling out of the inverted socket under plain gravity. Only S06 and S14
+score against it directly, but S05/S07/S13/S15 would silently show (and physically drop) a
+loose old bulb for the whole episode without it -- an unrelated background object failing is
+still a failure to notice in a render or a training run.
 """
 
 import math
 
+from isaaclab.managers import EventTermCfg as EventTerm
 from isaaclab.managers import RewardTermCfg as RewTerm
 from isaaclab.managers import SceneEntityCfg
 from isaaclab.managers import TerminationTermCfg as DoneTerm
@@ -30,6 +39,7 @@ from fiatlux_task.robots.g1 import G1_DEX3_PALM_BODIES, G1_FOOT_BODIES, G1_PALM_
 
 from .. import mdp
 from ..mdp.place_terms import step_face_dir_from_yaw, yaw_from_quat
+from ..replace_env_cfg import BAYONET_INSERTION_DEPTH, BAYONET_ROTATION_ANGLE, SEAT_ORI_THRESHOLD, SEAT_POS_THRESHOLD
 from ..scene_cfg import (
     CLIMB_ROBOT_POSITION,
     LADDER_POSITION,
@@ -42,7 +52,25 @@ from ..scene_cfg import (
     face_robot_at,
     frame_viewer_on,
 )
-from ..subtask_env_cfg import SubtaskEnvCfg, SubtaskRewardsCfg, SubtaskTerminationsCfg
+from ..subtask_env_cfg import SubtaskEnvCfg, SubtaskEventCfg, SubtaskRewardsCfg, SubtaskTerminationsCfg
+
+
+@configclass
+class BalanceEventCfg(SubtaskEventCfg):
+    """Adds the bayonet channel enforcement, same params ``FIATLUX-Replace-v0`` validated."""
+
+    bulb_attachment = EventTerm(
+        func=mdp.bulb_attachment,
+        mode="interval",
+        interval_range_s=(0.0, 0.0),
+        params={
+            "insertion_depth": BAYONET_INSERTION_DEPTH,
+            "rotation_angle": BAYONET_ROTATION_ANGLE,
+            "rotation_sign": 1.0,
+            "radial_tolerance": SEAT_POS_THRESHOLD,
+            "orientation_tolerance": SEAT_ORI_THRESHOLD,
+        },
+    )
 
 # Success-region shape, shared by every climb/descend gate in the family (Climb's own tolerances).
 LADDER_SUCCESS_XY_RADIUS = 0.6  # m
@@ -132,6 +160,7 @@ class BalanceSubtaskCfg(SubtaskEnvCfg):
     orbit_radius: float = 5.0
     orbit_height: float = 2.4
 
+    events: BalanceEventCfg = BalanceEventCfg()
     rewards: OnLadderRewardsCfg = OnLadderRewardsCfg()
     terminations: BalanceTerminationsCfg = BalanceTerminationsCfg()
 

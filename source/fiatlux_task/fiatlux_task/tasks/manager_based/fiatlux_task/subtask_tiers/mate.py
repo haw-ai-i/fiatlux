@@ -12,17 +12,16 @@ stance, and adds a filtered hand-force channel with a compliance penalty and a c
 No limb-on-ladder bootstrap: ``ladder_contact_fraction`` pays for limbs ON the ladder, and the
 whole job here is to get a hand off it and onto the fixture.
 
-The bayonet attach/detach state machine (issue #54, ``mdp.bulb_attachment``) is wired here so
-every mate-tier leaf gets it once: without it the old bulb has nothing retaining it in the
-inverted fixture and falls out under gravity from t=0, and a merely-resting fresh bulb falls out
-the instant the hand releases it. Both leaves' success gates read the attach-aware predicates
+The bayonet attach/detach state machine (issue #54, ``mdp.bulb_attachment``) is wired at the
+balance tier (``subtask_tiers.balance.BalanceEventCfg``), not here -- every on-ladder subtask
+starts with the old bulb locked in the inverted fixture, not just these two, so it belongs one
+level up. Both leaves' success gates read the attach-aware predicates
 (``mdp.old_bulb_removed_after_release``, ``mdp.fresh_bulb_attached``, ...) rather than the raw
 geometric ones, per the module's own ordering caveat: rewards/terminations run before the
 ``mode="interval"`` projection step, so raw geometry can transiently read "success" a step before
 the bulb has actually left (or locked into) the channel.
 """
 
-from isaaclab.managers import EventTermCfg as EventTerm
 from isaaclab.managers import RewardTermCfg as RewTerm
 from isaaclab.managers import SceneEntityCfg
 from isaaclab.managers import TerminationTermCfg as DoneTerm
@@ -32,27 +31,7 @@ from fiatlux_task.grasp_poses import GLASS_CONTACT_LIMIT_N
 
 from .. import mdp
 from ..mdp import mate_terms
-from ..replace_env_cfg import BAYONET_INSERTION_DEPTH, BAYONET_ROTATION_ANGLE, SEAT_ORI_THRESHOLD, SEAT_POS_THRESHOLD
-from ..subtask_env_cfg import SubtaskEventCfg
 from .balance import BalanceSubtaskCfg, BalanceTerminationsCfg, OnLadderRewardsCfg, stand_robot_on_ladder_top
-
-
-@configclass
-class MateEventCfg(SubtaskEventCfg):
-    """Adds the bayonet channel enforcement, same params ``FIATLUX-Replace-v0`` validated."""
-
-    bulb_attachment = EventTerm(
-        func=mdp.bulb_attachment,
-        mode="interval",
-        interval_range_s=(0.0, 0.0),
-        params={
-            "insertion_depth": BAYONET_INSERTION_DEPTH,
-            "rotation_angle": BAYONET_ROTATION_ANGLE,
-            "rotation_sign": 1.0,
-            "radial_tolerance": SEAT_POS_THRESHOLD,
-            "orientation_tolerance": SEAT_ORI_THRESHOLD,
-        },
-    )
 
 # Dense alignment kernel width, in radians of mating-axis error: the family's existing value for
 # the orientation kernel this one replaces (install/g1_bulb), which is well outside the 0.2 rad
@@ -103,7 +82,6 @@ class MateTerminationsCfg(BalanceTerminationsCfg):
 class MateSubtaskCfg(BalanceSubtaskCfg):
     """Manipulation at the fixture from the ladder's upper steps."""
 
-    events: MateEventCfg = MateEventCfg()
     rewards: MateRewardsCfg = MateRewardsCfg()
     terminations: MateTerminationsCfg = MateTerminationsCfg()
 
