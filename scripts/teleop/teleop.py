@@ -58,6 +58,7 @@ simulation_app = app_launcher.app
 import logging
 
 import fiatlux_task.tasks  # noqa: F401
+import fiatlux_teleop  # noqa: F401,E402  -- registers the FIATLUX-*-Teleop gym ids
 import gymnasium as gym
 import torch
 

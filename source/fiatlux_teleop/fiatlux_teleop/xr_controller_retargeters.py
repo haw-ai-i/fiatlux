@@ -18,7 +18,7 @@ array where **row 0** is the pose ``[x, y, z, w, x, y, z]`` and **row 1** is the
 ``[thumbstick_x, thumbstick_y, trigger, squeeze, button_0, button_1, pad]``.
 
 Use via the ``controller`` teleop device (see ``insert_teleop_env_cfg.py``):
-``scripts/xr_teleop.py --teleop_device controller``.
+``scripts/teleop/xr_teleop.py --teleop_device controller``.
 """
 
 from __future__ import annotations
@@ -166,6 +166,16 @@ class Se3RelControllerRetargeter(RetargeterBase):
         self._root_pos = np.array(cfg.root_pos, dtype=np.float32)
         self._root_R = Rotation.from_quat([rq[1], rq[2], rq[3], rq[0]])  # root (pelvis) orientation in world
         self._root_R_T = self._root_R.as_matrix().T.astype(np.float32)
+        # Convert the init pose + workspace from WORLD into the ROOT frame, and accumulate the target
+        # THERE (deltas are rotated into the root frame too). The target then lives in the base frame, so
+        # on a MOVING base (SONIC) the hand rides the body through translation AND rotation -- turning
+        # carries the arm around instead of it hanging in world space. For a STATIC base this is exactly
+        # the old ``R^T (pos_w - t)`` output, so the bolted Insert env is unchanged.
+        self._init_pos = (self._root_R_T @ (self._init_pos - self._root_pos)).astype(np.float32)
+        _c1 = self._root_R_T @ (self._lo - self._root_pos)
+        _c2 = self._root_R_T @ (self._hi - self._root_pos)
+        self._lo = np.minimum(_c1, _c2).astype(np.float32)
+        self._hi = np.maximum(_c1, _c2).astype(np.float32)
         # Orientation tracking (clutch-gated): the controller's rotation drives the wrist. The IK command
         # orientation is in the ROOT frame but the controller quat is WORLD, so the incremental rotation is
         # conjugated into the root frame before being applied. Starts from the fixed root-frame rest quat
@@ -243,7 +253,7 @@ class Se3RelControllerRetargeter(RetargeterBase):
                     elif _jump >= self._deadzone:
                         # Deadzone: only deliberate motion past the threshold moves the arm.
                         self._reject = 0
-                        delta = raw * self._scale
+                        delta = (self._root_R_T @ raw) * self._scale  # world delta -> base frame
                         n = float(np.linalg.norm(delta))
                         if n > self._max_step:  # cap per-frame step
                             delta = delta * (self._max_step / n)
@@ -266,9 +276,10 @@ class Se3RelControllerRetargeter(RetargeterBase):
                             dqr = self._root_R.inv() * dqw * self._root_R  # express the delta in root frame
                             self._quat_R = dqr * self._quat_R  # rotate the EE orientation
                             self._prev_cq = cq  # re-reference only on deliberate rotation
-        # Transform the accumulated WORLD-frame target into the ROOT frame the IK expects; the EE
-        # orientation is tracked from the controller (self._quat_R), both already in the root frame.
-        pos_root = self._root_R_T @ (self._pos - self._root_pos)
+        # self._pos already lives in the ROOT/base frame (deltas are rotated into it as they accumulate),
+        # so it IS the IK position command -- keeping the target base-relative is what makes the hand ride
+        # the body through turns as well as translation. Orientation (self._quat_R) is root-frame too.
+        pos_root = self._pos
         oq = self._quat_R.as_quat()  # scipy returns [x, y, z, w]
         out_quat = np.array([oq[3], oq[0], oq[1], oq[2]], dtype=np.float32)  # -> [w, x, y, z] for the cmd
         # DEBUG (temporary): raw pos, clutch, jump, reject, step, target, wrist rotation from rest (deg).

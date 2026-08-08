@@ -59,6 +59,7 @@ from isaaclab.assets import Articulation  # noqa: E402
 from isaaclab.sensors import Camera, CameraCfg  # noqa: E402
 from isaaclab.controllers import DifferentialIKController, DifferentialIKControllerCfg  # noqa: E402
 import fiatlux_task  # noqa: F401,E402  (registers assets)
+import fiatlux_teleop  # noqa: F401,E402  -- registers the FIATLUX-*-Teleop gym ids
 from fiatlux_task.robots.g1 import (  # noqa: E402
     G1_INSPIRE_CFG, G1_ARM_JOINTS, G1_EE_BODY, G1_HAND_JOINTS, G1_HAND_OPEN, G1_HAND_GRASP,
 )
@@ -127,7 +128,7 @@ if args.insert:
     from fiatlux_task.tasks.manager_based.fiatlux_task.scene_cfg import (  # noqa: E402
         _quat_x_deg, _spawn_usd_as_rigid_body,
     )
-    from fiatlux_task.tasks.manager_based.fiatlux_task.insert_teleop_env_cfg import _spawn_omni_rigid  # noqa: E402
+    from fiatlux_teleop.insert_teleop_env_cfg import _spawn_omni_rigid  # noqa: E402
 
     TX, TTOP = 1.35, 0.80                       # table front distance + top height (reachable)
     _up = _quat_x_deg(90.0)                      # stand the Y-up assets upright, bulb up

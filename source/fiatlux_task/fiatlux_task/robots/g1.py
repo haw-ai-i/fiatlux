@@ -106,6 +106,10 @@ G1_THUMB_JOINTS = [
     "R_thumb_distal_joint",
 ]
 G1_HAND_JOINTS = G1_FINGER_JOINTS + G1_THUMB_JOINTS
+# Left Inspire hand joints -- the mirror of the (right) G1_HAND_JOINTS above. Bimanual teleop envs
+# scope a left grip to these; listing them here lets ``swap_robot_variant`` remap the left hand to
+# Dex3 alongside the right (see ``_HAND_REMAPS``).
+G1_LEFT_HAND_JOINTS = [j.replace("R_", "L_", 1) for j in G1_HAND_JOINTS]
 
 # Inspire-hand open / power-grasp finger presets (rad). Open = fingers extended (0). Grasp curls
 # the four fingers near their +1.7 limit and opposes the thumb (pitch caps at +0.6). Used by the
@@ -295,20 +299,25 @@ G1_DEX3_FINGER_JOINT_PATTERNS = [".*_hand_(thumb|index|middle)_._joint"]
 # the grasp over/under-closes.
 G1_DEX3_HAND_OPEN = dict.fromkeys(G1_DEX3_RIGHT_HAND_JOINTS, 0.0)
 G1_DEX3_HAND_GRASP = {
-    "right_hand_index_0_joint": 1.2,
-    "right_hand_index_1_joint": 1.3,
-    "right_hand_middle_0_joint": 1.2,
-    "right_hand_middle_1_joint": 1.3,
-    "right_hand_thumb_0_joint": 0.8,
-    "right_hand_thumb_1_joint": 0.4,
+    # Fingers curl to ~95% of their limits (1.57/1.75) so the fingertips come BACK toward the thumb --
+    # the right thumb can't reach far forward (model limit), so closing the gap means bringing the
+    # fingers to it. This tightens the pinch at the index for both hands.
+    "right_hand_index_0_joint": 1.5,
+    "right_hand_index_1_joint": 1.7,
+    "right_hand_middle_0_joint": 1.5,
+    "right_hand_middle_1_joint": 1.7,
+    # Right thumb flipped to close from the OPPOSITE direction (operator request): negate the yaw
+    # (thumb_0) and pitch (thumb_1) so the thumb opposes from the other side; keep the distal curl.
+    "right_hand_thumb_0_joint": -0.8,
+    "right_hand_thumb_1_joint": -0.2,
     "right_hand_thumb_2_joint": -1.2,
 }
 G1_DEX3_LEFT_HAND_OPEN = dict.fromkeys(G1_DEX3_LEFT_HAND_JOINTS, 0.0)
 G1_DEX3_LEFT_HAND_GRASP = {
-    "left_hand_index_0_joint": -1.2,
-    "left_hand_index_1_joint": -1.3,
-    "left_hand_middle_0_joint": -1.2,
-    "left_hand_middle_1_joint": -1.3,
+    "left_hand_index_0_joint": -1.5,
+    "left_hand_index_1_joint": -1.7,
+    "left_hand_middle_0_joint": -1.5,
+    "left_hand_middle_1_joint": -1.7,
     "left_hand_thumb_0_joint": -0.8,
     "left_hand_thumb_1_joint": 0.4,
     "left_hand_thumb_2_joint": 1.2,
@@ -361,6 +370,7 @@ _HAND_REMAPS: dict[str, dict[tuple[str, ...], list[str]]] = {
     "dex3": {
         tuple(G1_FINGER_JOINT_PATTERNS): list(G1_DEX3_FINGER_JOINT_PATTERNS),
         tuple(G1_HAND_JOINTS): list(G1_DEX3_RIGHT_HAND_JOINTS),
+        tuple(G1_LEFT_HAND_JOINTS): list(G1_DEX3_LEFT_HAND_JOINTS),
         tuple(G1_ARM_JOINTS + G1_HAND_JOINTS): list(G1_ARM_JOINTS + G1_DEX3_RIGHT_HAND_JOINTS),
     },
 }

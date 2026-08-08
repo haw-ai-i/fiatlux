@@ -47,6 +47,7 @@ from isaaclab.utils.math import subtract_frame_transforms  # noqa: E402
 from isaaclab_tasks.utils import parse_env_cfg  # noqa: E402
 import isaaclab_tasks  # noqa: F401,E402
 import fiatlux_task  # noqa: F401,E402
+import fiatlux_teleop  # noqa: F401,E402  -- registers the FIATLUX-*-Teleop gym ids
 
 # ---------------------------------------------------------------------------
 # SONIC contract (identical to sonic_drive.py)
@@ -121,11 +122,14 @@ def main():
     env_cfg = parse_env_cfg(args.task, device=args.device, num_envs=args.num_envs)
     if not isinstance(env_cfg, ManagerBasedRLEnvCfg):
         raise ValueError("expected a ManagerBasedRLEnv task")
-    # The Insert-Teleop env defaults to Inspire and needs a patch to switch to Dex3; other teleop
-    # envs (e.g. Carry-Teleop) are built Dex3-native in their cfg, so only patch Insert here.
+    # Insert-Teleop defaults to Inspire (swap to Dex3 on request); Carry-Teleop is Dex3-native
+    # (swap to Inspire on request). Each env's patch handles the robot + hand-action repoint.
     if args.hand.lower() == "dex3" and "Insert" in args.task:
-        from fiatlux_task.tasks.manager_based.fiatlux_task.insert_teleop_env_cfg import apply_dex3_hands
+        from fiatlux_teleop.insert_teleop_env_cfg import apply_dex3_hands
         apply_dex3_hands(env_cfg)
+    elif args.hand.lower() == "inspire" and "Carry" in args.task:
+        from fiatlux_teleop.carry_teleop_env_cfg import apply_inspire_hands
+        apply_inspire_hands(env_cfg)
 
     env_cfg.sim.dt = 0.005                      # 200 Hz (SONIC's rate)
     env_cfg.decimation = 4                      # -> 50 Hz control
@@ -150,9 +154,29 @@ def main():
     # touch so the feet clear the floor. Generalizes across tasks (Insert, Carry, ...).
     _p = env_cfg.scene.robot.init_state.pos
     env_cfg.scene.robot.init_state.pos = (_p[0], _p[1], max(_p[2], 0.80))
-    env_cfg.scene.robot.init_state.joint_pos = {
-        ".*_hip_pitch_joint": -0.1, ".*_knee_joint": 0.3, ".*_ankle_pitch_joint": -0.2,
-    }
+    # SONIC leg stance (both envs need it). The ARM spawn pose is env-dependent because the two envs'
+    # IK behaves differently: Insert's redundant IK RELAXES the arm to a natural low rest regardless of
+    # spawn (so a bent-elbow spawn settles to ~0.17), but Carry's IK HOLDS whatever it spawns in -- so
+    # Carry must spawn directly in the natural pose or it stays tucked at the spawn angle. Keep Insert's
+    # spawn exactly as it was so its settled pose is unchanged.
+    _legs = {".*_hip_pitch_joint": -0.1, ".*_knee_joint": 0.3, ".*_ankle_pitch_joint": -0.2}
+    # LadderGallery is a Carry-derived task -- its IK HOLDS the spawn pose too, so it needs the same
+    # natural low spawn as Carry (spawning it at Insert's 1.57 would leave the arm tucked up at 90 deg).
+    if "Carry" in args.task or "Gallery" in args.task:
+        # Drop the SHOULDER so the arm hangs low. The elbow drifts up to ~1.1 on its own (redundant IK),
+        # so we don't fight it -- a low/back shoulder points the upper arm down so the bent forearm sits
+        # low instead of up at the chest. (Per operator: change the joint above the 90-deg elbow.)
+        _arm_spawn = {".*_shoulder_pitch_joint": -0.35, ".*_elbow_joint": 0.35}
+    else:
+        _arm_spawn = {".*_elbow_joint": 1.57}  # Insert etc: IK relaxes this to ~0.17 (unchanged from before)
+    env_cfg.scene.robot.init_state.joint_pos = {**_legs, **_arm_spawn}
+    # Stiffen the arms so the ready pose (elbow ~90) HOLDS against gravity + the heavy Dex3 hand. The
+    # RL-tuned arm gains (~50 at the elbow) are too soft, so the arm droops toward straight before the
+    # operator connects. A firmer PD tracks the IK's joint targets, keeping the elbow bent, and also
+    # makes teleop feel more precise. (Arms are commanded externally, separate from SONIC's legs.)
+    _arms = env_cfg.scene.robot.actuators["arms"]
+    _arms.stiffness = {".*_(shoulder|elbow|wrist).*_joint": 200.0}
+    _arms.damping = {".*_(shoulder|elbow|wrist).*_joint": 20.0}
 
     if args.xr:
         env_cfg.sim.render.antialiasing_mode = "DLSS"
@@ -226,11 +250,19 @@ def main():
             parts += [p_b[0], q_b[0], torch.ones(1, device=dev)]
         return torch.cat(parts)
 
+    # Capture the "hold arms still" IK target ONCE, here at spawn, while the elbows are at the
+    # commanded 90 deg. The settle used to call rest_arm_action() fresh every frame, which re-anchored
+    # the target to the arm's just-sagged pose each step -- so under gravity the elbow ratcheted DOWN
+    # (1.57 -> ~0.84) before "ready". Holding ONE fixed target preserves the 90 deg pose (a small PD
+    # sag aside) and also stops the redundant-7-DOF null-space from drifting while it "holds still".
     last_arm = rest_arm_action()
 
     # SETTLE: PIN the base perfectly upright at the spawn while the legs/feet plant + the arms reach
     # their hold pose, THEN hand a level, zero-velocity robot to SONIC. Without this the free base
     # settles slightly pitched and SONIC lurches forward catching it (a near-faceplant). ~0.35 s.
+    # Arm target is re-read each frame here (stable "hold where it is"): a FIXED elbow-90 wrist target
+    # is redundant, so gravity drifts the spare DOF and the elbow snaps STRAIGHT to the far limit --
+    # worse than a gentle sag. Stiffer arms (set above) keep this hold much closer to the 90 deg spawn.
     pin_pose = robot.data.root_state_w[:, 0:7].clone()
     zero_vel = torch.zeros((env.num_envs, 6), device=dev)
     leg_default = torch.as_tensor(DEFAULT_15, device=dev).unsqueeze(0)
@@ -254,10 +286,16 @@ def main():
         env.step(rest_arm_action().repeat(env.num_envs, 1))
     spawn_root = robot.data.root_state_w[:, 0:7].clone()         # centered pose = re-home + hold target
     home_xy = spawn_root[0, 0:2].cpu().numpy().copy()
-    # FIXED base-frame rest arm pose (captured once). Re-solving the redundant 7-DOF IK every frame
-    # lets the null-space drift -> the arm oscillates while "holding still" (worse on a swaying base);
-    # holding one fixed target keeps it steady and lets it ride with the body.
+    # Capture the hold-arms IK target ONCE, now, after the settle -- re-solving it every main-loop
+    # frame lets the redundant null-space drift the arm; one fixed target keeps it steady.
     rest_arm = rest_arm_action()
+    # Even with a fixed EE target the redundant IK's null-space slowly bows the elbow away from the
+    # settle pose (UP in Carry, down in Insert). Capture the settle JOINT pose so we can pin the arm
+    # there each IDLE frame (released the instant the controller streams), stopping that drift.
+    _hold_idx = torch.tensor([i for i, n in enumerate(robot.joint_names)
+                              if any(k in n for k in ("shoulder", "elbow", "wrist"))], device=dev)
+    _hold_pose = robot.data.joint_pos[:, _hold_idx].clone()
+    _hold_zero = torch.zeros_like(_hold_pose)
 
     # Re-anchor the controller_rel arm retargeters to THIS scene's live robot. They default to the
     # Insert *table* world coords, so on any other scene (e.g. the ladder Carry env) the arm reaches
@@ -274,7 +312,8 @@ def main():
         _rt._root_R_T = _R.as_matrix().T.astype(np.float32)
         _right = getattr(_rt, "_target", None) == DeviceBase.TrackingTarget.CONTROLLER_RIGHT
         _eeb = robot.body_names.index("right_wrist_yaw_link" if _right else "left_wrist_yaw_link")
-        _ee = robot.data.body_state_w[0, _eeb, 0:3].cpu().numpy().astype(np.float32)
+        _ee_w = robot.data.body_state_w[0, _eeb, 0:3].cpu().numpy().astype(np.float32)
+        _ee = (_R.as_matrix().T @ (_ee_w - _rpos)).astype(np.float32)  # EE in the BASE frame (target lives there)
         _rt._init_pos = _ee.copy()
         _rt._pos = _ee.copy()
         _rt._lo = _ee - np.array([0.45, 0.45, 0.45], dtype=np.float32)
@@ -282,10 +321,59 @@ def main():
         _rt._prev = None
         _rt._smooth = None
 
-    print(f"[sonic-insert] settled+centered at pelvis=({spawn_root[0,0]:.2f},{spawn_root[0,1]:.2f},{spawn_root[0,2]:.2f})", flush=True)
+    _elb_i = robot.joint_names.index("right_elbow_joint")
+    print(f"[sonic-insert] settled+centered at pelvis=({spawn_root[0,0]:.2f},{spawn_root[0,1]:.2f},"
+          f"{spawn_root[0,2]:.2f}) right_elbow={float(robot.data.joint_pos[0, _elb_i]):.2f}rad "
+          f"(target 1.57 = 90deg)", flush=True)
+    # DIAGNOSTIC: full arm joint values, right vs left, to see the asymmetric IK elbow resolution.
+    _dbg_j = ["right_shoulder_pitch_joint", "right_shoulder_roll_joint", "right_shoulder_yaw_joint",
+              "right_elbow_joint", "left_shoulder_pitch_joint", "left_shoulder_roll_joint",
+              "left_shoulder_yaw_joint", "left_elbow_joint"]
+    _dbg_v = robot.data.joint_pos[0, [robot.joint_names.index(j) for j in _dbg_j]].cpu().numpy()
+    print("[sonic-insert] arm joints  R[sp,sr,sy,elb]=" + ",".join(f"{v:+.2f}" for v in _dbg_v[:4]) +
+          "  L[sp,sr,sy,elb]=" + ",".join(f"{v:+.2f}" for v in _dbg_v[4:]), flush=True)
     print("Teleop ready. In the Isaac Sim UI: AR panel -> Start AR, then connect the Pico. "
           "LEFT stick = walk, RIGHT stick X = turn, RIGHT btn = stop, LEFT X/Y = lean. "
           "Arms: the usual controller_rel teleop (grip-clutch + move, trigger to grasp).", flush=True)
+
+    def resettle():
+        """Re-plant the free base after a re-home, using the SAME pin-upright + SONIC settle-in as
+        startup. A reset teleports the root back to the spawn, but if we then hand the robot straight
+        to SONIC from a cold (zeroed) obs history it lurches to "catch" itself and flies/faceplants.
+        Pinning it level + zero-velocity while the feet re-plant, then warming SONIC in place, hands
+        balance a level, still robot -- the same reason startup settles before "Teleop ready"."""
+        nonlocal obs_hist, last_action, home_xy, last_arm
+        last_action = np.zeros(N_ACT, dtype=np.float32)  # start SONIC's action history clean, like startup
+        pin = spawn_root.clone()
+        # Pin the pelvis at the RAISED spawn height (>=0.80), not the settled ~0.74, so the feet
+        # re-plant WITH clearance -- exactly what startup does (init_state z is raised to 0.80). Pinning
+        # at the settled height drops the feet onto/through the floor and the depenetration kick, plus a
+        # cold SONIC catch, is what tipped the robot over "randomly" on reset.
+        pin[:, 2] = max(float(spawn_root[0, 2]), 0.80)
+        zv = torch.zeros((env.num_envs, 6), device=dev)
+        ld = torch.as_tensor(DEFAULT_15, device=dev).unsqueeze(0)
+        robot.write_joint_state_to_sim(
+            robot.data.default_joint_pos.clone(), torch.zeros_like(robot.data.default_joint_vel))
+        for _ in range(40):                                  # pin level while feet plant
+            robot.set_joint_position_target(ld, joint_ids=act_idx)
+            robot.write_root_pose_to_sim(pin)
+            robot.write_root_velocity_to_sim(zv)
+            env.step(rest_arm_action().repeat(env.num_envs, 1))  # re-read (like startup): symmetric elbows
+        robot.write_root_pose_to_sim(pin)
+        robot.write_root_velocity_to_sim(zv)
+        obs_hist = collections.deque([build_obs()] * HIST_LEN, maxlen=HIST_LEN)  # warm w/ real state
+        for _ in range(50):                                  # SONIC settles its weight in place
+            obs_hist.append(build_obs())
+            flat = np.concatenate(obs_hist).astype(np.float32)[None]
+            # CRITICAL: update the *nonlocal* last_action every step (a throwaway local left the obs's
+            # "previous action" channel stale, so SONIC's history was incoherent, it never balanced, and
+            # it fell the instant the pin released). This is what startup does.
+            last_action = bal_sess.run(None, {in_name: flat})[0][0]
+            lt = torch.as_tensor(last_action * ACTION_SCALE + DEFAULT_15, device=dev)
+            robot.set_joint_position_target(lt.unsqueeze(0), joint_ids=act_idx)
+            env.step(rest_arm_action().repeat(env.num_envs, 1))  # re-read (like startup): symmetric elbows
+        home_xy = robot.data.root_pos_w[0, 0:2].cpu().numpy().copy()  # hold where it actually stands
+        last_arm = rest_arm
 
     n_walk = 5
     step_i = 0
@@ -294,23 +382,37 @@ def main():
             with torch.inference_mode():
                 if reset_flag["do"]:
                     reset_flag["do"] = False
-                    env.reset()
-                    # env.reset() doesn't re-home a FREE base (it did when the base was bolted) -> force
-                    # the root pose + velocity + joints back to the spawn so the robot actually returns.
+                    env.reset()                              # reset the task (bulb/socket, episode buffers)
+                    # A FREE base isn't re-homed by env.reset() -> teleport the root back to the good
+                    # centered spawn (zero velocity), THEN re-plant with the same pin + SONIC settle-in
+                    # as startup. Handing a cold/zeroed-history robot straight to SONIC made it lurch
+                    # and fly; resettle() lands it level, still, and balanced before control resumes.
                     robot.write_root_pose_to_sim(spawn_root)
                     robot.write_root_velocity_to_sim(torch.zeros((env.num_envs, 6), device=dev))
-                    robot.write_joint_state_to_sim(
-                        robot.data.default_joint_pos.clone(), torch.zeros_like(robot.data.default_joint_vel))
-                    home_xy = spawn_root[0, 0:2].cpu().numpy().copy()
+                    resettle()
                     for _rt in getattr(teleop, "_retargeters", None) or []:
                         if hasattr(_rt, "reset"):
-                            _rt.reset()                       # re-reference arm targets (no drift after reset)
-                    obs_hist = collections.deque([np.zeros(OBS_DIM, dtype=np.float32)] * HIST_LEN, maxlen=HIST_LEN)
-                    last_action = np.zeros(N_ACT, dtype=np.float32)
+                            _rt.reset()                       # re-reference arm targets to the re-homed robot
                     loco_cmd[:] = 0.0
                     rpy_cmd[:] = 0.0
-                    last_arm = rest_arm
                     print("[sonic-insert] reset done", flush=True)
+
+                # Sync each arm retargeter's base ROTATION to the LIVE base every frame, but KEEP its
+                # baked base POSITION. The retargeter maps its world-frame EE target into the root frame
+                # the IK expects; the transform was baked ONCE assuming a bolted/static base, but SONIC now
+                # sways + walks the base.
+                #  - Live rotation: a stale root rotation aims the command the wrong way as the base yaws/
+                #    sways, so the arm lunges. Keeping it live kills that swing.
+                #  - Baked position (NOT updated to live): the world target then rides the base's
+                #    TRANSLATION, so the hand FOLLOWS the body when you walk instead of hanging in world.
+                # (Updating position to live -- my previous attempt -- world-anchored the hand, which is
+                # why it stopped following the walk.) Never touch _pos/_init_pos: those hold the target.
+                _rq = robot.data.root_quat_w[0].cpu().numpy()  # w, x, y, z
+                _rR = _Rot.from_quat([_rq[1], _rq[2], _rq[3], _rq[0]])
+                for _rt in getattr(teleop, "_retargeters", None) or []:
+                    if hasattr(_rt, "_root_pos"):
+                        _rt._root_R = _rR
+                        _rt._root_R_T = _rR.as_matrix().T.astype(np.float32)
 
                 # Take arm + walk from the controller ONLY when it's streaming; otherwise hold.
                 out = teleop.advance()
@@ -349,12 +451,19 @@ def main():
                 leg_target = torch.as_tensor(last_action * ACTION_SCALE + DEFAULT_15, device=dev)
                 robot.set_joint_position_target(leg_target.unsqueeze(0), joint_ids=act_idx)
                 env.step(last_arm.repeat(env.num_envs, 1))   # arms via the real env action manager
+                # Pin the arm at its settle joints whenever it isn't being actively moved -- i.e. when the
+                # commanded arm EE is still ~at the rest target. (The retargeters return HELD, non-None
+                # values even with the headset off, so gating on `out is None` never fired.) This stops the
+                # redundant IK's slow null-space drift; the instant the operator moves the arm it releases.
+                if bool(torch.allclose(last_arm, rest_arm, atol=0.05)):
+                    robot.write_joint_state_to_sim(_hold_pose, _hold_zero, joint_ids=_hold_idx)
 
                 step_i += 1
                 if step_i % (20 if step_i <= 200 else 100) == 0:
                     p = robot.data.root_pos_w[0].cpu().numpy()
+                    _re = float(robot.data.joint_pos[0, robot.joint_names.index("right_elbow_joint")])
                     print(f"[sonic-insert] step {step_i} pelvis=({p[0]:.2f},{p[1]:.2f},{p[2]:.2f}) "
-                          f"loco_cmd={np.round(loco_cmd, 2)} {'FELL' if p[2] < 0.4 else 'ok'}", flush=True)
+                          f"r_elbow={_re:.2f} loco_cmd={np.round(loco_cmd, 2)} {'FELL' if p[2] < 0.4 else 'ok'}", flush=True)
         except KeyboardInterrupt:
             break
         except Exception as e:  # noqa: BLE001

@@ -44,6 +44,7 @@ import contextlib
 import logging
 
 import fiatlux_task.tasks  # noqa: F401  -- registers the FIATLUX gym ids
+import fiatlux_teleop  # noqa: F401,E402  -- registers the FIATLUX-*-Teleop gym ids
 import gymnasium as gym
 import numpy as np
 import torch

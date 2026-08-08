@@ -15,12 +15,12 @@ LOGDIR="/tmp/fiatlux-xr"; mkdir -p "$LOGDIR"
 source ~/miniconda3/etc/profile.d/conda.sh
 
 echo "[1/5] stopping existing sim + runtime..."
-for p in $(pgrep -f "scripts/sonic_teleop.py" || true) $(pgrep -f "scripts/sonic_drive.py" || true) $(pgrep -f "scripts/xr_teleop.py" || true); do kill "$p" 2>/dev/null || true; done
+for p in $(pgrep -f "scripts/teleop/sonic_teleop.py" || true) $(pgrep -f "scripts/teleop/sonic_drive.py" || true) $(pgrep -f "scripts/teleop/xr_teleop.py" || true); do kill "$p" 2>/dev/null || true; done
 for p in $(ss -tlnp 2>/dev/null | grep -E ":48322|:49100" | grep -oE "pid=[0-9]+" | grep -oE "[0-9]+" | sort -u); do
   kill "$p" 2>/dev/null || true
 done
 sleep 5
-for p in $(pgrep -f "scripts/sonic_teleop.py" || true) $(pgrep -f "isaacteleop.cloudxr" || true); do
+for p in $(pgrep -f "scripts/teleop/sonic_teleop.py" || true) $(pgrep -f "isaacteleop.cloudxr" || true); do
   kill -9 "$p" 2>/dev/null || true
 done
 sleep 2
@@ -46,10 +46,10 @@ echo "[4/5] starting Isaac Lab real-Insert-env sim (sonic_insert_teleop.py)..."
 conda activate env_isaaclab
 source ~/.cloudxr/run/cloudxr.env
 cd "$REPO"
-export PYTHONPATH="$REPO/source/fiatlux_task"
+export PYTHONPATH="$REPO/source/fiatlux_task:$REPO/source/fiatlux_teleop"
 export DISPLAY="${DISPLAY:-:1001}"
 echo "   task=$TASK hand=$HAND"
-nohup python -u scripts/sonic_teleop.py --task "$TASK" --hand "$HAND" > "$LOGDIR/sonic_insert.log" 2>&1 &
+nohup python -u scripts/teleop/sonic_teleop.py --task "$TASK" --hand "$HAND" > "$LOGDIR/sonic_insert.log" 2>&1 &
 for _ in $(seq 1 150); do grep -q "Teleop ready" "$LOGDIR/sonic_insert.log" 2>/dev/null && break; sleep 2; done
 if grep -q "Teleop ready" "$LOGDIR/sonic_insert.log"; then echo "   sim ready"; else
   echo "   sim not ready yet -- watch: tail -f $LOGDIR/sonic_insert.log"; fi

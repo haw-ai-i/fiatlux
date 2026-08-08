@@ -64,7 +64,7 @@ from fiatlux_task.robots.g1 import (
     G1_HAND_OPEN,
     G1_INSPIRE_CFG,
 )
-from fiatlux_task.tasks.manager_based.fiatlux_task.insert_teleop_env_cfg import _spawn_omni_rigid
+from fiatlux_teleop.insert_teleop_env_cfg import _spawn_omni_rigid
 from fiatlux_task.tasks.manager_based.fiatlux_task.scene_cfg import _quat_x_deg, _spawn_usd_as_rigid_body
 
 import isaaclab.sim as sim_utils

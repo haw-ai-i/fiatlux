@@ -11,7 +11,7 @@ grip on the Inspire hand. Everything else -- scene (tabletop preset), observatio
 terminations -- is inherited unchanged from :class:`G1BulbInsertEnvCfg`, so only the *action
 interface* differs and recorded demos stay compatible with the RL env's observation / reward defs.
 
-Drive it with ``scripts/insert_teleop.py --task FIATLUX-Insert-Teleop-v0`` (add ``--teleop_device spacemouse``
+Drive it with ``scripts/teleop/insert_teleop.py --task FIATLUX-Insert-Teleop-v0`` (add ``--teleop_device spacemouse``
 for a SpaceMouse).
 """
 
@@ -46,22 +46,23 @@ from fiatlux_task.robots.g1 import (
     G1_HAND_GRASP,
     G1_HAND_JOINTS,
     G1_HAND_OPEN,
+    G1_LEFT_HAND_JOINTS,
     swap_robot_variant,
 )
 
-from .g1_bulb_env_cfg import G1BulbInsertEnvCfg
-from .scene_cfg import _quat_x_deg, _spawn_usd_as_rigid_body
+from fiatlux_task.tasks.manager_based.fiatlux_task.g1_bulb_env_cfg import G1BulbInsertEnvCfg
+from fiatlux_task.tasks.manager_based.fiatlux_task.scene_cfg import _quat_x_deg, _spawn_usd_as_rigid_body
 from .xr_controller_retargeters import (
     ControllerGripperRetargeterCfg,
     Se3AbsControllerRetargeterCfg,
     Se3RelControllerRetargeterCfg,
 )
 
-# Left-arm mirror of the right teleop constants (robots/g1.py only defines the right side). Used to
-# add optional bimanual control: the left controller drives the left arm + grip.
+# Left-arm mirror of the right teleop constants (robots/g1.py only defines the right arm/EE). Used to
+# add optional bimanual control: the left controller drives the left arm + grip. The left hand joints
+# come from g1.py (G1_LEFT_HAND_JOINTS) so swap_robot_variant's Dex3 remap stays in sync with them.
 G1_LEFT_ARM_JOINTS = [j.replace("right_", "left_", 1) for j in G1_ARM_JOINTS]
 G1_LEFT_EE_BODY = "left_wrist_yaw_link"
-G1_LEFT_HAND_JOINTS = [j.replace("R_", "L_", 1) for j in G1_HAND_JOINTS]
 G1_LEFT_HAND_OPEN = dict.fromkeys(G1_LEFT_HAND_JOINTS, 0.0)
 G1_LEFT_HAND_GRASP = {k.replace("R_", "L_", 1): v for k, v in G1_HAND_GRASP.items()}
 
@@ -200,6 +201,15 @@ class G1BulbInsertTeleopEnvCfg(G1BulbInsertEnvCfg):
         # per-joint dicts with uniform values while leaving the tuned armature in place -- the
         # stiffness/armature mismatch made the IK arm oscillate ("random" motion) even holding still.
 
+        # Drop the base env's whole-body ``joint_pos`` action (``joint_names=[".*"]``, the RL family's
+        # single action-space contract). In teleop the legs+waist are driven by SONIC written straight
+        # to the articulation (``set_joint_position_target``), NOT through the action manager, and
+        # ``sonic_teleop`` feeds ``env.step`` only the arm/grip tensor below. Leaving joint_pos in would
+        # make ``total_action_dim`` = 43(all joints) + 16, and -- since ActionManager keeps insertion
+        # order -- shift the arm terms to the wrong offset. (Carry's teleop cfg replaces ActionsCfg
+        # wholesale for the same reason.)
+        self.actions.joint_pos = None
+
         # Arm: ABSOLUTE EE pose IK. Relative mode re-anchors to the *current* pose each step, so a
         # compliant arm ratchets/drifts (it never actively returns to a target); absolute mode holds
         # a fixed target pose and drives back to it. The teleop script integrates the device's
@@ -209,7 +219,11 @@ class G1BulbInsertTeleopEnvCfg(G1BulbInsertEnvCfg):
             joint_names=G1_ARM_JOINTS,
             body_name=G1_EE_BODY,
             controller=DifferentialIKControllerCfg(
-                command_type="pose", use_relative_mode=False, ik_method="dls"
+                command_type="pose", use_relative_mode=False, ik_method="dls",
+                # Heavier damped-least-squares (default lambda_val=0.01 is near-undamped): near a joint
+                # limit / singularity a tiny lambda makes the pseudo-inverse blow up and the arm flails
+                # ("whacking"). 0.1 damps that out -- a touch more steady-state error, but stable.
+                ik_params={"lambda_val": 0.05},
             ),
             scale=1.0,
         )
@@ -230,7 +244,11 @@ class G1BulbInsertTeleopEnvCfg(G1BulbInsertEnvCfg):
             joint_names=G1_LEFT_ARM_JOINTS,
             body_name=G1_LEFT_EE_BODY,
             controller=DifferentialIKControllerCfg(
-                command_type="pose", use_relative_mode=False, ik_method="dls"
+                command_type="pose", use_relative_mode=False, ik_method="dls",
+                # Heavier damped-least-squares (default lambda_val=0.01 is near-undamped): near a joint
+                # limit / singularity a tiny lambda makes the pseudo-inverse blow up and the arm flails
+                # ("whacking"). 0.1 damps that out -- a touch more steady-state error, but stable.
+                ik_params={"lambda_val": 0.05},
             ),
             scale=1.0,
         )

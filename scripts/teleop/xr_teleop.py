@@ -92,6 +92,7 @@ from isaaclab.envs import ManagerBasedRLEnvCfg
 from isaaclab_tasks.utils import parse_env_cfg
 
 import fiatlux_task.tasks  # noqa: F401  registers FIATLUX-* Gym envs
+import fiatlux_teleop  # noqa: F401,E402  -- registers the FIATLUX-*-Teleop gym ids
 
 logger = logging.getLogger(__name__)
 
@@ -133,7 +134,7 @@ def main() -> None:
     env_cfg.env_name = args_cli.task
     if args_cli.hand.lower() == "dex3":
         # swap the G1 to Dex3 hands (robot + observations + grip actions + Dex3 grasp presets)
-        from fiatlux_task.tasks.manager_based.fiatlux_task.insert_teleop_env_cfg import apply_dex3_hands
+        from fiatlux_teleop.insert_teleop_env_cfg import apply_dex3_hands
 
         apply_dex3_hands(env_cfg)
         print("Hand variant: Dex3 (Unitree 3-finger).")
