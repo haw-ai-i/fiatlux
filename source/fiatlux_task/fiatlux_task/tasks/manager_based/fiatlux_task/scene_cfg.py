@@ -109,6 +109,13 @@ TABLETOP_SOCKET_POSITION = (0.45, 0.10, TABLETOP_SURFACE_Z)
 # +BULB_STAND_Z_OFFSET in the root frame), so resting on a surface puts the root under it.
 TABLETOP_BULB_POSITION = (0.30, 0.18, TABLETOP_SURFACE_Z - BULB_STAND_Z_OFFSET)
 
+# -- carry preset: the B1K straight ladder (shfvtl) *stored* by the room wall in its
+#    authored lying/leaning pose (probe: 2.41 long x 1.67 high, bbox bottom at -0.47 ->
+#    pivot z=+0.47 rests it on the floor), robot beside it, work area across the room --
+CARRY_LADDER_POSITION = (-3.2, 1.8, 0.47)  # near the Simple Room wall (~4.5 m out)
+CARRY_ROBOT_POSITION = (-2.4, 1.8, _ROBOT_Z)  # standing next to the stored ladder
+CARRY_LADDER_YAW_DEG = 90.0  # parallel to the wall
+
 # -- position (ladder-handling) subtask: FIATLUX-Carry-v0. The ladder is the free-standing
 #    Omniverse A-frame step ladder (STEP_LADDER_USD), made DYNAMIC + high-friction + graspable.
 #    It STARTS upright but off-target, a short distance IN FRONT of the robot (the robot
@@ -247,6 +254,12 @@ def _quat_z_deg(angle_deg: float) -> tuple[float, float, float, float]:
     return (math.cos(half), 0.0, 0.0, math.sin(half))
 
 
+def _quat_x_deg(angle_deg: float) -> tuple[float, float, float, float]:
+    """(w, x, y, z) quaternion for a rotation about +X, in degrees (Y-up -> Z-up assets)."""
+    half = math.radians(angle_deg) / 2.0
+    return (math.cos(half), math.sin(half), 0.0, 0.0)
+
+
 Quat = tuple[float, float, float, float]
 Vec3 = tuple[float, float, float]
 Vec2 = tuple[float, float]
@@ -329,6 +342,8 @@ def _spawn_usd_as_rigid_body_frictional(prim_path, cfg, translation=None, orient
         schemas.modify_rigid_body_properties(prim.GetPath(), cfg.rigid_props)
     if cfg.mass_props is not None:
         schemas.modify_mass_properties(prim.GetPath(), cfg.mass_props)
+    # (The ~6 mm contact offset now lives in the asset -- authored by omniverse_ladder_collision.py --
+    # so no code-side trim is needed here; the ladder USD carries both the tight shape and the offset.)
     grip = sim_utils.RigidBodyMaterialCfg(static_friction=1.5, dynamic_friction=1.2, restitution=0.0)
     grip.func(f"{prim_path}/physicsMaterial", grip)
     bind_physics_material(prim_path, f"{prim_path}/physicsMaterial")

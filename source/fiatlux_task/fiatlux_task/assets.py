@@ -41,6 +41,18 @@ G1_DEX3_USD = os.path.join(FIATLUX_ASSETS_DIR, "unitree_g1", "wholebody_dex3", "
 BULB_USD = os.path.join(FIATLUX_ASSETS_DIR, "omniverse_bulb", "LightBulb_bulb_z_rigid.usda")
 SOCKET_USD = os.path.join(FIATLUX_ASSETS_DIR, "omniverse_bulb", "LightBulb_socket_z_static.usda")
 
+# Curated Omniverse LightBulb split into a graspable bulb + its socket base (Y-up, cm-authored ->
+# spawn scale + an X rotation). Clean-rendering (unlike the flat-texpath B1K lamp); used by the
+# teleop bench (FIATLUX-Insert-Teleop-v0).
+OMNI_BULB_USD = os.path.join(FIATLUX_ASSETS_DIR, "omniverse_bulb", "LightBulb_bulb.usda")
+OMNI_SOCKET_USD = os.path.join(FIATLUX_ASSETS_DIR, "omniverse_bulb", "LightBulb_socket.usda")
+
+# Ladder for the climb-family tasks: ``shfvtl`` is the tall upright BEHAVIOR-1K
+# ladder (bbox_z=1.67 m) marked "primary ladder for G1 to climb" in
+# ``assets/behavior1k_uploaded_manifest.csv``. Synced with the other task assets
+# by ``download_assets.sh``; 97 more Omniverse ladders are staged for variety.
+LADDER_USD = os.path.join(FIATLUX_ASSETS_DIR, "behavior1k_ladder", "shfvtl", "usd", "shfvtl.usd")
+
 # Mating geometry (metres, in each object's own root frame, Z-up). Both halves are authored
 # ASSEMBLED AT IDENTITY, so the mating point -- the screw cap's bottom rim -- is the SAME
 # point in both frames, and "seated" is simply *bulb root pose == socket root pose*.

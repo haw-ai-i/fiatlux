@@ -1,0 +1,65 @@
+#!/usr/bin/env bash
+# Launch the VR whole-body loco-manip stack over CloudXR: CloudXR runtime (Process A, env `vr_teleop`)
+# + a real FIATLUX-*-Teleop env with SONIC legs (Process B = sonic_teleop.py --input vr, env
+# `env_isaaclab`). Walk with the LEFT stick + manipulate with the tuned arm teleop, on any task
+# (FIATLUX_TASK). For the KEYBOARD whole-body path (no headset), run sonic_teleop.py --input keyboard
+# directly instead -- see source/fiatlux_teleop/README.md.
+#
+# Env overrides: NV_CXR_ENDPOINT_IP (tailnet IP), NV_CXR_MEDIA_PORT, DISPLAY.
+set -u
+TAILNET_IP="${NV_CXR_ENDPOINT_IP:?set NV_CXR_ENDPOINT_IP to your GPU box tailnet IP}"
+MEDIA_PORT="${NV_CXR_MEDIA_PORT:-47998}"
+TASK="${FIATLUX_TASK:-FIATLUX-Insert-Teleop-v0}"   # e.g. FIATLUX-Carry-Teleop-v0
+HAND="${FIATLUX_HAND:-dex3}"                       # dex3 | inspire
+REPO="$HOME/robotica_project/fiatlux/fiatlux"
+LOGDIR="/tmp/fiatlux-xr"; mkdir -p "$LOGDIR"
+source ~/miniconda3/etc/profile.d/conda.sh
+
+echo "[1/5] stopping existing sim + runtime..."
+for p in $(pgrep -f "scripts/teleop/sonic_teleop.py" || true); do kill "$p" 2>/dev/null || true; done
+for p in $(ss -tlnp 2>/dev/null | grep -E ":48322|:49100" | grep -oE "pid=[0-9]+" | grep -oE "[0-9]+" | sort -u); do
+  kill "$p" 2>/dev/null || true
+done
+sleep 5
+for p in $(pgrep -f "scripts/teleop/sonic_teleop.py" || true) $(pgrep -f "isaacteleop.cloudxr" || true); do
+  kill -9 "$p" 2>/dev/null || true
+done
+sleep 2
+
+echo "[2/5] clearing stale CloudXR run-state + carb shared memory..."
+rm -f ~/.cloudxr/run/cloudxr.pid ~/.cloudxr/run/ipc_cloudxr ~/.cloudxr/run/runtime_started 2>/dev/null || true
+rm -f /dev/shm/carb* /dev/shm/sem.carb* /dev/shm/sem.carbonite* 2>/dev/null || true
+
+echo "[3/5] starting CloudXR runtime (--host-client, endpoint $TAILNET_IP:$MEDIA_PORT)..."
+conda activate vr_teleop
+export CXR_HOST_VOLUME_PATH="$HOME/.cloudxr" CXR_INSTALL_DIR="$HOME/.cloudxr"
+export NV_CXR_ENABLE_PUSH_DEVICES=true NV_CXR_ENABLE_TENSOR_DATA=true NV_CXR_FILE_LOGGING=true
+export NV_CXR_OUTPUT_DIR="$HOME/.cloudxr/logs" NV_CXR_RUNTIME_DIR="$HOME/.cloudxr/run"
+export NV_DEVICE_PROFILE=auto-webrtc XR_RUNTIME_JSON="$HOME/.cloudxr/openxr_cloudxr.json"
+export NV_CXR_ENDPOINT_IP="$TAILNET_IP" NV_CXR_MEDIA_PORT="$MEDIA_PORT"
+nohup python -u -m isaacteleop.cloudxr --accept-eula --host-client > "$LOGDIR/runtime.log" 2>&1 &
+for _ in $(seq 1 30); do ss -tln 2>/dev/null | grep -q ":48322" && break; sleep 2; done
+if ss -tln 2>/dev/null | grep -q ":48322"; then echo "   runtime up (48322 + 49100)"; else
+  echo "   !! runtime failed -- see $LOGDIR/runtime.log"; exit 1; fi
+conda deactivate
+
+echo "[4/5] starting Isaac Lab whole-body teleop sim (sonic_teleop.py --input vr)..."
+conda activate env_isaaclab
+source ~/.cloudxr/run/cloudxr.env
+cd "$REPO"
+export PYTHONPATH="$REPO/source/fiatlux_task:$REPO/source/fiatlux_teleop"
+export DISPLAY="${DISPLAY:-:1001}"
+echo "   task=$TASK hand=$HAND"
+nohup python -u scripts/teleop/sonic_teleop.py --task "$TASK" --hand "$HAND" > "$LOGDIR/sonic_teleop.log" 2>&1 &
+for _ in $(seq 1 150); do grep -q "Teleop ready" "$LOGDIR/sonic_teleop.log" 2>/dev/null && break; sleep 2; done
+if grep -q "Teleop ready" "$LOGDIR/sonic_teleop.log"; then echo "   sim ready"; else
+  echo "   sim not ready yet -- watch: tail -f $LOGDIR/sonic_teleop.log"; fi
+
+echo "[5/5] READY."
+cat <<EOF
+  1. In the Isaac Sim window: AR panel -> Output OpenXR, Runtime System OpenXR Runtime -> Start AR.
+  2. On the Pico browser: https://$TAILNET_IP:48322/client/  (accept cert -> Advanced -> Proceed)
+     Settings: Server IP $TAILNET_IP, Port 48322, Device Profile Pico 4 Ultra -> Connect.
+  3. Walk to the table (LEFT stick) + insert (controller_rel arm teleop: grip-clutch + move, trigger grasp).
+  Logs: $LOGDIR/runtime.log , $LOGDIR/sonic_teleop.log
+EOF

@@ -106,6 +106,29 @@ G1_THUMB_JOINTS = [
     "R_thumb_distal_joint",
 ]
 G1_HAND_JOINTS = G1_FINGER_JOINTS + G1_THUMB_JOINTS
+# Left Inspire hand joints -- the mirror of the (right) G1_HAND_JOINTS above. Bimanual teleop envs
+# scope a left grip to these; listing them here lets ``swap_robot_variant`` remap the left hand to
+# Dex3 alongside the right (see ``_HAND_REMAPS``).
+G1_LEFT_HAND_JOINTS = [j.replace("R_", "L_", 1) for j in G1_HAND_JOINTS]
+
+# Inspire-hand open / power-grasp finger presets (rad). Open = fingers extended (0). Grasp curls
+# the four fingers near their +1.7 limit and opposes the thumb (pitch caps at +0.6). Used by the
+# teleop harness's binary grip; probed from the soft joint-position limits.
+G1_HAND_OPEN = dict.fromkeys(G1_HAND_JOINTS, 0.0)
+G1_HAND_GRASP = {
+    "R_index_proximal_joint": 1.5,
+    "R_index_intermediate_joint": 1.5,
+    "R_middle_proximal_joint": 1.5,
+    "R_middle_intermediate_joint": 1.5,
+    "R_pinky_proximal_joint": 1.5,
+    "R_pinky_intermediate_joint": 1.5,
+    "R_ring_proximal_joint": 1.5,
+    "R_ring_intermediate_joint": 1.5,
+    "R_thumb_proximal_yaw_joint": 1.0,
+    "R_thumb_proximal_pitch_joint": 0.5,
+    "R_thumb_intermediate_joint": 0.6,
+    "R_thumb_distal_joint": 0.9,
+}
 # End-effector body the wrist camera mounts on / eef pose is read from (exists in
 # all G1 variants). The Inspire hand links hang off this via right_hand_palm_link.
 G1_EE_BODY = "right_wrist_yaw_link"
@@ -270,6 +293,36 @@ _DEX3_HAND_ORDER = [
 G1_DEX3_LEFT_HAND_JOINTS = [f"left_{j}" for j in _DEX3_HAND_ORDER]
 G1_DEX3_RIGHT_HAND_JOINTS = [f"right_{j}" for j in _DEX3_HAND_ORDER]
 G1_DEX3_FINGER_JOINT_PATTERNS = [".*_hand_(thumb|index|middle)_._joint"]
+# Dex3-1 open (fingers extended = 0) / power-grasp presets (rad), probed from the joint-position
+# limits. The two hands are MIRRORED: right index/middle curl toward + (limits [0, +1.6]), left toward
+# - (limits [-1.6, 0]); the thumb opposes. Used by the teleop harness's binary grip. Tune magnitudes if
+# the grasp over/under-closes.
+G1_DEX3_HAND_OPEN = dict.fromkeys(G1_DEX3_RIGHT_HAND_JOINTS, 0.0)
+G1_DEX3_HAND_GRASP = {
+    # Fingers curl to ~95% of their limits (1.57/1.75) so the fingertips come BACK toward the thumb --
+    # the right thumb can't reach far forward (model limit), so closing the gap means bringing the
+    # fingers to it. This tightens the pinch at the index for both hands.
+    "right_hand_index_0_joint": 1.5,
+    "right_hand_index_1_joint": 1.7,
+    "right_hand_middle_0_joint": 1.5,
+    "right_hand_middle_1_joint": 1.7,
+    # Right thumb flipped to close from the OPPOSITE direction (operator request): negate the yaw
+    # (thumb_0) and pitch (thumb_1) so the thumb opposes from the other side; keep the distal curl.
+    "right_hand_thumb_0_joint": -0.8,
+    "right_hand_thumb_1_joint": -0.2,
+    "right_hand_thumb_2_joint": -1.2,
+}
+G1_DEX3_LEFT_HAND_OPEN = dict.fromkeys(G1_DEX3_LEFT_HAND_JOINTS, 0.0)
+G1_DEX3_LEFT_HAND_GRASP = {
+    "left_hand_index_0_joint": -1.5,
+    "left_hand_index_1_joint": -1.7,
+    "left_hand_middle_0_joint": -1.5,
+    "left_hand_middle_1_joint": -1.7,
+    "left_hand_thumb_0_joint": -0.8,
+    "left_hand_thumb_1_joint": 0.4,
+    "left_hand_thumb_2_joint": 1.2,
+}
+
 G1_DEX3_PALM_BODIES = ["left_hand_palm_link", "right_hand_palm_link"]
 
 # Distal link of each digit that closes on a grasped object, per variant. Their centroid
@@ -317,6 +370,7 @@ _HAND_REMAPS: dict[str, dict[tuple[str, ...], list[str]]] = {
     "dex3": {
         tuple(G1_FINGER_JOINT_PATTERNS): list(G1_DEX3_FINGER_JOINT_PATTERNS),
         tuple(G1_HAND_JOINTS): list(G1_DEX3_RIGHT_HAND_JOINTS),
+        tuple(G1_LEFT_HAND_JOINTS): list(G1_DEX3_LEFT_HAND_JOINTS),
         tuple(G1_ARM_JOINTS + G1_HAND_JOINTS): list(G1_ARM_JOINTS + G1_DEX3_RIGHT_HAND_JOINTS),
     },
 }
