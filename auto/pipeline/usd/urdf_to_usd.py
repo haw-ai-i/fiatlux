@@ -49,9 +49,10 @@ import re
 import shutil
 import sys
 import xml.etree.ElementTree as ET
-from dataclasses import dataclass, field, asdict
+from dataclasses import asdict, dataclass, field
 
 import numpy as np
+
 from pxr import Gf, Sdf, Tf, Usd, UsdGeom, UsdPhysics, UsdShade, Vt
 
 # --------------------------------------------------------------------------
@@ -279,7 +280,7 @@ def read_obj(path):
     use matching ones.  n-gons are fan-triangulated.
     """
     V, T, PF, TF = [], [], [], []
-    with open(path, "r", errors="replace") as fh:
+    with open(path, errors="replace") as fh:
         for ln in fh:
             if ln.startswith("v "):
                 V.append([float(x) for x in ln.split()[1:4]])
@@ -314,10 +315,10 @@ def sanitize(P, VT, PF, TF):
     if P is None:
         return None, None, None, None
     finite = np.isfinite(P).all(axis=1)
-    ok = finite[PF].all(axis=1) & (PF >= 0).all(axis=1) & (PF < len(P)).all(axis=1)
+    ok = finite[PF].all(axis=1) & (PF >= 0).all(axis=1) & (len(P) > PF).all(axis=1)
     ok &= (PF[:, 0] != PF[:, 1]) & (PF[:, 1] != PF[:, 2]) & (PF[:, 0] != PF[:, 2])
     if TF is not None and VT is not None:
-        ok &= (TF >= 0).all(axis=1) & (TF < len(VT)).all(axis=1)
+        ok &= (TF >= 0).all(axis=1) & (len(VT) > TF).all(axis=1)
     PF = PF[ok]
     TF = TF[ok] if TF is not None else None
     if len(PF) < 4:
@@ -597,7 +598,7 @@ def resolve_graph(links, joints, report: Report):
 # ==========================================================================
 # Main conversion
 # ==========================================================================
-def convert(args) -> Report:
+def convert(args) -> Report:  # noqa: C901
     report = Report(output=args.out, frame_rot=args.frame_rot)
     links, joints, robot_name = load_urdf(args.urdf)
     pred = load_prediction(args.json) if args.json and os.path.isfile(args.json) else {}
@@ -740,7 +741,7 @@ def convert(args) -> Report:
             density=rho, volume_m3=round(vol, 8), mass_kg=round(rho * vol, 5),
             bbox_min=pts.min(0).round(5).tolist(), bbox_max=pts.max(0).round(5).tolist(),
             material=str(cap.get("material", ""))))
-    report.total_mass_kg = round(sum(l.mass_kg for l in report.links), 4)
+    report.total_mass_kg = round(sum(lnk.mass_kg for lnk in report.links), 4)
 
     # ---- joints ------------------------------------------------------------
     if not single:
@@ -1103,9 +1104,9 @@ def main():
     print(f"  scale     {report.scale_m:.4g} m   ({report.scale_provenance})")
     print(f"  bbox      min={report.bbox_world_min}  max={report.bbox_world_max}")
     print(f"  links     {len(report.links)}   total mass {report.total_mass_kg:.3f} kg")
-    for l in report.links:
-        print(f"    {l.prim:<40} {l.n_faces:>7} faces  rho={l.density:>7.1f}  "
-              f"m={l.mass_kg:>8.3f} kg  {l.material}")
+    for lnk in report.links:
+        print(f"    {lnk.prim:<40} {lnk.n_faces:>7} faces  rho={lnk.density:>7.1f}  "
+              f"m={lnk.mass_kg:>8.3f} kg  {lnk.material}")
     print(f"  joints    {len(report.joints)}")
     for j in report.joints:
         extra = ""

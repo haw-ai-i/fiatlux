@@ -22,6 +22,7 @@ is 1-2 hours and the stages fail for very different reasons.
 from __future__ import annotations
 
 import argparse
+import contextlib
 import datetime
 import json
 import os
@@ -160,13 +161,11 @@ def link_blender_for_simart():
         return
     target = "/tmp/blender-3.0.1-linux-x64"
     if not os.path.exists(target):
-        try:
+        with contextlib.suppress(OSError):
             os.symlink(os.path.dirname(BLENDER), target)
-        except OSError:
-            pass
 
 
-def main():
+def main():  # noqa: C901
     ap = argparse.ArgumentParser(
         description="image -> Hunyuan3D mesh -> SimArt articulation -> Isaac-Sim USD",
         formatter_class=argparse.ArgumentDefaultsHelpFormatter)
@@ -317,7 +316,7 @@ def main():
         r.manifest["finished"] = datetime.datetime.now().isoformat(timespec="seconds")
         r.save()
         r.log(f"=== done -> {out}")
-        return
+        return None
 
     # ---------------------------------------------------------------- stage 2
     normalized = os.path.join(d[2], f"{args.name}.glb")
@@ -465,6 +464,7 @@ def main():
 
     r.manifest["finished"] = datetime.datetime.now().isoformat(timespec="seconds")
     r.save()
+    return None
 
 
 def run_batch(args):

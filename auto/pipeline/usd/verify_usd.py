@@ -306,7 +306,8 @@ def check_assets(path, c: Checks):
     try:
         layers, assets, unresolved = UsdUtils.ComputeAllDependencies(Sdf.AssetPath(path))
     except Exception as exc:
-        return c.add(WARN, "asset dependencies", f"could not compute: {exc}")
+        c.add(WARN, "asset dependencies", f"could not compute: {exc}")
+        return
     c.ok(not unresolved, "no unresolved asset paths", "; ".join(map(str, unresolved[:3])))
     missing = [str(a) for a in assets if not os.path.isfile(str(a))]
     c.ok(not missing, "referenced assets exist on disk",
@@ -318,7 +319,8 @@ def check_compliance(path, c: Checks):
         checker = UsdUtils.ComplianceChecker(arkit=False, skipARKitRootLayerCheck=True)
         checker.CheckCompliance(path)
     except Exception as exc:
-        return c.add(WARN, "USD compliance", f"checker unavailable: {exc}")
+        c.add(WARN, "USD compliance", f"checker unavailable: {exc}")
+        return
     errs = list(checker.GetErrors()) + list(checker.GetFailedChecks())
     warns = list(checker.GetWarnings())
     c.ok(not errs, "USD compliance", "; ".join(errs[:2]) if errs else f"{len(warns)} warning(s)")

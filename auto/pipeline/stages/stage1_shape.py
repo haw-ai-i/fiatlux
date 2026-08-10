@@ -88,8 +88,8 @@ def preflight(texture: bool):
 
 def load_pipelines(args, texture):
     """Load rembg + shape (+ paint) once; batch runs amortise this ~2-3 min."""
-    from hy3dshape.rembg import BackgroundRemover
     from hy3dshape.pipelines import Hunyuan3DDiTFlowMatchingPipeline
+    from hy3dshape.rembg import BackgroundRemover
 
     print("  loading shape pipeline ...")
     shape = Hunyuan3DDiTFlowMatchingPipeline.from_pretrained(
@@ -97,7 +97,7 @@ def load_pipelines(args, texture):
         use_safetensors=False, variant="fp16", device="cuda")
     paint = None
     if texture:
-        from textureGenPipeline import Hunyuan3DPaintPipeline, Hunyuan3DPaintConfig
+        from textureGenPipeline import Hunyuan3DPaintConfig, Hunyuan3DPaintPipeline
 
         print("  loading paint pipeline ...")
         conf = Hunyuan3DPaintConfig(args.paint_views, args.paint_resolution)  # positional; no defaults
@@ -132,7 +132,7 @@ def process_one(image_path, name, out, rembg, shape, paint, args):
                  output_type="trimesh")[0]
     print(f"  raw mesh: {len(mesh.vertices)} verts / {len(mesh.faces)} faces")
 
-    from hy3dshape.postprocessors import FaceReducer, FloaterRemover, DegenerateFaceRemover
+    from hy3dshape.postprocessors import DegenerateFaceRemover, FaceReducer, FloaterRemover
     mesh = FloaterRemover()(mesh)
     mesh = DegenerateFaceRemover()(mesh)
     mesh = FaceReducer()(mesh, max_facenum=args.max_faces)
