@@ -183,6 +183,7 @@ class Se3RelControllerRetargeter(RetargeterBase):
         self._enable_rot = cfg.enable_rotation
         self._rot_deadzone = cfg.rot_deadzone
         self._rot_max_step = cfg.rot_max_step
+        self._debug_logging = cfg.debug_logging
         iq = cfg.initial_orientation  # (w, x, y, z)
         self._init_R = Rotation.from_quat([iq[1], iq[2], iq[3], iq[0]])
         self._quat_R = self._init_R  # current EE orientation command (root frame)
@@ -282,12 +283,13 @@ class Se3RelControllerRetargeter(RetargeterBase):
         pos_root = self._pos
         oq = self._quat_R.as_quat()  # scipy returns [x, y, z, w]
         out_quat = np.array([oq[3], oq[0], oq[1], oq[2]], dtype=np.float32)  # -> [w, x, y, z] for the cmd
-        # DEBUG (temporary): raw pos, clutch, jump, reject, step, target, wrist rotation from rest (deg).
-        self._dbg = getattr(self, "_dbg", 0) + 1
-        if self._dbg % 5 == 0:
-            _rotdeg = float((self._quat_R * self._init_R.inv()).magnitude()) * 57.29578
-            print(f"[REL] raw={_rawcur} clutch={int(_clutched)} jump={_jump:.3f} rej={int(_rej)} "
-                  f"moved={_moved:.4f} tgt_w={self._pos.round(3).tolist()} rot={_rotdeg:.1f}deg", flush=True)
+        # DEBUG (optional): raw pos, clutch, jump, reject, step, target, wrist rotation from rest (deg).
+        if self._debug_logging:
+            self._dbg = getattr(self, "_dbg", 0) + 1
+            if self._dbg % 5 == 0:
+                _rotdeg = float((self._quat_R * self._init_R.inv()).magnitude()) * 57.29578
+                print(f"[REL] raw={_rawcur} clutch={int(_clutched)} jump={_jump:.3f} rej={int(_rej)} "
+                      f"moved={_moved:.4f} tgt_w={self._pos.round(3).tolist()} rot={_rotdeg:.1f}deg", flush=True)
         cmd = np.concatenate([pos_root, out_quat]).astype(np.float32)
         return torch.tensor(cmd, dtype=torch.float32, device=self._sim_device)
 
@@ -316,6 +318,7 @@ class Se3RelControllerRetargeterCfg(RetargeterCfg):
     enable_rotation: bool = True
     rot_deadzone: float = 0.02  # rad (~1.1 deg) per frame; ignore smaller rotation (jitter)
     rot_max_step: float = 0.10  # rad (~5.7 deg) per-frame cap; rejects rotation glitch spikes
+    debug_logging: bool = False  # print telemetry every 5 frames if True
     # Robot ROOT (pelvis) pose in WORLD, probed from the env: base of the world->root transform applied
     # to the output. G1 base is static, so these are constants. quat is (w, x, y, z).
     root_pos: tuple[float, float, float] = (0.5, 0.7, 0.75)
