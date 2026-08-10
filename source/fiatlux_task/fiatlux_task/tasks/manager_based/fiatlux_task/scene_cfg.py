@@ -342,6 +342,8 @@ def _spawn_usd_as_rigid_body_frictional(prim_path, cfg, translation=None, orient
         schemas.modify_rigid_body_properties(prim.GetPath(), cfg.rigid_props)
     if cfg.mass_props is not None:
         schemas.modify_mass_properties(prim.GetPath(), cfg.mass_props)
+    # (The ~6 mm contact offset now lives in the asset -- authored by omniverse_ladder_collision.py --
+    # so no code-side trim is needed here; the ladder USD carries both the tight shape and the offset.)
     grip = sim_utils.RigidBodyMaterialCfg(static_friction=1.5, dynamic_friction=1.2, restitution=0.0)
     grip.func(f"{prim_path}/physicsMaterial", grip)
     bind_physics_material(prim_path, f"{prim_path}/physicsMaterial")
