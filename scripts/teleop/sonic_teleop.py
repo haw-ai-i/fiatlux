@@ -23,8 +23,9 @@ import os
 
 from isaaclab.app import AppLauncher
 
-_POLICY_DIR = os.path.expanduser(
+_DEFAULT_POLICY_DIR = os.path.expanduser(
     "~/robotica_project/GR00T-WholeBodyControl/gr00t_wbc/sim2mujoco/resources/robots/g1/policy")
+_POLICY_DIR = os.environ.get("SONIC_POLICY_DIR", _DEFAULT_POLICY_DIR)
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--task", default="FIATLUX-Insert-Teleop-v0")
@@ -216,6 +217,14 @@ def main():  # noqa: C901  (one long orchestration: env setup + settle/resettle 
         print(f"[sonic] VR teleop device: {args.teleop_device} (+walk)", flush=True)
 
     # --- SONIC policy + joint maps ---
+    for _onnx_path, _flag in ((args.walk_onnx, "--walk_onnx"), (args.balance_onnx, "--balance_onnx")):
+        if not os.path.exists(_onnx_path):
+            raise FileNotFoundError(
+                f"SONIC policy ONNX file not found at '{_onnx_path}' ({_flag}). "
+                "Please specify valid paths via --walk_onnx and --balance_onnx, "
+                "or set the SONIC_POLICY_DIR environment variable."
+            )
+
     jn = robot.joint_names
     sidx = [jn.index(n) for n in SONIC_JOINTS]
     act_idx = torch.tensor(sidx[:15], device=dev)
