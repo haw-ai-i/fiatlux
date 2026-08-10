@@ -11,27 +11,9 @@ grip on the Inspire hand. Everything else -- scene (tabletop preset), observatio
 terminations -- is inherited unchanged from :class:`G1BulbInsertEnvCfg`, so only the *action
 interface* differs and recorded demos stay compatible with the RL env's observation / reward defs.
 
-Drive it with ``scripts/teleop/insert_teleop.py --task FIATLUX-Insert-Teleop-v0`` (add ``--teleop_device spacemouse``
-for a SpaceMouse).
+Drive it with ``scripts/teleop/sonic_teleop.py --task FIATLUX-Insert-Teleop-v0`` -- ``--input keyboard``
+for desktop keys or ``--input vr`` for a Pico headset over CloudXR (whole-body: SONIC legs + arm teleop).
 """
-
-import isaaclab.sim as sim_utils
-from isaaclab.controllers.differential_ik_cfg import DifferentialIKControllerCfg
-from isaaclab.devices.device_base import DeviceBase, DevicesCfg
-from isaaclab.devices.keyboard import Se3KeyboardCfg
-from isaaclab.devices.openxr import XrCfg
-from isaaclab.devices.openxr.openxr_device import OpenXRDeviceCfg
-from isaaclab.devices.openxr.retargeters.manipulator.gripper_retargeter import GripperRetargeterCfg
-from isaaclab.devices.openxr.retargeters.manipulator.se3_abs_retargeter import Se3AbsRetargeterCfg
-from isaaclab.devices.spacemouse import Se3SpaceMouseCfg
-from isaaclab.envs.mdp.actions.actions_cfg import (
-    BinaryJointPositionActionCfg,
-    DifferentialInverseKinematicsActionCfg,
-)
-from isaaclab.sim import schemas
-from isaaclab.sim.spawners.from_files.from_files import _spawn_from_usd_file
-from isaaclab.sim.utils import clone
-from isaaclab.utils import configclass
 
 from fiatlux_task.assets import OMNI_BULB_USD, OMNI_SOCKET_USD
 from fiatlux_task.robots.g1 import (
@@ -49,9 +31,25 @@ from fiatlux_task.robots.g1 import (
     G1_LEFT_HAND_JOINTS,
     swap_robot_variant,
 )
-
 from fiatlux_task.tasks.manager_based.fiatlux_task.g1_bulb_env_cfg import G1BulbInsertEnvCfg
 from fiatlux_task.tasks.manager_based.fiatlux_task.scene_cfg import _quat_x_deg, _spawn_usd_as_rigid_body
+
+import isaaclab.sim as sim_utils
+from isaaclab.controllers.differential_ik_cfg import DifferentialIKControllerCfg
+from isaaclab.devices.device_base import DeviceBase, DevicesCfg
+from isaaclab.devices.keyboard import Se3KeyboardCfg
+from isaaclab.devices.openxr import XrCfg
+from isaaclab.devices.openxr.openxr_device import OpenXRDeviceCfg
+from isaaclab.devices.spacemouse import Se3SpaceMouseCfg
+from isaaclab.envs.mdp.actions.actions_cfg import (
+    BinaryJointPositionActionCfg,
+    DifferentialInverseKinematicsActionCfg,
+)
+from isaaclab.sim import schemas
+from isaaclab.sim.spawners.from_files.from_files import _spawn_from_usd_file
+from isaaclab.sim.utils import clone
+from isaaclab.utils import configclass
+
 from .xr_controller_retargeters import (
     ControllerGripperRetargeterCfg,
     Se3AbsControllerRetargeterCfg,
@@ -167,11 +165,9 @@ class G1BulbInsertTeleopEnvCfg(G1BulbInsertEnvCfg):
         self.scene.bulb.spawn = sim_utils.UsdFileCfg(
             usd_path=OMNI_BULB_USD,
             func=_spawn_omni_rigid,
-            # Bulb scaled slightly smaller than the socket (0.006 vs the socket's 0.007) so its narrower
-            # glass clears more of the socket mouth and the dark screw base sinks deeper into the socket
-            # (a more "screwed-in" look) instead of the glass resting proud on the rim. Deliberately
-            # breaks the asset's 1:1 bulb/socket ratio -- see the socket spawn above (still 0.007).
-            scale=(0.006, 0.006, 0.006),
+            # Bulb at the socket's 1:1 scale (0.007, matching the socket spawn above). The collision
+            # shrink-wrap below -- not a scale-down -- is what slims the base so it clears the socket bore.
+            scale=(0.007, 0.007, 0.007),
             rigid_props=sim_utils.RigidBodyPropertiesCfg(
                 kinematic_enabled=False,
                 solver_position_iteration_count=64,
@@ -189,8 +185,8 @@ class G1BulbInsertTeleopEnvCfg(G1BulbInsertEnvCfg):
             collision_props=sim_utils.CollisionPropertiesCfg(contact_offset=0.002, rest_offset=0.0),
             mass_props=sim_utils.MassPropertiesCfg(mass=0.10),
         )
-        # Spawn essentially resting on the surface (~1 cm above) so it barely drops. The smaller 0.006
-        # bulb has a thinner collider that will TUNNEL through the kinematic table if dropped from a
+        # Spawn essentially resting on the surface (~1 cm above) so it barely drops. The shrink-wrapped
+        # base has a thin collider that can TUNNEL through the kinematic table if dropped from a
         # height (verified: a 5 cm spawn drop fell through on some resets), so keep the drop tiny.
         # y kept inside the table's near edge (y=0.281) so it rests on the surface, not teetering off.
         self.scene.bulb.init_state.pos = (0.34, 0.24, 0.89)
@@ -284,12 +280,9 @@ class G1BulbInsertTeleopEnvCfg(G1BulbInsertEnvCfg):
         # NOTE: still tune in-headset -- if the operator ends up 90 deg off, adjust the yaw quaternion.
         self.xr = XrCfg(anchor_pos=(0.5, 0.7, 0.0), anchor_rot=(0.0, 0.0, 0.0, 1.0))
 
-        # Devices the teleop script can instantiate for this env. ``handtracking`` drives the same
-        # absolute-IK arm + binary grip via a Meta Quest / Pico headset through CloudXR (see
-        # vr_teleop/vr_teleop_setup.md): Se3AbsRetargeter maps the right-hand wrist pose -> EE target,
-        # GripperRetargeter maps thumb-index pinch -> open/close. Launch with Isaac Lab's
-        # ``scripts/environments/teleoperation/teleop_se3_agent.py --teleop_device handtracking`` (it
-        # auto-enables ``--xr``); keyboard/spacemouse remain for the flat-screen path.
+        # Devices the teleop script can instantiate for this env. keyboard/spacemouse drive the
+        # flat-screen path; the OpenXR ``controller`` / ``controller_rel`` devices drive the arm from a
+        # Pico headset CONTROLLER over CloudXR (see journal/specs/vr-teleop-cloudxr-setup.md).
         self.teleop_devices = DevicesCfg(
             devices={
                 "keyboard": Se3KeyboardCfg(
@@ -298,25 +291,9 @@ class G1BulbInsertTeleopEnvCfg(G1BulbInsertEnvCfg):
                 "spacemouse": Se3SpaceMouseCfg(
                     pos_sensitivity=0.05, rot_sensitivity=0.05, sim_device=self.sim.device
                 ),
-                "handtracking": OpenXRDeviceCfg(
-                    retargeters=[
-                        Se3AbsRetargeterCfg(
-                            bound_hand=DeviceBase.TrackingTarget.HAND_RIGHT,
-                            zero_out_xy_rotation=True,
-                            use_wrist_rotation=False,
-                            use_wrist_position=True,
-                            sim_device=self.sim.device,
-                        ),
-                        GripperRetargeterCfg(
-                            bound_hand=DeviceBase.TrackingTarget.HAND_RIGHT, sim_device=self.sim.device
-                        ),
-                    ],
-                    sim_device=self.sim.device,
-                    xr_cfg=self.xr,
-                ),
                 # Motion-controller variant: same absolute-IK arm + binary grip, but driven by the
-                # headset CONTROLLER instead of hand tracking (the Quest/Pico CloudXR web client streams
-                # controllers, not optical hand joints -- see vr_teleop/vr_teleop_setup.md). Right grip
+                # headset CONTROLLER instead of hand tracking (the Pico CloudXR web client streams
+                # controllers, not optical hand joints -- see journal/specs/vr-teleop-cloudxr-setup.md). Right grip
                 # pose -> EE target, trigger -> grip. Pick it with ``--teleop_device controller``.
                 "controller": OpenXRDeviceCfg(
                     retargeters=[

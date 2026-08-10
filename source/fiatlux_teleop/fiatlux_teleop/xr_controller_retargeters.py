@@ -6,7 +6,7 @@
 """Motion-controller retargeters for XR teleoperation (issue #51).
 
 Isaac Lab's stock SE(3)/gripper retargeters read **hand tracking** (thumb/index/wrist joints). The
-Meta Quest / Pico CloudXR *web client*, however, streams **motion controllers**, not optical hand
+Pico CloudXR *web client*, however, streams **motion controllers**, not optical hand
 joints -- with the controllers down, hand tracking falls back to a useless head-locked placeholder
 (``'Right Head Device Hand'``). These retargeters mirror :class:`Se3AbsRetargeter` /
 :class:`GripperRetargeter` but read the controller instead: the right controller's grip pose drives
@@ -17,8 +17,8 @@ They declare :attr:`RetargeterBase.Requirement.MOTION_CONTROLLER`, which makes
 array where **row 0** is the pose ``[x, y, z, w, x, y, z]`` and **row 1** is the inputs
 ``[thumbstick_x, thumbstick_y, trigger, squeeze, button_0, button_1, pad]``.
 
-Use via the ``controller`` teleop device (see ``insert_teleop_env_cfg.py``):
-``scripts/teleop/xr_teleop.py --teleop_device controller``.
+Used by the ``controller`` / ``controller_rel`` teleop devices (see ``insert_teleop_env_cfg.py``);
+the whole-body driver ``scripts/teleop/sonic_teleop.py --input vr`` drives the ``controller_rel`` one.
 """
 
 from __future__ import annotations

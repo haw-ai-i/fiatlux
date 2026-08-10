@@ -1,25 +1,35 @@
-"""Loco-manipulation in the REAL Insert environment.
+"""Whole-body loco-manipulation teleop for any FIATLUX-*-Teleop task.
 
-Runs the actual ``FIATLUX-Insert-Teleop-v0`` env (its real table/fixture + socket + bulb + the tuned
-``controller_rel`` bimanual arm teleop), but FREES the base and drives the legs+waist with the
-pre-trained NVIDIA SONIC policy so you can walk up to the table and insert.
+Runs a real teleop gym env (``--task`` -- Insert / Carry / LadderGallery / ...), FREES the base, and
+drives legs+waist with the pre-trained NVIDIA SONIC policy so the operator can walk the robot around
+the scene and manipulate -- true whole-body teleop, on any task.
 
-  * arms  = the env's own tuned teleop (controller pose -> IK, trigger -> grip)  [unchanged]
-  * legs  = SONIC (balance + walk), commanded by the LEFT thumbstick + buttons
-  * both ride on the same Pico controllers over CloudXR.
+Two input modes (``--input``):
+  * vr        -- Pico controllers over CloudXR: LEFT stick walks, the env's own bimanual arm teleop
+                 (controller pose -> IK, trigger -> grip) drives the arms.
+  * keyboard  -- desktop, no headset: arrow keys walk; TAB picks the active arm; W/S A/D Q/E move it,
+                 U/O I/K J/L rotate the wrist, G grips -- both arms + wrist rotation, i.e. VR parity.
 
-Reuse trick: a walk retargeter is appended to the env's ``controller_rel`` device, so its
-``advance()`` returns ``[arm_action..., vx, vy, wz, stop, lean]`` -- we hand the arm part to
-``env.step`` and feed the walk part to SONIC. The env is retimed to SONIC's 200 Hz / 50 Hz.
+  * arms  = the env's action manager (differential-IK EE pose + binary grip)
+  * legs  = SONIC (balance + walk)
+The env is retimed to SONIC's 200 Hz / 50 Hz. VR appends a walk retargeter to the env's teleop device
+so ``advance()`` returns ``[arm_action..., vx,vy,wz,stop,lean]``; keyboard builds the same
+``[arm_action..., walk]`` from key state. Either way the loop hands the arm part to ``env.step`` and
+the walk part to SONIC.
 """
 import argparse
+import contextlib
+import os
 
 from isaaclab.app import AppLauncher
 
-_POLICY_DIR = "/home/yujin-chen/robotica_project/GR00T-WholeBodyControl/gr00t_wbc/sim2mujoco/resources/robots/g1/policy"
+_POLICY_DIR = os.path.expanduser(
+    "~/robotica_project/GR00T-WholeBodyControl/gr00t_wbc/sim2mujoco/resources/robots/g1/policy")
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--task", default="FIATLUX-Insert-Teleop-v0")
+parser.add_argument("--input", choices=["vr", "keyboard"], default="vr",
+                    help="vr = Pico controllers over CloudXR; keyboard = desktop keys (no headset)")
 parser.add_argument("--teleop_device", default="controller_rel")
 parser.add_argument("--hand", default="dex3", choices=["dex3", "inspire"])
 parser.add_argument("--walk_onnx", default=f"{_POLICY_DIR}/GR00T-WholeBodyControl-Walk.onnx")
@@ -27,30 +37,32 @@ parser.add_argument("--balance_onnx", default=f"{_POLICY_DIR}/GR00T-WholeBodyCon
 parser.add_argument("--num_envs", type=int, default=1)
 AppLauncher.add_app_launcher_args(parser)
 args = parser.parse_args()
-args.xr = True          # CloudXR stereo render
-args.device = "cuda:0"  # env physics on GPU (xr otherwise defaults to cpu)
+args.xr = (args.input == "vr")   # CloudXR stereo render only in VR mode (keyboard = desktop GUI)
+args.device = "cuda:0"           # env physics on GPU (xr otherwise defaults to cpu)
 app_launcher = AppLauncher(args)
 simulation_app = app_launcher.app
 
 import collections  # noqa: E402
 from dataclasses import dataclass  # noqa: E402
 
+import fiatlux_task  # noqa: F401,E402
+import fiatlux_teleop  # noqa: F401,E402  -- registers the FIATLUX-*-Teleop gym ids
 import gymnasium as gym  # noqa: E402
 import numpy as np  # noqa: E402
 import onnxruntime as ort  # noqa: E402
 import torch  # noqa: E402
+
 from isaaclab.devices.device_base import DeviceBase  # noqa: E402
 from isaaclab.devices.retargeter_base import RetargeterBase, RetargeterCfg  # noqa: E402
 from isaaclab.devices.teleop_device_factory import create_teleop_device  # noqa: E402
 from isaaclab.envs import ManagerBasedRLEnvCfg  # noqa: E402
 from isaaclab.utils.math import subtract_frame_transforms  # noqa: E402
-from isaaclab_tasks.utils import parse_env_cfg  # noqa: E402
+
 import isaaclab_tasks  # noqa: F401,E402
-import fiatlux_task  # noqa: F401,E402
-import fiatlux_teleop  # noqa: F401,E402  -- registers the FIATLUX-*-Teleop gym ids
+from isaaclab_tasks.utils import parse_env_cfg  # noqa: E402
 
 # ---------------------------------------------------------------------------
-# SONIC contract (identical to sonic_drive.py)
+# SONIC contract (29-joint obs / 15-action legs+waist; from NVIDIA's GR00T-WholeBodyControl)
 # ---------------------------------------------------------------------------
 SONIC_JOINTS = [
     "left_hip_pitch_joint", "left_hip_roll_joint", "left_hip_yaw_joint",
@@ -117,7 +129,7 @@ class WalkRetargeterCfg(RetargeterCfg):
     retargeter_type: type = WalkRetargeter
 
 
-def main():
+def main():  # noqa: C901  (one long orchestration: env setup + settle/resettle + the teleop loop)
     # --- env: real Insert-Teleop scene, retimed for SONIC, base freed ---
     env_cfg = parse_env_cfg(args.task, device=args.device, num_envs=args.num_envs)
     if not isinstance(env_cfg, ManagerBasedRLEnvCfg):
@@ -185,23 +197,23 @@ def main():
     robot = env.scene["robot"]
     dev = env.device
 
-    # append the walk retargeter + unify ALL retargeter devices to the env device, so advance()'s
-    # torch.cat over the retargeter outputs doesn't mix cpu/cuda. Then advance() = [arm_action..., walk(5)].
-    dev_cfg = env_cfg.teleop_devices.devices[args.teleop_device]
-    for rt in dev_cfg.retargeters:
-        rt.sim_device = str(dev)
-    dev_cfg.retargeters = list(dev_cfg.retargeters) + [WalkRetargeterCfg(sim_device=str(dev))]
-
-    # wire the AR-menu / keyboard RESET (an empty callbacks dict = the reset button does nothing).
     reset_flag = {"do": False}
 
     def _reset():
         reset_flag["do"] = True
-        print("[sonic-insert] reset requested", flush=True)
+        print("[sonic] reset requested", flush=True)
 
-    teleop = create_teleop_device(args.teleop_device, env_cfg.teleop_devices.devices,
-                                  {"R": _reset, "RESET": _reset})
-    print(f"[sonic-insert] teleop device: {args.teleop_device} (+walk)", flush=True)
+    # VR only: append the walk retargeter + unify ALL retargeter devices to the env device (so
+    # advance()'s torch.cat over the retargeter outputs doesn't mix cpu/cuda). advance() = [arm..., walk(5)].
+    teleop = None
+    if args.input == "vr":
+        dev_cfg = env_cfg.teleop_devices.devices[args.teleop_device]
+        for rt in dev_cfg.retargeters:
+            rt.sim_device = str(dev)
+        dev_cfg.retargeters = list(dev_cfg.retargeters) + [WalkRetargeterCfg(sim_device=str(dev))]
+        teleop = create_teleop_device(args.teleop_device, env_cfg.teleop_devices.devices,
+                                      {"R": _reset, "RESET": _reset})
+        print(f"[sonic] VR teleop device: {args.teleop_device} (+walk)", flush=True)
 
     # --- SONIC policy + joint maps ---
     jn = robot.joint_names
@@ -210,7 +222,7 @@ def main():
     walk_sess = ort.InferenceSession(args.walk_onnx, providers=["CPUExecutionProvider"])
     bal_sess = ort.InferenceSession(args.balance_onnx, providers=["CPUExecutionProvider"])
     in_name = walk_sess.get_inputs()[0].name
-    print(f"[sonic-insert] loaded Walk + Balance ONNX (input '{in_name}', 516->15)", flush=True)
+    print(f"[sonic] loaded Walk + Balance ONNX (input '{in_name}', 516->15)", flush=True)
 
     loco_cmd = np.zeros(3, dtype=np.float32)
     rpy_cmd = np.zeros(3, dtype=np.float32)
@@ -297,32 +309,125 @@ def main():
     _hold_pose = robot.data.joint_pos[:, _hold_idx].clone()
     _hold_zero = torch.zeros_like(_hold_pose)
 
-    # Re-anchor the controller_rel arm retargeters to THIS scene's live robot. They default to the
-    # Insert *table* world coords, so on any other scene (e.g. the ladder Carry env) the arm reaches
-    # for a world point far from the robot and flails. Rebake root + EE-start + workspace to live.
-    from scipy.spatial.transform import Rotation as _Rot  # noqa: E402
-    _rpos = robot.data.root_pos_w[0].cpu().numpy()
-    _rq = robot.data.root_quat_w[0].cpu().numpy()          # w, x, y, z
-    _R = _Rot.from_quat([_rq[1], _rq[2], _rq[3], _rq[0]])
-    for _rt in getattr(teleop, "_retargeters", None) or []:
-        if not hasattr(_rt, "_root_pos"):                 # only the Se3Rel arm retargeters
-            continue
-        _rt._root_pos = _rpos.astype(np.float32)
-        _rt._root_R = _R
-        _rt._root_R_T = _R.as_matrix().T.astype(np.float32)
-        _right = getattr(_rt, "_target", None) == DeviceBase.TrackingTarget.CONTROLLER_RIGHT
-        _eeb = robot.body_names.index("right_wrist_yaw_link" if _right else "left_wrist_yaw_link")
-        _ee_w = robot.data.body_state_w[0, _eeb, 0:3].cpu().numpy().astype(np.float32)
-        _ee = (_R.as_matrix().T @ (_ee_w - _rpos)).astype(np.float32)  # EE in the BASE frame (target lives there)
-        _rt._init_pos = _ee.copy()
-        _rt._pos = _ee.copy()
-        _rt._lo = _ee - np.array([0.45, 0.45, 0.45], dtype=np.float32)
-        _rt._hi = _ee + np.array([0.45, 0.45, 0.45], dtype=np.float32)
-        _rt._prev = None
-        _rt._smooth = None
+    if args.input == "vr":
+        # Re-anchor the controller_rel arm retargeters to THIS scene's live robot. They default to the
+        # Insert *table* world coords, so on any other scene (e.g. the ladder Carry env) the arm reaches
+        # for a world point far from the robot and flails. Rebake root + EE-start + workspace to live.
+        from scipy.spatial.transform import Rotation as _Rot  # noqa: E402
+        _rpos = robot.data.root_pos_w[0].cpu().numpy()
+        _rq = robot.data.root_quat_w[0].cpu().numpy()          # w, x, y, z
+        _R = _Rot.from_quat([_rq[1], _rq[2], _rq[3], _rq[0]])
+        for _rt in getattr(teleop, "_retargeters", None) or []:
+            if not hasattr(_rt, "_root_pos"):                 # only the Se3Rel arm retargeters
+                continue
+            _rt._root_pos = _rpos.astype(np.float32)
+            _rt._root_R = _R
+            _rt._root_R_T = _R.as_matrix().T.astype(np.float32)
+            _right = getattr(_rt, "_target", None) == DeviceBase.TrackingTarget.CONTROLLER_RIGHT
+            _eeb = robot.body_names.index("right_wrist_yaw_link" if _right else "left_wrist_yaw_link")
+            _ee_w = robot.data.body_state_w[0, _eeb, 0:3].cpu().numpy().astype(np.float32)
+            _ee = (_R.as_matrix().T @ (_ee_w - _rpos)).astype(np.float32)  # EE in the BASE frame (target lives there)
+            _rt._init_pos = _ee.copy()
+            _rt._pos = _ee.copy()
+            _rt._lo = _ee - np.array([0.45, 0.45, 0.45], dtype=np.float32)
+            _rt._hi = _ee + np.array([0.45, 0.45, 0.45], dtype=np.float32)
+            _rt._prev = None
+            _rt._smooth = None
+
+    # ---- keyboard input (desktop, no headset): full VR parity -- BOTH arms (position + wrist
+    # rotation + grip), walk, and lean. TAB switches which arm the manipulation keys drive. ----
+    kb = None
+    if args.input == "keyboard":
+        import math  # noqa: E402
+        _pressed = collections.deque()
+        try:
+            import carb  # noqa: E402
+            import omni.appwindow  # noqa: E402
+            _kbd_iface = carb.input.acquire_input_interface()
+            _kbd = omni.appwindow.get_default_app_window().get_keyboard()
+
+            def _on_key(e):
+                if e.type == carb.input.KeyboardEventType.KEY_PRESS:
+                    _pressed.append(e.input.name)
+                return True
+            _kbd_iface.subscribe_to_keyboard_events(_kbd, _on_key)
+        except Exception as _e:  # noqa: BLE001  (headless / no window -> just run SONIC with no input)
+            print(f"[sonic] keyboard listener unavailable ({_e}); running with no input", flush=True)
+
+        _box = torch.tensor([0.30, 0.30, 0.35], device=dev)                    # per-arm reach half-extent
+        kb = {
+            "active": "R",                                                      # arm the manip keys drive
+            "R_ee": rest_arm[0:7].clone(), "L_ee": rest_arm[8:15].clone(),      # per-arm EE target (root frame)
+            "R_lo": rest_arm[0:3] - _box, "R_hi": rest_arm[0:3] + _box,
+            "L_lo": rest_arm[8:11] - _box, "L_hi": rest_arm[8:11] + _box,
+            "R_grip_open": True, "L_grip_open": True, "lean": 0.0, "quit": False,
+        }
+        _POS_KEYS = {"W": (0, 0.02), "S": (0, -0.02), "A": (1, 0.02),           # key -> (xyz axis, dpos m)
+                     "D": (1, -0.02), "Q": (2, 0.02), "E": (2, -0.02)}
+        _ROT_KEYS = {"U": (0, 0.10), "O": (0, -0.10), "I": (1, 0.10),           # key -> (axis, dangle rad)
+                     "K": (1, -0.10), "J": (2, 0.10), "L": (2, -0.10)}
+        _WALK_KEYS = {"UP": (0, 0.1), "DOWN": (0, -0.1), "LEFT": (2, 0.1),      # key -> (vx/vy/wz idx, step)
+                      "RIGHT": (2, -0.1), "COMMA": (1, 0.1), "PERIOD": (1, -0.1)}
+        _AXES = ((1.0, 0.0, 0.0), (0.0, 1.0, 0.0), (0.0, 0.0, 1.0))
+
+        def _qmul(a, b):                                                       # wxyz Hamilton product (single quats)
+            return torch.stack([
+                a[0] * b[0] - a[1] * b[1] - a[2] * b[2] - a[3] * b[3],
+                a[0] * b[1] + a[1] * b[0] + a[2] * b[3] - a[3] * b[2],
+                a[0] * b[2] - a[1] * b[3] + a[2] * b[0] + a[3] * b[1],
+                a[0] * b[3] + a[1] * b[2] - a[2] * b[1] + a[3] * b[0]])
+
+        def _rotate(q, axis_i, ang):                                          # pre-multiply q by a root-axis rotation
+            ax = _AXES[axis_i]
+            s = math.sin(ang / 2.0)
+            dq = torch.tensor([math.cos(ang / 2.0), ax[0] * s, ax[1] * s, ax[2] * s], device=dev)
+            out = _qmul(dq, q)
+            return out / torch.linalg.norm(out)
+
+        def kb_drain():
+            while _pressed:
+                k = _pressed.popleft()
+                a = kb["active"]
+                if k in _POS_KEYS:
+                    i, d = _POS_KEYS[k]
+                    kb[a + "_ee"][i] += d
+                elif k in _ROT_KEYS:
+                    i, d = _ROT_KEYS[k]
+                    kb[a + "_ee"][3:7] = _rotate(kb[a + "_ee"][3:7], i, d)
+                elif k in _WALK_KEYS:
+                    i, d = _WALK_KEYS[k]
+                    loco_cmd[i] += d
+                elif k == "SPACE":
+                    loco_cmd[:] = 0.0
+                elif k == "G":
+                    kb[a + "_grip_open"] = not kb[a + "_grip_open"]
+                elif k == "TAB":
+                    kb["active"] = "L" if a == "R" else "R"
+                    print(f"[sonic] active arm -> {kb['active']}", flush=True)
+                elif k == "T":
+                    kb["lean"] = min(kb["lean"] + 0.2, 1.0)
+                elif k == "Y":
+                    kb["lean"] = max(kb["lean"] - 0.2, -1.0)
+                elif k == "R":
+                    _reset()
+                elif k == "ESCAPE":
+                    kb["quit"] = True
+            kb["R_ee"][0:3] = torch.clamp(kb["R_ee"][0:3], kb["R_lo"], kb["R_hi"])
+            kb["L_ee"][0:3] = torch.clamp(kb["L_ee"][0:3], kb["L_lo"], kb["L_hi"])
+            np.clip(loco_cmd, [-0.8, -0.5, -1.0], [1.0, 0.5, 1.0], out=loco_cmd)
+            rpy_cmd[1] = kb["lean"] * LEAN_MAG
+
+        def kb_arm_action():
+            # env action = [R pose(7), R grip(1), L pose(7), L grip(1)] -- both arms driven from keys.
+            rg = torch.ones(1, device=dev) if kb["R_grip_open"] else -torch.ones(1, device=dev)
+            lg = torch.ones(1, device=dev) if kb["L_grip_open"] else -torch.ones(1, device=dev)
+            return torch.cat([kb["R_ee"], rg, kb["L_ee"], lg])
+        print("KEYBOARD ready (bimanual).  TAB = switch active arm (R/L).  active arm: W/S A/D Q/E = move "
+              "X/Y/Z, U/O I/K J/L = roll/pitch/yaw, G = grip.  walk: arrows (UP/DOWN fwd, LEFT/RIGHT turn), "
+              ",/. strafe, T/Y lean, SPACE stop.  R reset, ESC quit.", flush=True)
 
     _elb_i = robot.joint_names.index("right_elbow_joint")
-    print(f"[sonic-insert] settled+centered at pelvis=({spawn_root[0,0]:.2f},{spawn_root[0,1]:.2f},"
+    print(f"[sonic] settled+centered at pelvis=({spawn_root[0,0]:.2f},{spawn_root[0,1]:.2f},"
           f"{spawn_root[0,2]:.2f}) right_elbow={float(robot.data.joint_pos[0, _elb_i]):.2f}rad "
           f"(target 1.57 = 90deg)", flush=True)
     # DIAGNOSTIC: full arm joint values, right vs left, to see the asymmetric IK elbow resolution.
@@ -330,11 +435,15 @@ def main():
               "right_elbow_joint", "left_shoulder_pitch_joint", "left_shoulder_roll_joint",
               "left_shoulder_yaw_joint", "left_elbow_joint"]
     _dbg_v = robot.data.joint_pos[0, [robot.joint_names.index(j) for j in _dbg_j]].cpu().numpy()
-    print("[sonic-insert] arm joints  R[sp,sr,sy,elb]=" + ",".join(f"{v:+.2f}" for v in _dbg_v[:4]) +
+    print("[sonic] arm joints  R[sp,sr,sy,elb]=" + ",".join(f"{v:+.2f}" for v in _dbg_v[:4]) +
           "  L[sp,sr,sy,elb]=" + ",".join(f"{v:+.2f}" for v in _dbg_v[4:]), flush=True)
-    print("Teleop ready. In the Isaac Sim UI: AR panel -> Start AR, then connect the Pico. "
-          "LEFT stick = walk, RIGHT stick X = turn, RIGHT btn = stop, LEFT X/Y = lean. "
-          "Arms: the usual controller_rel teleop (grip-clutch + move, trigger to grasp).", flush=True)
+    if args.input == "vr":
+        print("Teleop ready. In the Isaac Sim UI: AR panel -> Start AR, then connect the Pico. "
+              "LEFT stick = walk, RIGHT stick X = turn, RIGHT btn = stop, LEFT X/Y = lean. "
+              "Arms: the usual controller_rel teleop (grip-clutch + move, trigger to grasp).", flush=True)
+    else:
+        print("Teleop ready (keyboard). Click the Isaac Sim viewport to focus it, then use the keys "
+              "listed above (TAB switches arm; W/S A/D Q/E move + U/O I/K J/L rotate; arrows walk).", flush=True)
 
     def resettle():
         """Re-plant the free base after a re-home, using the SAME pin-upright + SONIC settle-in as
@@ -390,43 +499,54 @@ def main():
                     robot.write_root_pose_to_sim(spawn_root)
                     robot.write_root_velocity_to_sim(torch.zeros((env.num_envs, 6), device=dev))
                     resettle()
+                    if args.input == "vr":
+                        for _rt in getattr(teleop, "_retargeters", None) or []:
+                            if hasattr(_rt, "reset"):
+                                _rt.reset()                   # re-reference arm targets to the re-homed robot
+                    elif kb is not None:                      # re-home both keyboard EE targets + grips
+                        kb["R_ee"] = rest_arm[0:7].clone()
+                        kb["L_ee"] = rest_arm[8:15].clone()
+                        kb["R_grip_open"] = kb["L_grip_open"] = True
+                        kb["lean"] = 0.0
+                    loco_cmd[:] = 0.0
+                    rpy_cmd[:] = 0.0
+                    print("[sonic] reset done", flush=True)
+
+                if args.input == "vr":
+                    # Sync each arm retargeter's base ROTATION to the LIVE base every frame, but KEEP its
+                    # baked base POSITION. The retargeter maps its world-frame EE target into the root frame
+                    # the IK expects; the transform was baked ONCE assuming a bolted/static base, but SONIC
+                    # now sways + walks the base.
+                    #  - Live rotation: a stale root rotation aims the command the wrong way as the base
+                    #    yaws/sways, so the arm lunges. Keeping it live kills that swing.
+                    #  - Baked position (NOT updated to live): the world target then rides the base's
+                    #    TRANSLATION, so the hand FOLLOWS the body when you walk instead of hanging in world.
+                    # Never touch _pos/_init_pos: those hold the target.
+                    _rq = robot.data.root_quat_w[0].cpu().numpy()  # w, x, y, z
+                    _rR = _Rot.from_quat([_rq[1], _rq[2], _rq[3], _rq[0]])
                     for _rt in getattr(teleop, "_retargeters", None) or []:
-                        if hasattr(_rt, "reset"):
-                            _rt.reset()                       # re-reference arm targets to the re-homed robot
-                    loco_cmd[:] = 0.0
-                    rpy_cmd[:] = 0.0
-                    print("[sonic-insert] reset done", flush=True)
+                        if hasattr(_rt, "_root_pos"):
+                            _rt._root_R = _rR
+                            _rt._root_R_T = _rR.as_matrix().T.astype(np.float32)
 
-                # Sync each arm retargeter's base ROTATION to the LIVE base every frame, but KEEP its
-                # baked base POSITION. The retargeter maps its world-frame EE target into the root frame
-                # the IK expects; the transform was baked ONCE assuming a bolted/static base, but SONIC now
-                # sways + walks the base.
-                #  - Live rotation: a stale root rotation aims the command the wrong way as the base yaws/
-                #    sways, so the arm lunges. Keeping it live kills that swing.
-                #  - Baked position (NOT updated to live): the world target then rides the base's
-                #    TRANSLATION, so the hand FOLLOWS the body when you walk instead of hanging in world.
-                # (Updating position to live -- my previous attempt -- world-anchored the hand, which is
-                # why it stopped following the walk.) Never touch _pos/_init_pos: those hold the target.
-                _rq = robot.data.root_quat_w[0].cpu().numpy()  # w, x, y, z
-                _rR = _Rot.from_quat([_rq[1], _rq[2], _rq[3], _rq[0]])
-                for _rt in getattr(teleop, "_retargeters", None) or []:
-                    if hasattr(_rt, "_root_pos"):
-                        _rt._root_R = _rR
-                        _rt._root_R_T = _rR.as_matrix().T.astype(np.float32)
-
-                # Take arm + walk from the controller ONLY when it's streaming; otherwise hold.
-                out = teleop.advance()
-                if out is not None:
-                    last_arm = out[:-n_walk]
-                    walk = out[-n_walk:].detach().cpu().numpy()
-                    loco_cmd[:] = walk[:3]
-                    if walk[3] > 0.5:
+                    # Take arm + walk from the controller ONLY when it's streaming; otherwise hold.
+                    out = teleop.advance()
+                    if out is not None:
+                        last_arm = out[:-n_walk]
+                        walk = out[-n_walk:].detach().cpu().numpy()
+                        loco_cmd[:] = walk[:3]
+                        if walk[3] > 0.5:
+                            loco_cmd[:] = 0.0
+                        rpy_cmd[1] = walk[4] * LEAN_MAG
+                    else:
+                        last_arm = rest_arm          # no controller -> FIXED rest pose (no IK re-solve jitter)
                         loco_cmd[:] = 0.0
-                    rpy_cmd[1] = walk[4] * LEAN_MAG
-                else:
-                    last_arm = rest_arm              # no controller -> FIXED rest pose (no IK re-solve jitter)
-                    loco_cmd[:] = 0.0
-                    rpy_cmd[:] = 0.0
+                        rpy_cmd[:] = 0.0
+                else:                                # keyboard: keys persist loco_cmd + move the arm EE target
+                    kb_drain()
+                    if kb["quit"]:
+                        break
+                    last_arm = kb_arm_action()
 
                 # Position hold: SONIC is a velocity policy with no position feedback, so cmd=0 slowly
                 # glides the base away. Steer a gentle velocity back to home -- but only AFTER a warmup so
@@ -439,8 +559,10 @@ def main():
                     if float(np.linalg.norm(e)) > HOLD_DB:
                         q = robot.data.root_quat_w[0].cpu().numpy()
                         yaw = np.arctan2(2 * (q[0] * q[3] + q[1] * q[2]), 1 - 2 * (q[2] ** 2 + q[3] ** 2))
-                        loco_cmd[0] = float(np.clip(HOLD_KP * (np.cos(yaw) * e[0] + np.sin(yaw) * e[1]), -HOLD_VMAX, HOLD_VMAX))
-                        loco_cmd[1] = float(np.clip(HOLD_KP * (-np.sin(yaw) * e[0] + np.cos(yaw) * e[1]), -HOLD_VMAX, HOLD_VMAX))
+                        loco_cmd[0] = float(np.clip(
+                            HOLD_KP * (np.cos(yaw) * e[0] + np.sin(yaw) * e[1]), -HOLD_VMAX, HOLD_VMAX))
+                        loco_cmd[1] = float(np.clip(
+                            HOLD_KP * (-np.sin(yaw) * e[0] + np.cos(yaw) * e[1]), -HOLD_VMAX, HOLD_VMAX))
 
                 # SONIC runs EVERY frame -- balance is not optional. (Gating this on `out` made the
                 # free-base robot collapse whenever the headset wasn't streaming.)
@@ -462,16 +584,15 @@ def main():
                 if step_i % (20 if step_i <= 200 else 100) == 0:
                     p = robot.data.root_pos_w[0].cpu().numpy()
                     _re = float(robot.data.joint_pos[0, robot.joint_names.index("right_elbow_joint")])
-                    print(f"[sonic-insert] step {step_i} pelvis=({p[0]:.2f},{p[1]:.2f},{p[2]:.2f}) "
-                          f"r_elbow={_re:.2f} loco_cmd={np.round(loco_cmd, 2)} {'FELL' if p[2] < 0.4 else 'ok'}", flush=True)
+                    _tag = "FELL" if p[2] < 0.4 else "ok"
+                    print(f"[sonic] step {step_i} pelvis=({p[0]:.2f},{p[1]:.2f},{p[2]:.2f}) "
+                          f"r_elbow={_re:.2f} loco_cmd={np.round(loco_cmd, 2)} {_tag}", flush=True)
         except KeyboardInterrupt:
             break
         except Exception as e:  # noqa: BLE001
-            print(f"[sonic-insert] step skipped while view recovers: {e}", flush=True)
-            try:
+            print(f"[sonic] step skipped while view recovers: {e}", flush=True)
+            with contextlib.suppress(Exception):
                 env.sim.render()
-            except Exception:  # noqa: BLE001
-                pass
 
     env.close()
     simulation_app.close()

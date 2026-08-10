@@ -22,14 +22,14 @@ convexDecomposition reference next to the gallery.
 import glob
 import os
 
+from fiatlux_task.assets import FIATLUX_ASSETS_DIR
+from fiatlux_task.tasks.manager_based.fiatlux_task.scene_cfg import _quat_z_deg, _spawn_usd_as_rigid_body_frictional
+
 import isaaclab.sim as sim_utils
 from isaaclab.assets import RigidObjectCfg
 from isaaclab.utils import configclass
 
-from fiatlux_task.assets import FIATLUX_ASSETS_DIR
-
 from .carry_teleop_env_cfg import CarryTeleopEnvCfg
-from fiatlux_task.tasks.manager_based.fiatlux_task.scene_cfg import _quat_z_deg, _spawn_usd_as_rigid_body_frictional
 
 # Gallery grid: 7 columns x 4 rows = 28 slots (one per ladder design folder), on open floor in
 # front of the robot (which stays at the Carry spawn so the arm-teleop root transform is unchanged).

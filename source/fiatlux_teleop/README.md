@@ -1,12 +1,34 @@
-# fiatlux_teleop — VR teleoperation for the Fiatlux benchmark
+# fiatlux_teleop — VR + keyboard teleoperation for the Fiatlux benchmark
 
-VR teleop **on top of** the `fiatlux_task` benchmark. It's a separate package so the benchmark
+Teleop **on top of** the `fiatlux_task` benchmark. It's a separate package so the benchmark
 installs/runs without teleop's deps (OpenXR / CloudXR / the SONIC onnxruntime stack). The dependency
 arrow points **teleop → benchmark**: each teleop env here subclasses a benchmark env and swaps its RL
-whole-body action for a human-drivable **arm-IK + binary-grip** interface over a Pico headset (CloudXR).
+whole-body action for a human-drivable **arm-IK + binary-grip** interface, driven over a Pico headset
+(CloudXR) **or the keyboard** (`sonic_teleop.py --input vr|keyboard`).
 
 - **Operator** (running a session): **no code** — one launcher command.
 - **Developer** (making a *new* task teleop-able): a ~30-line cfg + one registration, once.
+
+---
+
+## Setup (one-time)
+
+Teleop runs as **two processes in two envs**, kept separate so the CloudXR deps never touch the sim:
+
+| Env | What to install | Role |
+|---|---|---|
+| **`env_isaaclab`** | Isaac Lab / Isaac Sim 5.1.0; `fiatlux_task` + `fiatlux_teleop` on `PYTHONPATH`; `onnxruntime` (SONIC legs, in this package's `setup.py`) | renders + runs the sim, reads XR input |
+| **`vr_teleop`** | `pip install 'isaacteleop[cloudxr,retargeters]~=1.0.0'` | the CloudXR streaming runtime only |
+
+Also needed:
+- **Headset** — Pico 4 Ultra (or any CloudXR-compatible OpenXR headset) on the **same Tailscale
+  tailnet** as the GPU box (install the Tailscale APK on the Pico, log into the same tailnet).
+- **`~/.cloudxr/`** — CloudXR install dir with `openxr_cloudxr.json` + a self-signed cert whose SAN
+  carries your **tailnet IP** (else the Pico browser can't get past the cert warning).
+
+The launcher activates both envs for you — you never switch them by hand. Full first-time install,
+firewall ports, network topology, and every hard-won gotcha:
+**[journal/specs/vr-teleop-cloudxr-setup.md](../../journal/specs/vr-teleop-cloudxr-setup.md)**.
 
 ---
 
@@ -20,17 +42,35 @@ Three teleop tasks ship ready to run: `FIATLUX-Insert-Teleop-v0`, `FIATLUX-Carry
 FIATLUX_TASK=FIATLUX-Carry-Teleop-v0 FIATLUX_HAND=dex3 bash scripts/teleop/restart_sonic_teleop.sh
 ```
 
-The launcher starts the whole stack (CloudXR runtime + Isaac Sim + the teleop driver) and prints
-`[5/5] READY`. Then on the **Pico**: AR panel → **Start AR**, open the browser client, connect.
+That one command starts **both** processes (CloudXR runtime in `vr_teleop` + the sim/driver in
+`env_isaaclab`) and prints `[5/5] READY`.
 
 - `FIATLUX_TASK` — which teleop task id to run.
 - `FIATLUX_HAND` — `dex3` or `inspire`.
-- `NV_CXR_ENDPOINT_IP` — your tailnet IP (has a default).
+- `NV_CXR_ENDPOINT_IP` — **required** for the VR launchers (your GPU box's tailnet IP); they exit with
+  a clear error if it's unset. e.g. `NV_CXR_ENDPOINT_IP=100.x.y.z FIATLUX_TASK=… bash …restart_sonic_teleop.sh`.
 
-Stationary manipulation (no legs) uses a different launcher:
+### Keyboard (whole-body, no headset)
+Same SONIC walking + arm teleop, from the desktop — run the driver directly (no CloudXR, no headset):
 ```bash
-FIATLUX_TASK=FIATLUX-Insert-Teleop-v0 bash scripts/teleop/restart_xr_teleop.sh
+conda activate env_isaaclab
+export PYTHONPATH=$PWD/source/fiatlux_task:$PWD/source/fiatlux_teleop
+python scripts/teleop/sonic_teleop.py --task FIATLUX-Carry-Teleop-v0 --input keyboard
 ```
+Click the Isaac Sim viewport to focus it. **Bimanual** — **Tab** switches the active arm (R ↔ L):
+- active arm: **W/S A/D Q/E** move X/Y/Z, **U/O I/K J/L** roll/pitch/yaw, **G** toggles grip
+- walk: **arrows** (↑↓ forward/back, ←→ turn), **, / .** strafe, **T/Y** lean, **Space** stop
+- **R** reset, **Esc** quit
+
+### Activate XR (in the headset)
+Once `[5/5] READY` prints, the launcher echoes these — in order:
+1. **In the Isaac Sim window** → **AR** panel → Output Plugin **OpenXR**, Runtime **System OpenXR
+   Runtime** → **Start AR**.
+2. **On the Pico browser** → `https://<tailnet-ip>:48322/client/` → cert warning → **Advanced →
+   Proceed**.
+3. Client **Settings**: Device Profile **Pico 4 Ultra**, Server IP **`<tailnet-ip>`**, **Port
+   `48322`** — **not** the default `49100` (48322 is the TLS/WSS proxy; 49100 is the raw backend).
+4. **Connect** → the scene streams to the headset. Then drive with the controls below.
 
 ### Controls (Pico controllers)
 | Input | Action |
@@ -97,7 +137,7 @@ gym.register(
 (`"Insert"`/`"Carry"` in the task id) and the **arm spawn pose** (`"Carry"`/`"Gallery"`). So a new
 walking task either **names to match** an existing pattern (e.g. a ladder task with `Carry` in the id
 inherits the Carry arm pose) **or** you add one small branch there. This is the only place a new task
-might touch the *driver*; the stationary path (`insert_teleop.py` / `xr_teleop.py`) has no such checks.
+might touch the *driver* — there's only one, the whole-body `sonic_teleop.py`.
 
 ### 4. Run it
 ```bash
@@ -119,10 +159,8 @@ source/fiatlux_teleop/fiatlux_teleop/
   ladder_gallery_teleop_env_cfg.py  # all ladder designs on an open floor (a Carry-Teleop subclass)
   xr_controller_retargeters.py      # controller pose -> arm target, controller trigger -> grip
 scripts/teleop/
-  sonic_teleop.py                   # driver: env's arm teleop + SONIC legs, over CloudXR
-  xr_teleop.py / insert_teleop.py   # stationary drivers (no SONIC)
-  restart_sonic_teleop.sh           # one-command launcher (CloudXR runtime + sim + driver)
-  restart_xr_teleop.sh              # stationary launcher
+  sonic_teleop.py                   # whole-body driver: SONIC legs + arm teleop, --input vr|keyboard
+  restart_sonic_teleop.sh           # VR launcher (CloudXR runtime + sim + sonic_teleop.py --input vr)
 ```
 
 - `import fiatlux_task` registers the **benchmark** tasks; `import fiatlux_teleop` registers the

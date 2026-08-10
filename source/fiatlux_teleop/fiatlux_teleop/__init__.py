@@ -18,7 +18,8 @@ teleop scripts import both ``fiatlux_task`` (benchmark tasks) and ``fiatlux_tele
 
 import gymnasium as gym
 
-# Teleop variant of Insert (arm differential-IK + binary grip; scripts/teleop/insert_teleop.py).
+# Teleop variant of Insert (arm differential-IK + binary grip); drive with scripts/teleop/sonic_teleop.py
+# (whole-body: SONIC legs + arm teleop, --input vr|keyboard).
 gym.register(
     id="FIATLUX-Insert-Teleop-v0",
     entry_point="isaaclab.envs:ManagerBasedRLEnv",

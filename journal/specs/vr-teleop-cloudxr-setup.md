@@ -1,6 +1,6 @@
-# VR (Meta Quest) teleoperation — setup guide
+# VR (Pico 4 Ultra) teleoperation — setup guide
 
-Goal: drive the G1's right hand in `FIATLUX-Insert-Teleop-v0` with a **Meta Quest** via NVIDIA
+Goal: drive the G1's right hand in `FIATLUX-Insert-Teleop-v0` with a **Pico 4 Ultra** via NVIDIA
 **IsaacTeleop** (CloudXR streaming), instead of the keyboard. The env already takes an *absolute
 end-effector pose + a binary grip* — exactly what a VR controller provides — so VR just swaps the
 input source.
@@ -13,7 +13,7 @@ input source.
 ## ⭐ Findings & working recipe — Pico 4 Ultra Enterprise, remote over Tailscale (2026-07)
 
 Hard-won results from getting a **Pico 4 Ultra Enterprise** connected to a **remote** GPU PC
-(`yujin-chen-MS-7C37`, RTX 3090, Tailscale `100.112.32.21`) over Tailscale. Read this before
+(`<GPU_HOST>`, RTX 3090, Tailscale `<TAILNET_IP>`) over Tailscale. Read this before
 re-deriving anything.
 
 ### What worked (the breakthroughs)
@@ -33,14 +33,14 @@ re-deriving anything.
    env vars before launching the server:
 
    ```bash
-   export NV_CXR_ENDPOINT_IP=100.112.32.21   # the PC's Tailscale IP
+   export NV_CXR_ENDPOINT_IP=<TAILNET_IP>   # the PC's Tailscale IP
    export NV_CXR_MEDIA_PORT=47998            # media UDP port (both IP *and* port required —
                                              # with only the IP set, the log shows port=0 and it
                                              # still fails: "endpoint not configured")
    python -m isaacteleop.cloudxr --accept-eula --host-client
    ```
    Confirm in `~/.cloudxr/logs/cxr_streamsdk.*.log`: `Added public endpoint candidate:
-   100.112.32.21:47998`. After this, the media connects **directly over Tailscale** — no TURN needed.
+   <TAILNET_IP>:47998`. After this, the media connects **directly over Tailscale** — no TURN needed.
 
 3. **coturn TURN relay (fallback, ended up unnecessary).** IsaacTeleop only wires TURN into
    `--usb-local` mode, not the WiFi path. For a manual relay: `sudo apt-get install -y coturn` (then
@@ -82,17 +82,21 @@ re-deriving anything.
 - conda env `vr_teleop` with `isaacteleop 1.3.131`; repo `~/robotica_project/IsaacTeleop @ v1.3.131`;
   CloudXR runtime 6.2.0 at `~/.cloudxr`.
 - Start: `conda activate vr_teleop && source ~/.cloudxr/run/cloudxr.env &&
-  export NV_CXR_ENDPOINT_IP=100.112.32.21 NV_CXR_MEDIA_PORT=47998 &&
+  export NV_CXR_ENDPOINT_IP=<TAILNET_IP> NV_CXR_MEDIA_PORT=47998 &&
   python -m isaacteleop.cloudxr --accept-eula --host-client` (ports 48322 + 49100 listen).
 - Headless input smoke test (no scene, black headset — expected):
   `python examples/teleop/python/gripper_retargeting_example_simple.py`. It must be launched **after**
   the headset is connected (else `Failed to get OpenXR system: -35`).
-- Pico connect URL: `https://100.112.32.21:48322/client/` → accept the self-signed cert on the
+- Pico connect URL: `https://<TAILNET_IP>:48322/client/` → accept the self-signed cert on the
   `:48322/` page (separate tab), then **Connect** on `/client/`, then **Play** (= Start Teleop).
 
 ---
 
 ## ⭐⭐ Isaac Lab NATIVE XR teleop — the working integration path (2026-07)
+
+> **REMOVED 2026-08-09** — this hand-tracking path (`xr_teleop.py`) was deleted; teleop now uses
+> **whole-body control** (`scripts/teleop/sonic_teleop.py --input vr|keyboard`). Kept as history; the
+> CloudXR connection steps below still apply.
 
 **This supersedes the IsaacTeleop device path.** IsaacTeleop's own Isaac Lab device
 (`IsaacTeleopDevice`) targets Isaac Lab 3.0 / Isaac Sim 6.0 — we run **Isaac Sim 5.1.0 / Isaac Lab
@@ -102,7 +106,7 @@ tracking** (pinch), which sidesteps the controller-trigger gap entirely.
 
 ### Architecture (two processes, no dep conflict)
 - **Process A — CloudXR runtime** (conda env `vr_teleop`): `python -m isaacteleop.cloudxr
-  --accept-eula --host-client` with `NV_CXR_ENDPOINT_IP=100.112.32.21` + `NV_CXR_MEDIA_PORT=47998`.
+  --accept-eula --host-client` with `NV_CXR_ENDPOINT_IP=<TAILNET_IP>` + `NV_CXR_MEDIA_PORT=47998`.
   Serves the web client (:48322) the Pico connects to. Only isaacteleop's CloudXR *runtime* is used
   here — not its device layer.
 - **Process B — Isaac Lab** (conda env `env_isaaclab`): the fiatlux sim, launched with `--xr` and
@@ -127,7 +131,7 @@ tracking** (pinch), which sidesteps the controller-trigger gap entirely.
 ```bash
 # Process A (env vr_teleop) — CloudXR runtime, if not already running:
 conda activate vr_teleop && source ~/.cloudxr/run/cloudxr.env
-export NV_CXR_ENDPOINT_IP=100.112.32.21 NV_CXR_MEDIA_PORT=47998
+export NV_CXR_ENDPOINT_IP=<TAILNET_IP> NV_CXR_MEDIA_PORT=47998
 python -m isaacteleop.cloudxr --accept-eula --host-client
 
 # Process B (env env_isaaclab) — the fiatlux XR sim:
@@ -136,14 +140,14 @@ source ~/.cloudxr/run/cloudxr.env          # sets XR_RUNTIME_JSON -> CloudXR
 cd ~/robotica_project/fiatlux/fiatlux
 export PYTHONPATH=$PWD/source/fiatlux_task
 export DISPLAY=:1001                        # NX display (GUI needed for the AR panel)
-python scripts/xr_teleop.py --task FIATLUX-Insert-Teleop-v0 --teleop_device controller_rel
+python scripts/teleop/sonic_teleop.py --task FIATLUX-Insert-Teleop-v0 --input vr   # (was scripts/xr_teleop.py)
 ```
 **Connect the Pico (the exact steps that work — ✅ confirmed 2026-07-26):**
 1. In the Isaac Sim UI: **AR panel** → Output Plugin **OpenXR**, Runtime **System OpenXR Runtime** →
    **Start AR**.
-2. On the Pico browser open `https://100.112.32.21:48322/client/` → cert warning → **Advanced →
+2. On the Pico browser open `https://<TAILNET_IP>:48322/client/` → cert warning → **Advanced →
    Proceed** (the cert now carries the tailnet IP in its SAN, so it's bypassable, not a hard block).
-3. In the client Settings: **Device Profile = Pico 4 Ultra**, **Server IP = 100.112.32.21**,
+3. In the client Settings: **Device Profile = Pico 4 Ultra**, **Server IP = <TAILNET_IP>**,
    **Port = 48322** ⬅ **CRITICAL: NOT the default 49100.** 49100 is the raw CloudXR backend (no TLS);
    the browser must hit the **WSS proxy on 48322**, which terminates TLS and bridges to 49100.
 4. Tap **Connect** → the fiatlux scene streams to the headset.
@@ -153,11 +157,11 @@ python scripts/xr_teleop.py --task FIATLUX-Insert-Teleop-v0 --teleop_device cont
 **Gotchas that cost hours (all fixed/worked-around):**
 - **Port 48322 not 49100** (above) — the single biggest connect blocker.
 - **`--host-client`** is required or nothing serves the web page on 48322 (`run()` alone only starts
-  49100/47998). The runtime prints the LAN URL (`10.94.22.136`); remote, use the tailnet IP.
+  49100/47998). The runtime prints the LAN URL (`<LAN_IP>`); remote, use the tailnet IP.
 - **Self-signed cert**: regenerate with the tailnet IP in the SAN so the Pico browser can proceed:
   `openssl req -x509 -newkey rsa:2048 -nodes -keyout ~/.cloudxr/certs/server.key -out
-  ~/.cloudxr/certs/server.crt -days 365 -subj "/CN=100.112.32.21" -addext
-  "subjectAltName=IP:100.112.32.21,IP:127.0.0.1,DNS:localhost"`.
+  ~/.cloudxr/certs/server.crt -days 365 -subj "/CN=<TAILNET_IP>" -addext
+  "subjectAltName=IP:<TAILNET_IP>,IP:127.0.0.1,DNS:localhost"`.
 - **Greyed CONNECT button (intermittent):** even with valid settings + passed capabilities the button
   can stay disabled on a fresh load. Worked around with a tiny force-enable script appended to
   `~/.cloudxr/static-client/index.html` (re-enables the button when its label is "CONNECT"). Not in
@@ -214,8 +218,8 @@ python scripts/xr_teleop.py --task FIATLUX-Insert-Teleop-v0 --teleop_device cont
 ## 0. Prerequisites
 
 - A **local machine with an NVIDIA GPU** (CloudXR renders + streams there).
-- A **Meta Quest** (2 / 3 / Pro), charged, on the same network as the machine (or reachable via
-  Tailscale — see §4).
+- A **Pico 4 Ultra** (Enterprise, as used here), charged, on the same network as the machine (or
+  reachable via Tailscale — see §4).
 - Isaac Lab installed (IsaacTeleop targets Isaac Lab 3.0; our env runs on 2.3.2 — we bypass its
   Isaac Lab integration and only use its XR **device** layer, so the version gap is not blocking).
 
@@ -230,14 +234,14 @@ pip install 'isaacteleop[cloudxr,retargeters]~=1.0.0'
 git clone https://github.com/NVIDIA/IsaacTeleop.git   # for the example scripts
 ```
 
-## 2. Connect the Quest
+## 2. Connect the Pico
 
 1. Find the PC's IP: `hostname -I` (a LAN `192.168.x`/`10.x`, or the Tailscale `100.x` — see §4).
 2. Open firewall ports on the PC: **`47998/udp`** and **`49100,48322/tcp`**.
-3. Put on the Quest → open the **browser** → go to `https://nvidia.github.io/IsaacTeleop/client`.
+3. Put on the Pico → open the **PICO Browser** → go to `https://nvidia.github.io/IsaacTeleop/client`.
 4. Enter the **PC's IP**, click the link to accept the **self-signed certificate** (proceed through
    the browser warning), then click **Connect**.
-   - No Quest app to install. To test *without* a headset, open that URL in a **desktop browser** —
+   - No app to install. To test *without* a headset, open that URL in a **desktop browser** —
      an emulator loads automatically.
 
 ## 3. Verify IsaacTeleop works (before touching our env)
@@ -247,35 +251,37 @@ cd IsaacTeleop
 python examples/teleop/python/gripper_retargeting_example_simple.py
 ```
 Squeeze the right controller trigger — the printed `gripper_command` value should change. This
-proves **Quest → CloudXR → PC** works. Do **not** proceed until this passes.
+proves **Pico → CloudXR → PC** works. Do **not** proceed until this passes.
 
 ## 4. Network: local vs remote
 
-- **Local (best):** Quest and PC on the **same WiFi/LAN** → lowest latency. Use the PC's LAN IP.
-- **Remote (Tailscale):** the Quest streams to a remote PC over the internet (see §4a).
+- **Local (best):** Pico and PC on the **same WiFi/LAN** → lowest latency. Use the PC's LAN IP.
+- **Remote (Tailscale):** the Pico streams to a remote PC over the internet (see §4a).
 
 ### 4a. Remote from home (laptop remotes into a remote GPU PC) — via Tailscale
 
-Topology: you're at home with a **Quest + laptop**; the GPU PC (IsaacTeleop + sim) is remote (e.g.
-this box, Tailscale IP `100.112.32.21`).
+Topology: you're at home with a **Pico + laptop**; the GPU PC (IsaacTeleop + sim) is remote (e.g.
+this box, Tailscale IP `<TAILNET_IP>`).
 
 > **Important:** your laptop's **SSH / VSCode remote is just a terminal tunnel — it does NOT carry
-> the VR video.** CloudXR needs a **direct network path from the Quest to the PC**. The laptop is
-> irrelevant to the VR data path; the Quest talks to the PC itself.
+> the VR video.** CloudXR needs a **direct network path from the Pico to the PC**. The laptop is
+> irrelevant to the VR data path; the Pico talks to the PC itself.
 
 CloudXR is designed for streaming VR from a remote/cloud GPU, so this works — the trick is getting
-the Quest onto the same Tailscale tailnet as the PC:
+the Pico onto the same Tailscale tailnet as the PC. On the **Pico 4 Ultra Enterprise** no developer
+mode is needed (see the ⭐ Findings section above):
 
-1. **Enable Quest developer mode** (Meta Horizon phone app → your headset → Developer Mode → on).
-2. **Sideload the Tailscale Android APK** onto the Quest (Tailscale isn't in the Quest store):
-   - Get `tailscale.apk` (from `tailscale.com/download/android` / their GitHub releases), then
-   - `adb install tailscale.apk`  (USB), **or** use **SideQuest** to install the APK.
-3. **Launch Tailscale** on the Quest (Apps → *Unknown Sources* → Tailscale) and **log into the same
-   tailnet** as the PC. Confirm the PC (`100.112.32.21`) shows up / pings.
+1. **Allow unknown apps** for the PICO Browser: **Settings → Security → Install unknown apps** → enable
+   for the PICO Browser.
+2. **Download the Tailscale APK directly** in the PICO Browser from
+   `pkgs.tailscale.com/stable/tailscale-android-universal-<ver>.apk` (the Google-Play button needs a
+   Google account; the direct APK does not) and install it.
+3. **Launch Tailscale** on the Pico and **log into the same tailnet** as the PC. Confirm the PC
+   (`<TAILNET_IP>`) shows up / pings.
 4. On the PC, make sure Tailscale is up (`tailscale status`) and CloudXR is bound to the Tailscale
    interface. Ports `47998/udp`, `49100,48322/tcp` are reachable **within the tailnet automatically**
    (Tailscale/WireGuard flattens NAT — no port-forwarding needed).
-5. In the Quest browser, open the IsaacTeleop client, enter **`100.112.32.21`**, accept the cert,
+5. In the PICO Browser, open the IsaacTeleop client, enter **`<TAILNET_IP>`**, accept the cert,
    **Connect** (§2).
 
 **Latency:** home ↔ remote server is a WAN hop, so expect more latency than local. Teleop tolerates
@@ -318,19 +324,18 @@ git clone https://github.com/NVIDIA/IsaacTeleop.git
 tailscale status                 # note the 100.x IP
 sudo ufw allow 47998/udp; sudo ufw allow 49100/tcp; sudo ufw allow 48322/tcp   # if ufw is active
 
-# verify (connect the Quest first, then):
+# verify (connect the Pico first, then):
 cd IsaacTeleop && python examples/teleop/python/gripper_retargeting_example_simple.py
 ```
 
-**On a computer with the Quest on USB (sideload Tailscale):**
-```bash
-# enable Quest Developer Mode in the Meta Horizon phone app first
-adb devices                      # approve the USB prompt in-headset
-adb install tailscale.apk        # from tailscale.com/download/android
-# then in-headset: open Tailscale, log into the SAME tailnet as the PC
+**On the Pico 4 Ultra Enterprise (sideload Tailscale — no dev mode / no PC needed):**
+```text
+Settings → Security → Install unknown apps → enable for the PICO Browser
+PICO Browser → download pkgs.tailscale.com/stable/tailscale-android-universal-<ver>.apk → install
+then in-headset: open Tailscale, log into the SAME tailnet as the PC
 ```
 
-**In the Quest:** browser → `https://nvidia.github.io/IsaacTeleop/client` → enter `100.112.32.21`
+**In the Pico:** PICO Browser → `https://nvidia.github.io/IsaacTeleop/client` → enter `<TAILNET_IP>`
 → accept cert → **Connect**.
 
 **Run the bridge (after §3 passes + `vr_teleop.py` is finalized):**
@@ -348,7 +353,7 @@ python ~/robotica_project/fiatlux/vr_teleop/vr_teleop.py --task FIATLUX-Insert-T
 
 ## Troubleshooting
 
-- **Client won't connect:** ports not open, wrong IP, or Quest not on the same network/tailnet.
+- **Client won't connect:** ports not open, wrong IP, or Pico not on the same network/tailnet.
 - **Cert warning:** expected (self-signed) — proceed past it.
 - **Hand moves the wrong way:** tune `FRAME_ALIGN` (§5.2).
 - **Laggy over Tailscale:** switch to the same LAN for real sessions.
