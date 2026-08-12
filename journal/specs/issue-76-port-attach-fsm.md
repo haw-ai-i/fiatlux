@@ -12,12 +12,20 @@ removal an unscrew and bulb installation an insert-then-rotate, by projecting th
 mutually exclusive axial and rotational motion channels each step.
 
 On `main` it is wired into `FIATLUX-Replace-v0`. It is not wired into `FIATLUX-Remove-v0` or
-`FIATLUX-Install-v0`. In those two tasks the bulb is an ordinary dynamic rigid body: it lifts
-straight out of the socket and drops straight back in, and a zero-action rollout can score
-Remove's removal channel.
+`FIATLUX-Install-v0`. In those two tasks the bulb is an ordinary dynamic rigid body: it lifts straight out of the socket and drops straight back in, and a zero-action rollout can score Remove's removal channel.
 
-This surfaced on 2026-08-10, when twist-and-pull removal was tested under teleoperation and
-reported as not working. The task under test was Remove-v0, which never had the mechanic.
+**This was found by reading the code, not by a failing run.** An earlier draft of this spec
+attributed the discovery to a 2026-08-10 teleoperation session in which twist-and-pull removal was
+reported as not working, and named Remove-v0 as the task under test. That was wrong: the session
+was on **Replace-v0**, confirmed with Yujin on 2026-08-12. Replace *has* the mechanic, so that
+report describes a different failure — the mechanic being inoperable under contact-driven control
+— and is now tracked as issue #77.
+
+The defect described here is real and independently verified: `remove_env_cfg.py`'s `EventCfg`
+wires no `bulb_attachment` term, and the module's own docstring states that the bulb "lifts
+straight out". But nothing ever observed it in a run, and that is precisely the point. The gap's
+only record is a docstring paragraph, which is what Step 3 exists to fix — a motivation that has
+to stand on its own rather than lean on a session that turned out to be about another task.
 
 Six subtasks also wire the term — S05, S06, S07, S13, S14 and S15 — but that work lives on the
 unmerged branch `origin/subtask-rediscretization` and is not on `main`. Commit `5779501` first
@@ -70,23 +78,23 @@ machine is recorded only in a module docstring.
 The rule is where the preset puts the bulb, not which task it belongs to. Seated in the socket
 makes it `old_bulb`; anywhere else makes it `fresh_bulb`.
 
-| Preset                       | Bulb placement                                | Name         | Prim path   |
-| ---------------------------- | --------------------------------------------- | ------------ | ----------- |
-| `workshop`                   | on the floor                                  | `fresh_bulb` | `/Bulb`     |
-| `tabletop`                   | table, hand height                            | `fresh_bulb` | `/Bulb`     |
-| `at_height` (Climb, Descend) | `PARKED_BULB_POSITION`, out of the way        | `fresh_bulb` | `/Bulb`     |
-| `position` (Carry)           | **seated in the ceiling socket, kinematic**   | `old_bulb`   | `/OldBulb`  |
-| `remove`                     | `TABLETOP_SEATED_BULB_POSITION` = socket pose | `old_bulb`   | `/OldBulb`  |
-| `install`                    | in the crate                                  | `fresh_bulb` | `/Bulb`     |
-| `replace`                    | both                                          | both         | both        |
+| Preset                       | Bulb placement                                | Name         | Prim path  |
+| ---------------------------- | --------------------------------------------- | ------------ | ---------- |
+| `workshop`                   | on the floor                                  | `fresh_bulb` | `/Bulb`    |
+| `tabletop`                   | table, hand height                            | `fresh_bulb` | `/Bulb`    |
+| `at_height` (Climb, Descend) | `PARKED_BULB_POSITION`, out of the way        | `fresh_bulb` | `/Bulb`    |
+| `position` (Carry)           | **seated in the ceiling socket, kinematic**   | `old_bulb`   | `/OldBulb` |
+| `remove`                     | `TABLETOP_SEATED_BULB_POSITION` = socket pose | `old_bulb`   | `/OldBulb` |
+| `install`                    | in the crate                                  | `fresh_bulb` | `/Bulb`    |
+| `replace`                    | both                                          | both         | both       |
 
 #### 1a. This is a scene-construction refactor, not a substitution
 
 The class default `bulb` (L422) is load-bearing: **every preset mutates it rather than creating
 it.** `apply_workshop_preset` (L496) is a documented no-op precisely because the class default
-*is* the workshop layout. `apply_tabletop_preset` (L523) sets `scene.bulb.init_state.pos`;
+_is_ the workshop layout. `apply_tabletop_preset` (L523) sets `scene.bulb.init_state.pos`;
 `apply_position_preset` (L525) sets pos, rot and `kinematic_enabled`; `apply_at_height_preset`
-(L574) sets pos; `apply_replace_preset` (L970) sets pos and then separately *constructs*
+(L574) sets pos; `apply_replace_preset` (L970) sets pos and then separately _constructs_
 `scene.old_bulb`.
 
 Making both entities optional therefore breaks every one of those, and "point each preset at one
@@ -110,19 +118,12 @@ the two diverge and must be written separately.
       same spawn config already duplicated once; the factory absorbs both.
 - [ ] `scene_cfg.py` — `bulb` field is **deleted**; declare
       `fresh_bulb: RigidObjectCfg | None = None` and keep `old_bulb: RigidObjectCfg | None = None`.
-- [ ] Every preset constructs exactly the bulbs it owns, and explicitly `None`s the other:
-      - `apply_workshop_preset` stops being a no-op — it must now build `fresh_bulb` at
-        `BULB_POSITION`. This is the change most likely to be forgotten, because the function
-        body is currently empty.
-      - `apply_tabletop_preset` builds `fresh_bulb` at `TABLETOP_BULB_POSITION`.
-      - `apply_at_height_preset` builds `fresh_bulb` at `PARKED_BULB_POSITION`.
-      - `apply_position_preset` (Carry) builds `old_bulb` at the fixture pose, kinematic, and
-        sets `fresh_bulb = None`.
-      - `apply_remove_preset` chains tabletop, then **clears `fresh_bulb`** and builds `old_bulb`
-        at `TABLETOP_SEATED_BULB_POSITION`.
-      - `apply_install_preset` chains tabletop, then repositions `fresh_bulb` to
-        `BIN_BULB_POSITION`; `old_bulb` stays `None`.
-      - `apply_replace_preset` builds both.
+- [ ] Every preset constructs exactly the bulbs it owns, and explicitly `None`s the other: - `apply_workshop_preset` stops being a no-op — it must now build `fresh_bulb` at
+      `BULB_POSITION`. This is the change most likely to be forgotten, because the function
+      body is currently empty. - `apply_tabletop_preset` builds `fresh_bulb` at `TABLETOP_BULB_POSITION`. - `apply_at_height_preset` builds `fresh_bulb` at `PARKED_BULB_POSITION`. - `apply_position_preset` (Carry) builds `old_bulb` at the fixture pose, kinematic, and
+      sets `fresh_bulb = None`. - `apply_remove_preset` chains tabletop, then **clears `fresh_bulb`** and builds `old_bulb`
+      at `TABLETOP_SEATED_BULB_POSITION`. - `apply_install_preset` chains tabletop, then repositions `fresh_bulb` to
+      `BIN_BULB_POSITION`; `old_bulb` stays `None`. - `apply_replace_preset` builds both.
 
 #### 1b. The prim path and the contact filter move together
 
@@ -158,11 +159,11 @@ directly — `_plug_point_w` (L81), `_bulb_socket_axis_error` (L97) and `_bulb_s
 
 **Old family — already parameterized.** `_old_bulb_plug_point_w` (L388) takes
 `asset_cfg: SceneEntityCfg = SceneEntityCfg("old_bulb")`, and its docstring states exactly why:
-*"Remove's standalone scene names its single (dynamic) seated bulb `bulb`, so its cfg passes
-`asset_cfg=SceneEntityCfg("bulb")` through every function below."*
+_"Remove's standalone scene names its single (dynamic) seated bulb `bulb`, so its cfg passes
+`asset_cfg=SceneEntityCfg("bulb")` through every function below."_
 
 That plumbing exists **solely to work around the naming defect this issue removes.** After the
-rename Remove's entity *is* `old_bulb`, which is already the default, so every caller uses the
+rename Remove's entity _is_ `old_bulb`, which is already the default, so every caller uses the
 default and the parameter becomes dead weight.
 
 - [ ] Delete the `removal_bulb_fixture_clearance` / `removal_bulb_disposal_distance` wrappers
@@ -192,7 +193,7 @@ unconditionally reads `env.scene["bulb"]`, and L127–128 call `_bulb_socket_pos
 - [ ] Leave the serialized keys `bulb_pos`, `bulb_quat`, `bulb_lin_vel` alone. They are
       independent string literals and old recordings must keep parsing.
 
-Note what this means for the acceptance test: "prior recordings still parse" exercises the *read*
+Note what this means for the acceptance test: "prior recordings still parse" exercises the _read_
 path and would pass with the write path fully broken. The test that matters is **recording a
 fresh Remove-v0 run**, which is the case that raises today's `KeyError`.
 
@@ -220,7 +221,7 @@ Three sites, none of which is a `scene["bulb"]` reference:
 The earlier draft of this plan read L433 —
 `cfg.scene.bulb.init_state.pos = TABLETOP_SEATED_BULB_POSITION` — as evidence that the script
 "exercises the same configuration Remove does." **It does not.** The harness is built from
-`FIATLUX-Insert-v0` (`build_insert_cfg`, L253; called at L426), and L433 teleports *Insert's*
+`FIATLUX-Insert-v0` (`build_insert_cfg`, L253; called at L426), and L433 teleports _Insert's_
 bulb to a seated pose to test contact stability at rest. The scene has no `old_bulb` and no
 Remove preset. Renaming it `old_bulb` dereferences `None`.
 
@@ -238,11 +239,11 @@ The three documented patterns cover 42 sites across 12 files: `SceneEntityCfg("b
 
 At least three more do not match any of the three patterns:
 
-| Site                     | Why the patterns miss it                        |
-| ------------------------ | ----------------------------------------------- |
-| `verify_attach.py:115`   | `cfg.scene.bulb` — no trailing dot              |
-| `verify_scene.py:126`    | bare `"bulb"` string in `TRACKED_CANDIDATES`    |
-| `attach.py:75`           | comment: `state row of the fresh bulb (scene entity "bulb")` |
+| Site                   | Why the patterns miss it                                     |
+| ---------------------- | ------------------------------------------------------------ |
+| `verify_attach.py:115` | `cfg.scene.bulb` — no trailing dot                           |
+| `verify_scene.py:126`  | bare `"bulb"` string in `TRACKED_CANDIDATES`                 |
+| `attach.py:75`         | comment: `state row of the fresh bulb (scene entity "bulb")` |
 
 - [ ] Extend the completeness gate to `scene\.bulb\b` and to the bare-literal cases, so it cannot
       report `OK` while `verify_scene.py` is still tracking a `bulb` that no longer exists. The
@@ -272,8 +273,8 @@ dynamic before wiring the term.
 - [ ] Wire the event term into `remove_env_cfg.py` and `install_env_cfg.py`.
 - [ ] Swap Remove's sparse predicates for the attach-aware ones (table below).
 - [ ] **Swap Remove's two dense `distance_progress` channels too**, not only the sparse terms
-      gated on predicates. Remove labels the two groups itself: *dense* channels
-      (`mdp.distance_progress`) pay normalized progress every step; *sparse* ones
+      gated on predicates. Remove labels the two groups itself: _dense_ channels
+      (`mdp.distance_progress`) pay normalized progress every step; _sparse_ ones
       (`mdp.completion_bonus`, terminations) pay once when a predicate flips. The dense case is
       the worse failure — `distance_progress` pays **best-progress increments** against a latched
       `self._best` (`rewards.py` L454–464), so a transient pre-projection displacement banks
@@ -284,24 +285,23 @@ dynamic before wiring the term.
 - [ ] **Install has three seating outputs, and all three need a decision.** "Gate seating on
       `fresh_bulb_attached`" names none of them individually:
 
-  | Site                        | Term                            | Action                                     |
-  | --------------------------- | ------------------------------- | ------------------------------------------ |
-  | `install_env_cfg.py:179`    | `seated_bonus` → `bulb_seated`  | → `mdp.fresh_bulb_attached`                |
-  | `install_env_cfg.py:217`    | `success` (DoneTerm) → `bulb_seated` | → `mdp.fresh_bulb_attached`           |
-  | `install_env_cfg.py:177`    | `seat_position_exp` → `object_socket_distance_exp` | **decide explicitly** |
+  | Site                     | Term                                               | Action                      |
+  | ------------------------ | -------------------------------------------------- | --------------------------- |
+  | `install_env_cfg.py:179` | `seated_bonus` → `bulb_seated`                     | → `mdp.fresh_bulb_attached` |
+  | `install_env_cfg.py:217` | `success` (DoneTerm) → `bulb_seated`               | → `mdp.fresh_bulb_attached` |
+  | `install_env_cfg.py:177` | `seat_position_exp` → `object_socket_distance_exp` | **decide explicitly**       |
 
   The DoneTerm is the one that defines the task, so it is not optional.
 
   **The dense channel keeps its geometry. Replace already settled this**, and Install should copy
   it rather than invent a third answer: `replace_env_cfg.py` keeps a raw geometric dense channel
   for the approach (`fresh_bulb_progress`, L255, over `mdp.bulb_fixture_distance`) and pays the
-  mechanic *separately* through a sparse attach-aware bonus (`fresh_bulb_inserted`, L290, over
+  mechanic _separately_ through a sparse attach-aware bonus (`fresh_bulb_inserted`, L290, over
   `mdp.fresh_bulb_attached`), whose comment states the split outright: "pays only after full
   insertion and bulb rotation, not on transiting the geometric success zone."
-
   - [ ] Keep `seat_position_exp` geometric, and update its cfg comment to say it now means
         "aligned and inserted" — approach shaping, not seating.
-  - [ ] **No additional bonus term.** Converting `seated_bonus` to `fresh_bulb_attached` *is*
+  - [ ] **No additional bonus term.** Converting `seated_bonus` to `fresh_bulb_attached` _is_
         Install's equivalent of `fresh_bulb_inserted`; adding a second `completion_bonus` on the
         same predicate would pay the same event twice, once through the reward and once through
         the termination that fires on the same step.
@@ -313,7 +313,7 @@ dynamic before wiring the term.
   fixed here anyway: shaping on rotation requires reading `theta`, which appears in no
   observation (§5). Flagging it so it is not rediscovered as a training mystery.
 
-  **Why Remove's dense channels *do* become attach-aware, and Install's does not.** Not because
+  **Why Remove's dense channels _do_ become attach-aware, and Install's does not.** Not because
   the projection ignores approach — it does not; `_advance` (L250–279) clamps lateral position,
   orientation and velocity throughout `AXIAL` travel. The narrower true property is what matters
   for reward: motion **along** the seat axis toward the seat is permitted inside the channel and
@@ -567,11 +567,11 @@ out during banner exchange), so Tailscale is the working route.
 **Run under the `student2` account.** It holds the toolchain; the `pasha` account has no conda,
 Isaac Lab or checkout.
 
-|           |                                                     |
-| --------- | --------------------------------------------------- |
-| conda     | `/home/student2/miniconda3`                         |
-| env       | `env_isaaclab` — the name the commands below assume |
-| Isaac Lab | `/home/student2/IsaacLab`, tag **v2.3.1**           |
+|           |                                                      |
+| --------- | ---------------------------------------------------- |
+| conda     | `/home/student2/miniconda3`                          |
+| env       | `env_isaaclab` — the name the commands below assume  |
+| Isaac Lab | `/home/student2/IsaacLab`, tag **v2.3.1**            |
 | repo      | `~/fiatlux`, assets in place (728 MB, 169 USD files) |
 
 The host cannot reach GitHub and has no `gsutil`, so the repo arrived as a `git bundle` and the
@@ -620,7 +620,7 @@ the third correction: a `"bulb"`-only pattern silently passes a tree containing
 `SceneEntityCfg('bulb')`. The `scripts/omniverse/` exclusion is real and not a workaround — those
 are asset-authoring scripts where `"bulb"` names a USD half, not a scene entity.
 
-The scene regression must cover all eight presets. Step 1 restructures how *every* preset
+The scene regression must cover all eight presets. Step 1 restructures how _every_ preset
 constructs its bulb, so running only Remove, Install and Replace leaves Base, Insert, Carry,
 Climb and Descend unverified — and `apply_workshop_preset`, the preset that changes most (empty
 function to bulb constructor), is exercised by none of the three.
@@ -637,7 +637,7 @@ this port did not break it. It does not show that a robot can operate the mechan
   `success` termination and not only in a reward.
 - `FIATLUX-Replace-v0` holds at 21/21 and `--check-ranges` 1/1.
 - `old_bulb` means "starts seated in the socket" and `fresh_bulb` means "starts free", in every
-  task, and no entity is named `bulb`. (Seated, not *locked*: Carry's `old_bulb` is kinematic
+  task, and no entity is named `bulb`. (Seated, not _locked_: Carry's `old_bulb` is kinematic
   scenery and deliberately stays outside the state machine, so it is never in `ROTATING`.)
 - Every preset declares exactly the bulb roles the §2 table prescribes — no more, no fewer —
   asserted in `PRESET_PRESENCE` for all eight.
@@ -657,25 +657,36 @@ this port did not break it. It does not show that a robot can operate the mechan
 
 ---
 
-## 5. Open questions inherited from #54
+## 5. Blocked by #77
 
-Neither is introduced by this port, but both bound its value: porting a mechanic that cannot be
-operated spreads the problem to two more tasks. Both are really one experiment — put a robot on
-the mechanic and watch `theta` — and both need observability that does not exist: **`_phase` and
-`_theta` appear in no observation, telemetry or recording path.**
+The two questions #54 left open are no longer hypothetical. Yujin's 2026-08-12 report establishes
+that **a human cannot operate this mechanic on the one task that has it**: on Replace-v0, rotating
+the old bulb does not release it. Pulling without rotating does not either, but that half is the
+lock working exactly as designed — the old bulb resets into `ROTATING`, where the projection
+(L250–279) rewrites it to the seat pose with `proj_lin = 0` every step, so no axial pull can move
+it. The unlock rotation is what fails.
 
-- **`rotation_sign` handedness is unresolved.** #54 §10 records it as "to be chosen from
-  teleop/scripted attempts". It shipped hardcoded at `+1.0` and was never chosen. Because the
-  old bulb resets at the clamp ceiling, twisting in the locking direction produces no state
-  change and no feedback of any kind. An operator cannot distinguish a wrong twist direction
-  from a broken mechanic.
-- **Contact-driven twist is untested.** Twist delivered through finger friction against a body
-  whose pose is overwritten every environment step has never been exercised. #54 §10 anticipates
-  a compliant channel as the refinement if the hard pose writes fight the solver.
+Three candidate causes, indistinguishable today:
 
-Suggested order: expose the lock state first. It is small, and §3's own tests need to read
-`theta` anyway — with it exposed, choosing the sign becomes a ten-minute experiment. Settle both
-on `FIATLUX-Replace-v0` before this port lands, because the answers may change what gets ported.
+- **`rotation_sign` handedness was never chosen.** #54 §10 records it as "to be chosen from
+  teleop/scripted attempts"; it shipped hardcoded at `1.0` (`replace_env_cfg.py` L186). Worse than
+  a coin flip, because the wrong face is silent: the old bulb resets at the clamp ceiling, so
+  twisting further into the lock changes nothing, and `at_lock_stop` (L271–272) additionally zeroes
+  the angular velocity in that direction. One of the two choices leaves the bulb wholly inert.
+- **Contact-driven twist may not work at all.** `verify_attach.py`'s `bayonet:bulb_rotation_unlocks_old`
+  (L430) proves the unlock logic under *direct pose driving* with robot actions at zero. Finger
+  friction against a body whose pose is overwritten every step has never been exercised. #54 §10
+  anticipates a compliant channel if the hard pose writes fight the solver.
+- **Scene edits.** Yujin repositioned the bulb and socket. If the socket's rotation changed without
+  the bulb's matching it, `reset()`'s premise that "the old bulb's init rot IS the fixture rot"
+  (L159) breaks and `theta` integrates a spurious first-step delta.
+
+None can be told apart because **`_phase` and `_theta` appear in no observation, telemetry or
+recording path.** #77 covers the diagnosis and that observability.
+
+**This is a hard dependency on #77, not a caution.** Porting a mechanic that cannot be operated
+spreads the problem to two more tasks. #77 also delivers the `theta` readout §3's own tests
+require — reset integrity, the absent-row gate and no-early-scoring all have to read it.
 
 ---
 
