@@ -22,6 +22,8 @@ reviewed architecture directly:
    known offset, carrying the manager's own state (issue #77).
 9. `rotation_sign` releases the way a real bayonet cap does -- counter-clockwise to an
    operator facing the fixture (issue #77).
+10. The seated bulb spawns at the fixture's own rotation, which is what `reset()` assumes
+    when it zeroes `_prev_twist` (issue #77).
 
 The socket is moved to the fixed-root robot's palm for a compact, visible test rig. Both
 bulbs have gravity and collisions disabled only in this harness, isolating the tensorized
@@ -327,6 +329,26 @@ def _check_lock_state_observable(env, manager) -> None:
     )
 
 
+def _check_spawn_twist(env, socket, old_bulb) -> None:
+    """The seated bulb must spawn at the fixture's own rotation (issue #77 task 4).
+
+    ``reset()`` sets ``_prev_twist = 0`` on the stated premise that "the old bulb's init rot IS
+    the fixture rot" (``attach.py`` L159). A scene edit that moves the socket's rotation without
+    matching the bulb's breaks it: the first step then reads the mismatch as a real twist and
+    integrates a false delta into theta, which can spuriously advance the unlock.
+
+    Measured before any step, so it reads the spawn poses and not the projected ones.
+    """
+    axis = torch.tensor(SOCKET_SEAT_AXIS, device=env.device).expand(env.num_envs, 3)
+    twist = task_attach._signed_twist(socket.data.root_quat_w, old_bulb.data.root_quat_w, axis)
+    worst = float(twist.abs().max().item())
+    record(
+        "bayonet:seated_bulb_spawns_untwisted",
+        worst < 1e-3,
+        f"worst |spawn twist| = {worst:.2e} rad across {env.num_envs} env(s)",
+    )
+
+
 def _check_release_direction(manager, seat_geometry) -> None:
     """The release twist must read counter-clockwise to the operator (issue #77 task 2).
 
@@ -378,6 +400,7 @@ def main() -> int:
             return _summary()
         record("bayonet:manager_present", True, "mdp.bulb_attachment is enforced every step")
         _check_lock_state_observable(env, manager)
+        _check_spawn_twist(env, socket, old_bulb)
 
         zero_action = torch.zeros((env.num_envs, env.action_manager.total_action_dim), device=env.device)
         zeros6 = torch.zeros((env.num_envs, 6), device=env.device)
