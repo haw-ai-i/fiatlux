@@ -336,6 +336,13 @@ def _check_release_direction(manager, seat_geometry) -> None:
     at +1.0, which inverted both halves and left the real release direction completely
     inert -- no rotation, no state change, nothing observable.
 
+    The test does not look at world axes, because Replace mounts the fixture on a random
+    wall and the seat axis can point any direction. It uses a mount-independent fact
+    instead: the seat axis points from the seat OUTWARD along the insertion axis (positive
+    axial travel leaves the socket, which is what ``eject`` tests), so it always points at
+    whoever holds the bulb. A positive rotation about an axis aimed at the viewer reads
+    counter-clockwise to that viewer, whatever the fixture's orientation.
+
     Making the rest of the suite sign-agnostic (see ``bulb_pose``) is what makes this check
     necessary: with the rotations expressed in lock-positive units, nothing else here would
     notice the sign flipping back.
@@ -344,17 +351,12 @@ def _check_release_direction(manager, seat_geometry) -> None:
     # The physical twist the manager holds while locked. Release drives it toward zero, so
     # the release rotation is positive about the seat axis exactly when this is negative.
     locked_twist = manager.rotation_sign * float(manager._angle[0].item())
-    release_is_positive = locked_twist < 0.0
-    # This fixture mounts overhead and its seat axis points down, i.e. at an operator
-    # standing underneath. A positive rotation about an axis reads counter-clockwise to a
-    # viewer that the axis points toward.
-    axis_faces_operator = bool(axis_w[2].item() < 0.0)
-    counter_clockwise = release_is_positive == axis_faces_operator
+    counter_clockwise = locked_twist < 0.0
     record(
         "bayonet:release_reads_counter_clockwise",
         counter_clockwise,
-        f"rotation_sign={manager.rotation_sign:+.0f}, seat axis z={axis_w[2].item():+.2f} -> operator turns "
-        f"{'counter-clockwise' if counter_clockwise else 'CLOCKWISE (inverted: a real cap releases CCW)'}",
+        f"rotation_sign={manager.rotation_sign:+.0f}, seat axis {[round(v, 2) for v in axis_w.tolist()]} "
+        f"-> operator turns {'counter-clockwise' if counter_clockwise else 'CLOCKWISE (a real cap releases CCW)'}",
     )
 
 

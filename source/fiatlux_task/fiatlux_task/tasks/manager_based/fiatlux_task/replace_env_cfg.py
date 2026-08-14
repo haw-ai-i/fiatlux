@@ -188,12 +188,14 @@ class EventCfg:
             "insertion_depth": BAYONET_INSERTION_DEPTH,
             "rotation_angle": BAYONET_ROTATION_ANGLE,
             # -1.0 makes the mechanic turn the way a real bayonet cap does (issue #77).
-            # This fixture's world seat axis is (0, 0, -1) -- it points down, because the
-            # socket is inverted for the ceiling mount. By the right-hand rule a positive
-            # rotation about that axis reads COUNTER-CLOCKWISE to an operator underneath
-            # looking up. A BA22d cap releases counter-clockwise and seats clockwise, so
-            # release must be the positive direction about the seat axis, which is
-            # rotation_sign = -1 (unlock needs delta < 0, and delta = sign * twist change).
+            # SOCKET_SEAT_AXIS points from the seat OUTWARD along the insertion axis --
+            # positive axial travel leaves the socket, which is what `eject` tests -- so it
+            # always points at whoever holds the bulb, whatever wall the fixture randomizes
+            # onto. A positive rotation about an axis aimed at the viewer reads
+            # COUNTER-CLOCKWISE to that viewer. A BA22d cap releases counter-clockwise and
+            # seats clockwise, so release must be the positive direction about the seat
+            # axis: rotation_sign = -1, since unlock needs delta < 0 and delta is
+            # sign * (twist change).
             #
             # It shipped at +1.0 from #54, never chosen -- and +1.0 inverts both halves.
             # Measured on the fixture: at +1.0 a counter-clockwise operator twist (the real
