@@ -187,7 +187,21 @@ class EventCfg:
         params={
             "insertion_depth": BAYONET_INSERTION_DEPTH,
             "rotation_angle": BAYONET_ROTATION_ANGLE,
-            "rotation_sign": 1.0,
+            # -1.0 makes the mechanic turn the way a real bayonet cap does (issue #77).
+            # This fixture's world seat axis is (0, 0, -1) -- it points down, because the
+            # socket is inverted for the ceiling mount. By the right-hand rule a positive
+            # rotation about that axis reads COUNTER-CLOCKWISE to an operator underneath
+            # looking up. A BA22d cap releases counter-clockwise and seats clockwise, so
+            # release must be the positive direction about the seat axis, which is
+            # rotation_sign = -1 (unlock needs delta < 0, and delta = sign * twist change).
+            #
+            # It shipped at +1.0 from #54, never chosen -- and +1.0 inverts both halves.
+            # Measured on the fixture: at +1.0 a counter-clockwise operator twist (the real
+            # release direction) leaves the bulb completely inert, because the old bulb
+            # resets AT the clamp ceiling and `at_lock_stop` damps the angular velocity. No
+            # rotation, no displacement, no state change. That matches the 2026-08-10 report
+            # exactly, and it is the failure mode #77 predicted a wrong sign would produce.
+            "rotation_sign": -1.0,
             "radial_tolerance": SEAT_POS_THRESHOLD,
             "orientation_tolerance": SEAT_ORI_THRESHOLD,
         },

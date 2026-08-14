@@ -149,6 +149,8 @@ def _build_rig(env, robot, socket, old_bulb, fresh_bulb, palm_id, zero_action, z
     seat_offset = torch.tensor(SOCKET_SEAT_OFFSET, device=env.device)
     plug_offset = torch.tensor(BULB_PLUG_OFFSET, device=env.device)
     seat_axis = torch.tensor(SOCKET_SEAT_AXIS, device=env.device)
+    _manager = task_attach.attachment_manager(env)
+    rotation_sign = 1.0 if _manager is None else _manager.rotation_sign
 
     def palm_pos() -> torch.Tensor:
         return robot.data.body_link_pos_w[0, palm_id]
@@ -176,7 +178,11 @@ def _build_rig(env, robot, socket, old_bulb, fresh_bulb, palm_id, zero_action, z
 
     def bulb_pose(axial_distance: float, rotation: float, lateral_distance: float = 0.0) -> torch.Tensor:
         seat_point, socket_quat, world_axis = seat_geometry()
-        bulb_quat = _spin_about(socket_quat, world_axis, rotation)
+        # `rotation` is LOCK-POSITIVE (0 = released, +rotation_angle = fully locked), the
+        # same convention as the manager's theta. `rotation_sign` maps it onto the physical
+        # twist about the seat axis. Without this factor the suite silently assumes
+        # rotation_sign == +1 and every rotation check inverts when the sign is flipped.
+        bulb_quat = _spin_about(socket_quat, world_axis, rotation_sign * rotation)
         plug_point = seat_point + axial_distance * world_axis + lateral_distance * lateral_axis(world_axis)
         bulb_pos = plug_point - quat_apply(bulb_quat.unsqueeze(0), plug_offset.unsqueeze(0))[0]
         return torch.cat([bulb_pos, bulb_quat])
