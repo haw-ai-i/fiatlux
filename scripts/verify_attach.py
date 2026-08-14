@@ -18,6 +18,8 @@ reviewed architecture directly:
    bulb itself reaches the configured rotation angle.
 6. The completed replacement still satisfies the task success predicate.
 7. `(low, high)` parameter ranges sample per env and re-sample on reset.
+8. The lock state (`_phase`, `_theta`) reaches the privileged observation group, at a
+   known offset, carrying the manager's own state (issue #77).
 
 The socket is moved to the fixed-root robot's palm for a compact, visible test rig. Both
 bulbs have gravity and collisions disabled only in this harness, isolating the tensorized
@@ -289,6 +291,34 @@ def _find_palm(robot) -> int:
     raise ValueError(f"no right palm found; available bodies: {robot.body_names}")
 
 
+def _check_lock_state_observable(env, manager) -> None:
+    """Assert the bayonet lock state reaches the privileged observation group (issue #77).
+
+    Placement matters, not only presence: the group concatenates, so a consumer reads the
+    lock columns by offset. This pins them to the tail and checks they carry the manager's
+    own reset state -- the old bulb locked at the rotation angle, the fresh bulb free.
+
+    Without this term ``_phase`` and ``_theta`` reach no observation, telemetry or recording
+    path, and an operator cannot tell a twist that does not register from one the lock
+    clamps away.
+    """
+    terms = env.observation_manager.active_terms.get("privileged", [])
+    if "bulb_lock_state" not in terms:
+        record("bayonet:lock_state_observable", False, "no bulb_lock_state term in the privileged group")
+        return
+    priv = env.observation_manager.compute()["privileged"]
+    lock = task_attach.bulb_lock_state(env)
+    tail_ok = bool(torch.allclose(priv[:, -4:], lock))
+    old_locked = bool(torch.all(lock[:, 0] == 2.0)) and bool(torch.allclose(lock[:, 1], manager._angle))
+    fresh_free = bool(torch.all(lock[:, 2] == 0.0)) and bool(torch.all(lock[:, 3] == 0.0))
+    record(
+        "bayonet:lock_state_observable",
+        tail_ok and old_locked and fresh_free,
+        f"privileged[{priv.shape[-1]}] tail 4 = {[round(v, 4) for v in lock[0].tolist()]} "
+        f"(old ROTATING at theta=angle, fresh FREE)",
+    )
+
+
 def main() -> int:
     global VIDEO
     torch.manual_seed(args_cli.seed)
@@ -306,6 +336,7 @@ def main() -> int:
             record("bayonet:manager_present", False, "no bulb_attachment term wired on FIATLUX-Replace-v0")
             return _summary()
         record("bayonet:manager_present", True, "mdp.bulb_attachment is enforced every step")
+        _check_lock_state_observable(env, manager)
 
         zero_action = torch.zeros((env.num_envs, env.action_manager.total_action_dim), device=env.device)
         zeros6 = torch.zeros((env.num_envs, 6), device=env.device)
