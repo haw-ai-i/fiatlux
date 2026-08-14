@@ -146,7 +146,27 @@ class bulb_attachment(ManagerTermBase):
         self._axis_l = torch.tensor(SOCKET_SEAT_AXIS, device=dev).expand(n, 3)
         self._seat_offset = torch.tensor(SOCKET_SEAT_OFFSET, device=dev).expand(n, 3)
         self._plug_offset = torch.tensor(BULB_PLUG_OFFSET, device=dev).expand(n, 3)
+        # Telemetry snapshot, taken at the end of every __call__ and never touched by reset().
+        # `ManagerBasedRLEnv.step` runs interval events BEFORE it auto-resets finished
+        # episodes, so this holds the state as of the terminating step -- which is what a
+        # recorder wants for that row. Reading the live tensors there would report the *next*
+        # episode's reset phases and freshly sampled limits instead.
+        self._snapshot = (
+            torch.zeros(2, n, device=dev),  # phase, as float
+            torch.zeros(2, n, device=dev),  # theta
+            torch.zeros(n, device=dev),  # sampled rotation angle
+            torch.zeros(n, device=dev),  # sampled insertion depth
+        )
         self.reset()
+        self._take_snapshot()
+
+    def _take_snapshot(self) -> None:
+        """Copy the current lock state into the telemetry snapshot. See ``_snapshot``."""
+        phase, theta, angle, depth = self._snapshot
+        phase.copy_(self._phase.float())
+        theta.copy_(self._theta)
+        angle.copy_(self._angle)
+        depth.copy_(self._depth)
 
     @property
     def rotation_sign(self) -> float:
@@ -203,6 +223,7 @@ class bulb_attachment(ManagerTermBase):
             orientation_tolerance=orientation_tolerance,
             seat_tolerance=seat_tolerance,
         )
+        self._take_snapshot()
 
     def _advance(
         self,
@@ -336,15 +357,21 @@ def bulb_lock_telemetry(env: ManagerBasedRLEnv) -> dict[str, torch.Tensor]:
     ``rotation_angle`` and ``insertion_depth`` re-sample per env at every reset, so a
     recorded ``theta`` alone is not interpretable: the same 1.4 rad is a fully locked bulb
     under one sample and a half-turned one under the next.
+
+    Reads the snapshot rather than the live tensors, because a recorder runs after
+    ``ManagerBasedRLEnv.step`` has auto-reset whichever episodes finished. The live state of a
+    done env already belongs to the NEXT episode, so a terminal row would otherwise carry that
+    episode's reset phases and newly sampled limits. This is the same hazard ``recording.py``
+    documents for object poses, and the reason it reads termination term flags.
     """
-    mgr = _attachment(env)
+    phase, theta, angle, depth = _attachment(env)._snapshot
     return {
-        "old_bulb_phase": mgr._phase[_OLD].float(),
-        "old_bulb_theta": mgr._theta[_OLD],
-        "fresh_bulb_phase": mgr._phase[_FRESH].float(),
-        "fresh_bulb_theta": mgr._theta[_FRESH],
-        "lock_rotation_angle": mgr._angle,
-        "lock_insertion_depth": mgr._depth,
+        "old_bulb_phase": phase[_OLD],
+        "old_bulb_theta": theta[_OLD],
+        "fresh_bulb_phase": phase[_FRESH],
+        "fresh_bulb_theta": theta[_FRESH],
+        "lock_rotation_angle": angle,
+        "lock_insertion_depth": depth,
     }
 
 

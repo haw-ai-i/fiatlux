@@ -83,6 +83,7 @@ import gymnasium as gym
 import torch
 from fiatlux_task.assets import BULB_PLUG_OFFSET, SOCKET_SEAT_AXIS, SOCKET_SEAT_OFFSET
 from fiatlux_task.tasks.manager_based.fiatlux_task.mdp import attach as task_attach
+from fiatlux_task.tasks.manager_based.fiatlux_task.scene_cfg import set_layout_seed
 
 import isaaclab.sim as sim_utils
 from isaaclab.utils.math import quat_apply, quat_mul
@@ -97,7 +98,12 @@ DISABLE_GRAVITY = NO_COLLIDE or os.environ.get("DISABLE_GRAVITY") == "1"
 
 
 def build_cfg():
-    cfg = parse_env_cfg("FIATLUX-Replace-v0", num_envs=1)
+    # Declare the layout seed BEFORE parse_env_cfg: Replace draws its fixture mount inside
+    # __post_init__, before cfg.seed exists. Without this each invocation gets a different
+    # wall or ceiling mount from OS entropy -- and this script's whole point is comparing two
+    # invocations that differ ONLY in the bulb's collider.
+    set_layout_seed(args_cli.seed)
+    cfg = parse_env_cfg("FIATLUX-Replace-v0", device=args_cli.device, num_envs=1)
     cfg.seed = args_cli.seed
     for camera in ("ego_camera", "torso_camera", "wrist_camera"):
         if getattr(cfg.scene, camera, None) is not None:
@@ -256,11 +262,31 @@ def main() -> int:
         f"contact_unlocked={contact_unlocked} control_unlocked={control_unlocked}",
         flush=True,
     )
-    if not control_unlocked:
-        print("INVALID the pose-drive control failed; this run proves nothing", flush=True)
     env.close()
+    if not control_unlocked:
+        # Exit nonzero: the control is what makes the contact result mean anything. A run that
+        # reports "proves nothing" must not read as success to a shell or CI caller.
+        print("INVALID the pose-drive control failed; this run proves nothing", flush=True)
+        return 1
     return 0
 
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+    # Closing the env does not tear down Kit, so the app has to be closed too or the process
+    # outlives the verdict holding GPU resources. But a blanket `finally: close()` is the
+    # wrong shape here: with the env left un-closed, `simulation_app.close()` itself blocks
+    # (see the note in scripts/record_run.py), so a failure would hang instead of reporting.
+    # Same resolution verify_attach.py uses -- hard-exit past the hung threads on failure,
+    # close normally on success.
+    import os
+    import sys
+
+    exit_code = 1
+    try:
+        exit_code = main()
+    finally:
+        sys.stdout.flush()
+        sys.stderr.flush()
+        if exit_code:
+            os._exit(exit_code)
+        simulation_app.close()

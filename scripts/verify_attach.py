@@ -77,6 +77,7 @@ from fiatlux_task.tasks.manager_based.fiatlux_task.replace_env_cfg import (
     BAYONET_INSERTION_DEPTH,
     BAYONET_ROTATION_ANGLE,
 )
+from fiatlux_task.tasks.manager_based.fiatlux_task.scene_cfg import set_layout_seed
 from prettytable import PrettyTable
 
 import isaaclab.sim as sim_utils
@@ -99,6 +100,12 @@ def info(message: str) -> None:
 
 def build_replace_cfg(num_envs: int = 1):
     """Return a deterministic Replace config stripped to the bayonet test rig."""
+    # Replace draws its fixture mount at cfg-build time, inside parse_env_cfg and before
+    # cfg.seed exists, so the seed has to be declared here or the layout comes from OS
+    # entropy. Without this the suite silently tests a different wall or ceiling mount on
+    # every run, which is how `bayonet:release_reads_counter_clockwise` was seen reporting
+    # two different seat axes for the same commit.
+    set_layout_seed(args_cli.seed)
     cfg = parse_env_cfg("FIATLUX-Replace-v0", device=args_cli.device, num_envs=num_envs)
     cfg.seed = args_cli.seed
     for event in ("randomize_sky_intensity", "randomize_key_light", "randomize_material_tint"):
@@ -338,14 +345,23 @@ def _check_spawn_twist(env, socket, old_bulb) -> None:
     integrates a false delta into theta, which can spuriously advance the unlock.
 
     Measured before any step, so it reads the spawn poses and not the projected ones.
+
+    Both the twist and the FULL orientation have to match. ``_signed_twist`` projects onto the
+    seat axis, so a pure swing mismatch -- a local-X tilt, say -- returns zero twist and would
+    pass a twist-only test while the bulb is genuinely misaligned. The first interval event then
+    snaps it into place and hides the regression.
     """
     axis = torch.tensor(SOCKET_SEAT_AXIS, device=env.device).expand(env.num_envs, 3)
-    twist = task_attach._signed_twist(socket.data.root_quat_w, old_bulb.data.root_quat_w, axis)
+    socket_quat, bulb_quat = socket.data.root_quat_w, old_bulb.data.root_quat_w
+    twist = task_attach._signed_twist(socket_quat, bulb_quat, axis)
+    swing = task_attach._orientation_error(socket_quat, bulb_quat)
     worst = float(twist.abs().max().item())
+    worst_full = float(swing.abs().max().item())
     record(
         "bayonet:seated_bulb_spawns_untwisted",
-        worst < 1e-3,
-        f"worst |spawn twist| = {worst:.2e} rad across {env.num_envs} env(s)",
+        worst < 1e-3 and worst_full < 1e-3,
+        f"worst |spawn twist| = {worst:.2e} rad, worst full orientation error = {worst_full:.2e} rad "
+        f"across {env.num_envs} env(s)",
     )
 
 
