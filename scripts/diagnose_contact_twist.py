@@ -17,19 +17,31 @@ must unlock (otherwise the harness itself is broken and the run says nothing).
 
 What it found, on `FIATLUX-Replace-v0` at `rotation_sign=-1`:
 
-    bulb collider   gravity   torque unlocks?
-    on              on        NO      <- the real scene
-    off             on        yes
-    off             off       yes     <- verify_attach's rig
+    bulb collider   gravity   torque unlocks?   pose-drive control unlocks?
+    on              on        NO                NO      <- the real scene
+    off             on        yes               yes
+    off             off       yes               yes     <- verify_attach's rig
 
-So the projection is NOT the blocker, and #77's cause 2 as originally framed is refuted: a
-torque of 0.001 N.m advances theta and unlocks the bulb, and injected angular velocity works
-too. The blocker is the bulb's own collider fighting the projection. Pinning the bulb into
-the socket's triangle mesh every step makes the contact solver answer with large erratic
-impulses -- angular velocities of +-24 rad/s were observed against an applied 0.001 N.m --
-which swamp the twist, so theta never accumulates coherently.
+Two results, and the second is the important one.
 
-That is why `verify_attach` cannot see this: it disables the colliders it would need.
+#77's cause 2 as originally framed is REFUTED. Whether a contact twist survives the pose
+writes was never the problem: with the collider off, a torque of 0.001 N.m advances theta
+and unlocks the bulb, and injected angular velocity does too.
+
+With the collider on, NOTHING unlocks -- not torque, not injected velocity, and not even
+direct pose writes, which is the method `verify_attach` proves works. The control run drives
+theta to exactly 0.0000 and the bulb still does not release. `unlock` needs
+``theta <= _EPS`` AND ``delta < 0`` on the SAME step, and contact keeps breaking that
+conjunction: held at the commanded release angle, theta jitters 0.0025 -> 0.0125 -> 0.0054
+-> 0.0122 instead of settling. The bulb's collider, pinned into the socket's triangle mesh
+by the projection every step, is what supplies the jitter. Gravity is not a factor; the
+middle row isolates it.
+
+So the mechanic is not operable in the real scene by ANY drive method, which is a stronger
+statement than "teleoperation cannot turn it".
+
+That is why `verify_attach` cannot see this: it disables the colliders that are the whole
+question. Its 23/23 remains a statement about the state machine alone.
 
 Examples
 --------
