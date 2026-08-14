@@ -169,7 +169,9 @@ def main() -> int:
             if i % 40 == 0 or i == args_cli.steps - 1:
                 trace.append((i, round(theta(), 4), phase(), round(axial_omega(), 2)))
         old_bulb.set_external_force_and_torque(forces, torch.zeros((1, 1, 3), device=device))
-        unlocked = phase() == task_attach._AXIAL
+        # Released means out of the lock groove. A bulb that unlocked and then ejected
+        # reads FREE, not AXIAL -- testing for AXIAL alone scores that as a failure.
+        unlocked = phase() != task_attach._ROTATING
         print(
             f"TORQUE mag={magnitude:g} dir={direction:+.0f} {start:.4f} -> {theta():.4f} "
             f"unlocked={unlocked} trace={trace}",
@@ -187,7 +189,9 @@ def main() -> int:
             velocity[:, 3:] = omega * axis_w
             old_bulb.write_root_velocity_to_sim(velocity)
             env.step(zero_action)
-        unlocked = phase() == task_attach._AXIAL
+        # Released means out of the lock groove. A bulb that unlocked and then ejected
+        # reads FREE, not AXIAL -- testing for AXIAL alone scores that as a failure.
+        unlocked = phase() != task_attach._ROTATING
         print(f"VELOCITY omega={omega:+g} {start:.4f} -> {theta():.4f} unlocked={unlocked}", flush=True)
         return unlocked
 
@@ -223,7 +227,9 @@ def main() -> int:
             env.step(zero_action)
             if i % 20 == 0 or i == 59:
                 hold_trace.append((i, round(theta(), 4), phase()))
-        unlocked = phase() == task_attach._AXIAL
+        # Released means out of the lock groove. A bulb that unlocked and then ejected
+        # reads FREE, not AXIAL -- testing for AXIAL alone scores that as a failure.
+        unlocked = phase() != task_attach._ROTATING
         print(
             f"CONTROL_POSE_DRIVE {start:.4f} -> driven={driven:.4f} -> held={theta():.4f} "
             f"unlocked={unlocked} hold={hold_trace}",
