@@ -197,8 +197,26 @@ def main() -> int:
             old_bulb.write_root_pose_to_sim(torch.cat([bulb_pos, bulb_quat]).unsqueeze(0))
             old_bulb.write_root_velocity_to_sim(torch.zeros((1, 6), device=device))
             env.step(zero_action)
+        driven = theta()
+        # Hold at the commanded release angle. If theta converges to 0 the shortfall above
+        # was lag; if it plateaus, contact is holding a steady-state twist error that the
+        # unlock threshold (theta <= _EPS) can never clear.
+        hold_trace = []
+        for i in range(60):
+            socket_quat = socket.data.root_quat_w[0]
+            seat = socket.data.root_pos_w[0] + quat_apply(socket_quat.unsqueeze(0), seat_offset.unsqueeze(0))[0]
+            bulb_pos = seat - quat_apply(socket_quat.unsqueeze(0), plug_offset.unsqueeze(0))[0]
+            old_bulb.write_root_pose_to_sim(torch.cat([bulb_pos, socket_quat]).unsqueeze(0))
+            old_bulb.write_root_velocity_to_sim(torch.zeros((1, 6), device=device))
+            env.step(zero_action)
+            if i % 20 == 0 or i == 59:
+                hold_trace.append((i, round(theta(), 4), phase()))
         unlocked = phase() == task_attach._AXIAL
-        print(f"CONTROL_POSE_DRIVE {start:.4f} -> {theta():.4f} unlocked={unlocked}", flush=True)
+        print(
+            f"CONTROL_POSE_DRIVE {start:.4f} -> driven={driven:.4f} -> held={theta():.4f} "
+            f"unlocked={unlocked} hold={hold_trace}",
+            flush=True,
+        )
         return unlocked
 
     contact_unlocked = False
