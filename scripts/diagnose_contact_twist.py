@@ -17,30 +17,36 @@ must unlock (otherwise the harness itself is broken and the run says nothing).
 
 What it found, on `FIATLUX-Replace-v0` at `rotation_sign=-1`:
 
-    bulb collider   gravity   torque unlocks?   pose-drive control unlocks?
-    on              on        NO                NO      <- the real scene
-    off             on        yes               yes
-    off             off       yes               yes     <- verify_attach's rig
+    bulb collider   torque / velocity unlocks?   pose-drive control unlocks?
+    ON (real scene) NO                           yes
+    off             yes                          yes
 
-Two results, and the second is the important one.
+Gravity is not a factor: `DISABLE_GRAVITY=1` changes neither row.
 
-#77's cause 2 as originally framed is REFUTED. Whether a contact twist survives the pose
-writes was never the problem: with the collider off, a torque of 0.001 N.m advances theta
-and unlocks the bulb, and injected angular velocity does too.
+This is the comparison #77 task 3 asked for, and it comes out the way the issue guessed:
+scripted pose driving unlocks the bulb and a contact-like drive cannot, which isolates the
+failure to the CONTACT PATH. The isolating variable is the bulb's own collider.
 
-With the collider on, NOTHING unlocks -- not torque, not injected velocity, and not even
-direct pose writes, which is the method `verify_attach` proves works. The control run drives
-theta to exactly 0.0000 and the bulb still does not release. `unlock` needs
-``theta <= _EPS`` AND ``delta < 0`` on the SAME step, and contact keeps breaking that
-conjunction: held at the commanded release angle, theta jitters 0.0025 -> 0.0125 -> 0.0054
--> 0.0122 instead of settling. The bulb's collider, pinned into the socket's triangle mesh
-by the projection every step, is what supplies the jitter. Gravity is not a factor; the
-middle row isolates it.
+#77's cause 2 as originally framed is nevertheless REFUTED. Whether a contact twist survives
+the pose writes was never the problem. With the collider off, a torque of 1e-4 N.m -- the
+smallest tried -- advances theta and releases the bulb, and injected angular velocity does
+too. The projection retains axial spin exactly as designed.
 
-So the mechanic is not operable in the real scene by ANY drive method, which is a stronger
-statement than "teleoperation cannot turn it".
+With the collider on, no torque up to 0.1 N.m and no injected velocity releases it. The bulb
+is pinned into the socket's triangle mesh by the projection every step, and the contact
+impulses that answer swamp the applied twist, so theta never accumulates. Direct pose writes
+still work because they overwrite the pose outright instead of competing with it.
 
-That is why `verify_attach` cannot see this: it disables the colliders that are the whole
+A useful side result: the wrong-direction torque is inert at EVERY magnitude, in both rows.
+That is the lock behaving correctly, and it re-confirms the sign asymmetry independently of
+`bayonet:release_reads_counter_clockwise`.
+
+The control needs its hold phase to be trustworthy. `unlock` requires ``theta <= _EPS`` AND
+``delta < 0`` on the same step, and on the real scene the bulb takes tens of settling steps
+to satisfy both -- it reads theta=0.0043 and still ROTATING at first. A control without the
+hold reports a false failure, which is what an earlier version of this script did.
+
+`verify_attach` cannot see any of this: it disables the colliders that are the whole
 question. Its 23/23 remains a statement about the state machine alone.
 
 Examples
