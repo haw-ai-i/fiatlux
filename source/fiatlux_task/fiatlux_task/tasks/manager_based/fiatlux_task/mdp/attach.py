@@ -148,6 +148,16 @@ class bulb_attachment(ManagerTermBase):
         self._plug_offset = torch.tensor(BULB_PLUG_OFFSET, device=dev).expand(n, 3)
         self.reset()
 
+    @property
+    def rotation_sign(self) -> float:
+        """Sign convention of the unlock twist. Issue #77 settles which face is correct.
+
+        The wrong face is silent: the old bulb resets *at* the clamp ceiling, so a twist
+        further into the lock changes nothing and ``at_lock_stop`` damps it away. Recording
+        this value tells an operator which convention a run used.
+        """
+        return self._rotation_sign
+
     def reset(self, env_ids: Sequence[int] | None = None) -> None:
         ids = slice(None) if env_ids is None else env_ids
         _sample_parameter(self._depth, ids, self._insertion_depth_spec, "insertion_depth")
@@ -288,6 +298,54 @@ def _attachment(env: ManagerBasedRLEnv) -> bulb_attachment:
             "predicates only work on tasks that wire mdp.bulb_attachment into their EventCfg"
         )
     return mgr
+
+
+def attachment_manager(env: ManagerBasedRLEnv) -> bulb_attachment | None:
+    """The env's ``bulb_attachment`` manager, or ``None`` when the task wires no term.
+
+    ``_attachment()`` raises for an unwired task by design: a silent miss is the defect
+    issue #76 exists to remove. Task-generic writers such as ``recording.py`` need to ask
+    the question instead of answering it with an exception, so they use this accessor.
+    """
+    return getattr(env, _ENV_ATTR, None)
+
+
+def bulb_lock_state(env: ManagerBasedRLEnv) -> torch.Tensor:
+    """Bayonet lock state of both bulbs, for the privileged observation group (issue #77).
+
+    Columns: old phase, old ``theta`` (rad), fresh phase, fresh ``theta`` (rad). Phase is
+    0 ``FREE``, 1 ``AXIAL``, 2 ``ROTATING``, cast to float so the group concatenates.
+
+    Until this term existed, ``_phase`` and ``_theta`` reached no observation, telemetry or
+    recording path. An operator could not see whether a twist registered, which is why the
+    three candidate causes in #77 could not be told apart -- nor told apart from a bad grasp.
+
+    Returns:
+        Tensor of shape (num_envs, 4).
+    """
+    mgr = _attachment(env)
+    return torch.stack(
+        [mgr._phase[_OLD].float(), mgr._theta[_OLD], mgr._phase[_FRESH].float(), mgr._theta[_FRESH]],
+        dim=-1,
+    )
+
+
+def bulb_lock_telemetry(env: ManagerBasedRLEnv) -> dict[str, torch.Tensor]:
+    """Per-bulb lock state plus the per-env sampled parameters, for ``recording.py``.
+
+    ``rotation_angle`` and ``insertion_depth`` re-sample per env at every reset, so a
+    recorded ``theta`` alone is not interpretable: the same 1.4 rad is a fully locked bulb
+    under one sample and a half-turned one under the next.
+    """
+    mgr = _attachment(env)
+    return {
+        "old_bulb_phase": mgr._phase[_OLD].float(),
+        "old_bulb_theta": mgr._theta[_OLD],
+        "fresh_bulb_phase": mgr._phase[_FRESH].float(),
+        "fresh_bulb_theta": mgr._theta[_FRESH],
+        "lock_rotation_angle": mgr._angle,
+        "lock_insertion_depth": mgr._depth,
+    }
 
 
 def old_bulb_attached(env: ManagerBasedRLEnv) -> torch.Tensor:

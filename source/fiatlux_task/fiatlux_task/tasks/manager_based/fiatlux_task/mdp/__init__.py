@@ -42,7 +42,10 @@ from isaaclab.envs.mdp import (  # noqa: F401
 
 from .attach import (  # noqa: F401
     attached_replacement_success,
+    attachment_manager,
     bulb_attachment,
+    bulb_lock_state,
+    bulb_lock_telemetry,
     fresh_bulb_attached,
     old_bulb_attached,
     old_bulb_disposal_distance_pinned,

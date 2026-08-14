@@ -161,6 +161,10 @@ class ObservationsCfg:
         old_bulb_pose = ObsTerm(func=mdp.root_pose_w, params={"asset_cfg": SceneEntityCfg("old_bulb")})
         disposal_pose = ObsTerm(func=mdp.root_pose_w, params={"asset_cfg": SceneEntityCfg("bin")})
         score_distances = ObsTerm(func=mdp.replace_score_distances)
+        # Bayonet lock state of both bulbs (issue #77): old phase, old theta, fresh phase,
+        # fresh theta. The mechanic is otherwise invisible -- an operator cannot tell a twist
+        # that does not register from a twist that the lock clamps away.
+        bulb_lock_state = ObsTerm(func=mdp.bulb_lock_state)
 
         def __post_init__(self) -> None:
             self.enable_corruption = False
