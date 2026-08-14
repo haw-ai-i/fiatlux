@@ -20,6 +20,8 @@ reviewed architecture directly:
 7. `(low, high)` parameter ranges sample per env and re-sample on reset.
 8. The lock state (`_phase`, `_theta`) reaches the privileged observation group, at a
    known offset, carrying the manager's own state (issue #77).
+9. `rotation_sign` releases the way a real bayonet cap does -- counter-clockwise to an
+   operator facing the fixture (issue #77).
 
 The socket is moved to the fixed-root robot's palm for a compact, visible test rig. Both
 bulbs have gravity and collisions disabled only in this harness, isolating the tensorized
@@ -325,6 +327,37 @@ def _check_lock_state_observable(env, manager) -> None:
     )
 
 
+def _check_release_direction(manager, seat_geometry) -> None:
+    """The release twist must read counter-clockwise to the operator (issue #77 task 2).
+
+    A BA22d bayonet cap releases counter-clockwise and seats clockwise, as seen by whoever
+    faces the fixture. ``rotation_sign`` maps the manager's lock-positive theta onto the
+    physical twist, so it alone decides which way a person has to turn. It shipped unchosen
+    at +1.0, which inverted both halves and left the real release direction completely
+    inert -- no rotation, no state change, nothing observable.
+
+    Making the rest of the suite sign-agnostic (see ``bulb_pose``) is what makes this check
+    necessary: with the rotations expressed in lock-positive units, nothing else here would
+    notice the sign flipping back.
+    """
+    _, _, axis_w = seat_geometry()
+    # The physical twist the manager holds while locked. Release drives it toward zero, so
+    # the release rotation is positive about the seat axis exactly when this is negative.
+    locked_twist = manager.rotation_sign * float(manager._angle[0].item())
+    release_is_positive = locked_twist < 0.0
+    # This fixture mounts overhead and its seat axis points down, i.e. at an operator
+    # standing underneath. A positive rotation about an axis reads counter-clockwise to a
+    # viewer that the axis points toward.
+    axis_faces_operator = bool(axis_w[2].item() < 0.0)
+    counter_clockwise = release_is_positive == axis_faces_operator
+    record(
+        "bayonet:release_reads_counter_clockwise",
+        counter_clockwise,
+        f"rotation_sign={manager.rotation_sign:+.0f}, seat axis z={axis_w[2].item():+.2f} -> operator turns "
+        f"{'counter-clockwise' if counter_clockwise else 'CLOCKWISE (inverted: a real cap releases CCW)'}",
+    )
+
+
 def main() -> int:
     global VIDEO
     torch.manual_seed(args_cli.seed)
@@ -372,6 +405,7 @@ def main() -> int:
             zero_action,
             zeros6,
         )
+        _check_release_direction(manager, seat_geometry)
 
         def old_phase() -> int:
             return int(manager._phase[task_attach._OLD, 0].item())
