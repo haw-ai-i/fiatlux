@@ -27,8 +27,13 @@ reviewed architecture directly:
 11. Both bulbs filter their collision pair with the socket, so the projection and the contact
     solver cannot fight over the same body again (issue #77).
 
-The socket is moved to the fixed-root robot's palm for a compact, visible test rig. Both
-bulbs have gravity and collisions disabled only in this harness, isolating the tensorized
+The fixture stays where the preset mounted it. An earlier rig teleported the socket to the
+robot's palm every step for a compact test rig, which cost nothing in the checks -- they all
+derive poses from the live socket -- but made a recording show a lamp floating in mid air,
+still carrying its randomized wall-mount rotation, so the bulb came out sideways. Scenery
+stays put unless a robot moves it.
+
+Both bulbs have gravity and collisions disabled only in this harness, isolating the tensorized
 state machine from contact artifacts while retaining a physics-driven free-body check.
 
 Examples
@@ -164,29 +169,18 @@ def _spin_about(quat: torch.Tensor, world_axis: torch.Tensor, angle: float) -> t
     return quat_mul(spin.unsqueeze(0), quat.unsqueeze(0))[0]
 
 
-def _build_rig(env, robot, socket, old_bulb, fresh_bulb, palm_id, zero_action, zeros6):
+def _build_rig(env, robot, socket, old_bulb, fresh_bulb, zero_action, zeros6):
     seat_offset = torch.tensor(SOCKET_SEAT_OFFSET, device=env.device)
     plug_offset = torch.tensor(BULB_PLUG_OFFSET, device=env.device)
     seat_axis = torch.tensor(SOCKET_SEAT_AXIS, device=env.device)
     _manager = task_attach.attachment_manager(env)
     rotation_sign = 1.0 if _manager is None else _manager.rotation_sign
 
-    def palm_pos() -> torch.Tensor:
-        return robot.data.body_link_pos_w[0, palm_id]
-
     def seat_geometry() -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         socket_quat = socket.data.root_quat_w[0]
         seat_point = socket.data.root_pos_w[0] + quat_apply(socket_quat.unsqueeze(0), seat_offset.unsqueeze(0))[0]
         world_axis = quat_apply(socket_quat.unsqueeze(0), seat_axis.unsqueeze(0))[0]
         return seat_point, socket_quat, world_axis
-
-    def track_socket_to_palm(clearance: float = 0.04) -> None:
-        socket_quat = socket.data.root_quat_w[0]
-        world_axis = quat_apply(socket_quat.unsqueeze(0), seat_axis.unsqueeze(0))[0]
-        target_seat = palm_pos() + clearance * world_axis
-        socket_pos = target_seat - quat_apply(socket_quat.unsqueeze(0), seat_offset.unsqueeze(0))[0]
-        socket.write_root_pose_to_sim(torch.cat([socket_pos, socket_quat]).unsqueeze(0))
-        socket.write_root_velocity_to_sim(zeros6)
 
     def lateral_axis(world_axis: torch.Tensor) -> torch.Tensor:
         reference = torch.tensor([1.0, 0.0, 0.0], device=env.device)
@@ -234,9 +228,7 @@ def _build_rig(env, robot, socket, old_bulb, fresh_bulb, palm_id, zero_action, z
         axial = torch.dot(displacement, world_axis)
         return torch.norm(displacement - axial * world_axis).item()
 
-    def step(track: bool = True) -> None:
-        if track:
-            track_socket_to_palm()
+    def step() -> None:
         env.step(zero_action)
         if VIDEO is not None:
             # Re-aim every frame. The socket is pinned to the palm, and the arm sags under
@@ -251,9 +243,8 @@ def _build_rig(env, robot, socket, old_bulb, fresh_bulb, palm_id, zero_action, z
             fraction = (index + 1) / steps
             axial = axial_start + fraction * (axial_end - axial_start)
             rotation = rotation_start + fraction * (rotation_end - rotation_start)
-            track_socket_to_palm()
             place_bulb(bulb, axial, rotation)
-            step(track=False)
+            step()
 
     def animate_free_bulb(bulb, start: torch.Tensor, end: torch.Tensor, quat: torch.Tensor, steps: int) -> None:
         for index in range(steps):
@@ -290,7 +281,6 @@ def _build_rig(env, robot, socket, old_bulb, fresh_bulb, palm_id, zero_action, z
 
     return (
         seat_geometry,
-        track_socket_to_palm,
         place_bulb,
         axial_distance,
         bulb_twist,
@@ -325,14 +315,6 @@ def _check_parameter_ranges() -> None:
         )
     finally:
         env.close()
-
-
-def _find_palm(robot) -> int:
-    for name in ("right_hand_base_link", "right_hand_palm_link"):
-        body_ids, _ = robot.find_bodies(name)
-        if body_ids:
-            return body_ids[0]
-    raise ValueError(f"no right palm found; available bodies: {robot.body_names}")
 
 
 def _check_lock_state_observable(env, manager) -> None:
@@ -493,8 +475,7 @@ def main() -> int:
 
         (
             seat_geometry,
-            track_socket_to_palm,
-            place_bulb,
+                place_bulb,
             axial_distance,
             bulb_twist,
             bulb_lateral_distance,
@@ -508,7 +489,6 @@ def main() -> int:
             socket,
             old_bulb,
             fresh_bulb,
-            _find_palm(robot),
             zero_action,
             zeros6,
         )
@@ -527,7 +507,7 @@ def main() -> int:
             return manager._theta[task_attach._OLD, 0].item()
 
         for _ in range(12):
-            step(track=False)
+            step()
         for _ in range(8):
             step()
         aim_camera()
@@ -552,9 +532,8 @@ def main() -> int:
         # A second bulb must never engage an occupied socket, however well aligned.
         fresh_park = fresh_bulb.data.root_pos_w[0].clone()
         fresh_park_quat = fresh_bulb.data.root_quat_w[0].clone()
-        track_socket_to_palm()
         place_bulb(fresh_bulb, 0.5 * depth, 0.0)
-        step(track=False)
+        step()
         record(
             "bayonet:occupied_socket_rejects_fresh",
             fresh_phase() == task_attach._FREE,
@@ -564,9 +543,8 @@ def main() -> int:
         fresh_bulb.write_root_velocity_to_sim(zeros6)
         step()
 
-        track_socket_to_palm()
         place_bulb(old_bulb, 0.75 * depth, angle)
-        step(track=False)
+        step()
         locked_axial = abs(axial_distance(old_bulb))
         record(
             "bayonet:rotation_stage_blocks_translation",
@@ -588,9 +566,8 @@ def main() -> int:
         # offset in one step) must stay pinned at the seat: the unlock transition step
         # begins AXIAL travel only on the *next* step.
         drive_pose(old_bulb, 0.0, 0.0, angle, 0.1, 20)
-        track_socket_to_palm()
         place_bulb(old_bulb, 0.9 * depth, 0.0)
-        step(track=False)
+        step()
         unlock_shove_axial = abs(axial_distance(old_bulb))
         record(
             "bayonet:unlock_step_pins_axial",
@@ -599,7 +576,7 @@ def main() -> int:
         )
         # Restore the locked state so the removal sequence below starts as it expects.
         place_bulb(old_bulb, 0.0, 0.05)
-        step(track=False)
+        step()
         drive_pose(old_bulb, 0.0, 0.0, 0.05, angle, 12)
 
         drive_pose(old_bulb, 0.0, 0.0, angle, 0.0, 24)
@@ -610,9 +587,8 @@ def main() -> int:
             f"bulb rotation={old_theta():.3f} rad, released={old_released}",
         )
 
-        track_socket_to_palm()
         place_bulb(old_bulb, 0.5 * depth, 0.5 * angle, lateral_distance=0.025)
-        step(track=False)
+        step()
         axial_twist = abs(bulb_twist(old_bulb))
         axial_position = axial_distance(old_bulb)
         lateral_error = bulb_lateral_distance(old_bulb)
@@ -649,9 +625,8 @@ def main() -> int:
         animate_free_bulb(old_bulb, old_start, old_aside, old_quat, 18)
 
         # A misaligned bulb must never engage the (now empty) channel.
-        track_socket_to_palm()
         place_bulb(fresh_bulb, 0.5 * depth, 0.0, lateral_distance=0.03)
-        step(track=False)
+        step()
         record(
             "bayonet:misaligned_entry_rejected",
             fresh_phase() == task_attach._FREE,
@@ -666,9 +641,8 @@ def main() -> int:
             f"phase={fresh_phase()}, depth={axial_distance(fresh_bulb) * 1000:.1f} mm",
         )
 
-        track_socket_to_palm()
         place_bulb(fresh_bulb, 0.5 * depth, 0.5 * angle)
-        step(track=False)
+        step()
         fresh_axial_twist = abs(bulb_twist(fresh_bulb))
         record(
             "bayonet:fresh_cannot_rotate_during_insertion",
@@ -686,9 +660,8 @@ def main() -> int:
             f"phase={fresh_phase()}, rotation={fresh_theta():.3f} rad",
         )
 
-        track_socket_to_palm()
         place_bulb(fresh_bulb, 0.0, 0.15 * angle)
-        step(track=False)
+        step()
         rotation_started = fresh_phase() == task_attach._ROTATING
         record(
             "bayonet:bulb_twist_selects_rotation_stage",
@@ -696,9 +669,8 @@ def main() -> int:
             f"phase={fresh_phase()}, rotation={fresh_theta():.3f} rad",
         )
 
-        track_socket_to_palm()
         place_bulb(fresh_bulb, 0.75 * depth, fresh_theta())
-        step(track=False)
+        step()
         fresh_locked_axial = abs(axial_distance(fresh_bulb))
         record(
             "bayonet:fresh_cannot_translate_while_rotating",
@@ -733,7 +705,7 @@ def main() -> int:
         old_bulb.write_root_pose_to_sim(torch.cat([crate_pos, old_bulb.data.root_quat_w[0]]).unsqueeze(0))
         old_bulb.write_root_velocity_to_sim(zeros6)
         for _ in range(10):
-            step(track=False)
+            step()
         success = bool(task_attach.attached_replacement_success(env)[0].item())
         record("bayonet:replacement_success", success, f"attached_replacement_success={success}")
 
