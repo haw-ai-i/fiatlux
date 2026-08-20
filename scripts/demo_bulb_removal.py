@@ -16,7 +16,9 @@ This performs only the two motions that are the removal:
   1. rotate the seated bulb from the lock angle to zero  (verify_attach.py:675)
   2. travel out along the seat axis until it ejects      (verify_attach.py:694)
 
-then carries it to the disposal crate. One continuous take, no reversals, no teleports.
+then keeps drawing it clear so the gap is visible. One continuous take, no reversals, no
+teleports. The bulb does NOT go to the crate: the crate is on the floor in a separately sampled
+zone, and this camera orbits the fixture, so a carried bulb would just leave the frame.
 
 NO ROBOT IS INVOLVED. The bulb is driven by direct pose writes with robot actions at zero, the
 same as the harness. A humanoid cannot reach these fixtures standing anyway -- `G1_OVERHEAD_REACH`
@@ -45,12 +47,16 @@ parser.add_argument("--seed", type=int, default=0, help="Layout seed. 0/2/3/5/6 
 parser.add_argument("--video", type=str, required=True, help="Output MP4 path.")
 parser.add_argument("--unscrew-frames", type=int, default=70, help="Frames for the release rotation.")
 parser.add_argument("--eject-frames", type=int, default=45, help="Frames for the axial travel out.")
-parser.add_argument("--carry-frames", type=int, default=45, help="Frames to carry the freed bulb to the crate.")
-parser.add_argument("--radius-scale", type=float, default=0.62, help="Tighten the fixture orbit by this factor.")
+parser.add_argument("--withdraw-frames", type=int, default=45, help="Frames to draw the freed bulb clear of the seat.")
+parser.add_argument("--withdraw-metres", type=float, default=0.25, help="How far to draw the freed bulb clear.")
+parser.add_argument("--radius-scale", type=float, default=1.0, help="Scale the fixture orbit radius.")
 AppLauncher.add_app_launcher_args(parser)
 args_cli = parser.parse_args()
-args_cli.headless = True if args_cli.headless is None else args_cli.headless
 args_cli.enable_cameras = True
+# --headless is store_true, so it defaults to False and is NEVER None. A `None` guard here is
+# dead code, and it leaves GUI mode on, which wedges a displayless machine. record_run.py:99
+# documents the same trap. This script only ever records, so force it.
+args_cli.headless = True
 
 app_launcher = AppLauncher(args_cli)
 simulation_app = app_launcher.app
@@ -134,8 +140,10 @@ def main() -> int:
 
     video = VideoRecorder(env, env.scene["video_cam"], args_cli.video, fps=20)
     orbit = dict(fixture_orbit(env.cfg))
-    orbit["radius"] *= args_cli.radius_scale
-    total = args_cli.unscrew_frames + args_cli.eject_frames + args_cli.carry_frames
+    # `fixture_orbit` already clamps the radius to FIXTURE_VIEW_MIN_RADIUS (0.6 m), below which
+    # the fixture overflows the frame. Scaling afterwards can duck under that floor, so re-clamp.
+    orbit["radius"] = max(orbit["radius"] * args_cli.radius_scale, 0.6)
+    total = args_cli.unscrew_frames + args_cli.eject_frames + args_cli.withdraw_frames
     print(f"SETUP seed={args_cli.seed} depth={depth:.4f} angle={angle:.4f} sign={sign:+.0f}", flush=True)
     print(f"ORBIT {orbit}", flush=True)
 
@@ -194,18 +202,17 @@ def main() -> int:
     freed = int(manager._phase[task_attach._OLD, 0].item()) == task_attach._FREE
     print(f"EJECT done  free={freed}", flush=True)
 
-    # 3. Carry it to the crate, where the task wants it.
-    start = old_bulb.data.root_pos_w[0].clone()
-    quat = old_bulb.data.root_quat_w[0].clone()
-    crate = env.scene["bin"].data.root_pos_w[0].clone()
-    crate[2] += 0.05
-    for i in range(args_cli.carry_frames):
-        frac = (i + 1) / args_cli.carry_frames
-        pos = start * (1.0 - frac) + crate * frac
-        old_bulb.write_root_pose_to_sim(torch.cat([pos, quat]).unsqueeze(0))
-        old_bulb.write_root_velocity_to_sim(zeros6)
+    # 3. WITHDRAW. Keep going out along the same axis so the gap between bulb and socket is
+    #    plainly visible. The bulb does not go to the crate: the crate sits on the floor in a
+    #    separately sampled zone, and this camera orbits the fixture, so a bulb carried there
+    #    would simply leave the frame for the last third of the take.
+    span = 1.2 * depth + args_cli.withdraw_metres
+    for i in range(args_cli.withdraw_frames):
+        frac = (i + 1) / args_cli.withdraw_frames
+        place(1.2 * depth + args_cli.withdraw_metres * frac, 0.0)
         env.step(zero_action)
         capture()
+    print(f"WITHDRAW done  final axial={span:.3f} m", flush=True)
 
     print(f"wrote video {video.write()} ({len(video)} frames)", flush=True)
     plot = _write_plot(args_cli.video, trace, angle)
