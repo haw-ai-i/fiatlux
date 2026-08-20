@@ -85,6 +85,7 @@ from fiatlux_task.tasks.manager_based.fiatlux_task.replace_env_cfg import (
     BAYONET_ROTATION_ANGLE,
 )
 from fiatlux_task.tasks.manager_based.fiatlux_task.scene_cfg import set_layout_seed
+from fiatlux_task.viz import orbit_pose
 from prettytable import PrettyTable
 
 import isaaclab.sim as sim_utils
@@ -99,15 +100,17 @@ VIDEO = None
 # far more clearly than any camera angle can.
 LOCK_TRACE: list[tuple[int, float, int, float]] = []
 
-# Video framing. The bulb is about 7 cm, and the video camera is a 20 mm pinhole (~55 deg
-# horizontal), so 0.30 m puts it across roughly a fifth of the frame -- close enough to read
-# the twist, far enough to keep the socket and the ejected bulb both in shot.
-CAMERA_DISTANCE = 0.30  # m, from the seat, perpendicular to the seat axis
-# Offset along the OUTWARD seat axis, not world up. The bulb always sits on the outward side,
-# so this holds a mild three-quarter view whatever the mount: it drops below a ceiling fixture
-# to look up at a hanging bulb, and steps out from a wall fixture. World up only suited a wall
-# mount -- on a ceiling it put the camera above the seat, where the shade hides the bulb.
-CAMERA_RISE = 0.08  # m, along the outward seat axis
+# Video framing comes from `viz.fixture_orbit`, the repo's own fixture view: it reads the mount
+# from the cfg, keeps the orbit radius inside the room, and gives a wall mount a 180 degree arc
+# centred on the direction the socket opening faces. Three hand-rolled aims failed before this
+# one -- a fixed world offset framed the robot's torso, a world-up rise hid a ceiling bulb
+# behind its shade, and backing away from the robot walked the camera through a wall.
+#
+# Framing the bulb and the humanoid sharply in ONE shot is not possible anyway: the bayonet
+# travel is 34 mm, about 3 percent of frame width at the range needed to see the robot. The
+# overlay and the theta plot carry the mechanic's detail, so the camera is free to show scene.
+ORBIT: dict | None = None
+ORBIT_FRAMES = 227  # nominal run length, so the arc completes over a full recording
 
 
 def record(name: str, passed: bool, detail: str = "") -> None:
@@ -290,28 +293,22 @@ def _build_rig(env, robot, socket, old_bulb, fresh_bulb, zero_action, zeros6):
             step()
 
     def aim_camera() -> None:
-        """Frame the seat from the far side of the robot, close enough to see the bulb.
+        """Orbit the fixture using the repo's own fixture view (``viz.fixture_orbit``).
 
-        The eye used to be a hardcoded world offset from the seat. Two things break that. The
-        rig parks the socket at the robot's PALM, so a fixed offset can put the torso between
-        the camera and the bulb -- which it did, and the bulb never appeared in the frame. And
-        Replace randomizes its fixture mount, so no constant offset frames every layout.
+        Hand-rolled aims kept failing on this scene, three times: a fixed world offset put the
+        robot's torso in the way, a world-up rise hid a ceiling bulb behind its shade, and
+        stepping back from the robot walked the camera through the wall a wall fixture is
+        mounted on. `fixture_orbit` already solves all of that -- it reads the mount from the
+        cfg, keeps the radius inside the room, and gives a wall mount a 180 degree arc centred
+        on the direction the socket opening actually faces.
 
-        So derive it from the scene. The eye sits on the far side of the seat from the robot
-        base, where the body cannot occlude, on the plane perpendicular to the seat axis so the
-        bulb's travel along that axis stays across the frame rather than pointing at the lens.
+        Orbiting also answers what a fixed camera cannot: the mechanic has no visual signature,
+        so a moving viewpoint at least shows the scene it sits in.
         """
-        if VIDEO is None:
+        if VIDEO is None or ORBIT is None:
             return
-        seat_point, _, world_axis = seat_geometry()
-        # Direction from the robot toward the seat, with the axial part removed: staying off
-        # the seat axis keeps the bulb's in/out travel visible as motion across the frame.
-        away = seat_point - robot.data.root_pos_w[0]
-        away = away - torch.dot(away, world_axis) * world_axis
-        norm = torch.norm(away)
-        away = away / norm if float(norm) > 1e-6 else lateral_axis(world_axis)
-        eye = seat_point + away * CAMERA_DISTANCE + world_axis * CAMERA_RISE
-        VIDEO.set_pose(tuple(eye.tolist()), tuple(seat_point.tolist()))
+        eye, lookat = orbit_pose(len(VIDEO), ORBIT_FRAMES, **ORBIT)
+        VIDEO.set_pose(eye, lookat)
 
     return (
         seat_geometry,
@@ -532,7 +529,7 @@ def _check_release_direction(manager, seat_geometry) -> None:
 
 
 def main() -> int:
-    global VIDEO
+    global VIDEO, ORBIT
     torch.manual_seed(args_cli.seed)
     if args_cli.check_ranges:
         _check_parameter_ranges()
@@ -555,9 +552,11 @@ def main() -> int:
         zero_action = torch.zeros((env.num_envs, env.action_manager.total_action_dim), device=env.device)
         zeros6 = torch.zeros((env.num_envs, 6), device=env.device)
         if args_cli.video:
-            from fiatlux_task.viz import VideoRecorder
+            from fiatlux_task.viz import VideoRecorder, fixture_orbit
 
             VIDEO = VideoRecorder(env, env.scene["video_cam"], args_cli.video, fps=20)
+            ORBIT = fixture_orbit(env.cfg)
+            info(f"fixture orbit {ORBIT}")
 
         (
             seat_geometry,
