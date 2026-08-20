@@ -24,6 +24,8 @@ reviewed architecture directly:
    operator facing the fixture (issue #77).
 10. The seated bulb spawns at the fixture's own rotation, which is what `reset()` assumes
     when it zeroes `_prev_twist` (issue #77).
+11. Both bulbs filter their collision pair with the socket, so the projection and the contact
+    solver cannot fight over the same body again (issue #77).
 
 The socket is moved to the fixed-root robot's palm for a compact, visible test rig. Both
 bulbs have gravity and collisions disabled only in this harness, isolating the tensorized
@@ -365,6 +367,44 @@ def _check_spawn_twist(env, socket, old_bulb) -> None:
     )
 
 
+def _check_socket_pair_filtered(env) -> None:
+    """Both bulbs must filter their collision pair with the socket (issue #77 task 6).
+
+    The projection owns a constrained bulb's pose and writes it every step. Leaving the socket
+    contact live costs a median 1067 N, about 3100x the bulb's weight, against roughly 5 N of
+    tangential force from an 0.1 N.m twist. `theta` never settles and the release never fires.
+    ``scripts/step0_contact.py`` measures it, and ``_spawn_bulb_socket_filtered`` fixes it.
+
+    The test is STRUCTURAL, and it has to be, because this suite's rig disables the bulb
+    colliders -- which is precisely why the suite could not see the bug in the first place. The
+    behavioural half lives in ``scripts/verify_pair_filter.py``, with the colliders on and
+    several envs, and in a collider-on run of ``scripts/diagnose_contact_twist.py``.
+    """
+    from pxr import UsdPhysics
+
+    stage = env.sim.stage
+    want = "/World/envs/env_0/Socket"
+    problems = []
+    checked = 0
+    for name in ("Bulb", "OldBulb"):
+        prim = stage.GetPrimAtPath(f"/World/envs/env_0/{name}")
+        if not prim or not prim.IsValid():
+            continue  # a preset without this bulb is not a fault here
+        checked += 1
+        if not prim.HasAPI(UsdPhysics.FilteredPairsAPI):
+            problems.append(f"{name} has no FilteredPairsAPI")
+            continue
+        rel = UsdPhysics.FilteredPairsAPI(prim).GetFilteredPairsRel()
+        targets = [str(t) for t in (rel.GetTargets() or [])]
+        if want not in targets:
+            problems.append(f"{name} filters {targets}, wanted {want}")
+    record(
+        "bayonet:bulb_socket_pair_filtered",
+        checked > 0 and not problems,
+        f"{checked} bulb(s) filter their socket pair" if not problems else "; ".join(problems),
+    )
+
+
 def _check_release_direction(manager, seat_geometry) -> None:
     """The release twist must read counter-clockwise to the operator (issue #77 task 2).
 
@@ -417,6 +457,7 @@ def main() -> int:
         record("bayonet:manager_present", True, "mdp.bulb_attachment is enforced every step")
         _check_lock_state_observable(env, manager)
         _check_spawn_twist(env, socket, old_bulb)
+        _check_socket_pair_filtered(env)
 
         zero_action = torch.zeros((env.num_envs, env.action_manager.total_action_dim), device=env.device)
         zeros6 = torch.zeros((env.num_envs, 6), device=env.device)
