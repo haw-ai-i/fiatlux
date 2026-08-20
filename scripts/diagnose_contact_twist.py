@@ -18,11 +18,17 @@ must unlock (otherwise the harness itself is broken and the run says nothing).
 What it found, on `FIATLUX-Replace-v0` at `rotation_sign=-1`, with the layout PINNED and
 measured at seeds 0, 1 and 2:
 
-    bulb collider   torque / velocity releases?   pose-drive control releases?
-    ON (real scene) NO                            NO
-    off             yes                           yes
+    bulb collider   socket collider   torque releases?   pose-drive control releases?
+    ON              ON  (real scene)  NO                 NO
+    ON              off               yes                yes
+    off             ON                yes                yes
 
 Gravity is not a factor: `DISABLE_GRAVITY=1` changes neither row.
+
+The middle row is task 6 step 1, and it settles the fix. Removing ONLY the bulb-to-socket
+contact releases the bulb at 1e-4 N.m while the bulb keeps its own collider, so a hand still
+feels it. Its trace is identical to the bottom row, which proves that pair was the whole
+problem and no other contact on the bulb mattered.
 
 So the bulb's own collider blocks the bayonet release, and it blocks it against EVERY drive
 method tried -- external torque, injected angular velocity, and direct pose writes alike.
@@ -103,6 +109,11 @@ from isaaclab_tasks.utils import parse_env_cfg
 NO_COLLIDE = os.environ.get("NO_COLLIDE") == "1"
 DISABLE_COLLISION = NO_COLLIDE or os.environ.get("DISABLE_COLLISION") == "1"
 DISABLE_GRAVITY = NO_COLLIDE or os.environ.get("DISABLE_GRAVITY") == "1"
+# DISABLE_SOCKET_COLLISION=1 is task 6 step 1 as an experiment: it removes the bulb-to-socket
+# contact pair while the bulb KEEPS its own collider, so a hand can still feel it. Isaac Lab
+# has no runtime per-pair filter (RigidObject exposes pose, velocity and wrench only), so this
+# stands in for the phase-dependent filter the task asks for. It is a test, not the fix.
+DISABLE_SOCKET_COLLISION = os.environ.get("DISABLE_SOCKET_COLLISION") == "1"
 
 
 def build_cfg():
@@ -130,6 +141,8 @@ def build_cfg():
             bulb_cfg.spawn.rigid_props.disable_gravity = True
         if DISABLE_COLLISION:
             bulb_cfg.spawn.collision_props = sim_utils.CollisionPropertiesCfg(collision_enabled=False)
+    if DISABLE_SOCKET_COLLISION:
+        cfg.scene.socket.spawn.collision_props = sim_utils.CollisionPropertiesCfg(collision_enabled=False)
     return cfg
 
 
@@ -157,7 +170,11 @@ def main() -> int:
     # Release drives the physical twist toward zero, so it opposes the locked twist's sign.
     release_dir = -1.0 if sign > 0 else 1.0
 
-    print(f"SETUP collider={'off' if DISABLE_COLLISION else 'ON'} gravity={'off' if DISABLE_GRAVITY else 'ON'}")
+    print(
+        f"SETUP collider={'off' if DISABLE_COLLISION else 'ON'} "
+        f"gravity={'off' if DISABLE_GRAVITY else 'ON'} "
+        f"socket_collider={'off' if DISABLE_SOCKET_COLLISION else 'ON'}"
+    )
     print(f"SETUP rotation_sign={sign:+.0f} lock_angle={angle:.4f} release_dir={release_dir:+.0f}", flush=True)
 
     def theta() -> float:
@@ -267,6 +284,7 @@ def main() -> int:
 
     print(
         f"VERDICT collider={'off' if DISABLE_COLLISION else 'ON'} "
+        f"socket_collider={'off' if DISABLE_SOCKET_COLLISION else 'ON'} "
         f"contact_unlocked={contact_unlocked} control_unlocked={control_unlocked}",
         flush=True,
     )
