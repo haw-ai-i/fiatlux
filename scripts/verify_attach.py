@@ -232,15 +232,29 @@ def _build_rig(env, robot, socket, old_bulb, fresh_bulb, zero_action, zeros6):
         axial = torch.dot(displacement, world_axis)
         return torch.norm(displacement - axial * world_axis).item()
 
+    def lock_state_caption() -> str:
+        """The state machine's own numbers, for burning into a video frame.
+
+        The unscrew has no visual signature: the bulb is a surface of revolution, so turning it
+        about its own axis changes almost nothing on screen. `theta` is the only way to see the
+        release happen, and task 1 of #77 is what made it readable from outside the manager.
+        """
+        manager = task_attach.attachment_manager(env)
+        if manager is None:
+            return ""
+        names = {task_attach._FREE: "FREE", task_attach._AXIAL: "AXIAL", task_attach._ROTATING: "ROTATING"}
+        rows = []
+        for label, row in (("old", task_attach._OLD), ("fresh", task_attach._FRESH)):
+            phase = int(manager._phase[row, 0].item())
+            theta = float(manager._theta[row, 0].item())
+            rows.append(f"{label:<5} {names.get(phase, phase):<8} theta={theta:5.3f} rad")
+        return "\n".join(rows)
+
     def step() -> None:
         env.step(zero_action)
         if VIDEO is not None:
-            # Re-aim every frame. The socket is pinned to the palm, and the arm sags under
-            # gravity even at zero action, so the subject drifts through the run. Aiming once
-            # at the start loses it: the first video framed the bulb early and the bare robot
-            # by the end.
             aim_camera()
-            VIDEO.capture()
+            VIDEO.capture(overlay=lock_state_caption())
 
     def drive_pose(bulb, axial_start: float, axial_end: float, rotation_start: float, rotation_end: float, steps: int):
         for index in range(steps):
