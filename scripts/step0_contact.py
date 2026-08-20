@@ -68,7 +68,7 @@ import importlib
 import fiatlux_task.tasks  # noqa: F401  -- registers the FIATLUX Gym environments
 import gymnasium as gym
 import torch
-from fiatlux_task.assets import BULB_PLUG_OFFSET, SOCKET_SEAT_AXIS, SOCKET_SEAT_OFFSET
+from fiatlux_task.assets import BULB_PLUG_OFFSET, SOCKET_SEAT_OFFSET
 from fiatlux_task.tasks.manager_based.fiatlux_task.mdp import attach as task_attach
 from fiatlux_task.tasks.manager_based.fiatlux_task.scene_cfg import BULB_MASS_KG, set_layout_seed
 
@@ -124,7 +124,6 @@ def main() -> int:
 
     device = env.device
     zero_action = torch.zeros((1, env.action_manager.total_action_dim), device=device)
-    seat_axis = torch.tensor(SOCKET_SEAT_AXIS, device=device)
     seat_offset = torch.tensor(SOCKET_SEAT_OFFSET, device=device)
     plug_offset = torch.tensor(BULB_PLUG_OFFSET, device=device)
 
@@ -152,7 +151,8 @@ def main() -> int:
             f"max={t.max():.4f}  ratio_to_weight={t.median() / BULB_WEIGHT_N:.1f}x",
             flush=True,
         )
-        print(f"CONTACT_VERDICT {'OVERLAP DRIVEN' if t.median() > 5 * BULB_WEIGHT_N else 'NO LARGE CONTACT'}", flush=True)
+        heavy = bool(t.median() > 5 * BULB_WEIGHT_N)
+        print(f"CONTACT_VERDICT {'OVERLAP DRIVEN' if heavy else 'NO LARGE CONTACT'}", flush=True)
     else:
         print("CONTACT_FORCE_N no readings", flush=True)
 
