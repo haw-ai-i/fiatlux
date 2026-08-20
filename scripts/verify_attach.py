@@ -437,7 +437,11 @@ def _write_lock_plot(video_path: str, rotation_angle: float) -> str | None:
     start = 0
     for i in range(1, len(old_phase) + 1):
         if i == len(old_phase) or old_phase[i] != old_phase[start]:
-            ax.axvspan(start, i - 1, color=colors.get(old_phase[start], "#ffffff"), zorder=0)
+            # Bin EDGES, not frame indices. Spanning `start` to `i - 1` draws nothing at all
+            # when a phase lasts a single frame, and clips every other band by one frame. The
+            # scripted `unlock_step_pins_axial` produces exactly a one-frame AXIAL phase, so
+            # the naive version omits the transition this plot exists to show.
+            ax.axvspan(start - 0.5, i - 0.5, color=colors.get(old_phase[start], "#ffffff"), zorder=0)
             start = i
     ax.plot(frames, old_theta, label="old bulb theta", color="#1f4fd8", linewidth=2.0)
     ax.plot(frames, fresh_theta, label="fresh bulb theta", color="#d81f4f", linewidth=1.4, linestyle="--")
