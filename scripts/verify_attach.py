@@ -90,6 +90,12 @@ from isaaclab_tasks.utils import parse_env_cfg
 RESULTS: list[tuple[str, bool, str]] = []
 VIDEO = None
 
+# Video framing. The bulb is about 7 cm, and the video camera is a 20 mm pinhole (~55 deg
+# horizontal), so 0.30 m puts it across roughly a fifth of the frame -- close enough to read
+# the twist, far enough to keep the socket and the ejected bulb both in shot.
+CAMERA_DISTANCE = 0.30  # m, from the seat, perpendicular to the seat axis
+CAMERA_RISE = 0.08  # m, slightly above the seat so the socket mouth is not edge-on
+
 
 def record(name: str, passed: bool, detail: str = "") -> None:
     RESULTS.append((name, passed, detail))
@@ -233,6 +239,11 @@ def _build_rig(env, robot, socket, old_bulb, fresh_bulb, palm_id, zero_action, z
             track_socket_to_palm()
         env.step(zero_action)
         if VIDEO is not None:
+            # Re-aim every frame. The socket is pinned to the palm, and the arm sags under
+            # gravity even at zero action, so the subject drifts through the run. Aiming once
+            # at the start loses it: the first video framed the bulb early and the bare robot
+            # by the end.
+            aim_camera()
             VIDEO.capture()
 
     def drive_pose(bulb, axial_start: float, axial_end: float, rotation_start: float, rotation_end: float, steps: int):
@@ -253,15 +264,29 @@ def _build_rig(env, robot, socket, old_bulb, fresh_bulb, palm_id, zero_action, z
             step()
 
     def aim_camera() -> None:
+        """Frame the seat from the far side of the robot, close enough to see the bulb.
+
+        The eye used to be a hardcoded world offset from the seat. Two things break that. The
+        rig parks the socket at the robot's PALM, so a fixed offset can put the torso between
+        the camera and the bulb -- which it did, and the bulb never appeared in the frame. And
+        Replace randomizes its fixture mount, so no constant offset frames every layout.
+
+        So derive it from the scene. The eye sits on the far side of the seat from the robot
+        base, where the body cannot occlude, on the plane perpendicular to the seat axis so the
+        bulb's travel along that axis stays across the frame rather than pointing at the lens.
+        """
         if VIDEO is None:
             return
-        seat_point, _, _ = seat_geometry()
-        eye = (
-            seat_point[0].item() + 0.48,
-            seat_point[1].item() - 0.58,
-            seat_point[2].item() + 0.20,
-        )
-        VIDEO.set_pose(eye, tuple(seat_point.tolist()))
+        seat_point, _, world_axis = seat_geometry()
+        # Direction from the robot toward the seat, with the axial part removed: staying off
+        # the seat axis keeps the bulb's in/out travel visible as motion across the frame.
+        away = seat_point - robot.data.root_pos_w[0]
+        away = away - torch.dot(away, world_axis) * world_axis
+        norm = torch.norm(away)
+        away = away / norm if float(norm) > 1e-6 else lateral_axis(world_axis)
+        up = torch.tensor([0.0, 0.0, 1.0], device=env.device)
+        eye = seat_point + away * CAMERA_DISTANCE + up * CAMERA_RISE
+        VIDEO.set_pose(tuple(eye.tolist()), tuple(seat_point.tolist()))
 
     return (
         seat_geometry,
