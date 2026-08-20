@@ -99,7 +99,11 @@ VIDEO = None
 # horizontal), so 0.30 m puts it across roughly a fifth of the frame -- close enough to read
 # the twist, far enough to keep the socket and the ejected bulb both in shot.
 CAMERA_DISTANCE = 0.30  # m, from the seat, perpendicular to the seat axis
-CAMERA_RISE = 0.08  # m, slightly above the seat so the socket mouth is not edge-on
+# Offset along the OUTWARD seat axis, not world up. The bulb always sits on the outward side,
+# so this holds a mild three-quarter view whatever the mount: it drops below a ceiling fixture
+# to look up at a hanging bulb, and steps out from a wall fixture. World up only suited a wall
+# mount -- on a ceiling it put the camera above the seat, where the shade hides the bulb.
+CAMERA_RISE = 0.08  # m, along the outward seat axis
 
 
 def record(name: str, passed: bool, detail: str = "") -> None:
@@ -275,8 +279,7 @@ def _build_rig(env, robot, socket, old_bulb, fresh_bulb, zero_action, zeros6):
         away = away - torch.dot(away, world_axis) * world_axis
         norm = torch.norm(away)
         away = away / norm if float(norm) > 1e-6 else lateral_axis(world_axis)
-        up = torch.tensor([0.0, 0.0, 1.0], device=env.device)
-        eye = seat_point + away * CAMERA_DISTANCE + up * CAMERA_RISE
+        eye = seat_point + away * CAMERA_DISTANCE + world_axis * CAMERA_RISE
         VIDEO.set_pose(tuple(eye.tolist()), tuple(seat_point.tolist()))
 
     return (
