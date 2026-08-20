@@ -266,6 +266,12 @@ if __name__ == "__main__":
     exit_code = 1
     try:
         exit_code = main()
+    except BaseException:
+        # `os._exit` below skips the interpreter's own traceback printing, so without this a
+        # crash inside main() dies completely silently -- the log simply stops. Print it first.
+        import traceback
+
+        traceback.print_exc()
     finally:
         sys.stdout.flush()
         sys.stderr.flush()
