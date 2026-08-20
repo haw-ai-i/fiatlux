@@ -94,6 +94,10 @@ from isaaclab_tasks.utils import parse_env_cfg
 
 RESULTS: list[tuple[str, bool, str]] = []
 VIDEO = None
+# Per-captured-frame lock state, for the plot written alongside a video. The mechanic's whole
+# state is four numbers and none of them has a visual signature, so a curve shows the unscrew
+# far more clearly than any camera angle can.
+LOCK_TRACE: list[tuple[int, float, int, float]] = []
 
 # Video framing. The bulb is about 7 cm, and the video camera is a 20 mm pinhole (~55 deg
 # horizontal), so 0.30 m puts it across roughly a fifth of the frame -- close enough to read
@@ -232,6 +236,18 @@ def _build_rig(env, robot, socket, old_bulb, fresh_bulb, zero_action, zeros6):
         axial = torch.dot(displacement, world_axis)
         return torch.norm(displacement - axial * world_axis).item()
 
+    def lock_state_sample() -> tuple[int, float, int, float]:
+        """One row of the lock trace: (old phase, old theta, fresh phase, fresh theta)."""
+        manager = task_attach.attachment_manager(env)
+        if manager is None:
+            return (0, 0.0, 0, 0.0)
+        return (
+            int(manager._phase[task_attach._OLD, 0].item()),
+            float(manager._theta[task_attach._OLD, 0].item()),
+            int(manager._phase[task_attach._FRESH, 0].item()),
+            float(manager._theta[task_attach._FRESH, 0].item()),
+        )
+
     def lock_state_caption() -> str:
         """The state machine's own numbers, for burning into a video frame.
 
@@ -255,6 +271,7 @@ def _build_rig(env, robot, socket, old_bulb, fresh_bulb, zero_action, zeros6):
         if VIDEO is not None:
             aim_camera()
             VIDEO.capture(overlay=lock_state_caption())
+            LOCK_TRACE.append(lock_state_sample())
 
     def drive_pose(bulb, axial_start: float, axial_end: float, rotation_start: float, rotation_end: float, steps: int):
         for index in range(steps):
@@ -389,6 +406,54 @@ def _check_spawn_twist(env, socket, old_bulb) -> None:
         f"worst |spawn twist| = {worst:.2e} rad, worst full orientation error = {worst_full:.2e} rad "
         f"across {env.num_envs} env(s)",
     )
+
+
+def _write_lock_plot(video_path: str, rotation_angle: float) -> str | None:
+    """Plot the lock trace next to the video, as ``<video>_theta.png``.
+
+    The bulb is a surface of revolution, so its rotation is invisible on camera. The curve is
+    the honest view of the mechanic: theta walking down from the lock angle to zero, with the
+    phase bands behind it showing when the state machine actually released.
+    """
+    if not LOCK_TRACE:
+        return None
+    try:
+        import matplotlib
+
+        matplotlib.use("Agg")
+        import matplotlib.pyplot as plt
+    except ImportError:
+        info("matplotlib missing, skipping the theta plot")
+        return None
+
+    old_phase = [row[0] for row in LOCK_TRACE]
+    old_theta = [row[1] for row in LOCK_TRACE]
+    fresh_theta = [row[3] for row in LOCK_TRACE]
+    frames = range(len(LOCK_TRACE))
+
+    fig, ax = plt.subplots(figsize=(11, 4.2), dpi=140)
+    # Phase bands behind the curves: the release is a state change, not just a number falling.
+    colors = {task_attach._FREE: "#e8f5e9", task_attach._AXIAL: "#fff4e5", task_attach._ROTATING: "#e8eefc"}
+    start = 0
+    for i in range(1, len(old_phase) + 1):
+        if i == len(old_phase) or old_phase[i] != old_phase[start]:
+            ax.axvspan(start, i - 1, color=colors.get(old_phase[start], "#ffffff"), zorder=0)
+            start = i
+    ax.plot(frames, old_theta, label="old bulb theta", color="#1f4fd8", linewidth=2.0)
+    ax.plot(frames, fresh_theta, label="fresh bulb theta", color="#d81f4f", linewidth=1.4, linestyle="--")
+    ax.axhline(rotation_angle, color="#666666", linewidth=0.9, linestyle=":", label="lock angle")
+    ax.axhline(0.0, color="#666666", linewidth=0.9, linestyle=":")
+    ax.set_xlabel("captured frame")
+    ax.set_ylabel("theta (rad)")
+    ax.set_title("Bayonet lock state (bands = old bulb phase: blue ROTATING, orange AXIAL, green FREE)")
+    ax.legend(loc="upper right")
+    ax.margins(x=0)
+    fig.tight_layout()
+
+    out = video_path.rsplit(".", 1)[0] + "_theta.png"
+    fig.savefig(out)
+    plt.close(fig)
+    return out
 
 
 def _check_socket_pair_filtered(env) -> None:
@@ -735,6 +800,9 @@ def main() -> int:
 
         if VIDEO is not None:
             info(f"wrote video {VIDEO.write()} ({len(VIDEO)} frames)")
+            plot_path = _write_lock_plot(args_cli.video, angle)
+            if plot_path:
+                info(f"wrote lock-state plot {plot_path}")
     finally:
         env.close()
     info("run again with --check-ranges for the parameter-range sampling check")
