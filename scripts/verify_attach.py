@@ -561,7 +561,7 @@ def main() -> int:
 
         (
             seat_geometry,
-                place_bulb,
+            place_bulb,
             axial_distance,
             bulb_twist,
             bulb_lateral_distance,
@@ -591,6 +591,14 @@ def main() -> int:
 
         def old_theta() -> float:
             return manager._theta[task_attach._OLD, 0].item()
+
+        # Warm the renderer BEFORE the first capture. The RTX pipeline returns an empty frame
+        # on its first passes, so capturing immediately puts a blank frame at the head of every
+        # recording. Step without capturing until it produces pixels.
+        if VIDEO is not None:
+            aim_camera()
+            for _ in range(4):
+                env.step(zero_action)
 
         for _ in range(12):
             step()
@@ -705,9 +713,16 @@ def main() -> int:
             f"physics-driven displacement={free_motion * 100:.1f} cm",
         )
 
+        # Carry the freed bulb to the crate, which is where the task wants it. The old code
+        # nudged it by a hardcoded WORLD offset, [0.20, -0.12, 0.06], and the harness disables
+        # gravity and collisions, so the bulb simply hung wherever that landed. On seed 0 that
+        # direction points into the east wall: the bulb parked mid-air, half buried in it, and
+        # stayed in shot for the whole fresh-bulb sequence. Same world-frame mistake the camera
+        # aim made twice. The crate is a real scene entity, so this works on any mount.
         old_quat = old_bulb.data.root_quat_w[0].clone()
         old_start = old_bulb.data.root_pos_w[0].clone()
-        old_aside = old_start + torch.tensor([0.20, -0.12, 0.06], device=env.device)
+        old_aside = env.scene["bin"].data.root_pos_w[0].clone()
+        old_aside[2] += 0.05
         animate_free_bulb(old_bulb, old_start, old_aside, old_quat, 18)
 
         # A misaligned bulb must never engage the (now empty) channel.
