@@ -94,8 +94,66 @@ Once `[5/5] READY` prints, the launcher echoes these — in order:
 |---|---|
 | **grip-clutch + move** controller | move the arm (release grip to reposition without moving the arm) |
 | **trigger** | grasp / release the hand |
-| **left stick** | walk (SONIC) · **right stick X** | turn · **right button** | stop |
-| **left X / Y buttons** | lean |
+| **left stick** | walk (SONIC) · **right stick X** | turn |
+| **right A** (lower button) | stop walking |
+| **right B** (upper button) | recording on/off (when `--record` is active) |
+| **left X / Y buttons** | lean forward / back |
+
+---
+
+## Record demo sessions
+
+`sonic_teleop.py` can record every session as a **demo bag** in the same robomimic-style format as
+the benchmark's `record_run.py` policy bags -- so human demos and policy rollouts share one format,
+one scorer, one toolchain. (The repo itself has no demo-consuming trainer yet; the bags simply
+record everything below, in a standard layout.)
+
+```bash
+# keyboard
+... sonic_teleop.py --task FIATLUX-Carry-Teleop-v0 --input keyboard --record bag
+# VR (the launcher forwards these):
+FIATLUX_RECORD=1 [FIATLUX_RECORD_VIDEO=1] [FIATLUX_RECORD_START=toggle] [FIATLUX_RECORD_FORMAT=npz] \
+    NV_CXR_ENDPOINT_IP=<ip> FIATLUX_TASK=... bash scripts/teleop/restart_sonic_teleop.sh
+```
+
+**What a session records** (per step, all envs' joints -- dex3 = 43 columns, inspire = 53):
+`policy_obs`, the 16-dim teleop `actions` (EE pose + grip per arm), **`joint_pos_target`** (the
+complete commanded joint vector -- including SONIC's legs, which bypass the action manager),
+`loco_cmd`/`rpy_cmd` (the operator's walk/lean), `sonic_action`, measured joint states, object
+poses, contact forces, rewards, and termination flags. `meta.json` carries the joint-name column
+map (resolved from the LIVE robot), per-term action breakdown, and the **benchmark score** --
+which is also appended to the session folder name on clean exit, so a directory listing reads as
+a ranking.
+
+**Episodes** split at the operator's boundaries: `[R]` reset, recording toggled off (keyboard
+`C` / VR right **B**), or exit. Each boundary **flushes the bag to disk** -- a crashed or killed
+session keeps every closed episode (Kit's SIGINT handler skips the final write, so only the
+trailing unclosed episode can be lost; use `--max_steps N` for clean scripted endings).
+
+**Options** (each is a flag; see `--help`):
+- `--record-start auto|toggle` -- record from launch, or start OFF until the operator toggles.
+- `--record-format hdf5|npz` -- robomimic-style HDF5 (default) or flat npz.
+- `--record-video` -- follow-cam MP4 + poster PNG, streamed to disk (review footage).
+- `--record-images --images-stride N` -- the env's own `wrist_camera`/`ego_camera` as JPEGs in
+  `<session>/images/<camera>/f<step>.jpg` (default every 5th step = 10 Hz). The filename index is
+  the bag's flat row number, so each frame pairs 1:1 with that row's `policy_obs`/`actions`; the
+  MP4 is review footage only.
+
+**Storage** is dataset-first, outside the git tree (`$FIATLUX_CAPTURES_DIR`, default
+`../teleop-captures` beside the repo). One dimension per level, so a training dataset is always
+one glob and always schema-homogeneous:
+
+```
+teleop-captures/<task>/<hand>/<kind>/<input>/<YYYY-MM-DD>/<HHMMSS>_score<X>/
+                        |      |       |                    run.h5|run.npz, meta.json,
+                        |      |       keyboard|vr          [video.mp4, images/...]
+                        |      hdf5|npz[+images]
+                        dex3|inspire  (derived from the LIVE robot -- 43 vs 53 joint columns)
+
+# sessions with images:   <task>/dex3/hdf5+images/**
+# sessions without:       <task>/dex3/hdf5/**
+# only good demos:        .../**/*_score0.[5-9]*/
+```
 
 ---
 
@@ -175,9 +233,14 @@ source/fiatlux_teleop/fiatlux_teleop/
   insert_teleop_env_cfg.py          # stationary template (bolted base), bulb-insert scene
   ladder_gallery_teleop_env_cfg.py  # all ladder designs on an open floor (a Carry-Teleop subclass)
   xr_controller_retargeters.py      # controller pose -> arm target, controller trigger -> grip
+  teleop_recording.py               # demo recording: TeleopTrajectoryRecorder (task-agnostic robomimic
+                                    #   bags + operator episode boundaries + score-in-meta),
+                                    #   StreamingVideoRecorder (constant-memory MP4), ImageCapture (ACT frames)
 scripts/teleop/
-  sonic_teleop.py                   # whole-body driver: SONIC legs + arm teleop, --input vr|keyboard
-  restart_sonic_teleop.sh           # VR launcher (CloudXR runtime + sim + sonic_teleop.py --input vr)
+  sonic_teleop.py                   # whole-body driver: SONIC legs + arm teleop, --input vr|keyboard,
+                                    #   --record bag [--record-video --record-images ...] demo recording
+  restart_sonic_teleop.sh           # VR launcher (CloudXR runtime + sim + sonic_teleop.py --input vr);
+                                    #   forwards recording via FIATLUX_RECORD/_VIDEO/_START/_FORMAT
 ```
 
 - `import fiatlux_task` registers the **benchmark** tasks; `import fiatlux_teleop` registers the

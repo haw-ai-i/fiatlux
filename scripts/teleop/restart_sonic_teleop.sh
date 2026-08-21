@@ -11,6 +11,16 @@ TAILNET_IP="${NV_CXR_ENDPOINT_IP:?set NV_CXR_ENDPOINT_IP to the IP the headset c
 MEDIA_PORT="${NV_CXR_MEDIA_PORT:-47998}"
 TASK="${FIATLUX_TASK:-FIATLUX-Insert-Teleop-v0}"   # e.g. FIATLUX-Carry-Teleop-v0
 HAND="${FIATLUX_HAND:-dex3}"                       # dex3 | inspire
+# Demo recording (all optional; see sonic_teleop.py --help):
+#   FIATLUX_RECORD=1        record the session as a demo bag (score in meta.json)
+#   FIATLUX_RECORD_VIDEO=1  also render a follow-cam MP4 (implies RECORD)
+#   FIATLUX_RECORD_START=toggle   start with recording OFF (right controller B = upper button toggles)
+#   FIATLUX_RECORD_FORMAT=npz     bag as npz instead of hdf5
+RECORD_ARGS=()
+[ "${FIATLUX_RECORD:-0}" = 1 ] && RECORD_ARGS+=(--record bag)
+[ "${FIATLUX_RECORD_VIDEO:-0}" = 1 ] && RECORD_ARGS+=(--record-video)
+[ -n "${FIATLUX_RECORD_START:-}" ] && RECORD_ARGS+=(--record-start "$FIATLUX_RECORD_START")
+[ -n "${FIATLUX_RECORD_FORMAT:-}" ] && RECORD_ARGS+=(--record-format "$FIATLUX_RECORD_FORMAT")
 REPO="$HOME/robotica_project/fiatlux/fiatlux"
 LOGDIR="/tmp/fiatlux-xr"; mkdir -p "$LOGDIR"
 source ~/miniconda3/etc/profile.d/conda.sh
@@ -58,7 +68,8 @@ cd "$REPO"
 export PYTHONPATH="$REPO/source/fiatlux_task:$REPO/source/fiatlux_teleop"
 export DISPLAY="${DISPLAY:-:1001}"
 echo "   task=$TASK hand=$HAND"
-nohup "$SIM_PY" -u scripts/teleop/sonic_teleop.py --task "$TASK" --hand "$HAND" > "$LOGDIR/sonic_teleop.log" 2>&1 &
+nohup "$SIM_PY" -u scripts/teleop/sonic_teleop.py --task "$TASK" --hand "$HAND" \
+    ${RECORD_ARGS[@]+"${RECORD_ARGS[@]}"} > "$LOGDIR/sonic_teleop.log" 2>&1 &
 for _ in $(seq 1 150); do grep -q "Teleop ready" "$LOGDIR/sonic_teleop.log" 2>/dev/null && break; sleep 2; done
 if grep -q "Teleop ready" "$LOGDIR/sonic_teleop.log"; then echo "   sim ready"; else
   echo "   sim not ready yet -- watch: tail -f $LOGDIR/sonic_teleop.log"; fi
