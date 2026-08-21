@@ -13,12 +13,29 @@ whole-body action for a human-drivable **arm-IK + binary-grip** interface, drive
 
 ## Setup (one-time)
 
+One command installs everything (idempotent; `verify` mode checks without installing):
+
+```bash
+./scripts/teleop/setup_sim_teleop.sh            # keyboard tier: sim env + assets + SONIC onnx
+./scripts/teleop/setup_sim_teleop.sh vr         # + the CloudXR/Pico tier
+./scripts/teleop/setup_sim_teleop.sh verify     # check every piece
+```
+
+By default it builds a **fresh uv env** (`uv sync --extra teleop` — Isaac Sim/Lab as pinned wheels,
+no external IsaacLab checkout to depend on). If you already have a correct sim env and know its
+path, opt in explicitly: `SIM_PYTHON=/path/to/env/bin/python ./scripts/teleop/setup_sim_teleop.sh`
+(the script validates it — imports, versions, and where its `isaaclab` really lives).
+
 Teleop runs as **two processes in two envs**, kept separate so the CloudXR deps never touch the sim:
 
-| Env | What to install | Role |
+| Env | What's in it | Role |
 |---|---|---|
-| **`env_isaaclab`** | Isaac Lab / Isaac Sim 5.1.0; `fiatlux_task` + `fiatlux_teleop` on `PYTHONPATH`; `onnxruntime` (SONIC legs, in this package's `setup.py`) | renders + runs the sim, reads XR input |
-| **`vr_teleop`** | `pip install 'isaacteleop[cloudxr,retargeters]~=1.0.0'` | the CloudXR streaming runtime only |
+| **sim env** (uv `.venv`, or your `SIM_PYTHON`) | Isaac Sim 5.1 / Isaac Lab 2.3.2; `fiatlux_task` + `fiatlux_teleop` on `PYTHONPATH`; `onnxruntime` via the `teleop` extra (SONIC legs) | renders + runs the sim, reads XR input |
+| **`vr_teleop`** | `pip install 'isaacteleop[cloudxr,retargeters]~=1.3.0'` (1.3.131 verified) | the CloudXR streaming runtime only |
+
+> **uv gotcha:** `uv sync` without the extra makes the env match the lockfile *exactly* — it
+> uninstalls `onnxruntime` again. Launch teleop with **`uv run --extra teleop python …`** (as the
+> setup script prints) and it self-heals regardless of what was synced before.
 
 Also needed:
 - **Headset** — Pico 4 Ultra (or any CloudXR-compatible OpenXR headset) on the **same Tailscale
