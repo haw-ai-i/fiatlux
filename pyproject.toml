@@ -43,6 +43,12 @@ groot = [
     "pyzmq",
     "msgpack-numpy",
 ]
+# Whole-body sim teleop (scripts/teleop/sonic_teleop.py + fiatlux_teleop): SONIC legs
+# need onnxruntime in the SIM env. CloudXR/OpenXR deps stay OUT of this env by design --
+# they live in the separate vr_teleop venv (see scripts/teleop/setup_sim_teleop.sh).
+teleop = [
+    "onnxruntime",
+]
 
 [tool.uv]
 # Root is a managed environment, not a distributable package.
