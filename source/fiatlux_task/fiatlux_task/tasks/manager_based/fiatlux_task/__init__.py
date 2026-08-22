@@ -176,7 +176,11 @@ gym.register(
     id="FIATLUX-S08-CarryBulbToDisposal-v0",
     entry_point="isaaclab.envs:ManagerBasedRLEnv",
     disable_env_checker=True,
-    kwargs={"env_cfg_entry_point": f"{__name__}.subtasks.s08_carry_bulb_to_disposal_env_cfg:S08CarryBulbToDisposalEnvCfg"},
+    kwargs={
+        "env_cfg_entry_point": (
+            f"{__name__}.subtasks.s08_carry_bulb_to_disposal_env_cfg:S08CarryBulbToDisposalEnvCfg"
+        ),
+    },
 )
 
 gym.register(

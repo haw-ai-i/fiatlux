@@ -794,12 +794,15 @@ def scenario_hand(probe: bool = False):
             # OWN root frame, after the hold has settled -- this is what BULB_IN_ROOT_STANDING/
             # BULB_IN_ROOT_ON_LADDER should hold, root-frame offsets are pose-invariant so this
             # transfers directly onto a free (randomized) root.
-            from isaaclab.utils.math import quat_apply_inverse, quat_mul as _quat_mul_isl
+            from isaaclab.utils.math import quat_apply_inverse
+            from isaaclab.utils.math import quat_mul as _quat_mul_isl
 
             root = env.scene["robot"]
             root_pos = root.data.root_pos_w[0]
             root_quat = root.data.root_quat_w[0]
-            bulb_pos_in_root = quat_apply_inverse(root_quat.unsqueeze(0), (bulb.data.root_pos_w[0] - root_pos).unsqueeze(0))[0]
+            bulb_pos_in_root = quat_apply_inverse(
+                root_quat.unsqueeze(0), (bulb.data.root_pos_w[0] - root_pos).unsqueeze(0)
+            )[0]
             bulb_quat_in_root = _quat_mul_isl(
                 torch.stack([root_quat[0], -root_quat[1], -root_quat[2], -root_quat[3]]).unsqueeze(0),
                 bulb.data.root_quat_w[0].unsqueeze(0),
