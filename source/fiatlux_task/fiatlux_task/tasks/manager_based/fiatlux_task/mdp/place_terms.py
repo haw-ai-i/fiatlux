@@ -42,12 +42,20 @@ if TYPE_CHECKING:
 # Geometry constants
 # ---------------------------------------------------------------------------
 
-# The A-frame's step-facing direction IN ITS OWN ROOT FRAME. Local +y, from two independent
-# constants in scene_cfg that agree: LADDER_YAW_DEG = 90 is documented as aiming the steps at
-# world -x, and R_z(90) maps local +y to world -x; CLIMB_ROBOT_POSITION stands the robot on the
-# -x side of LADDER_POSITION to mount it. The ladder's placed yaw comes from the layout draw, so
-# every gate below rotates this by the LIVE quaternion rather than assuming a world direction.
-LADDER_STEP_FACE_LOCAL = (0.0, 1.0, 0.0)
+# The A-frame's step-facing direction IN ITS OWN ROOT FRAME. Local -y.
+#
+# CORRECTED 2026-08-22: was (0, 1, 0). The old comment's derivation ("LADDER_YAW_DEG=90 aims the
+# steps at world -x, R_z(90) maps local +y to world -x, CLIMB_ROBOT_POSITION stands on the -x
+# side") is internally consistent arithmetic but never checked against the asset mesh itself --
+# it derived the sign from two constants that both encode the SAME earlier assumption, not from
+# an independent measurement. Rendered directly (a robot placed via ``_stance_on_step_side`` and
+# a top-down render of the live scene, both against the randomized ``replace`` layout, not just
+# the yaw=90 default): the flat rungs are on local -y, the diagonal back brace on local +y. Every
+# consumer (``_stance_on_step_side`` for S01/S04/S05/S06/S07/S13/S14/S15's start stance, and S04's
+# own ``robot_at_ladder_base`` success gate) was placing/scoring the robot on the unclimbable
+# brace side. The ladder's placed yaw comes from the layout draw, so every gate below rotates
+# this by the LIVE quaternion rather than assuming a world direction.
+LADDER_STEP_FACE_LOCAL = (0.0, -1.0, 0.0)
 
 # The crate's interior footprint, as its measured outer footprint less one wall. Outer extent is
 # the crate's real size (0.60 x 0.40 x 0.17 m, scene_cfg); the wall thickness is PROVISIONAL --
