@@ -21,7 +21,7 @@ RECORD_ARGS=()
 [ "${FIATLUX_RECORD_VIDEO:-0}" = 1 ] && RECORD_ARGS+=(--record-video)
 [ -n "${FIATLUX_RECORD_START:-}" ] && RECORD_ARGS+=(--record-start "$FIATLUX_RECORD_START")
 [ -n "${FIATLUX_RECORD_FORMAT:-}" ] && RECORD_ARGS+=(--record-format "$FIATLUX_RECORD_FORMAT")
-REPO="$HOME/robotica_project/fiatlux/fiatlux"
+REPO="${FIATLUX_REPO:-$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)}"
 LOGDIR="/tmp/fiatlux-xr"; mkdir -p "$LOGDIR"
 source ~/miniconda3/etc/profile.d/conda.sh
 
