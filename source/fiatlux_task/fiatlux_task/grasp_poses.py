@@ -24,11 +24,14 @@ iterate until the contacts register AND the rendered grasp shows the payload enc
 digits, then replace the ``UNCALIBRATED`` note with ``CALIBRATED <date>``. Numbers here are
 specific to the assets and actuator gains they were measured against.
 
-**Every pose below is UNCALIBRATED.** They are geometric estimates composed from measured
-constants (palm world position under ``ARM_CRADLE``, the bulb's own cap offsets, the ladder's
-footprint), which is enough to build the envs and to render a start state, and not enough to
-trust: a coded assertion that the payload is within a centimetre of the palm has passed twice
-on this project while the render showed it pinched outside the hand.
+**Poses marked UNCALIBRATED are geometric estimates**, composed from measured constants (palm
+world position under ``ARM_CRADLE``, the bulb's own cap offsets, the ladder's footprint), which
+is enough to build the envs and to render a start state, and not enough to trust: a coded
+assertion that the payload is within a centimetre of the palm has passed twice on this project
+while the render showed it pinched outside the hand. ``BULB_IN_ROOT_STANDING`` /
+``BULB_IN_ROOT_ON_LADDER`` are the one pair actually run through the settled-hold probe end to
+end (fingertips converge on the pin point, contact sustains after release, force stays under the
+break limit) -- treat the rest as estimates until they get the same treatment.
 """
 
 Vec3 = tuple[float, float, float]
@@ -55,6 +58,14 @@ BULB_GLASS_CENTRE_M = 0.131
 GLASS_CONTACT_LIMIT_N = 50.0
 CAP_CONTACT_LIMIT_N = 300.0
 
+# How far out along the fingers the bulb sits, per hand -- MEASURED via
+# ``verify_interactions.py --scenario hand --probe``'s CLOSED-fingertip printout, not derived.
+# The two variants curl to opposite regions of the palm frame, not just different amounts: Dex3
+# reaches forward of the palm origin (bounded by the thumb's 2.3 cm reach against 12.4 cm of
+# fingertip); Inspire's curl sweeps the fingertips BACK past the palm origin -- a cradle, not a
+# fingertip pinch -- centring near f=-0.148.
+PALM_GRASP_FORWARD_M_BY_VARIANT: dict[str, float] = {"dex3": 0.045, "inspire": -0.148}
+
 # The ladder is not fragile; this bound is a runaway-solver tripwire, nothing else. A grip
 # reading past it means the solver is wedging the hand against a rail, not that the ladder is
 # about to break.
@@ -64,33 +75,38 @@ LADDER_GRIP_TRIPWIRE_N = 500.0
 # Held-payload poses in the robot root frame
 # ---------------------------------------------------------------------------
 
-# Bulb held upright on its cap in the right hand, robot standing (``ARM_CRADLE`` +
-# ``HAND_CRADLE_DEX3``). Consumed by S08 and S12 as their start state, and produced by S11.
+# Bulb held lying ACROSS the curled fingers, cap gripped between fingers and thumb (``ARM_CRADLE``
+# + ``HAND_CRADLE``, Inspire). Consumed by S07/S08/S12/S13/S14 as their start state, and produced
+# by S11.
 #
-# UNCALIBRATED -- must be measured. Composed from: the palm at ~(0.44, -0.15, 0.26) in the
-# root frame (``poses.py``'s measured (0.44, -0.15, 1.11) world at a (0, 0, 0.85) root),
-# ``PALM_GRASP_FORWARD_M`` = 0.045 along the fingers, the cap seated one ``BULB_CAP_RADIUS_M``
-# off the palm face, and the root backed out ``BULB_CAP_CENTRE_M`` below the cap centre.
+# CALIBRATED 2026-08-20 against ``verify_interactions.py --scenario hand --probe --robot inspire``:
+# ``HAND_CRADLE``'s curled fingers form a cradle LOOP that gravity seats a lying object into --
+# they do not hold a standing one. An earlier version of this constant held the bulb upright on
+# its cap instead (matching how a person actually carries a bulb) and claimed the lying-across
+# orientation "squirts out"; measured, it is the reverse -- upright slips out in under a second
+# (0 N contact after the pin releases, 15 cm of drift in 3 s) while lying-across holds cleanly
+# (146-226 N steady contact, 1.8-3.1 cm of slip, sustained the full 150-step hold, gentle release).
+# Trust the measurement over the older comment.
 #
-# Probe: ``verify_interactions.py --scenario hand --probe --robot dex3``, extended to print the
-# bulb's root pose in the robot root frame (``quat_inv(root_quat) (x) (bulb_pos - root_pos)``)
-# after the hold has settled. Today that probe prints the palm frame and the grasp pose only.
-#
-# Upright on the cap, NOT laid across the fingers: laid across, the bulb is pinched against
-# the palm and squirts out (``poses.py``, ``BULB_UPRIGHT_QUAT``). Do not re-attempt that grasp.
-BULB_IN_ROOT_STANDING: tuple[Vec3, Quat] = ((0.485, -0.150, 0.237), (1.0, 0.0, 0.0, 0.0))
+# Measured directly (not composed from separate constants) via the settled-hold probe: teleport
+# the bulb to ``palm_grasp_pose()``, ramp ``HAND_CRADLE`` closed, release the pin, run 150 steps,
+# then read ``quat_inv(root_quat) (x) (bulb_pos - root_pos)`` and ``quat_inv(root_quat) * bulb_quat``.
+# Root-frame offsets are pose-invariant (composed back onto whatever root pose ``compose_carried_pose``
+# is given), so this transfers directly from the fixed-root calibration rig onto a free, randomized
+# root.
+BULB_IN_ROOT_STANDING: tuple[Vec3, Quat] = (
+    (0.5635, -0.1955, 0.2946),
+    (-0.450560, 0.576195, 0.544127, 0.411001),
+)
 
-# The same grasp with the on-ladder stance's torso lean applied. The bulb must stay upright in
-# the WORLD while the root is pitched forward ~12 deg (``poses.LADDER_STANCE_ROOT_ROT``), so in
-# the root frame it is counter-pitched -12 deg about +y. Consumed by S13.
-#
-# UNCALIBRATED -- must be measured. The lean and the arm cradle compose; do NOT assume
-# ``BULB_IN_ROOT_STANDING`` is reusable with only the rotation swapped -- the seat offsets are
-# taken along world up, which is no longer a root axis here.
-#
-# Probe: ``verify_interactions.py --scenario ladder --probe --robot dex3`` with the cradle arm/
-# hand pose applied on top of ``LADDER_STANCE_JOINTS``, printing the same in-root pose.
-BULB_IN_ROOT_ON_LADDER: tuple[Vec3, Quat] = ((0.487, -0.150, 0.240), (0.994522, 0.0, -0.104528, 0.0))
+# Same grasp, same value. There is no longer a torso-lean correction to apply: the earlier
+# on-ladder variant existed only because "upright" was a WORLD-frame constraint, which needed
+# counter-pitching against ``poses.LADDER_STANCE_ROOT_ROT``'s ~12 deg forward lean. The
+# lying-across grasp has no such constraint -- it is whatever ``ARM_CRADLE``/``HAND_CRADLE``
+# (root-relative joint targets) naturally produce, which does not depend on the root's own
+# orientation. Kept as a separate name because S07/S14 import it as such, not because the value
+# differs. Consumed by S07 (old bulb) and S14 (fresh bulb).
+BULB_IN_ROOT_ON_LADDER: tuple[Vec3, Quat] = BULB_IN_ROOT_STANDING
 
 # Ladder held by BOTH rails, upright, symmetric in front of the robot, at the moment
 # ``ladder_grasped`` fires. Produced by S02, consumed by S03 and S04. Two-handed by design, not

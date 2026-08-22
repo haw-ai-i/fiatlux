@@ -9,7 +9,7 @@ Starts from S13's end state: the robot balanced on the upper steps with the fres
 (``BULB_IN_ROOT_ON_LADDER``), the fixture inverted and empty, the old bulb in the disposal crate.
 
 The bayonet attach/detach state machine (issue #54, ``mdp.bulb_attachment``, wired once for the
-tier in ``subtask_tiers.mate.MateEventCfg``) governs the fresh bulb from here: FREE at reset
+tier in ``subtask_tiers.balance.BalanceEventCfg``) governs the fresh bulb from here: FREE at reset
 (``BULB_IN_ROOT_ON_LADDER`` puts it in the hand, not the insertion channel, so it starts
 unconstrained same as before), through AXIAL once it enters the channel, to ROTATING once
 bottomed and turned through the full lock angle. ``mdp.fresh_bulb_attached`` is the success
@@ -24,26 +24,32 @@ What makes the gate "screwed in" rather than "held in the socket" is that the ha
 the bulb still locked a second later -- the conjunction is debounced as a whole, so every part of
 it has to survive the release.
 
-Still open, NOT fixed by the attach FSM: the start state itself. The bayonet mechanic governs
-bulb-vs-socket, not bulb-vs-hand -- ``compose_carried_pose`` positions the bulb correctly but
-nothing holds it there, so it is subject to the same free-fall-from-a-carried-pose gap as
-S03/S04/S07/S08/S12/S13 for the first part of the episode, until it either gets carried into the
-channel (which starts constraining it) or hits the floor first.
+The bayonet mechanic governs bulb-vs-socket, not bulb-vs-hand -- that hold is real, not a
+kinematic constraint: ``ARM_CRADLE`` (palm up) + ``HAND_CUP`` (uncurled, merged into
+``robot.init_state.joint_pos``) rest the bulb directly on the open palm
+(``nav_terms.settle_carried_payload_live``), and ``grip_contact`` measures real, sustained
+holding force from there. Deliberately not a closing-fingers pinch: that geometry needed several
+fingertips to converge on the bulb from different directions without ever separately verifying
+clean (non-interpenetrating) contact, and visually did not -- the cap was simply buried in the
+palm mesh. Resting on an open palm is a strictly simpler, one-surface contact problem.
 """
 
+from isaaclab.managers import EventTermCfg as EventTerm
 from isaaclab.managers import RewardTermCfg as RewTerm
 from isaaclab.managers import SceneEntityCfg
 from isaaclab.managers import TerminationTermCfg as DoneTerm
 from isaaclab.utils import configclass
 
 from fiatlux_task.grasp_poses import BULB_IN_ROOT_ON_LADDER
+from fiatlux_task.poses import ARM_CRADLE, HAND_CUP
 
 from .. import mdp
 from ..mdp import grasp_terms, mate_terms, place_terms
-from ..mdp.nav_terms import add_grip_contact_sensor, compose_carried_pose
+from ..mdp.nav_terms import add_grip_contact_sensor, compose_carried_pose, settle_carried_payload_live
 from ..replace_env_cfg import FRESH_BULB_DROP_HEIGHT
 from ..scene_cfg import park_old_bulb_in_crate
 from ..subtask_env_cfg import FALL_MIN_HEIGHT, FALL_TILT_LIMIT
+from ..subtask_tiers.balance import BalanceEventCfg
 from ..subtask_tiers.mate import (
     MATE_ALIGNMENT_STD,
     MATE_ALIGNMENT_WEIGHT,
@@ -69,6 +75,37 @@ BULB_SCREWED_IN_CONJUNCTS = [
     (place_terms.robot_standing, {"minimum_height": FALL_MIN_HEIGHT, "limit_angle": FALL_TILT_LIMIT}),
     (grasp_terms.ladder_near_vertical, {"tilt_limit": mdp.LADDER_TILT_LIMIT}),
 ]
+
+
+@configclass
+class S14EventCfg(BalanceEventCfg):
+    """Re-seats the bulb against the hand's live, actually-simulated pose -- see
+    ``nav_terms.settle_carried_payload_live``. Declared after the inherited ``bulb_attachment``
+    (issue #54), so on the settling step the bayonet FSM still sees the bulb wherever
+    ``compose_carried_pose`` put it (FREE phase, no channel nearby -- harmless) before this
+    corrects the position for the rest of the episode. Root/joint randomization zeroed for now
+    while the open-palm rest calibration is being worked out (adds noise we don't need yet)."""
+
+    settle_bulb = EventTerm(
+        func=settle_carried_payload_live,
+        mode="interval",
+        interval_range_s=(0.0, 0.0),
+        params={"payload_cfg": SceneEntityCfg("bulb")},
+    )
+    reset_robot_joints = EventTerm(
+        func=mdp.reset_joints_by_offset,
+        mode="reset",
+        params={"position_range": (0.0, 0.0), "velocity_range": (0.0, 0.0)},
+    )
+    reset_robot_root = EventTerm(
+        func=mdp.reset_root_state_uniform,
+        mode="reset",
+        params={
+            "asset_cfg": SceneEntityCfg("robot"),
+            "pose_range": {"x": (0.0, 0.0), "y": (0.0, 0.0), "yaw": (0.0, 0.0)},
+            "velocity_range": {},
+        },
+    )
 
 
 @configclass
@@ -100,6 +137,7 @@ class S14ScrewInBulbEnvCfg(MateSubtaskCfg):
         "predicate_params": {"predicates": BULB_SCREWED_IN_CONJUNCTS},
     }
 
+    events: S14EventCfg = S14EventCfg()
     rewards: S14RewardsCfg = S14RewardsCfg()
     terminations: S14TerminationsCfg = S14TerminationsCfg()
 
@@ -111,6 +149,13 @@ class S14ScrewInBulbEnvCfg(MateSubtaskCfg):
         self.scene.bulb.init_state.pos, self.scene.bulb.init_state.rot = compose_carried_pose(
             self.scene.robot.init_state.pos, self.scene.robot.init_state.rot, BULB_IN_ROOT_ON_LADDER
         )
+        # The arm/hand pose BULB_IN_ROOT_ON_LADDER was measured against -- merge, don't assign:
+        # these dicts only name right-arm/right-hand joints.
+        self.scene.robot.init_state.joint_pos = {
+            **self.scene.robot.init_state.joint_pos,
+            **ARM_CRADLE,
+            **HAND_CUP,
+        }
         add_grip_contact_sensor(self.scene, self.scene.bulb.prim_path)
         # The longest of the chain: fine insertion under balance.
         self.episode_length_s = 40.0

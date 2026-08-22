@@ -72,8 +72,19 @@ HAND_FLAT: dict[str, float] = dict.fromkeys(G1_HAND_JOINTS, 0.0)
 # The thumb tops out at 0.6 rad on its pitch joint, hence its own smaller target.
 ARM_CRADLE: dict[str, float] = {**ARM_PRESS_HOVER, "right_wrist_roll_joint": 1.57}
 HAND_CRADLE: dict[str, float] = {
-    **dict.fromkeys(G1_FINGER_JOINTS, 1.0),
+    **dict.fromkeys(G1_FINGER_JOINTS, 0.9),
     **dict.fromkeys(G1_THUMB_JOINTS, 0.6),
+}
+
+# Open, palm-up, only a shallow cup -- not a pinch grip. A fully closed HAND_CRADLE buried the
+# bulb in the palm mesh on inspection (interpenetration, not contact -- the force-threshold
+# checks alone never caught it); a fully flat HAND_FLAT is a bare tilted tray (the palm sits
+# 9-13 deg off level even at rest) that a round bulb rolls straight off within a few steps.
+# UNCALIBRATED first guess at a middle ground: enough curl to raise a rim/lip, not enough to
+# close over the bulb's own diameter.
+HAND_CUP: dict[str, float] = {
+    **dict.fromkeys(G1_FINGER_JOINTS, 0.35),
+    **dict.fromkeys(G1_THUMB_JOINTS, 0.2),
 }
 
 # ---------------------------------------------------------------------------

@@ -17,11 +17,14 @@ Ladder-tipped termination (unlike S08, which never touches the ladder): walking 
 into the now free-standing, dynamic ladder can knock it over, a failure unrelated to the bulb grip.
 """
 
+from isaaclab.managers import EventTermCfg as EventTerm
 from isaaclab.managers import RewardTermCfg as RewTerm
+from isaaclab.managers import SceneEntityCfg
 from isaaclab.managers import TerminationTermCfg as DoneTerm
 from isaaclab.utils import configclass
 
 from fiatlux_task.grasp_poses import BULB_IN_ROOT_STANDING
+from fiatlux_task.poses import ARM_CRADLE, HAND_CUP
 
 from .. import mdp
 from ..mdp.nav_terms import (
@@ -30,6 +33,7 @@ from ..mdp.nav_terms import (
     add_grip_contact_sensor,
     arrived_carrying_bulb,
     compose_carried_pose,
+    settle_carried_payload_live,
 )
 from ..scene_cfg import add_ego_camera, add_mid360_lidar, apply_replace_preset, face_robot_at, frame_viewer_between
 from ..subtask_env_cfg import (
@@ -37,8 +41,37 @@ from ..subtask_env_cfg import (
     ARRIVAL_MAX_SPEED,
     NavigateRewardsCfg,
     NavigateSubtaskCfg,
+    SubtaskEventCfg,
     SubtaskTerminationsCfg,
 )
+
+
+@configclass
+class S12EventCfg(SubtaskEventCfg):
+    """Re-seats the bulb against the hand's live, actually-simulated pose -- see
+    ``nav_terms.settle_carried_payload_live``. Root/joint randomization zeroed for now while
+    the open-palm rest calibration is being worked out (adds noise we don't need yet)."""
+
+    settle_bulb = EventTerm(
+        func=settle_carried_payload_live,
+        mode="interval",
+        interval_range_s=(0.0, 0.0),
+        params={"payload_cfg": SceneEntityCfg("bulb")},
+    )
+    reset_robot_joints = EventTerm(
+        func=mdp.reset_joints_by_offset,
+        mode="reset",
+        params={"position_range": (0.0, 0.0), "velocity_range": (0.0, 0.0)},
+    )
+    reset_robot_root = EventTerm(
+        func=mdp.reset_root_state_uniform,
+        mode="reset",
+        params={
+            "asset_cfg": SceneEntityCfg("robot"),
+            "pose_range": {"x": (0.0, 0.0), "y": (0.0, 0.0), "yaw": (0.0, 0.0)},
+            "velocity_range": {},
+        },
+    )
 
 
 @configclass
@@ -69,6 +102,7 @@ class S12CarryBulbToLadderEnvCfg(NavigateSubtaskCfg):
     }
     progress_distance_fn = mdp.base_ladder_distance
 
+    events: S12EventCfg = S12EventCfg()
     rewards: S12RewardsCfg = S12RewardsCfg()
     terminations: S12TerminationsCfg = S12TerminationsCfg()
 
@@ -82,6 +116,13 @@ class S12CarryBulbToLadderEnvCfg(NavigateSubtaskCfg):
         self.scene.bulb.init_state.pos, self.scene.bulb.init_state.rot = compose_carried_pose(
             self.scene.robot.init_state.pos, self.scene.robot.init_state.rot, BULB_IN_ROOT_STANDING
         )
+        # The arm/hand pose BULB_IN_ROOT_STANDING was measured against -- merge, don't assign:
+        # these dicts only name right-arm/right-hand joints.
+        self.scene.robot.init_state.joint_pos = {
+            **self.scene.robot.init_state.joint_pos,
+            **ARM_CRADLE,
+            **HAND_CUP,
+        }
         add_grip_contact_sensor(self.scene, self.scene.bulb.prim_path)
         add_ego_camera(self.scene)
         add_mid360_lidar(self.scene)

@@ -291,6 +291,24 @@ G1_PALM_BODY_BY_VARIANT: dict[str, str] = {
     "dex3": G1_DEX3_PALM_BODIES[1],
 }
 
+# The palm body's own origin is NOT near the visible palm surface (rendered several cm off the
+# mesh, toward the wrist) -- for placing something ON the palm, anchor position on the centroid
+# of these finger-BASE (proximal) bodies instead, and use the palm body only for orientation.
+# Inspire: measured via render inspection. Dex3: unverified placeholder, re-check before use.
+G1_FINGER_BASE_BODIES_BY_VARIANT: dict[str, list[str]] = {
+    "inspire": ["R_index_proximal", "R_middle_proximal", "R_ring_proximal"],
+    "dex3": ["right_hand_index_0_link", "right_hand_middle_0_link"],
+}
+
+# Palm-link local axes as ``(axis_index, sign)`` -- (outward normal, along fingers, across palm).
+# MEASURED per variant via ``scripts/verify_interactions.py --scenario hand --probe``. Dex3: +y
+# is the face the digits close onto, +x runs out toward the tips, +z spans the palm. Inspire's
+# face is its local -x.
+G1_PALM_LOCAL_AXES: dict[str, tuple[tuple[int, float], ...]] = {
+    "dex3": ((1, 1.0), (0, 1.0), (2, 1.0)),
+    "inspire": ((0, -1.0), (1, 1.0), (2, 1.0)),
+}
+
 # Limbs the ladder-contact sensor watches: both feet plus every variant's palm. The sensor is
 # built before ``swap_robot_variant`` may change the hand, so it must name all variants; names
 # belonging to the absent one never resolve.

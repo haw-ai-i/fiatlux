@@ -43,7 +43,6 @@ from ..replace_env_cfg import BAYONET_INSERTION_DEPTH, BAYONET_ROTATION_ANGLE, S
 from ..scene_cfg import (
     CLIMB_ROBOT_POSITION,
     LADDER_POSITION,
-    TOP_ROBOT_POSITION,
     G1ReplaceSceneCfg,
     add_ego_camera,
     add_ladder_contact_sensor,
@@ -86,8 +85,29 @@ LADDER_FLOOR_STANCE_HEIGHT = CLIMB_ROBOT_POSITION[2] + 0.15  # m
 # face world -x; carried to an arbitrarily yawed ladder by rotating rather than by copying the
 # world coordinates.
 MOUNT_STANCE_STANDOFF = math.dist(CLIMB_ROBOT_POSITION[:2], LADDER_POSITION[:2])
-TOP_STANCE_STANDOFF = math.dist(TOP_ROBOT_POSITION[:2], LADDER_POSITION[:2])
-TOP_STANCE_PELVIS_Z = TOP_ROBOT_POSITION[2]
+
+# TOP_STANCE_STANDOFF/PELVIS_Z: NOT TOP_ROBOT_POSITION's own values. That constant (workshop
+# preset's fixed-ladder pose) puts the pelvis at 1.85 m -- measured directly against the replace
+# preset's live ladder_contact sensor, this stance was airborne: 0.000 N at every one of feet,
+# left palm, right palm, from reset through 10+ steps of free fall (pelvis height dropping
+# continuously, no rung or platform underneath at all).
+#
+# Swept standoff x height empirically (teleport, FRESH env.reset() per candidate so an earlier
+# candidate's collision/fall can't contaminate a later one's leg state, then settle and read the
+# live ladder_contact sensor) against the platform -- a vertex cluster at local z=169-175 cm,
+# i.e. world 1.69-1.75 m (matches ``assets.STEP_LADDER_TOP_OFFSET`` = 1.70 m), not 1.85 m.
+#
+# UNCALIBRATED, still open: standoff=0.22 m, height=1.76-1.80 m is the best candidate found --
+# genuine, substantial contact (179-184 N, not a 100s-1000s N collision and not 0 N empty air)
+# but with 17-20 cm of settle/sink over a 20-step zero-action window, not a fully stable
+# zero-drift stance. A finer (~1 cm) position sweep plus foot orientation, or accepting that a
+# static teleport can't perfectly balance a biped at a platform EDGE without any active balance
+# correction (zero action gives none -- the same caveat verify_scene.py's own base-env checks
+# already documented), are the two most likely next steps. Still a large, measured improvement
+# over the prior state: bounded ~0.2 m settle under real support, not unconditional free fall to
+# the floor.
+TOP_STANCE_STANDOFF = 0.22  # m
+TOP_STANCE_PELVIS_Z = 1.78  # m
 
 # Feet plus the LEFT palm, for a subtask whose right hand is occupied for the whole episode
 # (``grasp_terms`` picks the right palm as the grasping hand). Both variants' left palm are named

@@ -125,6 +125,78 @@ def compose_carried_pose(root_pos: Vec3, root_quat: Quat, payload_in_root: tuple
     return pos, quat
 
 
+def settle_carried_payload_live(
+    env: ManagerBasedRLEnv,
+    env_ids: torch.Tensor,
+    payload_cfg: SceneEntityCfg,
+    hand_variant: str = "inspire",
+) -> None:
+    """Rest a carried payload directly ON the hand's LIVE, actually-simulated open palm.
+
+    Open palm (``HAND_FLAT``), facing up (``ARM_CRADLE``'s wrist roll), bulb laying in it --
+    not a closing-fingers pinch. The pinch version (``palm_grasp_pose``-style: seat the cap
+    ``BULB_CAP_RADIUS_M`` off the palm face, ``PALM_GRASP_FORWARD_M`` along the fingers,
+    ``BULB_CAP_CENTRE_M`` across) needed the fingertips to converge on the bulb from several
+    directions at once; visually, both this and the pre-existing (7/7-passing)
+    ``verify_interactions.py`` calibration rig showed the cap simply buried in the palm mesh
+    with no visible surface -- the "contact" was interpenetration force, not a clean grip, and
+    the pass/fail checks (force-threshold only) never caught it. Resting the bulb on an open,
+    uncurled palm is a strictly easier placement problem: one surface, one contact, the same
+    geometry ``assets.BULB_LIE_Z_OFFSET`` already validates for a bulb resting on a tabletop.
+
+    Wired as an ``interval`` event (``interval_range_s=(0.0, 0.0)``, fires every step) gated on
+    ``episode_length_buf == 1``, not a ``reset``-mode event: reset-mode events fire before any
+    physics/kinematics update runs this cycle, so ``body_pos_w`` there can still hold the
+    previous episode's poses (the same reason ``compose_carried_pose`` cannot read it either).
+    Not ``== 0`` either -- ``ManagerBasedRLEnv.step()`` increments ``episode_length_buf`` BEFORE
+    dispatching interval events, on every step including the first one after a reset, so an
+    interval event never observes 0; 1 is the value it actually sees on that first pass, once
+    the arm has actually been simulated into its target pose (the reset's own
+    ``scene.write_data_to_sim()`` + ``sim.forward()``, followed by this step's physics).
+    """
+    fresh = env.episode_length_buf[env_ids] == 1
+    if not bool(fresh.any()):
+        return
+    ids = env_ids[fresh]
+
+    from isaaclab.utils.math import matrix_from_quat, quat_from_matrix
+
+    from fiatlux_task.assets import BULB_LIE_Z_OFFSET
+    from fiatlux_task.grasp_poses import BULB_GLASS_CENTRE_M
+    from fiatlux_task.robots.g1 import G1_FINGER_BASE_BODIES_BY_VARIANT, G1_PALM_BODY_BY_VARIANT, G1_PALM_LOCAL_AXES
+
+    robot: Articulation = env.scene["robot"]
+    payload: RigidObject = env.scene[payload_cfg.name]
+    palm_idx = robot.find_bodies(G1_PALM_BODY_BY_VARIANT[hand_variant])[0][0]
+    palm_quat = robot.data.body_quat_w[ids, palm_idx]
+    rot = matrix_from_quat(palm_quat)  # (n, 3, 3), columns are the palm's local axes in world
+
+    # Anchor POSITION on the finger-base centroid, not the palm body's own origin -- the latter
+    # renders several cm off the visible mesh, toward the wrist, so a payload placed relative to
+    # it hangs over empty air with nothing underneath and falls/rolls off within a few steps.
+    base_idx = [robot.find_bodies(n)[0][0] for n in G1_FINGER_BASE_BODIES_BY_VARIANT[hand_variant]]
+    palm_pos = robot.data.body_pos_w[ids][:, base_idx].mean(dim=1)
+
+    (n_idx, n_sign), _, (a_idx, a_sign) = G1_PALM_LOCAL_AXES[hand_variant]
+    normal = rot[:, :, n_idx] * n_sign
+    across = rot[:, :, a_idx] * a_sign
+
+    # The bulb's ROOT sits at the tip end (outside its own geometry, per grasp_poses.py), with
+    # the entire body extending along its local +z from there -- placing the root itself at the
+    # anchor left the cap balanced on the fingers and the whole glass body (the bigger, heavier
+    # part) cantilevered off past the edge of the hand, unsupported. Local +z maps to world
+    # "across" in this basis, so shift the root back along -across by BULB_GLASS_CENTRE_M
+    # (root-to-glass-centre) to land the glass's centre -- not the root -- over the palm.
+    pos = palm_pos + normal * BULB_LIE_Z_OFFSET - across * BULB_GLASS_CENTRE_M
+    # Lying on its side, long axis along "across" (spans the palm, the low/stable resting
+    # orientation) -- same basis convention as the pinch version, just a different seat.
+    basis = torch.stack([normal, torch.linalg.cross(across, normal), across], dim=-1)
+    quat = quat_from_matrix(basis)
+
+    payload.write_root_pose_to_sim(torch.cat([pos, quat], dim=-1), env_ids=ids)
+    payload.write_root_velocity_to_sim(torch.zeros((len(ids), 6), device=env.device), env_ids=ids)
+
+
 # ---------------------------------------------------------------------------
 # Grip detection
 # ---------------------------------------------------------------------------
