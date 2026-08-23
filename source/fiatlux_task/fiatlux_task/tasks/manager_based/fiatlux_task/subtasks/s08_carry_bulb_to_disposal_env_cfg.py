@@ -25,6 +25,7 @@ from fiatlux_task.poses import ARM_CRADLE, HAND_CUP
 from .. import mdp
 from ..mdp.nav_terms import (
     DISPOSAL_ARRIVAL_RADIUS,
+    LADDER_MOUNT_RADIUS,
     GRIP_FORCE_THRESHOLD_N,
     add_grip_contact_sensor,
     arrived_carrying_old_bulb,
@@ -32,7 +33,14 @@ from ..mdp.nav_terms import (
     compose_carried_pose,
     settle_carried_payload_live,
 )
-from ..scene_cfg import add_ego_camera, add_mid360_lidar, apply_replace_preset, face_robot_at, frame_viewer_on
+from ..scene_cfg import (
+    add_ego_camera,
+    add_mid360_lidar,
+    apply_replace_preset,
+    face_robot_at,
+    frame_viewer_on,
+    stand_robot_near,
+)
 from ..subtask_env_cfg import ARRIVAL_FACING_TOLERANCE, ARRIVAL_MAX_SPEED, NavigateSubtaskCfg, SubtaskEventCfg
 
 
@@ -86,6 +94,9 @@ class S08CarryBulbToDisposalEnvCfg(NavigateSubtaskCfg):
     def __post_init__(self) -> None:
         super().__post_init__()
         apply_replace_preset(self.scene)
+        # S07's end state: back on the floor at the ladder it descended, holding the old bulb.
+        # Without this the robot spawns in its own sampled zone and the held bulb teleports too.
+        stand_robot_near(self.scene, self.scene.ladder.init_state.pos[:2], LADDER_MOUNT_RADIUS)
         # This leg's target is the disposal crate, not the table apply_replace_preset aims at.
         face_robot_at(self.scene, self.scene.bin.init_state.pos[:2])
         # S07's end state: the old bulb starts already held, at the carry offset from the
@@ -93,8 +104,7 @@ class S08CarryBulbToDisposalEnvCfg(NavigateSubtaskCfg):
         self.scene.old_bulb.init_state.pos, self.scene.old_bulb.init_state.rot = compose_carried_pose(
             self.scene.robot.init_state.pos, self.scene.robot.init_state.rot, BULB_IN_ROOT_STANDING
         )
-        # The arm/hand pose BULB_IN_ROOT_STANDING was measured against -- merge, don't assign:
-        # these dicts only name right-arm/right-hand joints.
+        # Merge, don't assign: these dicts only name right-arm/right-hand joints.
         self.scene.robot.init_state.joint_pos = {
             **self.scene.robot.init_state.joint_pos,
             **ARM_CRADLE,

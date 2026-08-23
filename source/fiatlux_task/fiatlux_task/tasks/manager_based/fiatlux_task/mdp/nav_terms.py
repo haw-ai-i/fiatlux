@@ -34,6 +34,8 @@ from isaaclab.assets import Articulation, RigidObject
 from isaaclab.managers import SceneEntityCfg
 from isaaclab.sensors import ContactSensor, ContactSensorCfg
 
+from fiatlux_task.assets import G1_HORIZONTAL_REACH
+
 from ..scene_cfg import (
     CLIMB_ROBOT_POSITION,
     DISPOSAL_ZONE_HALF_SIZE,
@@ -55,28 +57,31 @@ Quat = tuple[float, float, float, float]
 # ---------------------------------------------------------------------------
 
 # "Close enough to start climbing" -- a foot-placement question, unlike LADDER_APPROACH_RADIUS
-# (arm's reach to a rail, for grasping). PROVISIONAL: based on climb_env_cfg's own validated
-# ready-to-ascend stance (CLIMB_ROBOT_POSITION, "at the step ladder's base, ready to ascend",
-# tuned against verify_scene.py orbit videos) relative to the workshop preset's fixed
-# LADDER_POSITION -- that stance stands this far out from the ladder's root. Used as a RADIUS
-# rather than that stance's own directional offset because the replace preset samples the
-# ladder's yaw, so no fixed direction generalizes.
+# (arm's reach to a rail, for grasping). PROVISIONAL. A radius rather than a directional offset
+# because the replace preset samples the ladder's yaw, so no fixed direction generalizes.
 LADDER_MOUNT_RADIUS = math.dist(CLIMB_ROBOT_POSITION[:2], LADDER_POSITION[:2])
 
-# "Close enough to reach for the bulb next." PROVISIONAL: based on the tabletop preset's own
-# authored manipulation standoff (TABLETOP_ROBOT_POSITION relative to TABLETOP_BULB_POSITION),
-# the only measured robot-to-bulb approach distance on record; the replace preset's table is the
-# same asset, just randomly placed.
+# "Close enough to reach for the bulb next." PROVISIONAL: the tabletop preset's own
+# manipulation standoff, applied to the replace preset's randomly placed copy of that table.
 BULB_APPROACH_RADIUS = math.dist(TABLETOP_ROBOT_POSITION[:2], TABLETOP_BULB_POSITION[:2])
 
-# "Close enough to be standing at the crate." PROVISIONAL: no authored robot-relative standoff
-# exists for the disposal crate (unlike the tabletop bench), so this reuses the crate's own
-# layout zone half-extent (footprint + working clearance) as the least-arbitrary bound on record.
+# Which side of the table to stand on, scaled to G1_HORIZONTAL_REACH less a margin. A radius
+# alone can land the robot under the table; the un-scaled tabletop offset (0.626 m) is a
+# walking-approach distance, at which the bulb is 12 cm outside reach even fully extended.
+_TABLETOP_APPROACH_DX = TABLETOP_ROBOT_POSITION[0] - TABLETOP_BULB_POSITION[0]
+_TABLETOP_APPROACH_DY = TABLETOP_ROBOT_POSITION[1] - TABLETOP_BULB_POSITION[1]
+_TABLETOP_APPROACH_DIST = math.hypot(_TABLETOP_APPROACH_DX, _TABLETOP_APPROACH_DY)
+BULB_APPROACH_OFFSET = (
+    _TABLETOP_APPROACH_DX / _TABLETOP_APPROACH_DIST * (G1_HORIZONTAL_REACH - 0.05),
+    _TABLETOP_APPROACH_DY / _TABLETOP_APPROACH_DIST * (G1_HORIZONTAL_REACH - 0.05),
+)
+
+# "Close enough to be standing at the crate." PROVISIONAL: the crate's own layout zone
+# half-extent (footprint + working clearance); no authored robot-relative standoff exists.
 DISPOSAL_ARRIVAL_RADIUS = DISPOSAL_ZONE_HALF_SIZE
 
-# Grip-presence floor for the carrying legs' arrival gate. PROVISIONAL: the same cutoff
-# subtask_tiers.place.RELEASE_FORCE_THRESHOLD_N uses, read the other way -- below it counts as
-# let go, at or above it counts as still held.
+# Grip-presence floor for the carrying legs' arrival gate: subtask_tiers.place's
+# RELEASE_FORCE_THRESHOLD_N read the other way. PROVISIONAL.
 GRIP_FORCE_THRESHOLD_N = 1.0  # N
 
 

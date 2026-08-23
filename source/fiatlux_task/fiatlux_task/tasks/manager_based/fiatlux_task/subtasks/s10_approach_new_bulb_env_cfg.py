@@ -12,8 +12,15 @@ bulb, facing it, standing -- no grip conjunct, since nothing is held yet.
 
 from isaaclab.utils import configclass
 
-from ..mdp.nav_terms import BULB_APPROACH_RADIUS, arrived_at_bulb, base_bulb_distance
-from ..scene_cfg import add_ego_camera, add_mid360_lidar, apply_replace_preset, face_robot_at, frame_viewer_between
+from ..mdp.nav_terms import BULB_APPROACH_RADIUS, DISPOSAL_ARRIVAL_RADIUS, arrived_at_bulb, base_bulb_distance
+from ..scene_cfg import (
+    add_ego_camera,
+    add_mid360_lidar,
+    apply_replace_preset,
+    face_robot_at,
+    frame_viewer_between,
+    stand_robot_near,
+)
 from ..subtask_env_cfg import ARRIVAL_FACING_TOLERANCE, ARRIVAL_MAX_SPEED, NavigateSubtaskCfg
 
 
@@ -37,6 +44,8 @@ class S10ApproachNewBulbEnvCfg(NavigateSubtaskCfg):
     def __post_init__(self) -> None:
         super().__post_init__()
         apply_replace_preset(self.scene)
+        # S09's end state: standing at the disposal crate, hands free.
+        stand_robot_near(self.scene, self.scene.bin.init_state.pos[:2], DISPOSAL_ARRIVAL_RADIUS)
         # This leg's target is the bulb itself, not the table's own origin apply_replace_preset
         # aims at.
         face_robot_at(self.scene, self.scene.bulb.init_state.pos[:2])

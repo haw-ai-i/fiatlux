@@ -28,6 +28,7 @@ from fiatlux_task.poses import ARM_CRADLE, HAND_CUP
 
 from .. import mdp
 from ..mdp.nav_terms import (
+    BULB_APPROACH_OFFSET,
     GRIP_FORCE_THRESHOLD_N,
     LADDER_MOUNT_RADIUS,
     add_grip_contact_sensor,
@@ -35,7 +36,14 @@ from ..mdp.nav_terms import (
     compose_carried_pose,
     settle_carried_payload_live,
 )
-from ..scene_cfg import add_ego_camera, add_mid360_lidar, apply_replace_preset, face_robot_at, frame_viewer_between
+from ..scene_cfg import (
+    add_ego_camera,
+    add_mid360_lidar,
+    apply_replace_preset,
+    face_robot_at,
+    frame_viewer_between,
+    stand_robot_at_offset,
+)
 from ..subtask_env_cfg import (
     ARRIVAL_FACING_TOLERANCE,
     ARRIVAL_MAX_SPEED,
@@ -109,6 +117,10 @@ class S12CarryBulbToLadderEnvCfg(NavigateSubtaskCfg):
     def __post_init__(self) -> None:
         super().__post_init__()
         apply_replace_preset(self.scene)
+        # S11's end state: the robot is at the table where it picked the bulb up. Capture that
+        # before the carried pose overwrites the bulb's init_state, or the robot spawns in its
+        # independently-sampled zone and the held bulb teleports there with it.
+        stand_robot_at_offset(self.scene, self.scene.bulb.init_state.pos[:2], BULB_APPROACH_OFFSET)
         # This leg's target is the ladder S04 placed, not the table apply_replace_preset aims at.
         face_robot_at(self.scene, self.scene.ladder.init_state.pos[:2])
         # S11's end state: the fresh bulb starts already held, at the carry offset from the
@@ -116,8 +128,7 @@ class S12CarryBulbToLadderEnvCfg(NavigateSubtaskCfg):
         self.scene.bulb.init_state.pos, self.scene.bulb.init_state.rot = compose_carried_pose(
             self.scene.robot.init_state.pos, self.scene.robot.init_state.rot, BULB_IN_ROOT_STANDING
         )
-        # The arm/hand pose BULB_IN_ROOT_STANDING was measured against -- merge, don't assign:
-        # these dicts only name right-arm/right-hand joints.
+        # Merge, don't assign: these dicts only name right-arm/right-hand joints.
         self.scene.robot.init_state.joint_pos = {
             **self.scene.robot.init_state.joint_pos,
             **ARM_CRADLE,
