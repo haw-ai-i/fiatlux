@@ -75,6 +75,22 @@ parser.add_argument(
     "grasp_poses.BULB_IN_ROOT_STANDING) instead of lying across the fingers.",
 )
 parser.add_argument(
+    "--grip",
+    choices=["cradle", "cup"],
+    default="cradle",
+    help="hand scenario: which hand pose to hold the bulb with. 'cradle' closes the fingers "
+    "(poses.HAND_CRADLE); 'cup' is the open palm the carry subtasks actually spawn "
+    "(poses.HAND_CUP). Inspire only -- Dex3 has no HAND_CUP equivalent.",
+)
+parser.add_argument(
+    "--curl",
+    type=float,
+    default=None,
+    help="hand scenario: override the finger curl (radians) of the pose --grip selects. The "
+    "thumb follows at two thirds of it. Sweeps the open-to-closed axis between HAND_CUP's 0.35 "
+    "and HAND_CRADLE's 0.9 to find the most open grip that still retains the bulb.",
+)
+parser.add_argument(
     "--record-bag",
     type=str,
     default=None,
@@ -186,9 +202,9 @@ MIN_ROOT_Z = -0.05  # m
 STEPS_PER_SECOND = 50  # sim.dt=1/200 * decimation=4 (the family control rate)
 CONTACT_N = 0.05  # above sensor noise, below any force that means something
 MAX_SLIP_M = 0.06  # a grasp that lets the bulb travel further than this has lost it
-# Bulb geometry in its own frame, offsets along local +z from the root. MEASURED via
-# ``--scenario hand --probe``. The root sits OUTSIDE the geometry (cap bottom at 0.036, per
-# assets.BULB_STAND_Z_OFFSET), so placements seat a feature and back the root out.
+# Bulb geometry in its own frame, offsets along local +z from the root. The root sits OUTSIDE
+# the geometry (cap bottom at 0.036, per assets.BULB_STAND_Z_OFFSET), so placements seat a
+# feature and back the root out.
 # Glass is too wide for the Dex3 thumb's 6.5 cm reach to close over; the cap is the grip
 # feature. Glass values kept for the geometry record.
 BULB_GLASS_RADIUS_M = 0.040
@@ -218,6 +234,19 @@ from fiatlux_task.robots.g1 import G1_PALM_LOCAL_AXES as PALM_LOCAL_AXES  # noqa
 # Hand poses for the variant under test: the two hands share no joint names.
 HAND_FLAT = HAND_FLAT_BY_VARIANT[args_cli.robot]
 HAND_CRADLE = HAND_CRADLE_BY_VARIANT[args_cli.robot]
+# --grip cup swaps in the open palm the carry subtasks spawn. Dex3 has no cup pose, so it keeps
+# the cradle.
+if args_cli.grip == "cup" and args_cli.robot == "inspire":
+    from fiatlux_task.poses import HAND_CUP  # noqa: E402
+
+    HAND_CRADLE = HAND_CUP
+if args_cli.curl is not None and args_cli.robot == "inspire":
+    from fiatlux_task.robots.g1 import G1_FINGER_JOINTS, G1_THUMB_JOINTS  # noqa: E402
+
+    HAND_CRADLE = {
+        **dict.fromkeys(G1_FINGER_JOINTS, args_cli.curl),
+        **dict.fromkeys(G1_THUMB_JOINTS, args_cli.curl * 2.0 / 3.0),
+    }
 
 
 # --------------------------------------------------------------------------- #
@@ -267,8 +296,8 @@ def build_insert_cfg(num_envs: int = 1):
     cfg.events.randomize_key_light = None
     cfg.events.randomize_material_tint = None
     # The per-asset zeroed resets above already restore the scenario-crafted init_state;
-    # reset_scene_to_default would ADDITIONALLY write root state to the fixed-base rigs,
-    # which measurably shifts the calibrated press arc (crush peak 53.2 -> 48.2 N).
+    # reset_scene_to_default would additionally write root state to the fixed-base rigs, which
+    # shifts the press arc.
     cfg.events.reset_all = None
     # Grip friction is a startup randomization; pinned, so contact measurements are stable.
     cfg.events.randomize_hand_material = mdp.hand_grip_material_event(randomize=False)
@@ -974,8 +1003,7 @@ def scenario_ladder(probe: bool = False):
     # the elevated chandelier is an opt-in dressing asset and irrelevant to
     # rung contact; the scene loads without it
     cfg.scene.socket = None
-    # FREE root: the robot leans onto the kinematic A-frame and the force balance
-    # self-calibrates (a welded root turns every mm of overlap into a kN wedge)
+    # FREE root: a welded root turns every mm of overlap into a kN wedge
     cfg.scene.robot.init_state.pos = LADDER_STANCE_ROOT_POS
     cfg.scene.robot.init_state.rot = LADDER_STANCE_ROOT_ROT
     cfg.scene.robot.init_state.joint_pos = {
