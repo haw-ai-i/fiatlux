@@ -205,26 +205,35 @@ TABLE_ZONE_HALF_SIZE = 1.5
 LADDER_ZONE_HALF_SIZE = 1.0
 DISPOSAL_ZONE_HALF_SIZE = 0.5  # the old-bulb disposal crate (crate footprint ~0.6 m + clearance)
 ZONE_MARGIN = 0.5  # minimum gap left between any two zones' bounding squares
-# Where a wall mount's reserved ladder anchor goes, measured from the wall face. Derived from
-# reach, not from zone packing: standing on the platform (feet at STEP_LADDER_TOP_OFFSET[2]) the
-# fingertips clear WALL_MOUNT_Z with this much horizontal slack left over. The previous value put
-# the anchor at LADDER_ZONE_HALF_SIZE + 0.4 = 1.4 m out, which is a packing number and left every
-# wall draw ~0.5 m beyond reach -- unreachable by construction, and unasserted, because the reach
-# guards below are derived from the CEILING mount only.
+# Where a wall mount's reserved ladder anchor goes, measured from the wall face. As close as the
+# ladder physically fits: its footprint is 0.979 m deep and the coupled draw turns that depth
+# normal to the wall, so the root cannot come nearer than 0.49 m plus clearance. The previous
+# value was LADDER_ZONE_HALF_SIZE + 0.4 = 1.4 m, a zone-packing number that left every wall draw
+# well beyond reach and went unasserted, because both reach guards below are derived from the
+# ceiling mount and MAX_REACHABLE_MOUNT_Z checks height only.
+LADDER_LADDER_HALF_DEPTH = 0.49  # m, half the ladder's 0.979 m footprint depth
+LADDER_WALL_STANDOFF = 0.60  # m from the wall face; 0.11 m of clearance behind the ladder
+# Horizontal slack left over, standing on the platform, once the fixture's height above the feet
+# is accounted for. This is the SPHERICAL bound -- G1_OVERHEAD_REACH is a vertical fingertip
+# measurement used here as a radius -- so it is optimistic. The honest forward reach
+# (G1_HORIZONTAL_REACH) is 0.5045 m, which is less than the ladder's own half-depth: no standoff
+# satisfies both, and a wall fixture at this height is reachable only if the arm does better
+# reaching up-and-out than straight out. Re-measure by FK from the on-ladder stance before
+# treating a wall draw's score as meaningful.
 LADDER_WALL_REACH_SLACK = math.sqrt(
     max(G1_OVERHEAD_REACH**2 - (WALL_MOUNT_Z - STEP_LADDER_TOP_OFFSET[2]) ** 2, 0.0)
 )
-LADDER_WALL_STANDOFF = LADDER_WALL_REACH_SLACK - 0.05  # m from the wall face, margin held back
-# The anchor's own reserved zone. Smaller than LADDER_ZONE_HALF_SIZE because that is a packing
-# convenience, and insetting the anchor by a full metre is what pushed it out of reach. The
-# ladder's real footprint half-diagonal is 0.576 m; ZONE_MARGIN (0.5 m) more than covers the
-# difference, so no other occupant can reach the ladder's actual footprint.
-LADDER_ANCHOR_HALF_SIZE = 0.45
-if LADDER_WALL_STANDOFF <= 0.576:
+if not LADDER_LADDER_HALF_DEPTH < LADDER_WALL_STANDOFF <= LADDER_WALL_REACH_SLACK:
     raise ValueError(
-        f"the ladder cannot stand {LADDER_WALL_STANDOFF:.3f} m from a wall: its own footprint "
-        f"half-diagonal is 0.576 m, so it would intersect the wall it is meant to work on"
+        f"the wall standoff ({LADDER_WALL_STANDOFF} m) must clear the ladder's own half-depth "
+        f"({LADDER_LADDER_HALF_DEPTH} m) and stay inside the reach slack from the platform "
+        f"({LADDER_WALL_REACH_SLACK:.3f} m); no value satisfies both if the fixture is too high"
     )
+# The anchor's own reserved zone, small enough that clamping it to the floor box (itself inset
+# 0.41 m from the side walls) does not shove the ladder back out of reach. The ladder's real
+# footprint half-diagonal is 0.576 m; ZONE_MARGIN (0.5 m) leaves 0.11 m of true separation even
+# so, which is why the difference is safe rather than merely small.
+LADDER_ANCHOR_HALF_SIZE = 0.18
 
 # Ladder mass, every preset. Without an authored MassAPI PhysX derives mass from collider
 # volume at 1000 kg/m^3, which lands a hollow ladder at tens of kg. UNVERIFIED.
