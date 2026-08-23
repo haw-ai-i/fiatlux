@@ -11,7 +11,7 @@ geometric fact rules out cheating the force reading. Every function here is STAT
 debounce is :class:`~.gates.sustained`, which lives only in the ``success`` termination, so a
 second counter cannot exist to disagree with it.
 
-The ladder's root sits at the A-frame's base centre, so tilting it raises the root exactly like
+The ladder's root sits at the ladder's base centre, so tilting it raises the root exactly like
 lifting it does: a 3 cm rise needs only ~5 deg of lean, well under the 34 deg ``ladder_tipped``
 termination. ``ladder_feet_clear``/``ladder_near_vertical`` exist so a leaf's gate can require
 "lifted AND upright" without ever reading the root height as a stand-in for either -- see the
@@ -173,7 +173,7 @@ def object_lifted(env: ManagerBasedRLEnv, asset_cfg: SceneEntityCfg, min_height:
     """True where the object's root sits above ``min_height`` (world frame).
 
     Generic height gate for "off the surface it started on"; the leaf supplies ``min_height``
-    from that surface's own measured rest height plus a clearance margin.
+    from that surface's own rest height plus a clearance margin.
     """
     obj: RigidObject = env.scene[asset_cfg.name]
     return obj.data.root_pos_w[:, 2] > min_height

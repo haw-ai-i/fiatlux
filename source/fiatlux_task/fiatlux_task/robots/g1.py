@@ -25,22 +25,16 @@ from isaaclab.sim.utils import clone
 from ..assets import G1_DEX3_USD, G1_USD
 
 # The Inspire hand is authored with collision meshes that interpenetrate their
-# non-joint-connected neighbors at the default pose (PhysX adjacency filtering
-# only exempts pairs sharing a joint): the camera housing sits 15-17 mm inside
-# the wrist-pitch and palm colliders (~8-9 kN permanent wedge), and the thumb
-# proximal link overlaps the palm across the thumb-yaw link (~300 N). With
-# self-collisions enabled these saturate every contact reading on the hand.
-# Filter exactly those pairs at spawn; a fixed-joint merge of the asset would
-# cover only the camera housing and requires re-authoring the USD.
+# non-joint-connected neighbors at the default pose (PhysX adjacency filtering only exempts
+# pairs sharing a joint), which saturates every contact reading on the hand. Filter exactly
+# those pairs at spawn.
 _G1_INSPIRE_FILTERED_PAIRS = {
     "{side}_hand_camera_base_link": ("{side}_wrist_pitch_link", "{side}_hand_base_link"),
     "{S}_thumb_proximal": ("{side}_hand_base_link",),
 }
 
-# The Dex3 hand has the same embedded-camera-housing defect, against different
-# neighbors: probe-verified (zero action, contact_matrix) at ~22 kN against the palm
-# and ~1.8 kN against the thumb base -- both zero against every wrist link, so those
-# are the only two pairs that need filtering.
+# The Dex3 hand has the same embedded-camera-housing defect, against the palm and the thumb
+# base only; every wrist link is clear.
 _G1_DEX3_FILTERED_PAIRS = {
     "{side}_hand_camera_base_link": ("{side}_hand_palm_link", "{side}_hand_thumb_0_link"),
 }
@@ -85,10 +79,10 @@ G1_ARM_JOINTS = [
     "right_wrist_pitch_joint",
     "right_wrist_yaw_joint",
 ]
-# Right Inspire-hand joints (12 DoF) so the policy can actually grasp. Split four-fingers /
-# thumb because they curl to different targets -- the thumb's pitch joint tops out at 0.6 rad
-# where the fingers reach 1.7. ORDER IS LOAD-BEARING: it lays out the hand's slice of the
-# action vector, so append rather than rearrange.
+# Right Inspire-hand joints (12 DoF). Split four-fingers / thumb because they curl to different
+# targets: the thumb's pitch joint tops out at 0.6 rad where the fingers reach 1.7. ORDER IS
+# LOAD-BEARING -- it lays out the hand's slice of the action vector, so append, do not
+# rearrange.
 G1_FINGER_JOINTS = [
     "R_index_proximal_joint",
     "R_index_intermediate_joint",
@@ -110,15 +104,13 @@ G1_HAND_JOINTS = G1_FINGER_JOINTS + G1_THUMB_JOINTS
 # all G1 variants). The Inspire hand links hang off this via right_hand_palm_link.
 G1_EE_BODY = "right_wrist_yaw_link"
 
-# Climb-family limbs and joint groups (probe-verified against the Inspire USD via
-# `verify_interactions.py --scenario ladder --probe`, 2026-07-06).
+# Climb-family limbs and joint groups.
 G1_FOOT_BODIES = ["left_ankle_roll_link", "right_ankle_roll_link"]
 # The Inspire palm body; its surface is the local -x side (see fiatlux_task/poses.py).
 G1_PALM_BODIES = ["left_hand_base_link", "right_hand_base_link"]
 G1_TORSO_BODY = "torso_link"
-# Real sensor-housing bodies authored on the USD (RealSense D435 + Livox Mid360,
-# fixed to the torso -- G1 has no neck joint). Verified by rendering each mount's
-# frame (see fiatlux_task/sensors.py).
+# Sensor-housing bodies authored on the USD (RealSense D435 + Livox Mid360, fixed to the torso
+# -- G1 has no neck joint). See fiatlux_task/sensors.py.
 G1_D435_BODY = "d435_link"
 G1_MID360_BODY = "mid360_link"
 # Joint-name patterns for reward scoping (match the actuator groups below).
@@ -183,8 +175,7 @@ _ARM_ARMATURE = {
 # Articulation config (legged / free base, Inspire hand)
 # ---------------------------------------------------------------------------
 
-# The robot spawns standing for the insertion subtask, but keeps its legs so the
-# same asset can locomote and climb in later roadmap subtasks.
+# Spawns standing, but keeps its legs so the same asset can locomote and climb.
 G1_INSPIRE_CFG = ArticulationCfg(
     spawn=sim_utils.UsdFileCfg(
         usd_path=G1_USD,
@@ -202,9 +193,8 @@ G1_INSPIRE_CFG = ArticulationCfg(
     # Spawn standing (feet on the floor at the bent-knee pose; settled height 0.787 m).
     init_state=ArticulationCfg.InitialStateCfg(
         pos=(0.0, 0.0, 0.79),
-        # Only the bent leg joints are listed; every other joint defaults to 0.0.
-        # (A ``".*"`` catch-all here would also match these and trip Isaac Lab's
-        # one-regex-per-joint resolver in ``resolve_matching_names_values``.)
+        # Only the bent leg joints are listed; every other joint defaults to 0.0. A ``".*"``
+        # catch-all would also match these and trip Isaac Lab's one-regex-per-joint resolver.
         joint_pos={
             ".*_hip_pitch_joint": -0.05,
             ".*_knee_joint": 0.2,
@@ -241,9 +231,8 @@ G1_INSPIRE_CFG = ArticulationCfg(
         ),
         "hands": ImplicitActuatorCfg(
             joint_names_expr=["[LR]_.*_joint"],
-            # Real Inspire fingers produce ~1-2 N.m; 2.0 is plenty for a 60 g bulb. The
-            # old 100 N.m limit let a wedged finger's saturated PD torque catapult the
-            # whole robot off furniture (hundreds of m/s -- verify_scene finding).
+            # Real Inspire fingers produce ~1-2 N.m. A high limit lets a wedged finger's
+            # saturated PD torque catapult the whole robot off furniture.
             effort_limit_sim=2.0,
             stiffness=1000.0,
             damping=15.0,
@@ -273,10 +262,8 @@ G1_DEX3_FINGER_JOINT_PATTERNS = [".*_hand_(thumb|index|middle)_._joint"]
 G1_DEX3_PALM_BODIES = ["left_hand_palm_link", "right_hand_palm_link"]
 
 # Distal link of each digit that closes on a grasped object, per variant. Their centroid
-# against the palm's locates the hand's cup without needing to know which local axis the
-# palm surface is -- the two hands disagree on that, and it is the thing most easily got
-# wrong by inspection. Dex3 opposes a 3-DoF thumb against two 2-DoF fingers; Inspire curls
-# four fingers against a 4-DoF thumb, of which only the index/middle/ring reach the cup.
+# against the palm's locates the hand's cup without needing to know which local axis the palm
+# surface is; the two hands disagree on that.
 G1_GRASP_DISTAL_BODIES: dict[str, list[str]] = {
     "inspire": ["R_index_intermediate", "R_middle_intermediate", "R_ring_intermediate", "R_thumb_distal"],
     "dex3": ["right_hand_index_1_link", "right_hand_middle_1_link", "right_hand_thumb_2_link"],
@@ -291,19 +278,18 @@ G1_PALM_BODY_BY_VARIANT: dict[str, str] = {
     "dex3": G1_DEX3_PALM_BODIES[1],
 }
 
-# The palm body's own origin is NOT near the visible palm surface (rendered several cm off the
-# mesh, toward the wrist) -- for placing something ON the palm, anchor position on the centroid
-# of these finger-BASE (proximal) bodies instead, and use the palm body only for orientation.
-# Inspire: measured via render inspection. Dex3: unverified placeholder, re-check before use.
+# The palm body's own origin is NOT near the visible palm surface (several cm off the mesh,
+# toward the wrist). For placing something ON the palm, anchor position on the centroid of these
+# finger-BASE (proximal) bodies and use the palm body only for orientation.
+# Dex3: unverified placeholder.
 G1_FINGER_BASE_BODIES_BY_VARIANT: dict[str, list[str]] = {
     "inspire": ["R_index_proximal", "R_middle_proximal", "R_ring_proximal"],
     "dex3": ["right_hand_index_0_link", "right_hand_middle_0_link"],
 }
 
-# Palm-link local axes as ``(axis_index, sign)`` -- (outward normal, along fingers, across palm).
-# MEASURED per variant via ``scripts/verify_interactions.py --scenario hand --probe``. Dex3: +y
-# is the face the digits close onto, +x runs out toward the tips, +z spans the palm. Inspire's
-# face is its local -x.
+# Palm-link local axes as ``(axis_index, sign)`` -- (outward normal, along fingers, across
+# palm). Dex3: +y is the face the digits close onto, +x runs out toward the tips, +z spans the
+# palm. Inspire's face is its local -x.
 G1_PALM_LOCAL_AXES: dict[str, tuple[tuple[int, float], ...]] = {
     "dex3": ((1, 1.0), (0, 1.0), (2, 1.0)),
     "inspire": ((0, -1.0), (1, 1.0), (2, 1.0)),
@@ -318,8 +304,7 @@ G1_DEX3_CFG = G1_INSPIRE_CFG.replace(
     spawn=G1_INSPIRE_CFG.spawn.replace(usd_path=G1_DEX3_USD, func=_spawn_g1_dex3_with_filtered_hand_mounts),
     actuators={
         **{k: v for k, v in G1_INSPIRE_CFG.actuators.items() if k != "hands"},
-        # Unitree Dex3 driver gains (gear_sonic_deploy ``dex3_hands.hpp``); torque
-        # limits come from the URDF/USD.
+        # Unitree Dex3 driver gains; torque limits come from the URDF/USD.
         "hands": ImplicitActuatorCfg(
             joint_names_expr=G1_DEX3_FINGER_JOINT_PATTERNS,
             stiffness=1.5,

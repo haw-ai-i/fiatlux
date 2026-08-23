@@ -41,7 +41,7 @@ from .scene_cfg import (
 
 # Ladder-positioning tolerances -- reused from the full Replace task's ladder scoring so the
 # subtask and the full task judge the ladder identically (mdp.ladder_ready / ladder_tipped).
-LADDER_TILT_LIMIT = 0.6  # rad; the upright A-frame stands at ~0
+LADDER_TILT_LIMIT = 0.6  # rad; the upright ladder stands at ~0
 FALL_MIN_HEIGHT = 0.4  # m; robot-fall gate (shared by the penalty + termination)
 FALL_TILT_LIMIT = 1.0  # rad
 
@@ -130,8 +130,8 @@ class EventCfg:
             "rotation_range_deg": {"yaw": (0.0, 360.0)},
         },
     )
-    # Replicate-safe visual DR: key-light direction (orientation only -- Carry never
-    # randomized key intensity) and a global albedo tint on the shared room.
+    # Replicate-safe visual DR: key-light orientation and a global albedo tint on the shared
+    # room.
     randomize_key_light = EventTerm(
         func=mdp.randomize_light_properties,
         mode="reset",
@@ -196,7 +196,7 @@ class RewardsCfg:
     contact_penalty = RewTerm(
         func=mdp.hand_contact_force_l2, weight=-1.0e-4, params={"sensor_cfg": SceneEntityCfg("hand_contact")}
     )
-    # -- whole-body stability / smoothness shaping (Climb / Replace recipe: walking sways) --
+    # -- whole-body stability / smoothness shaping --
     com_sway = RewTerm(func=mdp.com_sway_l2, weight=-0.1)
     ang_vel_xy = RewTerm(func=mdp.ang_vel_xy_l2, weight=-0.05)
     action_rate = RewTerm(func=mdp.action_rate_l2, weight=-0.005)
@@ -233,7 +233,7 @@ class TerminationsCfg:
         params={"xy_radius": LADDER_READY_XY_RADIUS, "tilt_limit": LADDER_TILT_LIMIT},
     )
     ladder_tipped = DoneTerm(func=mdp.ladder_tipped, params={"tilt_limit": LADDER_TILT_LIMIT})
-    # No height-gate "dropped" check here (unlike the bulb terms in Replace): this ladder's
+    # No height-gate "dropped" check here: this ladder's
     # root frame sits at ~0 m when resting upright on the floor (verified via a live probe --
     # see the groot-scoring debug notes), the same as its correctly-resting state, so any
     # min_height threshold above 0 trips on step 1 of every episode regardless of policy.

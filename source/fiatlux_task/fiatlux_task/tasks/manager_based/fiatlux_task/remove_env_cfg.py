@@ -206,7 +206,7 @@ class RewardsCfg:
         weight=-1.0e-3,
         params={"sensor_cfg": SceneEntityCfg("hand_contact")},
     )
-    # -- smoothness / safety (Insert's recipe) --
+    # -- smoothness / safety --
     action_rate = RewTerm(func=mdp.action_rate_l2, weight=-1.0e-4)
     joint_vel = RewTerm(
         func=mdp.joint_vel_l2,

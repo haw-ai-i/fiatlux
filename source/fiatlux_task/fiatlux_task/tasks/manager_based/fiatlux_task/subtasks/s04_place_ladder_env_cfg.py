@@ -45,13 +45,12 @@ from ..subtask_tiers.place import (
 LADDER_FEET_TOLERANCE = 0.02  # m
 
 # Rectangle the robot must land in, on the ladder's step-facing side: forward along the live
-# step face, lateral across it. Not LADDER_APPROACH_RADIUS -- that is an arm's-reach bound for
-# grasping a rail, an unrelated foot-placement question (CRITIQUE A6).
+# step face, lateral across it. Not LADDER_APPROACH_RADIUS, which is an arm's-reach bound.
 LADDER_MOUNT_FORWARD_LIMIT = 1.0  # m
-LADDER_MOUNT_LATERAL_LIMIT = LADDER_NEAR_RAIL_OFFSET  # m, the A-frame's own half-width
+LADDER_MOUNT_LATERAL_LIMIT = LADDER_NEAR_RAIL_OFFSET  # m, the ladder's own half-width
 
-# The success gate, as reviewable data (mdp.all_of) rather than a hand-written conjunction --
-# an omitted conjunct here is a gate that passes vacuously.
+# The success gate as data (mdp.all_of): an omitted conjunct in a hand-written conjunction is a
+# gate that passes vacuously.
 LADDER_PLACED_CONJUNCTS = [
     (mdp.ladder_ready, {"xy_radius": LADDER_READY_XY_RADIUS, "tilt_limit": mdp.LADDER_TILT_LIMIT}),
     (place_terms.ladder_feet_down, {"tolerance": LADDER_FEET_TOLERANCE}),
@@ -109,15 +108,13 @@ class S04PlaceLadderEnvCfg(PlaceSubtaskCfg):
     def __post_init__(self) -> None:
         super().__post_init__()
         apply_replace_preset(self.scene)
-        # S03's end state: the ladder starts already held, at the carry offset from the robot's
-        # own (randomized) root pose -- not at the preset's independently-sampled ladder zone --
-        # with the robot facing the fixture it is about to set the ladder down at.
+        # The ladder starts already held, at the carry offset from the robot's root pose, with
+        # the robot facing the fixture.
         face_robot_at(self.scene, self.scene.socket.init_state.pos[:2])
         self.scene.ladder.init_state.pos, self.scene.ladder.init_state.rot = compose_carried_pose(
             self.scene.robot.init_state.pos, self.scene.robot.init_state.rot, LADDER_IN_ROOT_CARRIED
         )
-        # The arm that's carrying it, matching the pose LADDER_IN_ROOT_CARRIED was measured
-        # against -- merge, don't assign: this dict only names right-arm/right-hand joints.
+        # Merge, don't assign: this dict only names right-arm/right-hand joints.
         self.scene.robot.init_state.joint_pos = {
             **self.scene.robot.init_state.joint_pos,
             **LADDER_CARRY_ARM_JOINT_POS,

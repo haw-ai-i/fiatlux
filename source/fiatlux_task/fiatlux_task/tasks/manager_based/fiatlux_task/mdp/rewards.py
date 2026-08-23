@@ -320,7 +320,7 @@ class com_sway_l2(ManagerTermBase):
 
     A controlled ascent moves the CoM mostly vertically, so this penalizes lunging
     and lateral wobble without fighting the sustained forward lean that climbing an
-    A-frame requires (which a CoM-offset-from-support formulation would punish).
+    ladder requires (which a CoM-offset-from-support formulation would punish).
     Mass fractions are precomputed once; ``default_mass`` lives on the CPU.
     """
 
@@ -595,7 +595,7 @@ def full_replacement_success(
     return bulb_seated(env, pos_threshold, ori_threshold) & old_bulb_disposed(env, disposal_threshold)
 
 
-LADDER_TILT_LIMIT = 0.6  # rad; the upright A-frame stands at ~0
+LADDER_TILT_LIMIT = 0.6  # rad; the upright ladder stands at ~0
 
 
 def ladder_tipped(

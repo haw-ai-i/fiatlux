@@ -7,9 +7,7 @@
 
 A start state built by ``grasp_poses.compose_carried_pose`` alone is not physically held:
 nothing but incidental finger-mesh contact resists gravity, so a multi-kilogram payload swings
-free of a one-point contact and falls within a few physics steps -- measured directly on
-``FIATLUX-S03-CarryLadder-v0``, whose ladder was already back on the floor by frame 5 of a
-``--policy zero`` rollout, despite starting the episode correctly positioned at the hand.
+free of a one-point contact and falls within a few physics steps.
 
 The fix is Isaac Sim's own standard runtime-attach mechanism: a ``UsdPhysics.FixedJoint``
 between the two bodies, the same primitive ``isaacsim.robot_setup.assembler.RobotAssembler``

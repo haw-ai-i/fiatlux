@@ -42,27 +42,15 @@ if TYPE_CHECKING:
 # Geometry constants
 # ---------------------------------------------------------------------------
 
-# The A-frame's step-facing direction IN ITS OWN ROOT FRAME. Local -y.
-#
-# CORRECTED 2026-08-22: was (0, 1, 0). The old comment's derivation ("LADDER_YAW_DEG=90 aims the
-# steps at world -x, R_z(90) maps local +y to world -x, CLIMB_ROBOT_POSITION stands on the -x
-# side") is internally consistent arithmetic but never checked against the asset mesh itself --
-# it derived the sign from two constants that both encode the SAME earlier assumption, not from
-# an independent measurement. Rendered directly (a robot placed via ``_stance_on_step_side`` and
-# a top-down render of the live scene, both against the randomized ``replace`` layout, not just
-# the yaw=90 default): the flat rungs are on local -y, the diagonal back brace on local +y. Every
-# consumer (``_stance_on_step_side`` for S01/S04/S05/S06/S07/S13/S14/S15's start stance, and S04's
-# own ``robot_at_ladder_base`` success gate) was placing/scoring the robot on the unclimbable
-# brace side. The ladder's placed yaw comes from the layout draw, so every gate below rotates
-# this by the LIVE quaternion rather than assuming a world direction.
+# The ladder's step-facing direction in its own root frame: the flat rungs are on local -y, the
+# back brace on local +y. The ladder's placed yaw comes from the layout draw, so every gate below
+# rotates this by the live quaternion rather than assuming a world direction.
 LADDER_STEP_FACE_LOCAL = (0.0, -1.0, 0.0)
 
-# The crate's interior footprint, as its measured outer footprint less one wall. Outer extent is
-# the crate's real size (0.60 x 0.40 x 0.17 m, scene_cfg); the wall thickness is PROVISIONAL --
-# the validation script measures it off the spawned collision meshes and it should be frozen from
-# that. Only the interior FOOTPRINT discriminates: a bulb on the rim sits on the wall line.
-CRATE_OUTER_FOOTPRINT = (0.60, 0.40)  # m, measured
-CRATE_RIM_Z = 0.17  # m, measured: the crate's outer height, i.e. the rim it could balance on
+# The crate's interior footprint: its outer footprint (0.60 x 0.40 x 0.17 m, scene_cfg) less one
+# wall. Only the interior footprint discriminates -- a bulb on the rim sits on the wall line.
+CRATE_OUTER_FOOTPRINT = (0.60, 0.40)  # m
+CRATE_RIM_Z = 0.17  # m, the crate's outer height: the rim a bulb could balance on
 CRATE_WALL_THICKNESS = 0.04  # m, PROVISIONAL
 CRATE_INTERIOR_HALF_EXTENT = (
     CRATE_OUTER_FOOTPRINT[0] / 2.0 - CRATE_WALL_THICKNESS,
@@ -138,7 +126,7 @@ def robot_standing(
 def ladder_feet_height(env: ManagerBasedRLEnv) -> torch.Tensor:
     """Height (m) of the ladder's root above the floor; 0 once it stands on its feet.
 
-    The A-frame's base is authored at z=0, so the root height IS the gap under its feet. Bare
+    The ladder's base is authored at z=0, so the root height IS the gap under its feet. Bare
     ``(env) -> Tensor`` so it can be a ``distance_progress`` ``distance_fn``, which forbids
     lambdas and closures.
     """
@@ -173,7 +161,7 @@ def robot_at_ladder_base(
 ) -> torch.Tensor:
     """True where the robot stands in front of the ladder's steps, within mounting range.
 
-    The successor subtask mounts the ladder, and an A-frame's steps face ONE way, so a placement
+    The successor subtask mounts the ladder, and the ladder's steps face one way, so a placement
     that leaves the robot behind or beside it hands the successor a start state it cannot climb
     from (CRITIQUE C2). Tested as a rectangle on the step side -- ``forward`` along the live step
     face, ``lateral`` across it -- rather than a radius, because a radius accepts the back.
@@ -231,7 +219,7 @@ def old_bulb_in_bin(
     asset_cfg: SceneEntityCfg = SceneEntityCfg("old_bulb"),
     bin_cfg: SceneEntityCfg = SceneEntityCfg("bin"),
 ) -> torch.Tensor:
-    """``object_in_container`` bound to the old bulb and the disposal crate's measured geometry."""
+    """``object_in_container`` bound to the old bulb and the disposal crate."""
     return object_in_container(
         env,
         asset_cfg=asset_cfg,

@@ -147,10 +147,9 @@ class EventCfg:
     same layering Climb/Carry/Replace use.
     """
 
-    # Restores every entity -- including the robot ROOT -- to init_state; must run
-    # first (cfg order) so the per-asset randomizations below apply on top. Isaac Lab
-    # restores sim state only through reset events, so without this a fallen robot
-    # stays fallen across resets and the fall gate below would re-fire every step.
+    # Restores every entity -- including the robot root -- to init_state; must run first (cfg
+    # order) so the per-asset randomizations below apply on top. Isaac Lab restores sim state
+    # only through reset events, so without this a fallen robot stays fallen across resets.
     reset_all = EventTerm(func=mdp.reset_scene_to_default, mode="reset")
     reset_robot_joints = EventTerm(
         func=mdp.reset_joints_by_offset,
@@ -178,9 +177,8 @@ class EventCfg:
         },
     )
 
-    # Intensity + yaw only for the dome: it carries an HDRI sky texture, so color-tinting
-    # it or tilting its horizon reads as a render bug rather than useful domain
-    # randomization (see mdp.events); yaw = sun azimuth.
+    # Intensity + yaw only for the dome: it carries an HDRI sky texture, so tinting it or
+    # tilting its horizon reads as a render bug. Yaw is sun azimuth.
     randomize_light = EventTerm(
         func=mdp.randomize_light_properties,
         mode="reset",
@@ -190,9 +188,8 @@ class EventCfg:
             "rotation_range_deg": {"yaw": (0.0, 360.0)},
         },
     )
-    # Replicate-safe visual DR (this cfg keeps replicate_physics=True): key-light direction
-    # (orientation only -- Insert deliberately never randomized key intensity) and a global
-    # albedo tint on the shared room.
+    # Replicate-safe visual DR (this cfg keeps replicate_physics=True): key-light orientation
+    # and a global albedo tint on the shared room.
     randomize_key_light = EventTerm(
         func=mdp.randomize_light_properties,
         mode="reset",

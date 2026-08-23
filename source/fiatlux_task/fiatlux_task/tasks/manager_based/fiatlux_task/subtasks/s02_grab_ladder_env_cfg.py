@@ -9,7 +9,7 @@ Success is filtered hand-to-ladder contact force past a threshold, held for
 ``GRASP_SUSTAIN_SECONDS``, while the ladder stands clear of the floor, stays upright, and the
 robot stays standing.
 
-The ladder's root is the A-frame's base centre, so tilting the ladder raises the root exactly
+The ladder's root is the ladder's base centre, so tilting the ladder raises the root exactly
 the way lifting it does: a 3 cm root rise costs only ~5.1 deg of lean, well under the 34 deg
 (``mdp.LADDER_TILT_LIMIT`` = 0.6 rad) tipping termination. The gate below never reads the root
 height for that reason -- ``grasp_terms.ladder_feet_clear`` reads it only as a floor-clearance
@@ -36,22 +36,19 @@ from ..scene_cfg import (
 from ..subtask_env_cfg import FALL_MIN_HEIGHT, FALL_TILT_LIMIT, SubtaskTerminationsCfg
 from ..subtask_tiers.grasp import GRASP_SUSTAIN_SECONDS, GraspRewardsCfg, GraspSubtaskCfg, add_grasp_contact_sensor
 
-# 0.8 x mg (mg = LADDER_MASS_KG x 9.81 m/s^2): enough to show the HAND is carrying the ladder,
-# not the floor -- comfortably above noise, comfortably below the 500 N solver-wedge tripwire
-# (``grasp_poses.LADDER_GRIP_TRIPWIRE_N``).
+# 0.8 x mg: the hand carrying the ladder rather than the floor. Above noise, below
+# ``grasp_poses.LADDER_GRIP_TRIPWIRE_N``.
 LADDER_GRASP_FORCE_N = 0.8 * LADDER_MASS_KG * 9.81  # ~56.9 N
 
-# Root rise counted as "feet clear of the floor": more than resting-contact noise, well short of
-# a real step. PROVISIONAL -- not measured against the settled ladder's contact jitter.
+# Root rise counted as "feet clear of the floor". PROVISIONAL.
 LADDER_LIFT_CLEARANCE_M = 0.02  # m
 
 # Tight enough that leaning to fake the clearance conjunct fails this one first: 5.1 deg of lean
-# clears LADDER_LIFT_CLEARANCE_M, well under this bound, and far under the 34 deg tipping
-# termination. Never gate success on the ladder's root height alone.
+# clears LADDER_LIFT_CLEARANCE_M and is far under the 34 deg tipping termination.
 LADDER_GRASP_TILT_LIMIT = 0.15  # rad
 
-# The success gate, as reviewable data (mdp.all_of) rather than a hand-written conjunction --
-# an omitted conjunct here is a gate that passes vacuously.
+# The success gate as data (mdp.all_of): an omitted conjunct in a hand-written conjunction is a
+# gate that passes vacuously.
 LADDER_GRASPED_CONJUNCTS = [
     (
         grasp_terms.grasp_force_above,
@@ -96,8 +93,8 @@ class S02GrabLadderEnvCfg(GraspSubtaskCfg):
     def __post_init__(self) -> None:
         super().__post_init__()
         apply_replace_preset(self.scene)
-        # The preset's own robot zone is independent of the ladder's; pull the robot into grasp
-        # range and re-aim it there instead of just at the table.
+        # The preset's robot zone is independent of the ladder's; pull the robot into grasp
+        # range and re-aim it there.
         stand_robot_near(self.scene, self.scene.ladder.init_state.pos[:2], LADDER_APPROACH_RADIUS)
         add_ego_camera(self.scene)
         add_mid360_lidar(self.scene)

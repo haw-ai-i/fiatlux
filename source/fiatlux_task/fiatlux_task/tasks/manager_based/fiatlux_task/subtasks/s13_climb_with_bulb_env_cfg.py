@@ -130,8 +130,7 @@ class S13ClimbWithBulbEnvCfg(ClimbSubtaskCfg):
         self.scene.bulb.init_state.pos, self.scene.bulb.init_state.rot = compose_carried_pose(
             self.scene.robot.init_state.pos, self.scene.robot.init_state.rot, BULB_IN_ROOT_STANDING
         )
-        # The arm/hand pose BULB_IN_ROOT_STANDING was measured against -- merge, don't assign:
-        # these dicts only name right-arm/right-hand joints.
+        # Merge, don't assign: these dicts only name right-arm/right-hand joints.
         self.scene.robot.init_state.joint_pos = {
             **self.scene.robot.init_state.joint_pos,
             **ARM_CRADLE,

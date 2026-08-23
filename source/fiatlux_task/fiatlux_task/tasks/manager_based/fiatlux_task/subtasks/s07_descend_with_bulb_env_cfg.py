@@ -134,8 +134,7 @@ class S07DescendWithBulbEnvCfg(DescendSubtaskCfg):
         self.scene.old_bulb.init_state.pos, self.scene.old_bulb.init_state.rot = compose_carried_pose(
             self.scene.robot.init_state.pos, self.scene.robot.init_state.rot, BULB_IN_ROOT_ON_LADDER
         )
-        # The arm/hand pose BULB_IN_ROOT_ON_LADDER was measured against -- merge, don't assign:
-        # these dicts only name right-arm/right-hand joints.
+        # Merge, don't assign: these dicts only name right-arm/right-hand joints.
         self.scene.robot.init_state.joint_pos = {
             **self.scene.robot.init_state.joint_pos,
             **ARM_CRADLE,

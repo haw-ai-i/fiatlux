@@ -5,7 +5,7 @@
 
 """``FIATLUX-Climb-v0`` -- bipedal ladder ascent (functional RL task).
 
-The G1 starts at the base of the kinematic A-frame step ladder (family *at-height*
+The G1 starts at the base of the kinematic step ladder (family *at-height*
 preset: elevated chandelier above the ladder, bulb parked on the floor) and must
 climb until its pelvis reaches the upper steps -- the working height for the
 at-fixture manipulation tasks. Built as a standard ``ManagerBasedRLEnvCfg`` so it
@@ -26,7 +26,7 @@ Design notes (mirrors ``g1_bulb_env_cfg`` where the tasks overlap):
 - **Rewards** pay progressive height gain (each centimetre once) plus a small
   limb-on-ladder contact bootstrap, and penalize CoM sway, wobble, falls, and the
   usual smoothness/limit terms. ``flat_orientation_l2`` is deliberately absent:
-  climbing an A-frame requires a sustained forward lean.
+  climbing requires a sustained forward lean.
 - **Terminations** implement the family's fall-detection RL gate (base height +
   tilt thresholds end solver-kick episodes immediately) and a ``success`` term
   (name consumed by ``recording.py``/``score.py``).
@@ -71,10 +71,9 @@ SUCCESS_XY = (TOP_ROBOT_POSITION[0], TOP_ROBOT_POSITION[1])
 SUCCESS_XY_RADIUS = 0.6  # m; with the max-speed cap, rejects ballistic fly-throughs
 SUCCESS_MAX_SPEED = 1.5  # m/s
 
-# Fall thresholds, shared by the terminations and the fall penalty (which recomputes
-# them; see mdp.fall_terminated). Standing pelvis is 0.75 m, a deep mounting crouch
-# stays > 0.45 m, a collapsed/draped robot reads < 0.30 m; the climb lean is
-# ~12-35 deg while beyond ~57 deg a position-controlled G1 cannot recover.
+# Fall thresholds, shared by the terminations and the fall penalty (see mdp.fall_terminated).
+# Standing pelvis is 0.75 m, a deep mounting crouch stays > 0.45 m, a collapsed robot reads
+# < 0.30 m; beyond ~57 deg a position-controlled G1 cannot recover.
 FALL_MIN_HEIGHT = 0.35  # m, world frame (the floor is flat)
 FALL_TILT_LIMIT = 1.0  # rad
 
