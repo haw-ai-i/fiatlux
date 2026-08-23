@@ -20,6 +20,7 @@ from ..scene_cfg import (
     face_robot_at,
     frame_viewer_between,
     stand_robot_near,
+    park_old_bulb_in_crate,
 )
 from ..subtask_env_cfg import ARRIVAL_FACING_TOLERANCE, ARRIVAL_MAX_SPEED, NavigateSubtaskCfg
 
@@ -44,6 +45,10 @@ class S10ApproachNewBulbEnvCfg(NavigateSubtaskCfg):
     def __post_init__(self) -> None:
         super().__post_init__()
         apply_replace_preset(self.scene)
+        # S09's end state: the old bulb is in the crate and the fixture is empty. Without this
+        # the preset's seated old bulb is still overhead, three subtasks after it was disposed
+        # of -- and with no attach FSM on this tier it drops out of the inverted socket at reset.
+        park_old_bulb_in_crate(self.scene)
         # S09's end state: standing at the disposal crate, hands free.
         stand_robot_near(self.scene, self.scene.bin.init_state.pos[:2], DISPOSAL_ARRIVAL_RADIUS)
         # This leg's target is the bulb itself, not the table's own origin apply_replace_preset

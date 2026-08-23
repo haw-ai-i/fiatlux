@@ -43,6 +43,7 @@ from ..scene_cfg import (
     face_robot_at,
     frame_viewer_between,
     stand_robot_at_offset,
+    park_old_bulb_in_crate,
 )
 from ..subtask_env_cfg import (
     ARRIVAL_FACING_TOLERANCE,
@@ -117,6 +118,8 @@ class S12CarryBulbToLadderEnvCfg(NavigateSubtaskCfg):
     def __post_init__(self) -> None:
         super().__post_init__()
         apply_replace_preset(self.scene)
+        # The old bulb was disposed of back in S09; the fixture is empty from here on.
+        park_old_bulb_in_crate(self.scene)
         # S11's end state: the robot is at the table where it picked the bulb up. Capture that
         # before the carried pose overwrites the bulb's init_state, or the robot spawns in its
         # independently-sampled zone and the held bulb teleports there with it.

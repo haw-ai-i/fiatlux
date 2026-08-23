@@ -33,6 +33,7 @@ from ..scene_cfg import (
     apply_replace_preset,
     frame_viewer_on,
     stand_robot_at_offset,
+    park_old_bulb_in_crate,
 )
 from ..subtask_env_cfg import FALL_MIN_HEIGHT, FALL_TILT_LIMIT, SubtaskTerminationsCfg
 from ..subtask_tiers.grasp import GRASP_SUSTAIN_SECONDS, GraspRewardsCfg, GraspSubtaskCfg, add_grasp_contact_sensor
@@ -112,6 +113,8 @@ class S11GrabNewBulbEnvCfg(GraspSubtaskCfg):
     def __post_init__(self) -> None:
         super().__post_init__()
         apply_replace_preset(self.scene)
+        # The old bulb was disposed of back in S09; the fixture is empty from here on.
+        park_old_bulb_in_crate(self.scene)
         # A radius alone can land the robot under the table, so use the table's own approach
         # vector from the bulb.
         stand_robot_at_offset(self.scene, self.scene.bulb.init_state.pos[:2], BULB_APPROACH_OFFSET)
