@@ -5,17 +5,25 @@
 
 """``FIATLUX-S09-DisposeBulb-v0`` -- put the old bulb in the disposal crate and let go.
 
+Starts from S08's end state: the robot at the crate with the old bulb already held
+(``BULB_IN_ROOT_STANDING``), composed onto its own root pose rather than left seated at the
+fixture.
+
 Success requires the bulb inside the crate's interior footprint (``place_terms.old_bulb_in_bin``,
 orientation-agnostic), not merely near the crate's origin -- a bulb balanced on the rim or resting
 on the floor beside it would pass the coarser ``mdp.old_bulb_disposed`` radius alone.
 """
 
+from isaaclab.managers import EventTermCfg as EventTerm
 from isaaclab.managers import SceneEntityCfg
 from isaaclab.utils import configclass
 
+from fiatlux_task.grasp_poses import BULB_IN_ROOT_STANDING
+from fiatlux_task.poses import ARM_CRADLE, HAND_CUP
+
 from .. import mdp
 from ..mdp import place_terms
-from ..mdp.nav_terms import DISPOSAL_ARRIVAL_RADIUS
+from ..mdp.nav_terms import DISPOSAL_ARRIVAL_RADIUS, compose_carried_pose, settle_carried_payload_live
 from ..replace_env_cfg import DISPOSAL_THRESHOLD
 from ..scene_cfg import (
     BIN_BULB_INTERIOR_Z,
@@ -25,7 +33,7 @@ from ..scene_cfg import (
     frame_viewer_on,
     stand_robot_near,
 )
-from ..subtask_env_cfg import FALL_MIN_HEIGHT, FALL_TILT_LIMIT
+from ..subtask_env_cfg import FALL_MIN_HEIGHT, FALL_TILT_LIMIT, SubtaskEventCfg
 from ..subtask_tiers.place import (
     AT_REST_ANG_VEL_LIMIT,
     AT_REST_LIN_VEL_LIMIT,
@@ -57,6 +65,19 @@ OLD_BULB_DISPOSED_CONJUNCTS = [
 
 
 @configclass
+class S09EventCfg(SubtaskEventCfg):
+    """Re-seats the bulb against the hand's live, actually-simulated pose -- see
+    ``nav_terms.settle_carried_payload_live``."""
+
+    settle_bulb = EventTerm(
+        func=settle_carried_payload_live,
+        mode="interval",
+        interval_range_s=(0.0, 0.0),
+        params={"payload_cfg": SceneEntityCfg("old_bulb")},
+    )
+
+
+@configclass
 class S09DisposeBulbEnvCfg(PlaceSubtaskCfg):
     """Put the old bulb in the disposal crate and let go (randomized Replace layout)."""
 
@@ -74,12 +95,26 @@ class S09DisposeBulbEnvCfg(PlaceSubtaskCfg):
     }
     progress_distance_fn = mdp.old_bulb_disposal_distance
 
+    events: S09EventCfg = S09EventCfg()
+
     def __post_init__(self) -> None:
         super().__post_init__()
         apply_replace_preset(self.scene)
         # The preset's own robot zone is independent of the bin's; pull the robot to where it
         # would be holding the old bulb it starts this subtask already carrying.
         stand_robot_near(self.scene, self.scene.bin.init_state.pos[:2], DISPOSAL_ARRIVAL_RADIUS)
+        # S08's end state: the old bulb starts already held, at the carry offset from the robot's
+        # own (now-final) root pose -- not seated at the fixture, which is where the preset
+        # leaves it and where it stayed until this was added.
+        self.scene.old_bulb.init_state.pos, self.scene.old_bulb.init_state.rot = compose_carried_pose(
+            self.scene.robot.init_state.pos, self.scene.robot.init_state.rot, BULB_IN_ROOT_STANDING
+        )
+        # Merge, don't assign: these dicts only name right-arm/right-hand joints.
+        self.scene.robot.init_state.joint_pos = {
+            **self.scene.robot.init_state.joint_pos,
+            **ARM_CRADLE,
+            **HAND_CUP,
+        }
         add_ego_camera(self.scene)
         add_mid360_lidar(self.scene)
         add_release_contact_sensor(self.scene, self.scene.old_bulb.prim_path)

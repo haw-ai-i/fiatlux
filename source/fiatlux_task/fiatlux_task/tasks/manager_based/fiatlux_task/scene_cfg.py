@@ -205,7 +205,26 @@ TABLE_ZONE_HALF_SIZE = 1.5
 LADDER_ZONE_HALF_SIZE = 1.0
 DISPOSAL_ZONE_HALF_SIZE = 0.5  # the old-bulb disposal crate (crate footprint ~0.6 m + clearance)
 ZONE_MARGIN = 0.5  # minimum gap left between any two zones' bounding squares
-LADDER_WALL_STANDOFF = 0.4  # extra gap between the (coupled) ladder zone edge and the wall
+# Where a wall mount's reserved ladder anchor goes, measured from the wall face. Derived from
+# reach, not from zone packing: standing on the platform (feet at STEP_LADDER_TOP_OFFSET[2]) the
+# fingertips clear WALL_MOUNT_Z with this much horizontal slack left over. The previous value put
+# the anchor at LADDER_ZONE_HALF_SIZE + 0.4 = 1.4 m out, which is a packing number and left every
+# wall draw ~0.5 m beyond reach -- unreachable by construction, and unasserted, because the reach
+# guards below are derived from the CEILING mount only.
+LADDER_WALL_REACH_SLACK = math.sqrt(
+    max(G1_OVERHEAD_REACH**2 - (WALL_MOUNT_Z - STEP_LADDER_TOP_OFFSET[2]) ** 2, 0.0)
+)
+LADDER_WALL_STANDOFF = LADDER_WALL_REACH_SLACK - 0.05  # m from the wall face, margin held back
+# The anchor's own reserved zone. Smaller than LADDER_ZONE_HALF_SIZE because that is a packing
+# convenience, and insetting the anchor by a full metre is what pushed it out of reach. The
+# ladder's real footprint half-diagonal is 0.576 m; ZONE_MARGIN (0.5 m) more than covers the
+# difference, so no other occupant can reach the ladder's actual footprint.
+LADDER_ANCHOR_HALF_SIZE = 0.45
+if LADDER_WALL_STANDOFF <= 0.576:
+    raise ValueError(
+        f"the ladder cannot stand {LADDER_WALL_STANDOFF:.3f} m from a wall: its own footprint "
+        f"half-diagonal is 0.576 m, so it would intersect the wall it is meant to work on"
+    )
 
 # Ladder mass, every preset. Without an authored MassAPI PhysX derives mass from collider
 # volume at 1000 kg/m^3, which lands a hollow ladder at tens of kg. UNVERIFIED.
@@ -893,7 +912,7 @@ def _sample_fixture_mount(rng: random.Random) -> FixtureMount:
     the shade/socket point down like a pendant light; wall rotates it ~90 deg so it projects
     outward from the wall face.
     """
-    inset = LADDER_ZONE_HALF_SIZE
+    inset = LADDER_ANCHOR_HALF_SIZE
     if rng.random() < 0.5:
         x = rng.uniform(ROOM_FLOOR_MIN[0] + inset, ROOM_FLOOR_MAX[0] - inset)
         y = rng.uniform(ROOM_FLOOR_MIN[1] + inset, ROOM_FLOOR_MAX[1] - inset)
@@ -904,8 +923,8 @@ def _sample_fixture_mount(rng: random.Random) -> FixtureMount:
     # Sample along the REAL panel span, inset so the anchor's ladder zone stays in the room.
     along = rng.uniform(span_lo + inset, span_hi - inset)
     pos = (value, along, WALL_MOUNT_Z) if axis == 0 else (along, value, WALL_MOUNT_Z)
-    standoff = LADDER_ZONE_HALF_SIZE + LADDER_WALL_STANDOFF
-    anchor = _clamp_to_floor((pos[0] + normal[0] * standoff, pos[1] + normal[1] * standoff), LADDER_ZONE_HALF_SIZE)
+    standoff = LADDER_WALL_STANDOFF
+    anchor = _clamp_to_floor((pos[0] + normal[0] * standoff, pos[1] + normal[1] * standoff), LADDER_ANCHOR_HALF_SIZE)
     # +90, not -90: local +Z (the shade/socket opening) must map to local +X so the per-wall
     # yaw points the shade into the room. -90 gives dot(inward_normal) = -1.0.
     quat = _quat_mul(_quat_z_deg(yaw), _quat_y_deg(90.0))
@@ -1020,7 +1039,7 @@ def _sample_replace_layout(
             TABLE_ZONE_HALF_SIZE,
             LADDER_ZONE_HALF_SIZE,
             DISPOSAL_ZONE_HALF_SIZE,
-            LADDER_ZONE_HALF_SIZE,
+            LADDER_ANCHOR_HALF_SIZE,
         ]
         fixed: list[tuple[float, float] | None] = [None, None, None, None, ladder_anchor]
 
