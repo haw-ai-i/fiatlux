@@ -3,17 +3,12 @@
 #
 # SPDX-License-Identifier: BSD-3-Clause
 
-"""Shared base for the subtask family (issue #66).
+"""Shared base for the subtask family.
 
-The subtask family splits the replacement job so that every switch between navigation, balance
-and grasping is an episode boundary. Each subtask is its own module, class and versioned gym id;
-this base holds only what is identical across all of them, and fixes the CANONICAL NAME for each
-shared channel.
-
-Naming matters here beyond tidiness: ``replace_env_cfg`` documents the per-term episode sums in
-``extras['log']`` as the score breakdown, so one concept under two names cannot be aggregated
-across tasks. The pre-existing family spells the fall penalty two ways and the completion bonus
-five; subtasks use one of each.
+Each subtask is its own module, class and versioned gym id; this base holds what is identical
+across all of them and fixes the canonical name for each shared channel. ``replace_env_cfg``
+documents the per-term episode sums in ``extras['log']`` as the score breakdown, so one concept
+under two names cannot be aggregated across tasks.
 
 Layers, of which this file is the first two:
 
@@ -22,16 +17,15 @@ Layers, of which this file is the first two:
         <leaf>             the thresholds, the predicate, the preset, the horizon
 
 Leaves supply their behaviour through the declared hook fields (``success_predicate``,
-``progress_distance_fn``), which ``__post_init__`` validates and wires in ONE place, so the
-``success`` termination owns the gate outright; ``success_bonus`` reads that term's flag rather than
-re-evaluating it, so the two cannot drift even when the gate is stateful. A leaf that forgets a hook
-fails at construction rather than running on a base default.
+``progress_distance_fn``), which ``__post_init__`` validates and wires in one place: the
+``success`` termination owns the gate, and ``success_bonus`` reads that term's flag rather than
+re-evaluating it. A leaf that forgets a hook fails at construction.
 
-``ClassVar`` does not work for those hooks: ``@configclass`` ignores the annotation and makes them
-ordinary dataclass fields (verified). Fields are fine -- plain functions work as defaults without
-binding, and ``to_dict()`` skips the callables.
+``ClassVar`` does not work for those hooks: ``@configclass`` ignores the annotation and makes
+them ordinary dataclass fields. Plain functions work as defaults without binding, and
+``to_dict()`` skips the callables.
 """
-
+import os
 from collections.abc import Callable
 
 from isaaclab.envs import ManagerBasedRLEnvCfg
@@ -50,8 +44,8 @@ from . import mdp
 from .scene_cfg import ROOM_ENV_SPACING, G1ReplaceSceneCfg
 
 # Fall gates, one definition for every subtask. Standing pelvis is 0.79 m, a deep mounting crouch
-# stays above 0.35 m, a collapsed robot reads under 0.30 m; beyond ~57 deg a position-controlled G1
-# cannot recover.
+# stays above 0.35 m, a collapsed robot reads under 0.30 m; beyond ~57 deg a position-controlled
+# G1 cannot recover.
 FALL_MIN_HEIGHT = 0.35  # m, world frame (the floor is flat)
 FALL_TILT_LIMIT = 1.0  # rad
 
@@ -254,13 +248,16 @@ class SubtaskEnvCfg(ManagerBasedRLEnvCfg):
         self.sim.dt = 1.0 / 200.0
         self.sim.render_interval = self.decimation
 
-        # An uncontrolled free-base G1 against kinematic furniture accumulates solver kicks.
         self.sim.physx.solver_type = 1
         self.sim.physx.min_position_iteration_count = 8
-        self.sim.physx.min_velocity_iteration_count = 1  # floor, not a target: per-body counts above
-        # it are kept, which is what lets the Carry ladder ask for 1
+        self.sim.physx.min_velocity_iteration_count = 1
         self.sim.physx.bounce_threshold_velocity = 0.2
         self.sim.physx.enable_stabilization = True
+
+        # FIATLUX_DEBUG_NO_RANDOMIZE: deterministic spawns without a caller asking, matching
+        # scene_cfg's layout-seed default.
+        if os.environ.get("FIATLUX_DEBUG_NO_RANDOMIZE"):
+            self.disable_randomization()
 
     def disable_randomization(self) -> None:
         """Deterministic spawns (``--no_randomize``). ``reset_all`` stays: restoring default state

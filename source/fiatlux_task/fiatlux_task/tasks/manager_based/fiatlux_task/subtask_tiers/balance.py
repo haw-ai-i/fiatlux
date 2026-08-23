@@ -5,28 +5,17 @@
 
 """Shared tier for the on-the-ladder subtasks (S05, S07, S13, S15, and via ``mate`` S06 and S14).
 
-All of them start from a ladder that a placement subtask already stood at the fixture, so the
-preset is drawn with the ladder's zone coupled to the fixture's anchor -- for these subtasks that
-coupling is the chain's state, not the curriculum aid the preset's own docstring describes.
+The preset is drawn with the ladder's zone coupled to the fixture's anchor.
 
-Two consequences of the ladder being DYNAMIC here (it must be: S02-S04 carry and place it) shape
-everything below. It can tip, so tipping is a termination and a penalty in every one of these
-subtasks and is absent from ``FIATLUX-Climb-v0``/``FIATLUX-Descend-v0``, which climb a kinematic
-ladder. And it can stand anywhere, so the stances and the success gates are built from its live
-pose rather than from ``LADDER_POSITION``.
+The ladder is dynamic here (S02-S04 carry and place it), so it can tip -- tipping is a
+termination and a penalty in every subtask in this file, and absent from
+``FIATLUX-Climb-v0``/``FIATLUX-Descend-v0``, which climb a kinematic ladder -- and it can stand
+anywhere, so the stances and success gates read its live pose, not ``LADDER_POSITION``.
 
-The A-frame's steps face one way, so both stances are placed along the ladder's own step-facing
-direction at the sampled yaw; a stance behind the ladder cannot be climbed from.
-
-The bayonet attach/detach state machine (issue #54, ``mdp.bulb_attachment``) is wired here, not
-just on the mate tier: the old bulb starts locked in the fixture on EVERY subtask in this file
-(S05's and S07's and S13's start state has it there just as much as S06's does), and nothing but
-that event keeps it from falling out of the inverted socket under plain gravity. Only S06 and S14
-score against it directly, but S05/S07/S13/S15 would silently show (and physically drop) a
-loose old bulb for the whole episode without it -- an unrelated background object failing is
-still a failure to notice in a render or a training run.
+``mdp.bulb_attachment`` is wired here rather than on the mate tier: the old bulb starts locked in
+the inverted fixture on every subtask in this file, and nothing else keeps it from falling out
+under gravity. Only S06 and S14 score against it.
 """
-
 import math
 
 from isaaclab.managers import EventTermCfg as EventTerm
@@ -35,6 +24,7 @@ from isaaclab.managers import SceneEntityCfg
 from isaaclab.managers import TerminationTermCfg as DoneTerm
 from isaaclab.utils import configclass
 
+from fiatlux_task.assets import STEP_LADDER_TOP_OFFSET
 from fiatlux_task.robots.g1 import G1_DEX3_PALM_BODIES, G1_FOOT_BODIES, G1_PALM_BODIES
 
 from .. import mdp
@@ -56,7 +46,7 @@ from ..subtask_env_cfg import SubtaskEnvCfg, SubtaskEventCfg, SubtaskRewardsCfg,
 
 @configclass
 class BalanceEventCfg(SubtaskEventCfg):
-    """Adds the bayonet channel enforcement, same params ``FIATLUX-Replace-v0`` validated."""
+    """Bayonet channel enforcement, with ``FIATLUX-Replace-v0``'s parameters."""
 
     bulb_attachment = EventTerm(
         func=mdp.bulb_attachment,
@@ -71,48 +61,27 @@ class BalanceEventCfg(SubtaskEventCfg):
         },
     )
 
-# Success-region shape, shared by every climb/descend gate in the family (Climb's own tolerances).
+# Shared by every climb/descend gate in the family.
 LADDER_SUCCESS_XY_RADIUS = 0.6  # m
 LADDER_SUCCESS_MAX_SPEED = 1.5  # m/s
 
-# How far below the ladder's top step a solid stance may leave the pelvis, and the pelvis height
-# that reads as back on the floor. Both are the pre-existing Climb/Descend values.
+# How far below the tread a stance may leave the pelvis, and the pelvis height that reads as
+# back on the floor.
 LADDER_TOP_HEIGHT_SLACK = 0.15  # m
 LADDER_FLOOR_STANCE_HEIGHT = CLIMB_ROBOT_POSITION[2] + 0.15  # m
 
-# The two stances, as offsets along the ladder's step-facing direction from its root. Taken from
-# the workshop preset's own validated poses relative to its fixed LADDER_POSITION, whose steps
-# face world -x; carried to an arbitrarily yawed ladder by rotating rather than by copying the
-# world coordinates.
+# Offset along the ladder's step-facing direction from its root, rotated onto the sampled yaw.
 MOUNT_STANCE_STANDOFF = math.dist(CLIMB_ROBOT_POSITION[:2], LADDER_POSITION[:2])
 
-# TOP_STANCE_STANDOFF/PELVIS_Z: NOT TOP_ROBOT_POSITION's own values. That constant (workshop
-# preset's fixed-ladder pose) puts the pelvis at 1.85 m -- measured directly against the replace
-# preset's live ladder_contact sensor, this stance was airborne: 0.000 N at every one of feet,
-# left palm, right palm, from reset through 10+ steps of free fall (pelvis height dropping
-# continuously, no rung or platform underneath at all).
-#
-# Swept standoff x height empirically (teleport, FRESH env.reset() per candidate so an earlier
-# candidate's collision/fall can't contaminate a later one's leg state, then settle and read the
-# live ladder_contact sensor) against the platform -- a vertex cluster at local z=169-175 cm,
-# i.e. world 1.69-1.75 m (matches ``assets.STEP_LADDER_TOP_OFFSET`` = 1.70 m), not 1.85 m.
-#
-# UNCALIBRATED, still open: standoff=0.22 m, height=1.76-1.80 m is the best candidate found --
-# genuine, substantial contact (179-184 N, not a 100s-1000s N collision and not 0 N empty air)
-# but with 17-20 cm of settle/sink over a 20-step zero-action window, not a fully stable
-# zero-drift stance. A finer (~1 cm) position sweep plus foot orientation, or accepting that a
-# static teleport can't perfectly balance a biped at a platform EDGE without any active balance
-# correction (zero action gives none -- the same caveat verify_scene.py's own base-env checks
-# already documented), are the two most likely next steps. Still a large, measured improvement
-# over the prior state: bounded ~0.2 m settle under real support, not unconditional free fall to
-# the floor.
-TOP_STANCE_STANDOFF = 0.22  # m
-TOP_STANCE_PELVIS_Z = 1.78  # m
+# Pelvis height above the tread, from G1_INSPIRE_CFG's bent-knee standing height.
+# UNCALIBRATED: no candidate stands. At this value the feet miss the tread laterally and the
+# robot drops to the floor; 5 cm lower the legs wedge into the frame at kN forces.
+# STEP_LADDER_TOP_OFFSET's lateral components are the suspect.
+TOP_STANCE_PELVIS_OFFSET = 0.787  # m
 
-# Feet plus the LEFT palm, for a subtask whose right hand is occupied for the whole episode
-# (``grasp_terms`` picks the right palm as the grasping hand). Both variants' left palm are named
-# for the reason ``G1_LADDER_CONTACT_BODIES`` names both: the sensor is built before the hand
-# variant may be swapped, and a name belonging to the absent variant simply never resolves.
+# Feet plus the left palm, for a subtask whose right hand is occupied for the whole episode.
+# Both hand variants' left palm are named: the sensor is built before the variant may be
+# swapped, and a name belonging to the absent variant never resolves.
 LOADED_LADDER_CONTACT_BODIES = [*G1_FOOT_BODIES, G1_PALM_BODIES[0], G1_DEX3_PALM_BODIES[0]]
 
 
@@ -130,17 +99,21 @@ def stand_robot_at_ladder_base(scene: G1ReplaceSceneCfg) -> None:
 
 
 def stand_robot_on_ladder_top(scene: G1ReplaceSceneCfg) -> None:
-    """Start state for a descent or for work at the fixture: pelvis at the upper steps."""
-    _stance_on_step_side(scene, TOP_STANCE_STANDOFF, TOP_STANCE_PELVIS_Z)
+    """Pelvis over the tread, robot yaw matched to the ladder's (the tread is axis-aligned to
+    the ladder's own frame, not to the fixture)."""
+    ladder_x, ladder_y = scene.ladder.init_state.pos[:2]
+    yaw = yaw_from_quat(scene.ladder.init_state.rot)
+    local_x, local_y, platform_z = STEP_LADDER_TOP_OFFSET
+    dx = local_x * math.cos(yaw) - local_y * math.sin(yaw)
+    dy = local_x * math.sin(yaw) + local_y * math.cos(yaw)
+    scene.robot.init_state.pos = (ladder_x + dx, ladder_y + dy, platform_z + TOP_STANCE_PELVIS_OFFSET)
+    scene.robot.init_state.rot = scene.ladder.init_state.rot
 
 
 @configclass
 class OnLadderRewardsCfg(SubtaskRewardsCfg):
-    """What every subtask performed on the dynamic ladder pays, whatever else it is doing.
-
-    No ``flat_orientation_l2``: working on an A-frame requires a sustained forward lean, so an
-    upright-torso term fights the task. Do not add one.
-    """
+    """No ``flat_orientation_l2``: working on the ladder requires a sustained forward lean, so
+    an upright-torso term fights the task."""
 
     ladder_tipped = RewTerm(func=mdp.ladder_tipped, weight=-200.0, params={"tilt_limit": mdp.LADDER_TILT_LIMIT})
 
@@ -194,7 +167,7 @@ class BalanceSubtaskCfg(SubtaskEnvCfg):
 
 @configclass
 class ClimbSubtaskCfg(BalanceSubtaskCfg):
-    """Going up. The robot starts on the floor at the ladder's steps."""
+    """Starts on the floor at the ladder's steps."""
 
     ladder_contact_bodies: list[str] | None = None
     rewards: ClimbRewardsCfg = ClimbRewardsCfg()
@@ -207,7 +180,7 @@ class ClimbSubtaskCfg(BalanceSubtaskCfg):
 
 @configclass
 class DescendSubtaskCfg(BalanceSubtaskCfg):
-    """Coming down. The robot starts on the upper steps."""
+    """Starts on the tread."""
 
     ladder_contact_bodies: list[str] | None = None
     rewards: DescendRewardsCfg = DescendRewardsCfg()
