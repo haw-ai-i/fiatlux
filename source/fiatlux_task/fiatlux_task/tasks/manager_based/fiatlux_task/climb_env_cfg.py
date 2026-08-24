@@ -66,7 +66,7 @@ from .scene_cfg import (
 
 # Success gate: the shared ladder working stance -- the pelvis height fixtures are sized to be
 # reachable from, so clearing this gate and being able to work the fixture are the same condition.
-SUCCESS_HEIGHT = LADDER_WORK_PELVIS_Z  # 1.70 m
+SUCCESS_HEIGHT = LADDER_WORK_PELVIS_Z  # 1.82 m
 SUCCESS_XY = (TOP_ROBOT_POSITION[0], TOP_ROBOT_POSITION[1])
 SUCCESS_XY_RADIUS = 0.6  # m; with the max-speed cap, rejects ballistic fly-throughs
 SUCCESS_MAX_SPEED = 1.5  # m/s

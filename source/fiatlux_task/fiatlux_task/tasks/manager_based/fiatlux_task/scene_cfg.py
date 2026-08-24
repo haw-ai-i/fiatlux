@@ -119,7 +119,9 @@ TARGET_LADDER_POSITION = (0.55, -0.30, 0.0)  # directly beneath the ceiling fixt
 # -- at-height presets (climb / descend): elevated fixture over the ladder. --
 ELEVATED_SOCKET_POSITION = (1.9, 0.0, 2.80)  # cage bottom clears the at-top robot's head
 CLIMB_ROBOT_POSITION = (0.75, 0.0, _ROBOT_Z)  # at the step ladder's base, ready to ascend
-TOP_ROBOT_POSITION = (1.35, 0.0, 1.85)  # pelvis at the upper steps (descend)
+# Pelvis on the ladder's standing tread (descend). STEP_LADDER_TOP_OFFSET's local x,y are
+# both zero, so the stance sits over the ladder's root at any yaw.
+TOP_ROBOT_POSITION = (LADDER_POSITION[0], LADDER_POSITION[1], STEP_LADDER_TOP_OFFSET[2] + _ROBOT_Z)
 PARKED_BULB_POSITION = (0.5, -0.6, -BULB_STAND_Z_OFFSET)  # standing out of the way on the floor
 
 # -- bench manipulation extras (remove / install share Insert's tabletop world) --
@@ -152,7 +154,6 @@ WALL_MOUNT_Z = 2.2
 # The stance the at-height tasks work from: the pelvis height Climb's success gate accepts, and
 # the foot height that implies. Reach is taken from here, not from the tread, because a
 # policy that only just clears the climb gate still has to do the job.
-# STALE: derived from TOP_ROBOT_POSITION, which is the previous ladder asset's top.
 LADDER_TOP_STANCE_TOLERANCE = 0.15  # m; Climb's SUCCESS_HEIGHT slack below TOP_ROBOT_POSITION
 LADDER_WORK_PELVIS_Z = TOP_ROBOT_POSITION[2] - LADDER_TOP_STANCE_TOLERANCE
 LADDER_WORK_FOOT_Z = LADDER_WORK_PELVIS_Z - _ROBOT_Z
@@ -213,15 +214,16 @@ ZONE_MARGIN = 0.5  # minimum gap left between any two zones' bounding squares
 # ceiling mount and MAX_REACHABLE_MOUNT_Z checks height only.
 LADDER_LADDER_HALF_DEPTH = 0.49  # m, half the ladder's 0.979 m footprint depth
 LADDER_WALL_STANDOFF = 0.60  # m from the wall face; 0.11 m of clearance behind the ladder
-# Horizontal slack left over, standing on the platform, once the fixture's height above the feet
-# is accounted for. This is the SPHERICAL bound -- G1_OVERHEAD_REACH is a vertical fingertip
-# measurement used here as a radius -- so it is optimistic. The honest forward reach
+# Horizontal slack left over once the fixture's height above LADDER_WORK_FOOT_Z is accounted
+# for -- the gate-tolerant foot height, not the tread itself, so the ceiling and wall guards
+# agree on where the robot is standing. This is the SPHERICAL bound -- G1_OVERHEAD_REACH is a
+# vertical fingertip measurement used here as a radius -- so it is optimistic. The honest forward reach
 # (G1_HORIZONTAL_REACH) is 0.5045 m, which is less than the ladder's own half-depth: no standoff
 # satisfies both, and a wall fixture at this height is reachable only if the arm does better
 # reaching up-and-out than straight out. Re-measure by FK from the on-ladder stance before
 # treating a wall draw's score as meaningful.
 LADDER_WALL_REACH_SLACK = math.sqrt(
-    max(G1_OVERHEAD_REACH**2 - (WALL_MOUNT_Z - STEP_LADDER_TOP_OFFSET[2]) ** 2, 0.0)
+    max(G1_OVERHEAD_REACH**2 - (WALL_MOUNT_Z - LADDER_WORK_FOOT_Z) ** 2, 0.0)
 )
 if not LADDER_LADDER_HALF_DEPTH < LADDER_WALL_STANDOFF <= LADDER_WALL_REACH_SLACK:
     raise ValueError(
