@@ -65,6 +65,7 @@ from fiatlux_task.robots.g1 import (
 from . import mdp
 from .climb_env_cfg import FALL_MIN_HEIGHT, FALL_TILT_LIMIT
 from .scene_cfg import (
+    LADDER_READY_XY_RADIUS,
     ROOM_ENV_SPACING,
     G1ReplaceSceneCfg,
     add_ego_camera,
@@ -76,8 +77,7 @@ from .scene_cfg import (
 # Task thresholds
 ##
 
-LADDER_TILT_LIMIT = 0.6  # rad; the A-frame stands at 0, real climbing wobble stays well under
-LADDER_READY_XY_RADIUS = 0.9  # m; ladder top horizontally within working reach of the fixture
+LADDER_TILT_LIMIT = 0.6  # rad; the ladder stands at 0, real climbing wobble stays well under
 REMOVAL_CLEARANCE = 0.10  # m; old-bulb plug this far from the seat counts as removed
 DISPOSAL_THRESHOLD = 0.25  # m; old bulb within this of the crate origin counts as disposed
 SEAT_POS_THRESHOLD = 0.015  # m; fresh-bulb seating tolerance (Insert's validated values)
@@ -409,7 +409,7 @@ class ReplaceEnvCfg(ManagerBasedRLEnvCfg):
 
     scene_preset: str = "replace"
     # wide framing: the room-scale layout, not a fixed bench corner. The Simple Room is NOT
-    # centered on the world origin (measured wall bbox: x=[-4.52,4.52], y=[-3.4,4.86] -- see
+    # centered on the world origin (wall bbox: x=[-4.52,4.52], y=[-3.4,4.86] -- see
     # scene_cfg.py's ROOM_FLOOR_MIN/MAX comment), so the orbit center is offset to the room's
     # actual y-midpoint and the radius stays well inside the nearer (south) wall.
     orbit_center: tuple[float, float, float] = (0.0, 0.7, 2.2)
@@ -460,7 +460,7 @@ class ReplaceEnvCfg(ManagerBasedRLEnvCfg):
         self.sim.physx.enable_stabilization = True
 
         # Must stay inside the Simple Room shell: walls x=±4.52, y=[-3.4, 4.86], floor 0 to
-        # ceiling 4.18 (measured post-alignment; see the height table in scene_cfg).
+        # ceiling 4.18 (post-alignment; see the height table in scene_cfg).
         self.viewer.eye = (3.6, 3.8, 2.4)
         self.viewer.lookat = (0.0, 0.7, 1.0)
 

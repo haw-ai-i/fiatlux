@@ -69,6 +69,28 @@ parser.add_argument(
     "instead of grading, so fiatlux_task.poses constants can be tuned.",
 )
 parser.add_argument(
+    "--upright-grip",
+    action="store_true",
+    help="hand scenario: hold the bulb world-upright on its cap (matches "
+    "grasp_poses.BULB_IN_ROOT_STANDING) instead of lying across the fingers.",
+)
+parser.add_argument(
+    "--grip",
+    choices=["cradle", "cup"],
+    default="cradle",
+    help="hand scenario: which hand pose to hold the bulb with. 'cradle' closes the fingers "
+    "(poses.HAND_CRADLE); 'cup' is the open palm the carry subtasks actually spawn "
+    "(poses.HAND_CUP). Inspire only -- Dex3 has no HAND_CUP equivalent.",
+)
+parser.add_argument(
+    "--curl",
+    type=float,
+    default=None,
+    help="hand scenario: override the finger curl (radians) of the pose --grip selects. The "
+    "thumb follows at two thirds of it. Sweeps the open-to-closed axis between HAND_CUP's 0.35 "
+    "and HAND_CRADLE's 0.9 to find the most open grip that still retains the bulb.",
+)
+parser.add_argument(
     "--record-bag",
     type=str,
     default=None,
@@ -144,8 +166,9 @@ from fiatlux_task.poses import (
     HAND_CRADLE_BY_VARIANT,
     HAND_FLAT_BY_VARIANT,
     LADDER_STANCE_JOINTS,
-    LADDER_STANCE_ROOT_POS,
-    LADDER_STANCE_ROOT_ROT,
+    LADDER_STANCE_LEAN_DEG,
+    LADDER_STANCE_PELVIS_Z,
+    LADDER_STANCE_STANDOFF,
 )
 from fiatlux_task.recording import TrajectoryRecorder
 from fiatlux_task.robots.g1 import (
@@ -155,6 +178,7 @@ from fiatlux_task.robots.g1 import (
 )
 from fiatlux_task.tasks.manager_based.fiatlux_task import mdp
 from fiatlux_task.tasks.manager_based.fiatlux_task.mdp import rewards as task_rewards
+from fiatlux_task.tasks.manager_based.fiatlux_task.mdp.place_terms import lean_stance_against_ladder
 from prettytable import PrettyTable
 
 from isaaclab.sensors import ContactSensorCfg
@@ -180,9 +204,9 @@ MIN_ROOT_Z = -0.05  # m
 STEPS_PER_SECOND = 50  # sim.dt=1/200 * decimation=4 (the family control rate)
 CONTACT_N = 0.05  # above sensor noise, below any force that means something
 MAX_SLIP_M = 0.06  # a grasp that lets the bulb travel further than this has lost it
-# Bulb geometry in its own frame, offsets along local +z from the root. MEASURED via
-# ``--scenario hand --probe``. The root sits OUTSIDE the geometry (cap bottom at 0.036, per
-# assets.BULB_STAND_Z_OFFSET), so placements seat a feature and back the root out.
+# Bulb geometry in its own frame, offsets along local +z from the root. The root sits OUTSIDE
+# the geometry (cap bottom at 0.036, per assets.BULB_STAND_Z_OFFSET), so placements seat a
+# feature and back the root out.
 # Glass is too wide for the Dex3 thumb's 6.5 cm reach to close over; the cap is the grip
 # feature. Glass values kept for the geometry record.
 BULB_GLASS_RADIUS_M = 0.040
@@ -198,22 +222,33 @@ BULB_CAP_CENTRE_M = 0.054
 # radius costs tens of N of grip.
 GLASS_CONTACT_LIMIT_N = 50.0
 CAP_CONTACT_LIMIT_N = 300.0
-# How far out along the fingers the bulb sits. Bounded by the thumb: on Dex3 it reaches
-# 2.3 cm out against 12.4 cm of fingertip, so past ~0.06 nothing can close on the bulb.
-PALM_GRASP_FORWARD_M = 0.045
+# How far out along the fingers the bulb sits, per hand. Canonical home is grasp_poses.py (also
+# consumed at runtime by nav_terms.settle_carried_payload_live); imported, not duplicated.
+from fiatlux_task.grasp_poses import PALM_GRASP_FORWARD_M_BY_VARIANT  # noqa: E402
+
+PALM_GRASP_FORWARD_M = PALM_GRASP_FORWARD_M_BY_VARIANT[args_cli.robot]
 
 # Palm-link local axes as ``(axis_index, sign)`` -- (outward normal, along fingers, across palm).
-# MEASURED per variant via ``--scenario hand --probe``. Dex3: +y is the face the digits close
-# onto, +x runs out toward the tips, +z spans the palm. Inspire's face is its local -x
-# (see fiatlux_task/poses.py).
-PALM_LOCAL_AXES: dict[str, tuple[tuple[int, float], ...]] = {
-    "dex3": ((1, 1.0), (0, 1.0), (2, 1.0)),
-    "inspire": ((0, -1.0), (1, 1.0), (2, 1.0)),
-}
+# Canonical home is robots/g1.py (also consumed at runtime); imported here under the script's
+# existing name.
+from fiatlux_task.robots.g1 import G1_PALM_LOCAL_AXES as PALM_LOCAL_AXES  # noqa: E402
 
 # Hand poses for the variant under test: the two hands share no joint names.
 HAND_FLAT = HAND_FLAT_BY_VARIANT[args_cli.robot]
 HAND_CRADLE = HAND_CRADLE_BY_VARIANT[args_cli.robot]
+# --grip cup swaps in the open palm the carry subtasks spawn. Dex3 has no cup pose, so it keeps
+# the cradle.
+if args_cli.grip == "cup" and args_cli.robot == "inspire":
+    from fiatlux_task.poses import HAND_CUP  # noqa: E402
+
+    HAND_CRADLE = HAND_CUP
+if args_cli.curl is not None and args_cli.robot == "inspire":
+    from fiatlux_task.robots.g1 import G1_FINGER_JOINTS, G1_THUMB_JOINTS  # noqa: E402
+
+    HAND_CRADLE = {
+        **dict.fromkeys(G1_FINGER_JOINTS, args_cli.curl),
+        **dict.fromkeys(G1_THUMB_JOINTS, args_cli.curl * 2.0 / 3.0),
+    }
 
 
 # --------------------------------------------------------------------------- #
@@ -263,8 +298,8 @@ def build_insert_cfg(num_envs: int = 1):
     cfg.events.randomize_key_light = None
     cfg.events.randomize_material_tint = None
     # The per-asset zeroed resets above already restore the scenario-crafted init_state;
-    # reset_scene_to_default would ADDITIONALLY write root state to the fixed-base rigs,
-    # which measurably shifts the calibrated press arc (crush peak 53.2 -> 48.2 N).
+    # reset_scene_to_default would additionally write root state to the fixed-base rigs, which
+    # shifts the press arc.
     cfg.events.reset_all = None
     # Grip friction is a startup randomization; pinned, so contact measurements are stable.
     cfg.events.randomize_hand_material = mdp.hand_grip_material_event(randomize=False)
@@ -652,6 +687,11 @@ def palm_grasp_pose(env) -> tuple[torch.Tensor, torch.Tensor]:
     origin, normal, fingers, across = palm_frame(env)
     seat = origin + normal * BULB_CAP_RADIUS_M + fingers * PALM_GRASP_FORWARD_M
     pos = seat - across * BULB_CAP_CENTRE_M
+    if args_cli.upright_grip:
+        # World-upright on the cap (BULB_UPRIGHT_QUAT), the orientation
+        # grasp_poses.BULB_IN_ROOT_STANDING/BULB_IN_ROOT_ON_LADDER actually need -- not the
+        # lying-across-the-fingers pinch this function otherwise calibrates.
+        return pos, torch.tensor([1.0, 0.0, 0.0, 0.0], device=pos.device)
     # columns [normal, across x normal, across]: right-handed, since col0 x col1 == col2.
     basis = torch.stack([normal, torch.linalg.cross(across, normal), across], dim=1)
     return pos, quat_from_matrix(basis.unsqueeze(0))[0]
@@ -738,6 +778,33 @@ def scenario_hand(probe: bool = False):
         close_hand_on_bulb(env, hold, mon)
         ok, detail = mon.bounded()
         record("hand:grasp_no_explosion", ok, detail)
+        if probe:
+            robot0 = env.scene["robot"]
+            for jname, target in {**ARM_CRADLE, **HAND_CRADLE}.items():
+                jidx = robot0.find_joints(jname)[0][0]
+                achieved = robot0.data.joint_pos[0, jidx].item()
+                print(f"  [PROBE] joint {jname:28s} target={target:+.3f} achieved={achieved:+.3f}")
+            # How far each fingertip actually lands, CLOSED, from the pinned grasp point --
+            # in the same palm frame the open-pose printout above used, so the two are
+            # directly comparable. A large gap here means the grip is missing the bulb
+            # geometrically; no amount of curl retuning fixes that.
+            robot = env.scene["robot"]
+            origin, normal, fingers, across = palm_frame(env)
+            gp = grasp_point(env)
+            gp_rel = gp - origin
+            print(
+                f"  [PROBE] CLOSED grasp point palm-frame (n,f,a)=({torch.dot(gp_rel, normal):+.4f}, "
+                f"{torch.dot(gp_rel, fingers):+.4f}, {torch.dot(gp_rel, across):+.4f})"
+            )
+            for body in G1_GRASP_DISTAL_BODIES[args_cli.robot]:
+                pos = robot.data.body_pos_w[0, robot.find_bodies(body)[0][0]]
+                rel = pos - origin
+                to_gp = (pos - gp).norm().item()
+                print(
+                    f"  [PROBE] CLOSED {body:26s} {[round(v, 4) for v in pos.tolist()]}  "
+                    f"palm-frame (n,f,a)=({torch.dot(rel, normal):+.4f}, {torch.dot(rel, fingers):+.4f}, "
+                    f"{torch.dot(rel, across):+.4f})  dist-to-grasp-point={to_gp * 100:.1f}cm"
+                )
 
         # --- (b) hold on grip alone: the pin is gone, only the fingers hold it ------
         mon = Monitor(env)
@@ -753,6 +820,36 @@ def scenario_hand(probe: bool = False):
                 print(f"  [PROBE] hold t={i / STEPS_PER_SECOND:.1f}s force {f:.2f} N, slip {slip * 100:.1f} cm")
 
         run_steps(env, hold, n_hold, mon, per_step=track)
+        if probe:
+            # fiatlux_task.grasp_poses' calibration workflow: the bulb's pose in the robot's
+            # OWN root frame, after the hold has settled -- this is what BULB_IN_ROOT_STANDING/
+            # BULB_IN_ROOT_ON_LADDER should hold, root-frame offsets are pose-invariant so this
+            # transfers directly onto a free (randomized) root.
+            from isaaclab.utils.math import quat_apply_inverse
+            from isaaclab.utils.math import quat_mul as _quat_mul_isl
+
+            root = env.scene["robot"]
+            root_pos = root.data.root_pos_w[0]
+            root_quat = root.data.root_quat_w[0]
+            bulb_pos_in_root = quat_apply_inverse(
+                root_quat.unsqueeze(0), (bulb.data.root_pos_w[0] - root_pos).unsqueeze(0)
+            )[0]
+            bulb_quat_in_root = _quat_mul_isl(
+                torch.stack([root_quat[0], -root_quat[1], -root_quat[2], -root_quat[3]]).unsqueeze(0),
+                bulb.data.root_quat_w[0].unsqueeze(0),
+            )[0]
+            print(
+                f"  [PROBE] SETTLED bulb pos-in-root = ({bulb_pos_in_root[0]:.4f}, "
+                f"{bulb_pos_in_root[1]:.4f}, {bulb_pos_in_root[2]:.4f})  "
+                f"quat-in-root(w,x,y,z) = ({bulb_quat_in_root[0]:.6f}, {bulb_quat_in_root[1]:.6f}, "
+                f"{bulb_quat_in_root[2]:.6f}, {bulb_quat_in_root[3]:.6f})"
+            )
+            print(f"  [PROBE] DEBUG root_pos_w={root_pos.tolist()} root_quat_w={root_quat.tolist()}")
+            print(f"  [PROBE] DEBUG bulb_pos_w={bulb.data.root_pos_w[0].tolist()}")
+            from isaaclab.utils.math import quat_apply as _quat_apply_isl
+
+            roundtrip = root_pos + _quat_apply_isl(root_quat.unsqueeze(0), bulb_pos_in_root.unsqueeze(0))[0]
+            print(f"  [PROBE] DEBUG roundtrip world pos = {roundtrip.tolist()}  (should equal bulb_pos_w above)")
         slip = (bulb.data.root_pos_w[0] - grasp_point(env)).norm().item()
         held_f = hand_bulb_force(env)
         ok, detail = mon.bounded()
@@ -908,10 +1005,15 @@ def scenario_ladder(probe: bool = False):
     # the elevated chandelier is an opt-in dressing asset and irrelevant to
     # rung contact; the scene loads without it
     cfg.scene.socket = None
-    # FREE root: the robot leans onto the kinematic A-frame and the force balance
-    # self-calibrates (a welded root turns every mm of overlap into a kN wedge)
-    cfg.scene.robot.init_state.pos = LADDER_STANCE_ROOT_POS
-    cfg.scene.robot.init_state.rot = LADDER_STANCE_ROOT_ROT
+    # FREE root: a welded root turns every mm of overlap into a kN wedge. Resolved against the
+    # ladder's own pose so the lean meets the steps rather than the brace side behind them.
+    cfg.scene.robot.init_state.pos, cfg.scene.robot.init_state.rot = lean_stance_against_ladder(
+        cfg.scene.ladder.init_state.pos,
+        cfg.scene.ladder.init_state.rot,
+        LADDER_STANCE_STANDOFF,
+        LADDER_STANCE_PELVIS_Z,
+        LADDER_STANCE_LEAN_DEG,
+    )
     cfg.scene.robot.init_state.joint_pos = {
         **cfg.scene.robot.init_state.joint_pos,
         **LADDER_STANCE_JOINTS,

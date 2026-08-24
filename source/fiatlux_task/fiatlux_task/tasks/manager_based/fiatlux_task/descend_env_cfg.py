@@ -6,7 +6,7 @@
 """``FIATLUX-Descend-v0`` -- bipedal ladder descent (functional RL task).
 
 The mirror image of ``FIATLUX-Climb-v0``: the G1 starts at the top of the kinematic
-A-frame step ladder (family *at-height* preset, robot at the upper steps) and must
+step ladder (family *at-height* preset, robot at the upper steps) and must
 descend under control back to the ladder's base. Built as a standard
 ``ManagerBasedRLEnvCfg`` so it slots into the usual train / play / eval scripts.
 
@@ -15,7 +15,7 @@ carry over unchanged: actions, sensor suite, fall gate, smoothness terms):
 - **Rewards** pay progressive height *loss* (``mdp.descend_height_progress``, each
   centimetre of new depth paid once) plus the same limb-on-ladder contact bootstrap and
   CoM-sway/wobble/fall/smoothness penalties Climb uses. ``flat_orientation_l2`` stays
-  absent for the same reason: a controlled descent down an A-frame needs the same
+  absent for the same reason: a controlled descent needs the same
   sustained lean climbing does.
 - **Terminations**: the family fall-detection gate (shared thresholds, imported from
   ``climb_env_cfg``) and a ``success`` term (``mdp.descended_to_target``) gated on
@@ -187,7 +187,7 @@ class RewardsCfg:
         weight=0.25,
         params={"sensor_cfg": SceneEntityCfg("ladder_contact"), "threshold": 1.0},
     )
-    # -- stability shaping (no flat_orientation term: descending an A-frame needs a lean) --
+    # -- stability shaping (no flat_orientation term: descending needs a lean) --
     com_sway = RewTerm(func=mdp.com_sway_l2, weight=-0.5)
     ang_vel_xy = RewTerm(func=mdp.ang_vel_xy_l2, weight=-0.05)
     termination_penalty = RewTerm(
@@ -195,7 +195,7 @@ class RewardsCfg:
         weight=-200.0,
         params={"minimum_height": FALL_MIN_HEIGHT, "limit_angle": FALL_TILT_LIMIT},
     )
-    # -- smoothness / joint discipline (Climb's recipe) --
+    # -- smoothness / joint discipline --
     action_rate = RewTerm(func=mdp.action_rate_l2, weight=-0.005)
     joint_acc = RewTerm(
         func=mdp.joint_acc_l2,
