@@ -1,4 +1,4 @@
-# How the Ladder Collision Was Authored
+1# How the Ladder Collision Was Authored
 
 The Omniverse ladder packs ship as **rendering geometry only — zero PhysX collision**, so a
 robot would clip straight through them. This doc explains in detail how we added collision,
@@ -97,6 +97,13 @@ UsdShade.MaterialBindingAPI.Apply(over).Bind(mat, ..., "physics")   # grip
   the gaps between the steps**, so there's nothing to grip or stand between. Bad for climbing.
 - **convexDecomposition** breaks the mesh into **many convex pieces** that follow the real
   shape — **keeping the gaps between rungs/steps open**. This is what makes it climbable.
+
+> **This doc describes the original convexDecomposition authoring. The script now defaults to `SDF`**
+> (signed distance field) — the exact-surface collider that also keeps *concave* features (the
+> C-channel rail groove) open, which convexDecomposition cannot. convexDecomposition (tuned:
+> `maxConvexHulls`, `hullVertexLimit`, `voxelResolution`, `shrinkWrap`) is kept as the fallback for
+> designs whose mesh is wound inside-out (SDF would be inside-out there). It also authors a ~6 mm
+> contact offset. See [`issue-70-ladder-collision-fix.md`](../journal/specs/issue-70-ladder-collision-fix.md).
 
 ## When the actual collision geometry is created
 

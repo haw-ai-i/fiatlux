@@ -83,7 +83,9 @@ fiatlux/
     list_envs.py
     zero_agent.py
     random_agent.py
-    teleop.py
+    teleop/                         # VR + keyboard teleop drivers + launchers (see source/fiatlux_teleop)
+      sonic_teleop.py               #   whole-body driver: SONIC legs + arm teleop, --input vr|keyboard
+      restart_sonic_teleop.sh       #   one-command VR launcher (CloudXR runtime + sim)
     eval.py
     behavior1k_asset_intake.py
     rsl_rl/
@@ -126,6 +128,16 @@ fiatlux/
         tests/
           test_env_registration.py
           test_random_rollout.py
+    fiatlux_teleop/                 # VR + keyboard teleop EXTENSION (kept out of fiatlux_task)
+      pyproject.toml
+      setup.py                      # teleop-only deps (onnxruntime); fiatlux_task is a PYTHONPATH sibling
+      README.md
+      fiatlux_teleop/
+        __init__.py                 # gym.register the FIATLUX-*-Teleop tasks
+        carry_teleop_env_cfg.py     # teleop variant of a benchmark env (subclass + swap the RL action)
+        insert_teleop_env_cfg.py
+        ladder_gallery_teleop_env_cfg.py
+        xr_controller_retargeters.py
 ```
 
 ## Directory Contracts
@@ -154,6 +166,20 @@ Near-term tasks:
 - `FIATLUX-Climb-v0`: roadmap until ladder locomotion exists.
 - `FIATLUX-Replace-v0`: roadmap until the combined episode exists.
 
+### `source/fiatlux_teleop/`
+
+A **separate** Isaac Lab extension for VR + keyboard teleoperation, kept OUT of the core
+`fiatlux_task` benchmark so the benchmark installs/runs without teleop's deps (OpenXR / CloudXR /
+onnxruntime). The dependency arrow points teleop → benchmark, never the reverse.
+
+Rules:
+
+- Teleop env cfgs subclass the benchmark envs and swap the RL whole-body action for an arm-IK +
+  binary-grip interface; they register the `FIATLUX-*-Teleop-v0` gym ids (via `import fiatlux_teleop`).
+- Teleop-only dependencies (`onnxruntime` for the SONIC loco-manip policy) live in this package's
+  `setup.py`, not in `fiatlux_task`. `fiatlux_task` is a PYTHONPATH sibling, not a pip dependency.
+- The runnable drivers/launchers are thin entrypoints under `scripts/teleop/`, driven by this package.
+
 ### `scripts/`
 
 Scripts are command-line entrypoints for humans and CI. They should be thin.
@@ -163,7 +189,8 @@ Keep now:
 
 - `list_envs.py`: registration sanity check.
 - `zero_agent.py` and `random_agent.py`: baseline floors.
-- `teleop.py`: manual interaction if it still runs.
+- `teleop/`: VR + keyboard teleop drivers/launchers (`sonic_teleop.py` + `restart_sonic_teleop.sh`),
+  driving the `FIATLUX-*-Teleop-v0` tasks registered by the `source/fiatlux_teleop` extension.
 - `eval.py`: standardized metrics.
 - `rsl_rl/`: training and play wrappers.
 - `behavior1k_asset_intake.py`: asset-research helper.
