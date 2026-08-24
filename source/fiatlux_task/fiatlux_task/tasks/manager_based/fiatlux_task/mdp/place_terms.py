@@ -253,3 +253,25 @@ def yaw_from_quat(quat: tuple[float, float, float, float]) -> float:
     """Yaw (rad) about +z of a ``(w, x, y, z)`` quaternion, at cfg-build time."""
     w, x, y, z = quat
     return math.atan2(2.0 * (w * z + x * y), 1.0 - 2.0 * (y * y + z * z))
+
+
+def lean_stance_against_ladder(
+    ladder_pos: tuple[float, float, float],
+    ladder_rot: tuple[float, float, float, float],
+    standoff: float,
+    pelvis_z: float,
+    lean_deg: float,
+) -> tuple[tuple[float, float, float], tuple[float, float, float, float]]:
+    """A pelvis pose ``standoff`` metres off the ladder's step-facing side, leaning into it.
+
+    Which side of the ladder the steps are on depends on its yaw, so a stance written as world
+    coordinates is only correct for the yaw it was authored at -- and silently faces the brace
+    side at any other. Returns ``(pos, rot)`` for the ladder's own pose.
+    """
+    fx, fy = step_face_dir_from_yaw(yaw_from_quat(ladder_rot))
+    pos = (ladder_pos[0] + fx * standoff, ladder_pos[1] + fy * standoff, pelvis_z)
+    # Face back at the ladder, then pitch into it: q_z(facing) * q_y(lean).
+    facing, lean = math.atan2(-fy, -fx), math.radians(lean_deg)
+    cz, sz = math.cos(facing * 0.5), math.sin(facing * 0.5)
+    cy, sy = math.cos(lean * 0.5), math.sin(lean * 0.5)
+    return pos, (cz * cy, -sz * sy, cz * sy, sz * cy)

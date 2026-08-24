@@ -80,10 +80,16 @@ BULB_UPRIGHT_QUAT: tuple[float, float, float, float] = (1.0, 0.0, 0.0, 0.0)
 # ---------------------------------------------------------------------------
 # Ladder stance, free root: a welded root turns every mm of overlap into a kN wedge, so the
 # force balance is left to settle itself.
-# STALE: derived against the previous ladder asset at scene_cfg.LADDER_POSITION (1.6, 0, 0).
+#
+# Relative to the ladder, not in world coordinates. The previous values were world coordinates
+# authored for one ladder at one yaw, and at the yaw the ladder actually spawns at they put the
+# robot against its BRACE side -- so a scenario whose whole purpose is step contact was reading
+# the rear frame. Compose with mdp.place_terms.lean_stance_against_ladder, which resolves the
+# step-facing side from the ladder's own pose.
 # ---------------------------------------------------------------------------
-LADDER_STANCE_ROOT_POS: tuple[float, float, float] = (1.00, 0.0, 0.74)
-LADDER_STANCE_ROOT_ROT: tuple[float, float, float, float] = (0.9945, 0.0, 0.1045, 0.0)
+LADDER_STANCE_STANDOFF: float = 0.60  # m out from the ladder's root
+LADDER_STANCE_PELVIS_Z: float = 0.74  # m
+LADDER_STANCE_LEAN_DEG: float = 12.0  # forward pitch into the steps
 LADDER_STANCE_JOINTS: dict[str, float] = {
     ".*_hip_pitch_joint": -0.05,
     ".*_knee_joint": 0.20,

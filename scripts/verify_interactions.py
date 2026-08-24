@@ -166,8 +166,9 @@ from fiatlux_task.poses import (
     HAND_CRADLE_BY_VARIANT,
     HAND_FLAT_BY_VARIANT,
     LADDER_STANCE_JOINTS,
-    LADDER_STANCE_ROOT_POS,
-    LADDER_STANCE_ROOT_ROT,
+    LADDER_STANCE_LEAN_DEG,
+    LADDER_STANCE_PELVIS_Z,
+    LADDER_STANCE_STANDOFF,
 )
 from fiatlux_task.recording import TrajectoryRecorder
 from fiatlux_task.robots.g1 import (
@@ -177,6 +178,7 @@ from fiatlux_task.robots.g1 import (
 )
 from fiatlux_task.tasks.manager_based.fiatlux_task import mdp
 from fiatlux_task.tasks.manager_based.fiatlux_task.mdp import rewards as task_rewards
+from fiatlux_task.tasks.manager_based.fiatlux_task.mdp.place_terms import lean_stance_against_ladder
 from prettytable import PrettyTable
 
 from isaaclab.sensors import ContactSensorCfg
@@ -1003,9 +1005,15 @@ def scenario_ladder(probe: bool = False):
     # the elevated chandelier is an opt-in dressing asset and irrelevant to
     # rung contact; the scene loads without it
     cfg.scene.socket = None
-    # FREE root: a welded root turns every mm of overlap into a kN wedge
-    cfg.scene.robot.init_state.pos = LADDER_STANCE_ROOT_POS
-    cfg.scene.robot.init_state.rot = LADDER_STANCE_ROOT_ROT
+    # FREE root: a welded root turns every mm of overlap into a kN wedge. Resolved against the
+    # ladder's own pose so the lean meets the steps rather than the brace side behind them.
+    cfg.scene.robot.init_state.pos, cfg.scene.robot.init_state.rot = lean_stance_against_ladder(
+        cfg.scene.ladder.init_state.pos,
+        cfg.scene.ladder.init_state.rot,
+        LADDER_STANCE_STANDOFF,
+        LADDER_STANCE_PELVIS_Z,
+        LADDER_STANCE_LEAN_DEG,
+    )
     cfg.scene.robot.init_state.joint_pos = {
         **cfg.scene.robot.init_state.joint_pos,
         **LADDER_STANCE_JOINTS,
