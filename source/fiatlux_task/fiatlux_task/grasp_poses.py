@@ -62,8 +62,9 @@ BULB_IN_ROOT_ON_LADDER: tuple[Vec3, Quat] = BULB_IN_ROOT_STANDING
 # not exist on the current one, and renders show the ladder passing through the torso.
 LADDER_IN_ROOT_CARRIED: tuple[Vec3, Quat] = ((-0.166, 0.0, -0.355), (0.707107, 0.0, 0.0, 0.707107))
 
-# Inspire only: the same curl on Dex3's ``right_hand_*_joint`` renders fully extended, so a
-# Dex3 rollout keeps default fingers and arms at the sides.
+# Inspire only: ``swap_robot_variant`` drops all 24 finger/thumb keys below on Dex3 and
+# substitutes none, so a Dex3 rollout carries the ladder with an open hand. The two
+# shoulder rolls are not hand-marker keys, so the arm pose itself is identical on both.
 # Merge into ``robot.init_state.joint_pos`` rather than assigning over it.
 # ``swap_robot_variant`` strips hand-marker keys foreign to the incoming variant
 # (``robots.g1._drop_foreign_hand_joint_pos``).

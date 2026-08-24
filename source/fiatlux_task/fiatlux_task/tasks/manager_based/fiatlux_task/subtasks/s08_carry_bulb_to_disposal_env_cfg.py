@@ -93,7 +93,8 @@ class S08CarryBulbToDisposalEnvCfg(NavigateSubtaskCfg):
 
     def __post_init__(self) -> None:
         super().__post_init__()
-        apply_replace_preset(self.scene)
+        # S04 already stood the ladder at the fixture; every leg after it inherits that.
+        apply_replace_preset(self.scene, couple_ladder_to_fixture=True)
         # S07's end state: back on the floor at the ladder it descended, holding the old bulb.
         # Without this the robot spawns in its own sampled zone and the held bulb teleports too.
         stand_robot_near(self.scene, self.scene.ladder.init_state.pos[:2], LADDER_MOUNT_RADIUS)

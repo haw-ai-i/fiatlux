@@ -44,7 +44,8 @@ class S10ApproachNewBulbEnvCfg(NavigateSubtaskCfg):
 
     def __post_init__(self) -> None:
         super().__post_init__()
-        apply_replace_preset(self.scene)
+        # S04 already stood the ladder at the fixture; every leg after it inherits that.
+        apply_replace_preset(self.scene, couple_ladder_to_fixture=True)
         # S09's end state: the old bulb is in the crate and the fixture is empty. Without this
         # the preset's seated old bulb is still overhead, three subtasks after it was disposed
         # of -- and with no attach FSM on this tier it drops out of the inverted socket at reset.

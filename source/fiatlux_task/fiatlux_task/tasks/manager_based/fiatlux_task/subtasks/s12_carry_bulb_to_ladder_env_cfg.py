@@ -117,7 +117,8 @@ class S12CarryBulbToLadderEnvCfg(NavigateSubtaskCfg):
 
     def __post_init__(self) -> None:
         super().__post_init__()
-        apply_replace_preset(self.scene)
+        # S04 already stood the ladder at the fixture; every leg after it inherits that.
+        apply_replace_preset(self.scene, couple_ladder_to_fixture=True)
         # The old bulb was disposed of back in S09; the fixture is empty from here on.
         park_old_bulb_in_crate(self.scene)
         # S11's end state: the robot is at the table where it picked the bulb up. Capture that

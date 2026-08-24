@@ -99,7 +99,8 @@ class S09DisposeBulbEnvCfg(PlaceSubtaskCfg):
 
     def __post_init__(self) -> None:
         super().__post_init__()
-        apply_replace_preset(self.scene)
+        # S04 already stood the ladder at the fixture; every leg after it inherits that.
+        apply_replace_preset(self.scene, couple_ladder_to_fixture=True)
         # The preset's own robot zone is independent of the bin's; pull the robot to where it
         # would be holding the old bulb it starts this subtask already carrying.
         stand_robot_near(self.scene, self.scene.bin.init_state.pos[:2], DISPOSAL_ARRIVAL_RADIUS)

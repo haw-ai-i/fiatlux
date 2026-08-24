@@ -112,7 +112,8 @@ class S11GrabNewBulbEnvCfg(GraspSubtaskCfg):
 
     def __post_init__(self) -> None:
         super().__post_init__()
-        apply_replace_preset(self.scene)
+        # S04 already stood the ladder at the fixture; every leg after it inherits that.
+        apply_replace_preset(self.scene, couple_ladder_to_fixture=True)
         # The old bulb was disposed of back in S09; the fixture is empty from here on.
         park_old_bulb_in_crate(self.scene)
         # A radius alone can land the robot under the table, so use the table's own approach
