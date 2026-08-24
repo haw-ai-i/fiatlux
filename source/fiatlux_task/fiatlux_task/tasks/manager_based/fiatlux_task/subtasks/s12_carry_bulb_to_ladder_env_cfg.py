@@ -42,8 +42,8 @@ from ..scene_cfg import (
     apply_replace_preset,
     face_robot_at,
     frame_viewer_between,
-    stand_robot_at_offset,
     park_old_bulb_in_crate,
+    stand_robot_at_offset,
 )
 from ..subtask_env_cfg import (
     ARRIVAL_FACING_TOLERANCE,

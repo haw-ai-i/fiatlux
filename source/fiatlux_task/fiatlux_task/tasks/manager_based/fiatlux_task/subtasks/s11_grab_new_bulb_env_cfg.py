@@ -32,8 +32,8 @@ from ..scene_cfg import (
     add_mid360_lidar,
     apply_replace_preset,
     frame_viewer_on,
-    stand_robot_at_offset,
     park_old_bulb_in_crate,
+    stand_robot_at_offset,
 )
 from ..subtask_env_cfg import FALL_MIN_HEIGHT, FALL_TILT_LIMIT, SubtaskTerminationsCfg
 from ..subtask_tiers.grasp import GRASP_SUSTAIN_SECONDS, GraspRewardsCfg, GraspSubtaskCfg, add_grasp_contact_sensor

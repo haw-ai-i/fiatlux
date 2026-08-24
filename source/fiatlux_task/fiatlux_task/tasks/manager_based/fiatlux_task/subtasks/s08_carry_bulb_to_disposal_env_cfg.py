@@ -25,8 +25,8 @@ from fiatlux_task.poses import ARM_CRADLE, HAND_CUP
 from .. import mdp
 from ..mdp.nav_terms import (
     DISPOSAL_ARRIVAL_RADIUS,
-    LADDER_MOUNT_RADIUS,
     GRIP_FORCE_THRESHOLD_N,
+    LADDER_MOUNT_RADIUS,
     add_grip_contact_sensor,
     arrived_carrying_old_bulb,
     base_disposal_distance,
