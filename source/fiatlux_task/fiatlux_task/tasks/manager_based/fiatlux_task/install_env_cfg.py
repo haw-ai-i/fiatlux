@@ -46,12 +46,9 @@ from .scene_cfg import (
 # Drop detection
 ##
 
-# Unlike Insert's bulb (starts at hand height on the table, min_height=0.4 catches any
-# floor-level drop), Install's bulb legitimately STARTS at floor level in the parts crate
-# (BIN_BULB_POSITION z=0.15 m) -- a bare height gate would fire on the very first step.
-# Reuses old_bulb_dropped's height-AND-away-from-bin logic (same "resting in a floor
-# container isn't a drop" case Remove/Replace already handle) instead of object_dropped's
-# single height gate.
+# Install's bulb starts at floor level in the parts crate (BIN_BULB_POSITION z=0.15 m), so a
+# bare height gate would fire on the very first step. Uses old_bulb_dropped's
+# height-and-away-from-bin logic instead of object_dropped's single height gate.
 BULB_DROP_HEIGHT = BIN_BULB_POSITION[2] + 0.05  # m; just above the crate's resting height
 BIN_CLEARANCE = 0.25  # m; matches Remove/Replace's disposal-crate proximity scale
 

@@ -155,6 +155,19 @@ def bulb_seated(
     return (_bulb_socket_pos_error(env) < pos_threshold) & (_bulb_socket_ori_error(env) < ori_threshold)
 
 
+def bulb_unseated(
+    env: ManagerBasedRLEnv,
+    pos_threshold: float = 0.015,
+    ori_threshold: float = 0.2,
+) -> torch.Tensor:
+    """The negation of :func:`bulb_seated`, for a gate that must END if the bulb comes loose.
+
+    A subtask that starts with the bulb already installed measures keeping it there, so leaving
+    the socket is a termination rather than an unmet success conjunct.
+    """
+    return ~bulb_seated(env, pos_threshold, ori_threshold)
+
+
 def object_dropped(
     env: ManagerBasedRLEnv,
     asset_cfg: SceneEntityCfg,
@@ -307,7 +320,7 @@ class com_sway_l2(ManagerTermBase):
 
     A controlled ascent moves the CoM mostly vertically, so this penalizes lunging
     and lateral wobble without fighting the sustained forward lean that climbing an
-    A-frame requires (which a CoM-offset-from-support formulation would punish).
+    ladder requires (which a CoM-offset-from-support formulation would punish).
     Mass fractions are precomputed once; ``default_mass`` lives on the CPU.
     """
 
@@ -428,30 +441,33 @@ def old_bulb_disposal_distance(
 
 
 class distance_progress(ManagerTermBase):
-    """Normalized distance progress, paid as increments of the episode's best (each once).
+    """Potential-based shaping on normalized distance progress: pays the *change* each step.
 
-    Progress is ``(d0 - d) / d0`` clamped to [0, 1], with ``d0`` the term's ``distance_fn``
-    captured at episode reset (event-manager reset terms run before the reward-manager
-    reset, so this reads the post-randomization state). Normalizing by the *episode's own*
-    start distance means a lucky spawn that starts close cannot outscore an unlucky far
-    one -- both saturate at 1.0 on arrival -- the full-task plan's randomization-fairness
-    requirement.
+    Progress (the potential ``Phi``) is ``(d0 - d) / d0`` clamped to [0, 1], with ``d0`` the
+    term's ``distance_fn`` captured at episode reset (event-manager reset terms run before
+    the reward-manager reset, so this reads the post-randomization state). Normalizing by
+    the *episode's own* start distance means a lucky spawn that starts close cannot outscore
+    an unlucky far one -- both saturate at 1.0 on arrival -- the full-task plan's
+    randomization-fairness requirement.
 
     With ``away_threshold`` set, the channel measures progress *away* from a point
     instead: ``d / away_threshold`` clamped to [0, 1]. The d0 normalization cannot apply
     there (the old bulb starts *at* the fixture, d0 ~ 0), so an absolute clearance
     threshold bounds it.
 
-    Paying best-progress increments (the ``climb_height_progress`` scheme) rather than the
-    level keeps the episode total equal to the final achieved progress: loitering at high
-    progress earns nothing, and ``Episode_Reward/<term>`` reads directly as achieved
-    normalized progress (times weight, per unit episode time).
+    Each step pays ``Phi(s') - Phi(s)`` (Ng, Harada & Russell 1999) rather than a
+    permanently-banked best-so-far increment: approaching pays positive, retreating pays
+    *negative*, and holding still nets ~0. That directly fixes the best-so-far scheme's
+    exploit -- almost reaching the target and then fully leaving still banked full credit,
+    since the increment can never go down. Summed over an episode this telescopes to
+    ``Phi(final) - Phi(initial)``, so the total reflects final position, not a historical
+    peak, while every single step still carries a real, dense gradient.
     """
 
     def __init__(self, cfg: RewardTermCfg, env: ManagerBasedRLEnv):
         super().__init__(cfg, env)
         self._initial = torch.ones(env.num_envs, device=env.device)
-        self._best = torch.zeros(env.num_envs, device=env.device)
+        self._prev_phi = torch.zeros(env.num_envs, device=env.device)
 
     def reset(self, env_ids: Sequence[int] | None = None) -> None:
         ids = slice(None) if env_ids is None else env_ids
@@ -460,8 +476,8 @@ class distance_progress(ManagerTermBase):
         # floor d0: a spawn already at the target must read "done" (1.0), not divide by ~0
         self._initial[ids] = d.clamp_min(1e-3)
         away = self.cfg.params.get("away_threshold")
-        # seed best with the spawn's own progress so reset state never pays
-        self._best[ids] = 0.0 if away is None else (d / away).clamp(0.0, 1.0)
+        # seed Phi with the spawn's own potential so the first step's difference is well-formed
+        self._prev_phi[ids] = 0.0 if away is None else (d / away).clamp(0.0, 1.0)
 
     def __call__(
         self,
@@ -471,12 +487,12 @@ class distance_progress(ManagerTermBase):
     ) -> torch.Tensor:
         d = distance_fn(env)
         if away_threshold is None:
-            progress = ((self._initial - d) / self._initial).clamp(0.0, 1.0)
+            phi = ((self._initial - d) / self._initial).clamp(0.0, 1.0)
         else:
-            progress = (d / away_threshold).clamp(0.0, 1.0)
-        gain = (progress - self._best).clamp(min=0.0)
-        self._best = torch.maximum(self._best, progress)
-        return gain
+            phi = (d / away_threshold).clamp(0.0, 1.0)
+        shaped = phi - self._prev_phi
+        self._prev_phi = phi
+        return shaped
 
 
 class completion_bonus(ManagerTermBase):
@@ -579,6 +595,9 @@ def full_replacement_success(
     return bulb_seated(env, pos_threshold, ori_threshold) & old_bulb_disposed(env, disposal_threshold)
 
 
+LADDER_TILT_LIMIT = 0.6  # rad; the upright ladder stands at ~0
+
+
 def ladder_tipped(
     env: ManagerBasedRLEnv,
     tilt_limit: float,
@@ -594,3 +613,54 @@ def ladder_tipped(
     up[:, 2] = 1.0
     up_w = quat_apply(ladder.data.root_quat_w, up)
     return torch.acos(up_w[:, 2].clamp(-1.0, 1.0)) > tilt_limit
+
+
+def base_ladder_distance(env: ManagerBasedRLEnv) -> torch.Tensor:
+    """Horizontal distance (m) from the robot's root to the ladder's root.
+
+    Bare ``(env) -> Tensor`` so it can be a ``distance_progress`` ``distance_fn``, which forbids
+    lambdas and closures.
+    """
+    robot: Articulation = env.scene["robot"]
+    ladder: RigidObject = env.scene["ladder"]
+    return torch.norm((robot.data.root_pos_w - ladder.data.root_pos_w)[:, :2], dim=1)
+
+
+def _base_yaw(env: ManagerBasedRLEnv) -> torch.Tensor:
+    """Robot root yaw (rad) about world +z."""
+    q = env.scene["robot"].data.root_quat_w  # (N, 4) wxyz
+    return torch.atan2(
+        2.0 * (q[:, 0] * q[:, 3] + q[:, 1] * q[:, 2]),
+        1.0 - 2.0 * (q[:, 2] ** 2 + q[:, 3] ** 2),
+    )
+
+
+def base_facing_error(env: ManagerBasedRLEnv, asset_cfg: SceneEntityCfg) -> torch.Tensor:
+    """Absolute yaw error (rad) between the robot's heading and the bearing to an entity.
+
+    Wrapped to [-pi, pi] before taking the magnitude, so a target directly behind reads pi
+    rather than ~2*pi.
+    """
+    target: RigidObject = env.scene[asset_cfg.name]
+    delta = (target.data.root_pos_w - env.scene["robot"].data.root_pos_w)[:, :2]
+    err = torch.atan2(delta[:, 1], delta[:, 0]) - _base_yaw(env)
+    return torch.abs(torch.atan2(torch.sin(err), torch.cos(err)))
+
+
+def arrived_at_ladder(
+    env: ManagerBasedRLEnv,
+    xy_radius: float,
+    facing_tolerance: float,
+    max_speed: float,
+) -> torch.Tensor:
+    """True where the robot has walked to the ladder and is standing at it, ready to grasp.
+
+    The speed cap and the upright-ladder conjunct are what make this unfarmable: without them a
+    robot that charges the ladder, knocks it over and lands inside the radius would score. No
+    sustain term is needed -- the speed cap already excludes a fly-through, and the fall gates are
+    separate terminations.
+    """
+    near = base_ladder_distance(env) < xy_radius
+    facing = base_facing_error(env, SceneEntityCfg("ladder")) < facing_tolerance
+    calm = env.scene["robot"].data.root_lin_vel_w.norm(dim=-1) < max_speed
+    return near & facing & calm & ~ladder_tipped(env, LADDER_TILT_LIMIT)

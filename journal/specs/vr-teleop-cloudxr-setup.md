@@ -1,12 +1,28 @@
-# VR (Pico 4 Ultra) teleoperation — setup guide
+# VR (Pico 4 Ultra) teleoperation — troubleshooting reference (setup superseded)
 
-Goal: drive the G1's right hand in `FIATLUX-Insert-Teleop-v0` with a **Pico 4 Ultra** via NVIDIA
-**IsaacTeleop** (CloudXR streaming), instead of the keyboard. The env already takes an *absolute
-end-effector pose + a binary grip* — exactly what a VR controller provides — so VR just swaps the
-input source.
+> **⚠️ SETUP IS NOW ONE COMMAND — do not follow this document's install steps.**
+> `./scripts/teleop/setup_sim_teleop.sh vr` installs everything (see
+> `source/fiatlux_teleop/README.md`); `restart_sonic_teleop.sh` launches and already automates
+> the fixes discovered below (endpoint-IP export, stale-state cleanup, port choices). The version
+> pins and manual venv steps in §0–3 are STALE.
+>
+> **What this document remains FOR:** the root-cause analyses and failure signatures — why
+> `NV_CXR_ENDPOINT_IP`+`MEDIA_PORT` must be set (ICE never advertises the Tailscale IP; error
+> `0xC0F22226`), the NVENC resolution choke, the controller-input-in-headless investigation,
+> CloudXR's restart fragility, cert-SAN, TURN fallback. When VR breaks, start at
+> **Troubleshooting / Known problems** below.
+
+What this stack drives **today** (it has grown since this doc was written): full **whole-body
+teleop of any `FIATLUX-*-Teleop` task** over a Pico 4 Ultra via CloudXR — bimanual arm IK from the
+controller poses, grips on the triggers, SONIC-driven walking on the sticks, and optional demo
+recording (`source/fiatlux_teleop/README.md` has the current controls and features). This document
+dates from the original bring-up, which targeted only the **right hand** in
+`FIATLUX-Insert-Teleop-v0` — that's why its examples and findings are phrased that way; the
+network/CloudXR layer they describe is unchanged and is what the sections below troubleshoot.
 
 > **Note:** IsaacTeleop / CloudXR are an **extension dependency**, kept *out* of the benchmark's
-> requirements. Install them in a **separate venv**, not in `env_isaaclab`.
+> requirements and out of the **sim env** — they live in their own venv (`vr_teleop`), which the
+> setup script creates.
 
 ---
 
@@ -185,7 +201,8 @@ python scripts/teleop/sonic_teleop.py --task FIATLUX-Insert-Teleop-v0 --input vr
   applied in the root frame (`dq_root = R_root⁻¹·dq_world·R_root`), with a rotational deadzone +
   per-frame cap; ratchets like position. Full 6-DoF now (`command_type="pose"`). Toggle via
   `Se3RelControllerRetargeterCfg.enable_rotation`; tune `rot_deadzone`/`rot_max_step` if ever twitchy.
-- ✅ **One-command restart:** `bash scripts/restart_xr_teleop.sh` does the full clean cycle (kill sim
+- ✅ **One-command restart:** `bash scripts/restart_xr_teleop.sh` *(since replaced by
+  `scripts/teleop/restart_sonic_teleop.sh`, which does the same cleanup)* does the full clean cycle (kill sim
   + runtime, clear shm/run-state, start runtime `--host-client` + sim, wait, print connect steps).
   Needed because reconnecting a headset to a stale session degrades the CloudXR pose stream.
 - ✅ env cfg + `xr_teleop.py` written; headless env load verified.
@@ -205,12 +222,13 @@ python scripts/teleop/sonic_teleop.py --task FIATLUX-Insert-Teleop-v0 --input vr
   `'Right Head Device Hand'`, so Isaac Lab's hand retargeter gets garbage (same in both the
   isaacteleop gripper test and Isaac Lab). The Pico DOES reliably stream **controllers**
   (`bytedance/pico4_controller`, pose + trigger, equipped in the hand slots).
-- ➡️ **Path forward = controller retargeter.** Isaac Lab's `OpenXRDevice` exposes
-  `TrackingTarget.CONTROLLER_LEFT/RIGHT` (enum 3/4), populated with controller pose+inputs **only if
-  a retargeter declares `RetargeterBase.Requirement.MOTION_CONTROLLER`**. No stock *simple-arm*
-  controller retargeter exists (Isaac Lab's are all G1 whole-body). **TODO:** write a small
-  controller→EE retargeter (right controller grip pose → absolute EE target, trigger → grip), add as
-  an *optional* teleop device (`--teleop_device controller`) alongside `handtracking`.
+- ✅ **Path forward = controller retargeter — BUILT and now the standard path.** This became
+  `source/fiatlux_teleop/fiatlux_teleop/xr_controller_retargeters.py` (`controller_rel` +
+  gripper retargeters, bimanual, clutch, smoothing, root-frame fix) — every FIATLUX teleop env
+  uses it. The original TODO text: Isaac Lab's `OpenXRDevice` exposes
+  `TrackingTarget.CONTROLLER_LEFT/RIGHT`, populated only if a retargeter declares
+  `RetargeterBase.Requirement.MOTION_CONTROLLER`; no stock simple-arm controller retargeter
+  existed, so we wrote one.
 - ⏳ **XR anchor pose** `(0.5, 0.7, 0.0)` is a guess — tune in-headset so the operator faces the table
   with the hand reaching the props.
 - No `--enable_pinocchio` needed (Se3Abs + Gripper retargeters don't use dex/Pink-IK).
@@ -291,6 +309,11 @@ prefer a **local GPU box on the same WiFi**; use Tailscale-remote when that isn'
 
 ## 5. Bridge it into our Insert env
 
+> **[2026-08-20] DEAD END — never built.** This socket-bridge `vr_teleop.py` prototype was
+> abandoned; the shipped solution is Isaac Lab's `OpenXRDevice` + our
+> `xr_controller_retargeters.py` inside the sim process (no isaacteleop import needed). Kept
+> only to explain why the file it references does not exist.
+
 Once §3 passes, use `vr_teleop.py` (the starting-point bridge). It reuses `insert_teleop.py`'s action
 interface and maps **controller pose → EE target, trigger → grip**. Two things to finalize on the
 machine (marked `CONFIRM` in the script):
@@ -311,6 +334,10 @@ dependency — do not add it to the benchmark's `pyproject.toml`).
 ---
 
 ## Commands cheat-sheet
+
+> **[2026-08-20] STALE — `setup_sim_teleop.sh vr` replaces all of this.** Kept as the record of
+> the original manual bring-up (`env_teleop` clone, `~=1.0.0` pin, `vr_teleop.py` all obsolete);
+> only the Pico sideload steps and the ufw ports are still factual.
 
 **On the remote GPU PC:**
 ```bash
@@ -387,6 +414,13 @@ Pico 4 Ultra Enterprise over CloudXR, using Isaac Lab's native OpenXR teleop (`s
   manipulation side is solved; the arm no longer oscillates at rest.
 
 ### Problem 1 — controller 6-DoF POSE stream is intermittent / dead  ⬅ current top blocker
+
+> **[2026-08-20] STATUS: MITIGATED, no longer a blocker.** The clutch + EMA smoothing +
+> spike-rejection + origin-pose rejection shipped in `xr_controller_retargeters.py` made the
+> stream usable — see the ✅✅ full-loop confirmation above. The underlying Pico/CloudXR
+> flakiness can still recur (this section is the debugging map when it does). The 'strategic
+> recommendation (B)' below was never needed for the ARMS; the thumbsticks went to SONIC
+> walking instead (`sonic_teleop.py`).
 - **Symptom:** the right controller's *position* reads **frozen at the anchor origin** (e.g.
   `[0.5, 0.7, 0.0]`) even while the operator moves it in big arcs; the *trigger* still works (grasp
   ok). So the arm has no position data to follow. Worked in one earlier session; dead in others.
@@ -512,3 +546,10 @@ freezes at the anchor origin, and jitters ~0.9 m under motion. This is upstream 
 that is immune to tracking quality, so the Insert task can actually be completed. AR/runtime fragility
 (Problems 2–3) still makes iterating slow — clearing `/dev/shm/carb*` between sim relaunches has been
 keeping AR healthy without a reboot (launches #3–#5).
+
+> **[2026-08-20] EPILOGUE — where it landed.** Path (A) effectively won: the clutch + filtering
+> mitigations made pose-based control usable and `controller_rel` became the standard arm input;
+> the thumbsticks were given to SONIC walking (whole-body `sonic_teleop.py`) rather than an
+> EE-velocity fallback. Setup is now `setup_sim_teleop.sh vr`; launch is
+> `restart_sonic_teleop.sh`; current controls + demo recording live in
+> `source/fiatlux_teleop/README.md`. This document remains the CloudXR/Pico failure forensics.

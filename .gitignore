@@ -44,3 +44,6 @@ _isaac_sim*
 /auto/pipeline/.venvs/
 /auto/pipeline/.tools/
 /auto/pipeline/runs/
+
+#npz
+*.npz

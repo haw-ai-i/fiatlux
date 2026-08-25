@@ -254,8 +254,8 @@ def _is_omnipbr(shader_prim: Usd.Prim) -> bool:
 
 # Hand collider shapes on both G1 variants: Inspire (``left_hand_base_link``,
 # ``L_index_proximal``, ``R_thumb_distal``, ...) and Dex3 (``left_hand_palm_link``,
-# ``right_hand_thumb_2_link``, ...). Verified against both USDs -- one expression matches every
-# hand body on either and nothing else, so ``swap_robot_variant`` has nothing to remap here.
+# ``right_hand_thumb_2_link``, ...). One expression matches every hand body on either variant and
+# nothing else, so ``swap_robot_variant`` has nothing to remap here.
 G1_HAND_BODY_EXPR = "(left|right)_hand.*|[LR]_(index|middle|pinky|ring|thumb).*"
 
 

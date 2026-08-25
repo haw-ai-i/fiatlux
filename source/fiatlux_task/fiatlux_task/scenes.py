@@ -37,14 +37,13 @@ def _spawn_room_backdrop(prim_path, cfg, translation=None, orientation=None):
     at z=+0.01, overlapping the scene's ground-plane collider at z=0. The cfg-level
     ``collision_enabled=False`` does not reach its (instanced) collider prims, so
     robots and props inside that footprint stand on a 1 cm ledge with an active
-    edge in the middle of the play area (probe-verified: feet straddling the edge
-    destabilize a standing G1). ``SetActive(False)`` removes render and physics at
-    once; the room stays a pure backdrop.
+    edge in the middle of the play area, which destabilizes a standing G1.
+    ``SetActive(False)`` removes render and physics at once; the room stays a pure backdrop.
 
     Also aligns the room's floor to the scene's ground-plane collider at z=0: Simple_Room is
     authored *tabletop-at-origin*, with its floor ~0.77 m BELOW the USD origin. The shift is
-    MEASURED off the asset's own floor prims, so swapping the room asset cannot reintroduce
-    the gap.
+    taken from the asset's own floor prims, so swapping the room asset cannot reintroduce the
+    gap.
     """
     from pxr import Gf, Usd, UsdGeom
 
@@ -80,7 +79,7 @@ def _spawn_room_backdrop(prim_path, cfg, translation=None, orientation=None):
     mid_z = (room_rng.GetMin()[2] + room_rng.GetMax()[2]) / 2.0 if not room_rng.IsEmpty() else 0.0
     # Prefer the asset's actual walking-surface slab when present. Its neighbours are raised
     # rim/threshold trim standing ~0.19 m proud of the floor, which a plain max() would latch
-    # onto. The value is still MEASURED at spawn -- only the choice of prim is anchored.
+    # onto. The value is still read at spawn; only the choice of prim is anchored.
     named = [z for name, z in floor_named if "floor_bottom" in name]
     lower = named or [z for z in floor_tops if z < mid_z]
     if lower:

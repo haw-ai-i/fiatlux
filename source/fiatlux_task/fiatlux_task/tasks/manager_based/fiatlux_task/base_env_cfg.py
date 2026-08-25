@@ -35,7 +35,7 @@ from .scene_cfg import (
 )
 
 ##
-# Observations -- generic G1 proprioception (no task-specific terms yet).
+# Observations -- generic G1 proprioception.
 ##
 
 
@@ -50,8 +50,7 @@ class ObservationsCfg:
         # joint state (relative to the default standing pose)
         joint_pos = ObsTerm(func=mdp.joint_pos_rel)
         joint_vel = ObsTerm(func=mdp.joint_vel_rel)
-        # root state. NOTE: root_pos_w is world-frame (includes the per-env origin); fine for a
-        # foundation, swap to base-frame terms when you define task observations.
+        # root state. root_pos_w is world-frame (includes the per-env origin).
         root_pos = ObsTerm(func=mdp.root_pos_w)
         root_quat = ObsTerm(func=mdp.root_quat_w)
         root_lin_vel = ObsTerm(func=mdp.root_lin_vel_w)
@@ -82,7 +81,7 @@ class ActionsCfg:
 
 
 ##
-# Events -- one enabled reset term + a disabled, ready-to-uncomment randomization scaffold.
+# Events -- enabled reset terms plus a commented-out randomization scaffold.
 ##
 
 
@@ -93,11 +92,9 @@ class EventCfg:
     # -------- ENABLED: return robot + props to their configured default states on reset --------
     reset_all = EventTerm(func=mdp.reset_scene_to_default, mode="reset")
 
-    # -------- ENABLED: per-reset light randomization. Intensity + direction; the dome keeps
-    # color untouched (it carries an HDRI sky texture -- tinting it reads as a render bug) and
-    # rotates about yaw only (sun azimuth; tilting the sky's horizon also reads as a render
-    # bug). Key-light direction samples a cone around its authored 40-degree tilt. One global
-    # sample per reset (global light prims). --------
+    # Per-reset light randomization: intensity + direction. The dome keeps its color (it carries
+    # an HDRI sky texture) and rotates about yaw only. Key-light direction samples a cone around
+    # its authored 40-degree tilt. One global sample per reset.
     randomize_sky_intensity = EventTerm(
         func=mdp.randomize_light_properties,
         mode="reset",
@@ -117,19 +114,15 @@ class EventCfg:
         },
     )
 
-    # -------- ENABLED: grip friction on the hands, at startup. Without it every grasp in the
-    # benchmark is made on the PhysX default 0.5/0.5. See mdp.hand_grip_material_event for why
-    # this is an event term and not a material bound in the robot spawner. --------
+    # Grip friction on the hands, at startup; without it every grasp is made on the PhysX
+    # default 0.5/0.5. See mdp.hand_grip_material_event for why this is an event term.
     randomize_hand_material = mdp.hand_grip_material_event()
 
-    # ---- (A) asset SCALE: ladder / socket / bulb (prestartup USD writes; requires
-    #   replicate_physics=False, so these are gated on enable_dressing_randomization in
-    #   __post_init__ -- RL cfgs opt in explicitly instead). The ladder carries a baked 0.01
-    #   spawn scale (cm-authored SimReady asset), so it uses the MULTIPLICATIVE project term;
-    #   the meter-authored B1K socket/bulb use Isaac Lab's built-in, which overwrites
-    #   xformOp:scale absolutely. The bin/crate (also cm-authored) is deliberately excluded:
-    #   it is bare scenery in Remove/Install, and mdp.randomize_prop_scale is the documented
-    #   opt-in if that ever changes. ----
+    # ---- (A) asset SCALE: ladder / socket / bulb. Prestartup USD writes requiring
+    #   replicate_physics=False, so these are gated on enable_dressing_randomization. The ladder
+    #   carries a baked 0.01 spawn scale, so it uses the MULTIPLICATIVE project term; the
+    #   meter-authored socket/bulb use Isaac Lab's built-in, which overwrites xformOp:scale
+    #   absolutely. The bin/crate is excluded; mdp.randomize_prop_scale is the opt-in. ----
     randomize_ladder_scale = EventTerm(
         func=mdp.randomize_prop_scale,
         mode="prestartup",
@@ -164,13 +157,11 @@ class EventCfg:
     #     params={"asset_cfg": SceneEntityCfg("ladder"),
     #             "pose_range": {"x": (-0.05, 0.05), "yaw": (-0.1, 0.1)}, "velocity_range": {}})
 
-    # ---- (C) COLOR / VISUAL MATERIAL: in-place albedo tint. Isaac Lab 2.3.2 DOES ship
-    #   randomize_visual_color / randomize_visual_texture_material, but they are
-    #   Replicator-based, rebind an OmniPBR material over the curated SimReady/B1K MDLs,
-    #   and hard-require replicate_physics=False -- so the project term tints the authored
-    #   materials in place instead (works under replicated physics, keeps B1K bindings).
-    #   Absent entities (table in workshop, ladder in tabletop, ...) are skipped silently.
-    #   Texture swapping stays future work: no texture assets exist (single HDRI). ----
+    # ---- (C) COLOR / VISUAL MATERIAL: in-place albedo tint. Isaac Lab's own
+    #   randomize_visual_color / randomize_visual_texture_material are Replicator-based, rebind
+    #   an OmniPBR material over the curated MDLs, and require replicate_physics=False, so the
+    #   project term tints the authored materials in place instead. Absent entities are skipped
+    #   silently. ----
     randomize_material_tint = EventTerm(
         func=mdp.randomize_material_tint,
         mode="reset",
@@ -196,9 +187,8 @@ class EventCfg:
     #             "dynamic_friction_range": (0.5, 0.9), "restitution_range": (0.0, 0.1), "num_buckets": 64})
 
     # ---- (E) LIGHTING ----
-    #   Intensity + orientation randomization is ENABLED above (randomize_sky_intensity /
-    #   randomize_key_light). Per-env lights are still open in the
-    #   mdp.randomize_light_properties stub (scene lights are single global prims).
+    #   Intensity + orientation randomization is enabled above. Per-env lights are still open in
+    #   the mdp.randomize_light_properties stub (scene lights are single global prims).
 
 
 ##
@@ -210,15 +200,14 @@ class EventCfg:
 class FamilyBaseEnvCfg(ManagerBasedEnvCfg):
     """Base manager-based (non-RL) environment for the Fiatlux family scene (workshop preset)."""
 
-    # -- simulation knobs (humanoid-friendly defaults; all overridable e.g. via Hydra) --
+    # -- simulation knobs; overridable via Hydra --
     physics_dt: float = 1.0 / 200.0
     control_decimation: int = 4  # -> 50 Hz control
     gravity: tuple[float, float, float] = (0.0, 0.0, -9.81)
     solver_position_iterations: int = 8
     # PhysX applies this as a FLOOR over every actor, not a default: any per-body
-    # ``solver_velocity_iteration_count`` below it is raised to it. Keep it at 1 -- the bulb,
-    # old bulb and carried ladder ask for 1 because high velocity-iteration counts make the
-    # TGS solver inject energy into resting contacts. Bodies asking for more still get more.
+    # ``solver_velocity_iteration_count`` below it is raised to it. Bodies asking for more still
+    # get more.
     solver_velocity_iterations: int = 1
     episode_length_s: float = 20.0
     """Nominal episode length. NOTE: ManagerBasedEnv (non-RL) has no episode horizon; this is a
@@ -261,14 +250,13 @@ class FamilyBaseEnvCfg(ManagerBasedEnvCfg):
         if not self.enable_dressing_randomization or not FIXTURE_USDS:
             self.scene.fixture = None
         if not self.enable_dressing_randomization:
-            # Homogeneous envs again -> replicated physics is safe and fast. Cloning
-            # stays in USD (not fabric): the hand_contact sensor's PhysX contact-reporter
-            # API cannot attach to fabric-cloned env prims.
+            # Homogeneous envs, so replicated physics is safe. Cloning stays in USD, not
+            # fabric: the hand_contact sensor's PhysX contact-reporter API cannot attach to
+            # fabric-cloned env prims.
             self.scene.replicate_physics = True
-            # Prestartup USD-scale DR is illegal under replicated physics (the event
-            # manager raises), and per-env material writes are only trustworthy on
-            # unreplicated stages -> RL-style defaults: no scale terms, tint the shared
-            # room only.
+            # Prestartup USD-scale DR is illegal under replicated physics and per-env material
+            # writes are only trustworthy on unreplicated stages: no scale terms, tint the
+            # shared room only.
             self.events.randomize_ladder_scale = None
             self.events.randomize_socket_scale = None
             self.events.randomize_bulb_scale = None
@@ -278,7 +266,7 @@ class FamilyBaseEnvCfg(ManagerBasedEnvCfg):
         self.sim.dt = self.physics_dt
         self.sim.render_interval = self.decimation
         self.sim.gravity = self.gravity
-        # PhysX solver: floor the per-body iteration counts for humanoid stability
+
         self.sim.physx.solver_type = 1
         self.sim.physx.min_position_iteration_count = self.solver_position_iterations
         self.sim.physx.min_velocity_iteration_count = self.solver_velocity_iterations

@@ -127,4 +127,23 @@ else
     echo "(skip scene dressing — pass --scene-dressing to include)"
 fi
 
+# The step ladder's standing platform exists in its render mesh but not in its collider: the
+# collision overlay's convexDecomposition leaves open air where the tread is, and a robot placed
+# on it falls through the ladder. Author the box collider that fixes it here rather than baking
+# it into the bucket, so the synced asset stays as the vendor shipped it. Idempotent -- the
+# script replaces its own prim on every run.
+LADDER_COLLISION_USD="${TARGET_DIR}/omniverse_ladder/AlumStep_D/AluminumStepLadder_D01_PR_NVD_01_collision.usd"
+PLATFORM_ARGS=(--centre 0 10 116 --half-extent 24 20 2)
+if [[ -f "$LADDER_COLLISION_USD" ]]; then
+    echo "Authoring the step ladder's platform collider ..."
+    if ! (cd "${TARGET_DIR}/.." && uv run python scripts/omniverse/omniverse_ladder_platform.py \
+            "$LADDER_COLLISION_USD" "${PLATFORM_ARGS[@]}"); then
+        echo "  WARNING: could not author the platform collider. Until it is, the at-height" >&2
+        echo "  subtasks (S05-S07, S13-S15) drop the robot straight through the ladder." >&2
+        echo "  Re-run by hand from the repo root:" >&2
+        echo "    uv run python scripts/omniverse/omniverse_ladder_platform.py \\" >&2
+        echo "        $LADDER_COLLISION_USD ${PLATFORM_ARGS[*]}" >&2
+    fi
+fi
+
 echo "Done."

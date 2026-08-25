@@ -36,8 +36,54 @@ parser.add_argument("--hand", default="dex3", choices=["dex3", "inspire"])
 parser.add_argument("--walk_onnx", default=f"{_POLICY_DIR}/GR00T-WholeBodyControl-Walk.onnx")
 parser.add_argument("--balance_onnx", default=f"{_POLICY_DIR}/GR00T-WholeBodyControl-Balance.onnx")
 parser.add_argument("--num_envs", type=int, default=1)
+parser.add_argument("--record", choices=["none", "bag"], default="none",
+                    help="bag: record the session as a robomimic-style HDF5 demo bag (same format "
+                         "as record_run.py, via TeleopTrajectoryRecorder). Episodes split on [R] "
+                         "resets and on exit; the benchmark score is embedded in meta.json.")
+parser.add_argument("--record-start", choices=["auto", "toggle"], default="auto",
+                    help="auto: recording runs from the moment teleop starts. toggle: recording "
+                         "starts OFF and the operator turns it on/off live -- keyboard [C], or the "
+                         "right controller's B button (the UPPER face button) in VR. The toggle also works in auto "
+                         "mode (pause/resume); each OFF closes the episode and flushes the bag.")
+parser.add_argument("--record-format", choices=["hdf5", "npz"], default="hdf5",
+                    help="bag format. hdf5 (default): robomimic-style data/demo_<i> groups. "
+                         "npz: flat numpy archive, no h5py needed to read. The scorer handles both.")
+parser.add_argument("--record-video", action="store_true",
+                    help="also render an MP4 of the session (follow-camera on the robot) + a poster "
+                         "PNG into the session folder. Frames are captured only while recording is "
+                         "ON and streamed to disk (constant memory). Costs sim speed -- off by default.")
+parser.add_argument("--record-images", action="store_true",
+                    help="also capture the env's own cameras (wrist_camera, ego_camera, ...) as JPEGs "
+                         "into <session>/images/<camera>/. Decimated by --images-stride; file index = "
+                         "recorded-step counter, aligning frames 1:1 with bag rows. Costs sim speed -- "
+                         "off by default.")
+parser.add_argument("--images-stride", type=int, default=5,
+                    help="capture every Nth recorded step for --record-images (default 5 = 10 Hz "
+                         "at the 50 Hz control rate).")
+parser.add_argument("--out", default="",
+                    help="output directory for the --record bag. Default: the dataset-first tree "
+                         "<captures>/<task>/<hand>/<kind>/<input>/<YYYY-MM-DD>/<HHMMSS>/, session "
+                         "renamed to <HHMMSS>_score<mean> on clean exit (explicit --out is never "
+                         "renamed). One dimension per level: hand (dex3=43 vs inspire=53 joint "
+                         "columns), kind = hdf5|npz(+images), input device -- so <task>/<hand>/"
+                         "<kind>/ is always a schema-homogeneous training dataset. <captures> = "
+                         "$FIATLUX_CAPTURES_DIR, else ../teleop-captures beside the repo -- OUTSIDE "
+                         "the git tree, so sessions never pollute it.")
+parser.add_argument("--max_steps", type=int, default=0,
+                    help="end the session cleanly after N teleop steps (0 = run until quit). "
+                         "Gives scripted/timed captures a clean exit -- NOTE: killing the process "
+                         "instead (SIGINT) is NOT clean, Kit's own signal handler fast-exits and "
+                         "skips the final bag write; only episodes already closed by [R] survive.")
 AppLauncher.add_app_launcher_args(parser)
 args = parser.parse_args()
+if args.record_video or args.record_images:
+    args.enable_cameras = True   # RTX camera sensors; frames need the camera pipeline
+    if args.record == "none":
+        args.record = "bag"      # visual capture documents a demo session; it rides along with a bag
+if getattr(args, "headless", False):
+    # The FIATLUX scenes always carry camera sensors (wrist/ego); with a GUI they render anyway,
+    # but headless needs the camera pipeline explicitly or env creation fails.
+    args.enable_cameras = True
 args.xr = (args.input == "vr")   # CloudXR stereo render only in VR mode (keyboard = desktop GUI)
 args.device = "cuda:0"           # env physics on GPU (xr otherwise defaults to cpu)
 app_launcher = AppLauncher(args)
@@ -91,7 +137,8 @@ _TR = DeviceBase.TrackingTarget.CONTROLLER_RIGHT
 
 
 class WalkRetargeter(RetargeterBase):
-    """LEFT stick -> walk; RIGHT stick X -> turn; RIGHT btn -> stop; LEFT X/Y -> lean. Output [vx,vy,wz,stop,lean]."""
+    """LEFT stick -> walk; RIGHT stick X -> turn; RIGHT A (lower) -> stop; RIGHT B (upper) -> record toggle;
+    LEFT X/Y -> lean. Output [vx,vy,wz,stop,lean,rec]."""
 
     def __init__(self, cfg):
         super().__init__(cfg)
@@ -116,7 +163,8 @@ class WalkRetargeter(RetargeterBase):
         ms = self.cfg.movement_scale
         stop = 1.0 if rb0 > 0.5 else 0.0
         lean = (1.0 if lb0 > 0.5 else 0.0) - (1.0 if lb1 > 0.5 else 0.0)
-        return torch.tensor([ly * ms, -lx * ms, -rx, stop, lean],
+        rec = 1.0 if rb1 > 0.5 else 0.0   # right B (UPPER face button): record toggle (edge-detected downstream)
+        return torch.tensor([ly * ms, -lx * ms, -rx, stop, lean, rec],
                             device=self.cfg.sim_device, dtype=torch.float32)
 
     def get_requirements(self):
@@ -194,11 +242,17 @@ def main():  # noqa: C901  (one long orchestration: env setup + settle/resettle 
     if args.xr:
         env_cfg.sim.render.antialiasing_mode = "DLSS"
 
+    if args.record_video:
+        # RTX video camera in the scene (same rig as record_run.py); posed per frame as a follow-cam.
+        from fiatlux_task.viz import make_video_camera_cfg
+        env_cfg.scene.video_cam = make_video_camera_cfg(960, 544)  # height % 16 == 0: no ffmpeg resize
+
     env = gym.make(args.task, cfg=env_cfg).unwrapped
     robot = env.scene["robot"]
     dev = env.device
 
     reset_flag = {"do": False}
+    rec_flag = {"toggle": False}   # operator asked to flip recording on/off (keyboard C / VR right B=upper)
 
     def _reset():
         reset_flag["do"] = True
@@ -253,6 +307,64 @@ def main():  # noqa: C901  (one long orchestration: env setup + settle/resettle 
         return o
 
     env.reset()
+
+    # Optional demo recording: the benchmark's bag writer, made teleop-safe (task-field guards +
+    # operator-driven episode boundaries). Created BEFORE the settle so it exists for the loop,
+    # but record_step only runs inside the main loop -- settle/resettle steps are never recorded.
+    recorder = None
+    video = None
+    images = None
+    recording_on = False
+    if args.record == "bag":
+        import time as _time
+
+        from fiatlux_teleop.teleop_recording import TeleopTrajectoryRecorder
+        out_auto_named = not args.out
+        if out_auto_named:
+            # <captures>/task/input-mode/date/session-time; the session folder gains a _score<mean>
+            # suffix at clean exit (the score exists only once the session is over). Captures live
+            # OUTSIDE the git tree (../teleop-captures beside the repo) unless overridden.
+            _repo = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+            _captures = os.environ.get("FIATLUX_CAPTURES_DIR",
+                                       os.path.join(os.path.dirname(_repo), "teleop-captures"))
+            # Dataset-first layout: one dimension per level, so a TRAINING DATASET is simply
+            # <task>/<hand>/<kind>/** and every session inside it is schema-homogeneous:
+            #   hand  -- dex3 bags have 43 joint columns, inspire 53: never mixable;
+            #   kind  -- bag format + whether images were captured, so sessions with and
+            #            without frames never share a folder;
+            #   input -- keyboard vs vr demos separable below that; then date / session.
+            # (--record-video does NOT fork the path: the MP4 is review material, not data schema.)
+            _kind = args.record_format + ("+images" if args.record_images else "")
+            # Hand label from the LIVE robot, not --hand: the flag only swaps hands on tasks that
+            # define a swap, so on others the mounted hand can differ from the flag -- and a bag
+            # filed under the wrong hand poisons an otherwise schema-homogeneous dataset.
+            _jn = env.scene["robot"].joint_names
+            _hand = ("dex3" if any("hand_index_0" in n for n in _jn)
+                     else "inspire" if any("proximal" in n for n in _jn) else args.hand)
+            if _hand != args.hand:
+                print(f"[sonic] note: --hand {args.hand} requested but this task mounts {_hand}; "
+                      f"filing the session under {_hand}/", flush=True)
+            args.out = os.path.join(_captures, args.task, _hand, _kind, args.input,
+                                    _time.strftime("%Y-%m-%d"), _time.strftime("%H%M%S"))
+        recorder = TeleopTrajectoryRecorder(env, policy_spec=f"teleop_{args.input}", seed=0)
+        if args.record_video:
+            from fiatlux_teleop.teleop_recording import StreamingVideoRecorder
+            video = StreamingVideoRecorder(env, env.scene["video_cam"],
+                                           os.path.join(args.out, "video.mp4"), fps=50)
+        if args.record_images:
+            from fiatlux_teleop.teleop_recording import ImageCapture
+            images = ImageCapture(env, os.path.join(args.out, "images"), stride=args.images_stride)
+            recorder._meta["images"] = {
+                "dir": "images", "stride": args.images_stride, "cameras": images.cameras,
+                "index": "recorded-step counter (flat stream; split via the bag's done column)",
+            }
+            print(f"[sonic] image capture: {images.cameras} every {args.images_stride} steps "
+                  f"-> {os.path.join(args.out, 'images')}", flush=True)
+        recording_on = args.record_start == "auto"
+        _state = "ON from start" if recording_on else "OFF -- press [C] / right ctrl B (upper) to start"
+        print(f"[sonic] recording demos -> {args.out} ({_state}; "
+              "episodes split on [R] reset / record-off / exit)", flush=True)
+
     # true world spawn (to re-home on reset) + the position-hold target.
     spawn_root = robot.data.root_state_w[:, 0:7].clone()
     home_xy = spawn_root[0, 0:2].cpu().numpy().copy()
@@ -417,6 +529,8 @@ def main():  # noqa: C901  (one long orchestration: env setup + settle/resettle 
                     kb["lean"] = min(kb["lean"] + 0.2, 1.0)
                 elif k == "Y":
                     kb["lean"] = max(kb["lean"] - 0.2, -1.0)
+                elif k == "C":
+                    rec_flag["toggle"] = True
                 elif k == "R":
                     _reset()
                 elif k == "ESCAPE":
@@ -433,7 +547,7 @@ def main():  # noqa: C901  (one long orchestration: env setup + settle/resettle 
             return torch.cat([kb["R_ee"], rg, kb["L_ee"], lg])
         print("KEYBOARD ready (bimanual).  TAB = switch active arm (R/L).  active arm: W/S A/D Q/E = move "
               "X/Y/Z, U/O I/K J/L = roll/pitch/yaw, G = grip.  walk: arrows (UP/DOWN fwd, LEFT/RIGHT turn), "
-              ",/. strafe, T/Y lean, SPACE stop.  R reset, ESC quit.", flush=True)
+              ",/. strafe, T/Y lean, SPACE stop.  R reset, C record on/off, ESC quit.", flush=True)
 
     _elb_i = robot.joint_names.index("right_elbow_joint")
     print(f"[sonic] settled+centered at pelvis=({spawn_root[0,0]:.2f},{spawn_root[0,1]:.2f},"
@@ -493,13 +607,35 @@ def main():  # noqa: C901  (one long orchestration: env setup + settle/resettle 
         home_xy = robot.data.root_pos_w[0, 0:2].cpu().numpy().copy()  # hold where it actually stands
         last_arm = rest_arm
 
-    n_walk = 5
+    n_walk = 6
+    vr_rec_prev = False   # rising-edge detect for the VR record-toggle button
     step_i = 0
     while simulation_app.is_running():
         try:
             with torch.inference_mode():
+                if rec_flag["toggle"]:
+                    rec_flag["toggle"] = False
+                    if recorder is not None:
+                        recording_on = not recording_on
+                        if recording_on:
+                            print("[sonic] RECORDING ON", flush=True)
+                        else:
+                            # OFF closes the episode and flushes, so what was captured is durable.
+                            if recorder.mark_episode_end():
+                                _info = recorder.write(args.out, fmt=args.record_format)
+                                print(f"[sonic] RECORDING OFF -- bag updated: {_info['episodes']} "
+                                      f"episode(s) -> {_info['bag']}", flush=True)
+                            else:
+                                print("[sonic] RECORDING OFF (nothing buffered)", flush=True)
+
                 if reset_flag["do"]:
                     reset_flag["do"] = False
+                    if recorder is not None and recording_on and recorder.mark_episode_end():
+                        # Flush NOW, not just at exit: Kit's SIGINT handler fast-exits past any
+                        # finally/atexit, so the bag on disk must always hold every closed episode.
+                        _info = recorder.write(args.out, fmt=args.record_format)
+                        print(f"[sonic] bag updated: {_info['episodes']} episode(s) -> {_info['bag']}",
+                              flush=True)
                     env.reset()                              # reset the task (bulb/socket, episode buffers)
                     # A FREE base isn't re-homed by env.reset() -> teleport the root back to the good
                     # centered spawn (zero velocity), THEN re-plant with the same pin + SONIC settle-in
@@ -547,6 +683,10 @@ def main():  # noqa: C901  (one long orchestration: env setup + settle/resettle 
                         if walk[3] > 0.5:
                             loco_cmd[:] = 0.0
                         rpy_cmd[1] = walk[4] * LEAN_MAG
+                        _rec_now = walk[5] > 0.5
+                        if _rec_now and not vr_rec_prev:
+                            rec_flag["toggle"] = True
+                        vr_rec_prev = _rec_now
                     else:
                         last_arm = rest_arm          # no controller -> FIXED rest pose (no IK re-solve jitter)
                         loco_cmd[:] = 0.0
@@ -581,7 +721,26 @@ def main():  # noqa: C901  (one long orchestration: env setup + settle/resettle 
                 last_action = sess.run(None, {in_name: flat})[0][0]
                 leg_target = torch.as_tensor(last_action * ACTION_SCALE + DEFAULT_15, device=dev)
                 robot.set_joint_position_target(leg_target.unsqueeze(0), joint_ids=act_idx)
-                env.step(last_arm.repeat(env.num_envs, 1))   # arms via the real env action manager
+                arm_action = last_arm.repeat(env.num_envs, 1)
+                step_out = env.step(arm_action)              # arms via the real env action manager
+                if recorder is not None and recording_on:
+                    _obs_t, _rew_t, _term_t, _trunc_t = step_out[0], step_out[1], step_out[2], step_out[3]
+                    # extras: the operator/policy signals that BYPASS the env action -- the walk
+                    # command the human gives, the lean, and SONIC's raw leg action for this step.
+                    # (joint_pos_target inside the recorder covers the full commanded joint vector.)
+                    _extras = {
+                        "loco_cmd": np.asarray(loco_cmd, dtype=np.float32)[None],
+                        "rpy_cmd": np.asarray(rpy_cmd, dtype=np.float32)[None],
+                        "sonic_action": np.asarray(last_action, dtype=np.float32)[None],
+                    }
+                    recorder.record_step(_obs_t, arm_action, _rew_t, _term_t, _trunc_t, extras=_extras)
+                    if video is not None:
+                        # follow-cam: shoulder-height orbit point tracking the (possibly walking) base
+                        _b = robot.data.root_pos_w[0].cpu().numpy()
+                        video.capture(pose=((float(_b[0] + 1.8), float(_b[1] - 2.4), float(_b[2] + 0.9)),
+                                            (float(_b[0]), float(_b[1]), float(_b[2] + 0.2))))
+                    if images is not None:
+                        images.maybe_capture(len(recorder._buf["done"]) - 1)  # flat recorded-step index
                 # Pin the arm at its settle joints whenever it isn't being actively moved -- i.e. when the
                 # commanded arm EE is still ~at the rest target. (The retargeters return HELD, non-None
                 # values even with the headset off, so gating on `out is None` never fired.) This stops the
@@ -590,6 +749,9 @@ def main():  # noqa: C901  (one long orchestration: env setup + settle/resettle 
                     robot.write_joint_state_to_sim(_hold_pose, _hold_zero, joint_ids=_hold_idx)
 
                 step_i += 1
+                if args.max_steps and step_i >= args.max_steps:
+                    print(f"[sonic] --max_steps {args.max_steps} reached; ending session.", flush=True)
+                    break
                 if step_i % (20 if step_i <= 200 else 100) == 0:
                     p = robot.data.root_pos_w[0].cpu().numpy()
                     _re = float(robot.data.joint_pos[0, robot.joint_names.index("right_elbow_joint")])
@@ -602,6 +764,34 @@ def main():  # noqa: C901  (one long orchestration: env setup + settle/resettle 
             print(f"[sonic] step skipped while view recovers: {e}", flush=True)
             with contextlib.suppress(Exception):
                 env.sim.render()
+
+    if recorder is not None:
+        recorder.mark_episode_end()                          # close the trailing (un-reset) episode
+        if recorder._buf:
+            _info = recorder.write(args.out, fmt=args.record_format)
+            _sc = _info.get("score") or {}
+            print(f"[sonic] wrote teleop bag {_info['bag']} ({_info['episodes']} episodes; "
+                  f"score in meta.json: success={_sc.get('success_rate')}, "
+                  f"mean_score={_sc.get('mean_score')})", flush=True)
+            if video is not None and len(video):
+                _vp = video.write()              # close the stream BEFORE the score-rename below
+                print(f"[sonic] wrote session video {_vp} ({len(video)} frames)", flush=True)
+            if images is not None and len(images):
+                print(f"[sonic] wrote {len(images)} image sets ({', '.join(images.cameras)}) -> "
+                      f"{os.path.join(args.out, 'images')}", flush=True)
+            # Auto-named session dirs gain the score as a suffix so a listing reads as a ranking.
+            # Only on clean exit (a killed session keeps the plain timestamp; meta.json still has
+            # the last flushed score) and never on an operator-chosen --out.
+            if out_auto_named and _sc.get("mean_score") is not None:
+                _scored_dir = f"{args.out}_score{_sc['mean_score']:.2f}"
+                try:
+                    os.rename(args.out, _scored_dir)
+                    print(f"[sonic] session dir -> {_scored_dir}", flush=True)
+                except OSError as _e:
+                    print(f"[sonic] could not append score to dir name ({_e}); bag stays at {args.out}",
+                          flush=True)
+        else:
+            print("[sonic] recording was on but nothing was captured -- no bag written.", flush=True)
 
     env.close()
     simulation_app.close()
