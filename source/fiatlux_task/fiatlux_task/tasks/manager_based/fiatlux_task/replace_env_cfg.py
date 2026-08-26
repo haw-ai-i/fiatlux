@@ -161,6 +161,10 @@ class ObservationsCfg:
         old_bulb_pose = ObsTerm(func=mdp.root_pose_w, params={"asset_cfg": SceneEntityCfg("old_bulb")})
         disposal_pose = ObsTerm(func=mdp.root_pose_w, params={"asset_cfg": SceneEntityCfg("bin")})
         score_distances = ObsTerm(func=mdp.replace_score_distances)
+        # Bayonet lock state of both bulbs (issue #77): old phase, old theta, fresh phase,
+        # fresh theta. The mechanic is otherwise invisible -- an operator cannot tell a twist
+        # that does not register from a twist that the lock clamps away.
+        bulb_lock_state = ObsTerm(func=mdp.bulb_lock_state)
 
         def __post_init__(self) -> None:
             self.enable_corruption = False
@@ -183,7 +187,23 @@ class EventCfg:
         params={
             "insertion_depth": BAYONET_INSERTION_DEPTH,
             "rotation_angle": BAYONET_ROTATION_ANGLE,
-            "rotation_sign": 1.0,
+            # -1.0 makes the mechanic turn the way a real bayonet cap does (issue #77).
+            # SOCKET_SEAT_AXIS points from the seat OUTWARD along the insertion axis --
+            # positive axial travel leaves the socket, which is what `eject` tests -- so it
+            # always points at whoever holds the bulb, whatever wall the fixture randomizes
+            # onto. A positive rotation about an axis aimed at the viewer reads
+            # COUNTER-CLOCKWISE to that viewer. A BA22d cap releases counter-clockwise and
+            # seats clockwise, so release must be the positive direction about the seat
+            # axis: rotation_sign = -1, since unlock needs delta < 0 and delta is
+            # sign * (twist change).
+            #
+            # It shipped at +1.0 from #54, never chosen -- and +1.0 inverts both halves.
+            # Measured on the fixture: at +1.0 a counter-clockwise operator twist (the real
+            # release direction) leaves the bulb completely inert, because the old bulb
+            # resets AT the clamp ceiling and `at_lock_stop` damps the angular velocity. No
+            # rotation, no displacement, no state change. That matches the 2026-08-10 report
+            # exactly, and it is the failure mode #77 predicted a wrong sign would produce.
+            "rotation_sign": -1.0,
             "radial_tolerance": SEAT_POS_THRESHOLD,
             "orientation_tolerance": SEAT_ORI_THRESHOLD,
         },
