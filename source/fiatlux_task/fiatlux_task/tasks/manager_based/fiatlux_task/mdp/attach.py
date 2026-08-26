@@ -129,7 +129,7 @@ class bulb_attachment(ManagerTermBase):
     def __init__(self, cfg: EventTermCfg, env: ManagerBasedEnv):
         super().__init__(cfg, env)
         setattr(env, _ENV_ATTR, self)
-        self._rotation_sign = float(cfg.params.get("rotation_sign", 1.0))
+        self._rotation_sign = float(cfg.params.get("rotation_sign", -1.0))
         if abs(self._rotation_sign) != 1.0:
             raise ValueError(f"rotation_sign must be -1 or 1, got {self._rotation_sign}")
         self._insertion_depth_spec = cfg.params.get("insertion_depth", 0.034)
@@ -196,7 +196,7 @@ class bulb_attachment(ManagerTermBase):
         env_ids: torch.Tensor,
         insertion_depth: ParameterSpec = 0.034,
         rotation_angle: ParameterSpec = 0.5 * math.pi,
-        rotation_sign: float = 1.0,
+        rotation_sign: float = -1.0,
         radial_tolerance: float = 0.015,
         orientation_tolerance: float = 0.2,
         seat_tolerance: float = 0.004,
