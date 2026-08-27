@@ -149,7 +149,7 @@ def build_replace_cfg(num_envs: int = 1):
             if group is not None and getattr(group, term, None) is not None:
                 setattr(group, term, None)
     cfg.scene.robot.spawn.articulation_props.fix_root_link = True
-    for bulb_cfg in (cfg.scene.bulb, cfg.scene.old_bulb):
+    for bulb_cfg in (cfg.scene.fresh_bulb, cfg.scene.old_bulb):
         if getattr(bulb_cfg.spawn, "rigid_props", None) is not None:
             bulb_cfg.spawn.rigid_props.disable_gravity = True
         bulb_cfg.spawn.collision_props = sim_utils.CollisionPropertiesCfg(collision_enabled=False)
@@ -539,7 +539,7 @@ def main() -> int:
         robot = env.scene["robot"]
         socket = env.scene["socket"]
         old_bulb = env.scene["old_bulb"]
-        fresh_bulb = env.scene["bulb"]
+        fresh_bulb = env.scene["fresh_bulb"]
         manager = getattr(env, task_attach._ENV_ATTR, None)
         if manager is None:
             record("bayonet:manager_present", False, "no bulb_attachment term wired on FIATLUX-Replace-v0")

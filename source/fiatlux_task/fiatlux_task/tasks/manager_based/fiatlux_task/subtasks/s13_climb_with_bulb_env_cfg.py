@@ -47,7 +47,7 @@ from ..subtask_tiers.balance import (
     ClimbSubtaskCfg,
 )
 
-_BULB = SceneEntityCfg("bulb")
+_BULB = SceneEntityCfg("fresh_bulb")
 _GRIP = SceneEntityCfg("grip_contact")
 
 # The success gate, as reviewable data (mdp.all_of) rather than a hand-written conjunction --
@@ -78,7 +78,7 @@ class S13EventCfg(BalanceEventCfg):
         func=settle_carried_payload_live,
         mode="interval",
         interval_range_s=(0.0, 0.0),
-        params={"payload_cfg": SceneEntityCfg("bulb")},
+        params={"payload_cfg": SceneEntityCfg("fresh_bulb")},
     )
     reset_robot_joints = EventTerm(
         func=mdp.reset_joints_by_offset,
@@ -127,7 +127,7 @@ class S13ClimbWithBulbEnvCfg(ClimbSubtaskCfg):
         park_old_bulb_in_crate(self.scene)
         # S12's end state: the fresh bulb starts already held, at the carry offset from the
         # robot's own (now-final) root pose -- not on the table.
-        self.scene.bulb.init_state.pos, self.scene.bulb.init_state.rot = compose_carried_pose(
+        self.scene.fresh_bulb.init_state.pos, self.scene.fresh_bulb.init_state.rot = compose_carried_pose(
             self.scene.robot.init_state.pos, self.scene.robot.init_state.rot, BULB_IN_ROOT_STANDING
         )
         # Merge, don't assign: these dicts only name right-arm/right-hand joints.
@@ -136,6 +136,6 @@ class S13ClimbWithBulbEnvCfg(ClimbSubtaskCfg):
             **ARM_CRADLE,
             **HAND_CUP,
         }
-        add_grip_contact_sensor(self.scene, self.scene.bulb.prim_path)
+        add_grip_contact_sensor(self.scene, self.scene.fresh_bulb.prim_path)
         # Longer than S05's 20 s: one-handed is slower.
         self.episode_length_s = 30.0

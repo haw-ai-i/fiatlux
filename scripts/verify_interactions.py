@@ -384,7 +384,7 @@ class Monitor:
 
     def step(self):
         robot = self.env.scene["robot"]
-        bulb = self.env.scene["bulb"]
+        bulb = self.env.scene["fresh_bulb"]
         if torch.isnan(robot.data.root_pos_w).any() or torch.isnan(bulb.data.root_pos_w).any():
             self.nan = True
             return
@@ -465,8 +465,8 @@ def scenario_socket():
     # socket is kinematic and the bulb is teleported to its seated poses.
     cfg.scene.robot.spawn.articulation_props.fix_root_link = True
     cfg.scene.table = None
-    cfg.scene.bulb.init_state.pos = TABLETOP_SEATED_BULB_POSITION
-    cfg.scene.bulb.spawn.activate_contact_sensors = True
+    cfg.scene.fresh_bulb.init_state.pos = TABLETOP_SEATED_BULB_POSITION
+    cfg.scene.fresh_bulb.spawn.activate_contact_sensors = True
     # The Omniverse bulb/socket carry their rigid body on the spawned prim itself; the
     # <entity>/base_link nesting was the BEHAVIOR-1K pair's layout.
     cfg.scene.bulb_socket_contact = ContactSensorCfg(
@@ -476,7 +476,7 @@ def scenario_socket():
     )
     env = make_env("FIATLUX-Insert-v0", cfg)
     try:
-        bulb = env.scene["bulb"]
+        bulb = env.scene["fresh_bulb"]
         zero = torch.zeros((env.num_envs, env.action_manager.total_action_dim), device=env.device)
         mon = Monitor(env)
         start = bulb.data.root_pos_w.clone()
@@ -570,7 +570,7 @@ def build_hand_cfg(arm=ARM_PRESS_HOVER, hand=HAND_FLAT):
 
         cfg.scene.video_cam = make_video_camera_cfg()
     cfg.scene.robot.init_state.joint_pos = {**cfg.scene.robot.init_state.joint_pos, **arm, **hand}
-    cfg.scene.bulb.spawn.activate_contact_sensors = True
+    cfg.scene.fresh_bulb.spawn.activate_contact_sensors = True
     cfg.scene.hand_bulb_contact = ContactSensorCfg(
         prim_path="{ENV_REGEX_NS}/Robot/(right_hand_.*|right_wrist_yaw_link|R_.*)",
         filter_prim_paths_expr=["{ENV_REGEX_NS}/Bulb"],
@@ -606,7 +606,7 @@ def place_bulb_under_palm(env, arm=None, settle_steps: int = 30):
     settles on the (kinematic) table without depenetration kicks.
     """
     robot = env.scene["robot"]
-    bulb = env.scene["bulb"]
+    bulb = env.scene["fresh_bulb"]
     zero = torch.zeros((env.num_envs, env.action_manager.total_action_dim), device=env.device)
     press = targets_to_actions(env, {**(arm or ARM_PRESS_DOWN), **HAND_FLAT})
     run_steps(env, press, 45)
@@ -709,7 +709,7 @@ def close_hand_on_bulb(env, closed: torch.Tensor, monitor=None, ramp_steps: int 
     is graded: a pinned bulb is infinitely stiff, so the closing reaction is an artifact of
     the pin. Grade the hold, after this returns.
     """
-    bulb = env.scene["bulb"]
+    bulb = env.scene["fresh_bulb"]
     pos, quat = palm_grasp_pose(env)
     pos, quat = pos.clone(), quat.clone()
     run_steps(
@@ -736,7 +736,7 @@ def scenario_hand(probe: bool = False):
     cfg = build_hand_cfg(arm=ARM_CRADLE)
     env = make_env("FIATLUX-Insert-v0", cfg)
     try:
-        bulb = env.scene["bulb"]
+        bulb = env.scene["fresh_bulb"]
         attach_video(env, lookat=(0.44, 0.18, 1.12), eye=(1.05, -0.35, 1.45))
         zero = torch.zeros((env.num_envs, env.action_manager.total_action_dim), device=env.device)
 
@@ -762,7 +762,7 @@ def scenario_hand(probe: bool = False):
             print(f"  [PROBE] grasp point: {[round(v, 4) for v in grasp_point(env).tolist()]}")
             # The bulb's ROOT is not inside its geometry (assets.BULB_STAND_Z_OFFSET), so the
             # body lands offset from wherever the root is written. Print the offset.
-            bulb_root = env.scene["bulb"].data.root_pos_w[0]
+            bulb_root = env.scene["fresh_bulb"].data.root_pos_w[0]
             print(f"  [PROBE] bulb root: {[round(v, 4) for v in bulb_root.tolist()]}")
             _print_prim_bboxes("/World/envs/env_0/Bulb")
             # How far the palm's own collider stands off its link origin: the seat has to clear
@@ -919,7 +919,7 @@ def scenario_fragility():
         crush_press = targets_to_actions(env, {**ARM_PRESS_CRUSH, **HAND_FLAT})
 
         def drop_setup(env):
-            bulb = env.scene["bulb"]
+            bulb = env.scene["fresh_bulb"]
             spot = torch.tensor([[0.35, -1.2, 1.0]], device=env.device).expand(env.num_envs, 3)
             teleport(bulb, spot)
 
@@ -942,7 +942,7 @@ def scenario_fragility():
                 recorder.record_step(obs, act, reward, terminated, truncated)
                 if args_cli.probe and i % 15 == 0:
                     net = env.scene.sensors["hand_contact"].data.net_forces_w[0].norm(dim=-1).max().item()
-                    bulb_z = env.scene["bulb"].data.root_pos_w[0, 2].item()
+                    bulb_z = env.scene["fresh_bulb"].data.root_pos_w[0, 2].item()
                     print(f"  [PROBE] {name} i={i} net force {net:.2f} N, bulb z {bulb_z:.3f}")
                 if (terminated | truncated).any():
                     done = True

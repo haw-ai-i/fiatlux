@@ -54,9 +54,9 @@ class S10ApproachNewBulbEnvCfg(NavigateSubtaskCfg):
         stand_robot_near(self.scene, self.scene.bin.init_state.pos[:2], DISPOSAL_ARRIVAL_RADIUS)
         # This leg's target is the bulb itself, not the table's own origin apply_replace_preset
         # aims at.
-        face_robot_at(self.scene, self.scene.bulb.init_state.pos[:2])
+        face_robot_at(self.scene, self.scene.fresh_bulb.init_state.pos[:2])
         add_ego_camera(self.scene)
         add_mid360_lidar(self.scene)
         # Worst-case room-diagonal traverse (~10.8 m) at the ~0.5 m/s reference speed, 2x margin.
         self.episode_length_s = 45.0
-        frame_viewer_between(self.viewer, self.scene.robot.init_state.pos, self.scene.bulb.init_state.pos)
+        frame_viewer_between(self.viewer, self.scene.robot.init_state.pos, self.scene.fresh_bulb.init_state.pos)

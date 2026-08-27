@@ -247,7 +247,7 @@ def base_disposal_distance(env: ManagerBasedRLEnv) -> torch.Tensor:
 def base_bulb_distance(env: ManagerBasedRLEnv) -> torch.Tensor:
     """Horizontal distance (m) from the robot's root to the fresh bulb's root (on the table)."""
     robot: Articulation = env.scene["robot"]
-    bulb: RigidObject = env.scene["bulb"]
+    bulb: RigidObject = env.scene["fresh_bulb"]
     return torch.norm((robot.data.root_pos_w - bulb.data.root_pos_w)[:, :2], dim=1)
 
 
@@ -265,7 +265,7 @@ def arrived_at_bulb(
     """Same shape as ``arrived_at_ladder`` minus the tip conjunct (nothing here to tip over):
     the robot has walked to the fresh bulb and stopped, hands free."""
     near = base_bulb_distance(env) < xy_radius
-    facing = base_facing_error(env, SceneEntityCfg("bulb")) < facing_tolerance
+    facing = base_facing_error(env, SceneEntityCfg("fresh_bulb")) < facing_tolerance
     calm = env.scene["robot"].data.root_lin_vel_w.norm(dim=-1) < max_speed
     return near & facing & calm
 

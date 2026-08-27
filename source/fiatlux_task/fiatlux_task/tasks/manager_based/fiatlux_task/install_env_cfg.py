@@ -111,7 +111,7 @@ class ObservationsCfg:
 
     @configclass
     class PrivilegedCfg(ObsGroup):
-        bulb_pose = ObsTerm(func=mdp.root_pose_w, params={"asset_cfg": SceneEntityCfg("bulb")})
+        bulb_pose = ObsTerm(func=mdp.root_pose_w, params={"asset_cfg": SceneEntityCfg("fresh_bulb")})
         socket_pose = ObsTerm(func=mdp.root_pose_w, params={"asset_cfg": SceneEntityCfg("socket")})
 
         def __post_init__(self):
@@ -148,7 +148,7 @@ class EventCfg:
         func=mdp.reset_root_state_uniform,
         mode="reset",
         params={
-            "asset_cfg": SceneEntityCfg("bulb"),
+            "asset_cfg": SceneEntityCfg("fresh_bulb"),
             "pose_range": {"x": (-0.02, 0.02), "y": (-0.02, 0.02)},
             "velocity_range": {},
         },
@@ -217,7 +217,7 @@ class TerminationsCfg:
         params={
             "min_height": BULB_DROP_HEIGHT,
             "disposal_threshold": BIN_CLEARANCE,
-            "asset_cfg": SceneEntityCfg("bulb"),
+            "asset_cfg": SceneEntityCfg("fresh_bulb"),
             "bin_cfg": SceneEntityCfg("bin"),
         },
     )

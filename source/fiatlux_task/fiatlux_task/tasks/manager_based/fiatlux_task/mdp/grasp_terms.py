@@ -71,7 +71,7 @@ def hand_ladder_distance(env: ManagerBasedRLEnv) -> torch.Tensor:
 
 def hand_bulb_distance(env: ManagerBasedRLEnv) -> torch.Tensor:
     """Distance (m) from the right hand to the fresh bulb; S11's reach signal."""
-    bulb: RigidObject = env.scene["bulb"]
+    bulb: RigidObject = env.scene["fresh_bulb"]
     return torch.norm(_right_hand_pos_w(env) - bulb.data.root_pos_w, dim=1)
 
 

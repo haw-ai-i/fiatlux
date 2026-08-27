@@ -125,7 +125,7 @@ class ObservationsCfg:
     class PrivilegedCfg(ObsGroup):
         """Ground-truth ("cheat") observations for the critic / scripted baselines."""
 
-        bulb_pose = ObsTerm(func=mdp.root_pose_w, params={"asset_cfg": SceneEntityCfg("bulb")})
+        bulb_pose = ObsTerm(func=mdp.root_pose_w, params={"asset_cfg": SceneEntityCfg("fresh_bulb")})
         socket_pose = ObsTerm(func=mdp.root_pose_w, params={"asset_cfg": SceneEntityCfg("socket")})
 
         def __post_init__(self):
@@ -171,7 +171,7 @@ class EventCfg:
         func=mdp.reset_root_state_uniform,
         mode="reset",
         params={
-            "asset_cfg": SceneEntityCfg("bulb"),
+            "asset_cfg": SceneEntityCfg("fresh_bulb"),
             "pose_range": {"x": (-0.02, 0.02), "y": (-0.02, 0.02)},
             "velocity_range": {},
         },
@@ -282,7 +282,7 @@ class TerminationsCfg:
     )
     bulb_dropped = DoneTerm(
         func=mdp.object_dropped,
-        params={"asset_cfg": SceneEntityCfg("bulb"), "min_height": 0.4},
+        params={"asset_cfg": SceneEntityCfg("fresh_bulb"), "min_height": 0.4},
     )
     # Fall detection (the family RL gate: end solver-kick episodes immediately). A
     # collapsed free-base G1 draped over the kinematic table accumulates violent

@@ -123,20 +123,23 @@ from isaaclab_tasks.utils import parse_env_cfg
 # ``room`` and ``pendant`` are per-env (each env owns a colliding room), so they belong to
 # the tracked list -- their prim paths carry {ENV_REGEX_NS} and only resolve under env_0.
 GLOBAL_CANDIDATES = ["ground", "dome_light", "key_light"]
-TRACKED_CANDIDATES = ["robot", "ladder", "lamp", "socket", "bulb", "old_bulb", "table", "bin", "room", "pendant"]
+TRACKED_CANDIDATES = ["robot", "ladder", "lamp", "socket", "fresh_bulb", "old_bulb", "table", "bin", "room", "pendant"]
 
 # Presence expectations per scene preset (env cfg attr `scene_preset`): entities that MUST
 # be present / MUST be absent. Layout *positions* are covered generically by the
 # init-state drift check, which compares spawned poses to the cfg's own init_state.
+# Every preset states its bulb role. A bulb seated in the socket is ``old_bulb``, one anywhere
+# else is ``fresh_bulb`` (issue #76 Step 1), and the pair of expectations below is what stops a
+# preset from silently inheriting or dropping one -- the failure mode the rename exists to end.
 PRESET_PRESENCE = {
-    "tabletop": ({"table"}, {"ladder"}),
-    "workshop": ({"ladder"}, {"table"}),
-    "carry": ({"ladder"}, {"table"}),
-    "climb": ({"ladder"}, {"table"}),
-    "descend": ({"ladder"}, {"table"}),
-    "remove": ({"table", "bin"}, {"ladder"}),
-    "install": ({"table", "bin"}, {"ladder"}),
-    "replace": ({"table", "ladder", "bin", "old_bulb"}, set()),
+    "tabletop": ({"table", "fresh_bulb"}, {"ladder", "old_bulb"}),
+    "workshop": ({"ladder", "fresh_bulb"}, {"table", "old_bulb"}),
+    "carry": ({"ladder", "old_bulb"}, {"table", "fresh_bulb"}),
+    "climb": ({"ladder", "fresh_bulb"}, {"table", "old_bulb"}),
+    "descend": ({"ladder", "fresh_bulb"}, {"table", "old_bulb"}),
+    "remove": ({"table", "bin", "old_bulb"}, {"ladder", "fresh_bulb"}),
+    "install": ({"table", "bin", "fresh_bulb"}, {"ladder", "old_bulb"}),
+    "replace": ({"table", "ladder", "bin", "old_bulb", "fresh_bulb"}, set()),
 }
 
 # where --record writes MP4s (repo-root logs/ dir, next to the RL runs; gitignored)
@@ -287,6 +290,10 @@ def main() -> int:
     kinematic_props = [n for n in rigid_tracked if is_kinematic(n)]
     dynamic_props = [n for n in rigid_tracked if not is_kinematic(n)]
     robot = base.scene["robot"]
+    # Which bulb this preset built. Named by placement since #76 Step 1: seated in the socket is
+    # ``old_bulb``, anywhere else is ``fresh_bulb``. Remove and Carry build only the seated one,
+    # so a hardcoded lookup covers neither.
+    bulb_entity = "fresh_bulb" if "fresh_bulb" in base.scene.rigid_objects else "old_bulb"
 
     # =========================== 1. ASSETS PRESENT ===========================
     print("\n[verify] (1) Assets present")
@@ -360,7 +367,7 @@ def main() -> int:
         base.step(actions)
         if render_viewer:
             base.sim.render()
-        if torch.isnan(robot.data.root_pos_w).any() or torch.isnan(base.scene["bulb"].data.root_pos_w).any():
+        if torch.isnan(robot.data.root_pos_w).any() or torch.isnan(base.scene[bulb_entity].data.root_pos_w).any():
             nan_seen = True
             break
         rz = robot.data.root_pos_w[:, 2]
@@ -449,7 +456,7 @@ def main() -> int:
     # root: the bulb asset's origin sits BULB_STAND_Z_OFFSET *below* its own screw cap, so a
     # bulb legitimately standing on the floor reads a negative root z and a root-based test
     # would fail every time.
-    bulb_z = base.scene["bulb"].data.root_pos_w[:, 2]
+    bulb_z = base.scene[bulb_entity].data.root_pos_w[:, 2]
     bulb_bottom = bulb_z + BULB_STAND_Z_OFFSET
     record(
         "bulb:above_floor",
