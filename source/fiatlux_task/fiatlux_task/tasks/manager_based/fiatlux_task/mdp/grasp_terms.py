@@ -34,17 +34,39 @@ from isaaclab.managers import SceneEntityCfg
 from isaaclab.sensors import ContactSensor
 from isaaclab.utils.math import quat_apply
 
-from fiatlux_task.robots.g1 import G1_PALM_BODIES
+from fiatlux_task.robots.g1 import G1_PALM_BODY_BY_VARIANT
 
 from .place_terms import ladder_feet_height
 
 if TYPE_CHECKING:
     from isaaclab.envs import ManagerBasedRLEnv
 
-# The right-hand palm body, every G1 variant this family builds against (Inspire). Grasp
-# reach signals measure to this point rather than to a fingertip -- close enough for a dense
-# shaping term, and one body avoids picking a "the" grasping digit that differs per variant.
-_RIGHT_PALM_BODY = G1_PALM_BODIES[1]
+# Grasp reach signals measure to the right-hand palm body rather than to a fingertip -- close
+# enough for a dense shaping term, and one body avoids picking a "the" grasping digit that
+# differs per variant. WHICH body that is depends on the mounted hand (Inspire names it
+# ``right_hand_base_link``, Dex3 ``right_hand_palm_link``), so it is resolved from the attached
+# articulation instead of hardcoded: ``swap_robot_variant`` rewrites joint names only, never
+# body names, so a hardcoded palm here crashes env creation on the other variant.
+_PALM_ID_CACHE_ATTR = "_fiatlux_right_palm_body_id"
+
+
+def _right_palm_body_id(robot: Articulation) -> int:
+    """Body index of the right palm on whichever G1 hand variant is mounted."""
+    cached = getattr(robot, _PALM_ID_CACHE_ATTR, None)
+    if cached is not None:
+        return cached
+    for name in G1_PALM_BODY_BY_VARIANT.values():
+        if name in robot.body_names:
+            body_id = robot.find_bodies(name)[0][0]
+            try:
+                setattr(robot, _PALM_ID_CACHE_ATTR, body_id)
+            except AttributeError:
+                pass  # not cacheable on this object; resolving per call is still correct
+            return body_id
+    raise ValueError(
+        "no known G1 right-palm body on the attached robot (looked for "
+        f"{sorted(G1_PALM_BODY_BY_VARIANT.values())}); its bodies are {robot.body_names}"
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -55,7 +77,7 @@ _RIGHT_PALM_BODY = G1_PALM_BODIES[1]
 def _right_hand_pos_w(env: ManagerBasedRLEnv) -> torch.Tensor:
     """World position of the right-hand palm body."""
     robot: Articulation = env.scene["robot"]
-    body_id = robot.find_bodies(_RIGHT_PALM_BODY)[0][0]
+    body_id = _right_palm_body_id(robot)
     return robot.data.body_pos_w[:, body_id, :]
 
 
