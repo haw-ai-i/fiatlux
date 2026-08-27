@@ -32,8 +32,12 @@ from ..mdp.nav_terms import (
     GRIP_FORCE_THRESHOLD_N,
     LADDER_MOUNT_RADIUS,
     add_grip_contact_sensor,
-    arrived_carrying_bulb,
+    base_calm,
+    base_facing,
+    base_near,
     compose_carried_pose,
+    ladder_upright,
+    payload_held,
     settle_carried_payload_live,
 )
 from ..scene_cfg import (
@@ -42,8 +46,8 @@ from ..scene_cfg import (
     apply_replace_preset,
     face_robot_at,
     frame_viewer_between,
-    stand_robot_at_offset,
     park_old_bulb_in_crate,
+    stand_robot_at_offset,
 )
 from ..subtask_env_cfg import (
     ARRIVAL_FACING_TOLERANCE,
@@ -53,6 +57,16 @@ from ..subtask_env_cfg import (
     SubtaskEventCfg,
     SubtaskTerminationsCfg,
 )
+
+# The success gate as data (mdp.all_of): an omitted conjunct in a hand-written conjunction is a
+# gate that passes vacuously.
+AT_LADDER_WITH_BULB_CONJUNCTS = [
+    (base_near, {"asset_cfg": SceneEntityCfg("ladder"), "xy_radius": LADDER_MOUNT_RADIUS}),
+    (base_facing, {"asset_cfg": SceneEntityCfg("ladder"), "facing_tolerance": ARRIVAL_FACING_TOLERANCE}),
+    (base_calm, {"max_speed": ARRIVAL_MAX_SPEED}),
+    (payload_held, {"sensor_cfg": SceneEntityCfg("grip_contact"), "force_threshold": GRIP_FORCE_THRESHOLD_N}),
+    (ladder_upright, {"tilt_limit": mdp.LADDER_TILT_LIMIT}),
+]
 
 
 @configclass
@@ -102,13 +116,8 @@ class S09CarryBulbToLadderEnvCfg(NavigateSubtaskCfg):
     orbit_radius: float = 5.0
     orbit_height: float = 2.4
 
-    success_predicate = arrived_carrying_bulb
-    success_params: dict | None = {
-        "xy_radius": LADDER_MOUNT_RADIUS,
-        "facing_tolerance": ARRIVAL_FACING_TOLERANCE,
-        "max_speed": ARRIVAL_MAX_SPEED,
-        "grip_force_threshold": GRIP_FORCE_THRESHOLD_N,
-    }
+    success_predicate = mdp.all_of
+    success_params: dict | None = {"predicates": AT_LADDER_WITH_BULB_CONJUNCTS}
     progress_distance_fn = mdp.base_ladder_distance
 
     events: S09EventCfg = S09EventCfg()

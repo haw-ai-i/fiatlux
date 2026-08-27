@@ -6,19 +6,16 @@
 """Exercise ``FIATLUX-S01-MoveLadder-v0``'s start state and success gate, with PASS/FAIL per item.
 
 ``verify_scene.py`` covers the scene (assets, colliders, settling, penetration); this covers the
-two things that are actually this subtask's deliverable -- that the episode starts where the plan
-says, and that the gate fires on the deliverable and on nothing else.
+start state and the success gate.
 
 The gate is read through the env's own termination manager, so what is measured is what a rollout
-scores. Staging is done by writing the ladder's root pose once per case and letting it settle:
-re-writing it every step would hold ``object_at_rest`` false, which is that conjunct working.
-The robot's root is pinned each step so the cases measure the LADDER conjuncts rather than whether
-an unactuated G1 stays upright for a second.
+scores. The ladder's root pose is written once per case and left to settle -- re-writing it every
+step holds ``object_at_rest`` false. The robot's root is pinned each step, so the cases measure
+the ladder conjuncts rather than whether an unactuated G1 stays upright.
 
-The "at the fixture" pose is not invented here -- it is the ladder pose the rest of the chain
-spawns (``apply_replace_preset(couple_ladder_to_fixture=True)``, read off S02 at the same layout
-seed), i.e. exactly the state this subtask exists to produce. A gate that does not fire there
-would mean S01 and its successors disagree about where the ladder belongs.
+The "at the fixture" pose is the one the rest of the chain spawns
+(``apply_replace_preset(couple_ladder_to_fixture=True)``, read off S02 at the same layout seed):
+a gate that does not fire there means S01 and its successors disagree about where the ladder goes.
 
 Examples
 --------
@@ -122,8 +119,7 @@ def run_case(steps: int, **stage) -> tuple[dict[str, bool], float, int, int]:
     stage_ladder(**stage)
     last, last_xy, success_at, tipped_at = conjuncts(), ladder_fixture_xy(), -1, -1
     for i in range(steps):
-        # Read BEFORE the step: env.step auto-resets on termination, which would otherwise
-        # restore the drawn layout before the gate could be inspected.
+        # Read before the step: env.step auto-resets on termination, restoring the drawn layout.
         last, last_xy = conjuncts(), ladder_fixture_xy()
         robot.write_root_pose_to_sim(pinned_root)
         robot.write_root_velocity_to_sim(torch.zeros((1, 6), device=env.device))

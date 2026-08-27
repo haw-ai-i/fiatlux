@@ -25,12 +25,15 @@ from fiatlux_task.poses import ARM_CRADLE, HAND_CUP
 from .. import mdp
 from ..mdp.nav_terms import (
     DISPOSAL_ARRIVAL_RADIUS,
-    LADDER_MOUNT_RADIUS,
     GRIP_FORCE_THRESHOLD_N,
+    LADDER_MOUNT_RADIUS,
     add_grip_contact_sensor,
-    arrived_carrying_old_bulb,
+    base_calm,
     base_disposal_distance,
+    base_facing,
+    base_near,
     compose_carried_pose,
+    payload_held,
     settle_carried_payload_live,
 )
 from ..scene_cfg import (
@@ -42,6 +45,15 @@ from ..scene_cfg import (
     stand_robot_near,
 )
 from ..subtask_env_cfg import ARRIVAL_FACING_TOLERANCE, ARRIVAL_MAX_SPEED, NavigateSubtaskCfg, SubtaskEventCfg
+
+# The success gate as data (mdp.all_of). Without the grip conjunct a thrown bulb that skids into
+# the crate's radius would score.
+OLD_BULB_AT_CRATE_CONJUNCTS = [
+    (base_near, {"asset_cfg": SceneEntityCfg("bin"), "xy_radius": DISPOSAL_ARRIVAL_RADIUS}),
+    (base_facing, {"asset_cfg": SceneEntityCfg("bin"), "facing_tolerance": ARRIVAL_FACING_TOLERANCE}),
+    (base_calm, {"max_speed": ARRIVAL_MAX_SPEED}),
+    (payload_held, {"sensor_cfg": SceneEntityCfg("grip_contact"), "force_threshold": GRIP_FORCE_THRESHOLD_N}),
+]
 
 
 @configclass
@@ -81,13 +93,8 @@ class S05CarryBulbToDisposalEnvCfg(NavigateSubtaskCfg):
     orbit_radius: float = 5.0
     orbit_height: float = 2.4
 
-    success_predicate = arrived_carrying_old_bulb
-    success_params: dict | None = {
-        "xy_radius": DISPOSAL_ARRIVAL_RADIUS,
-        "facing_tolerance": ARRIVAL_FACING_TOLERANCE,
-        "max_speed": ARRIVAL_MAX_SPEED,
-        "grip_force_threshold": GRIP_FORCE_THRESHOLD_N,
-    }
+    success_predicate = mdp.all_of
+    success_params: dict | None = {"predicates": OLD_BULB_AT_CRATE_CONJUNCTS}
     progress_distance_fn = base_disposal_distance
     events: S05EventCfg = S05EventCfg()
 

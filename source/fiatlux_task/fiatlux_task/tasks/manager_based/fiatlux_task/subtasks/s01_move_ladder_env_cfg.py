@@ -12,14 +12,10 @@ randomized layout rather than composed from a predecessor's end state -- the rob
 own zone with both hands free, and the ladder in its own, independently-sampled one
 (``couple_ladder_to_fixture`` stays off: positioning the ladder is the task).
 
-**Success is the ladder standing at the fixture, and nothing about how it got there.** The four
-retired gates between them also required a rail grasped, the ladder's feet lifted clear of the
-floor, the grip retained through the traverse, the hand released at the end, and the robot left on
-the ladder's step-facing side. None of those are conditions on the deliverable; each is one more
-way for an operator who has already stood the ladder where it belongs to score zero. Carrying it,
-dragging it, shouldering it, pushing it across the floor, or nudging it along a foot at a time all
-count the same. Nothing here reads a contact sensor -- this leaf adds none -- so no gate can tell
-those apart. What remains is the deliverable itself, held for ``PLACE_SUSTAIN_SECONDS``:
+**Success is the ladder standing at the fixture, and nothing about how it got there.** Carrying,
+dragging, shouldering, pushing along the floor and nudging it a foot at a time all count the same:
+this leaf adds no contact sensor, so no gate can tell them apart. The gate is the deliverable
+itself, held for ``PLACE_SUSTAIN_SECONDS``:
 
 * ``ladder_ready`` -- the ladder's top is horizontally within ``LADDER_READY_XY_RADIUS`` of the
   fixture and the ladder is upright;
@@ -28,16 +24,13 @@ those apart. What remains is the deliverable itself, held for ``PLACE_SUSTAIN_SE
 * ``object_at_rest`` -- it has settled, not swung through;
 * ``robot_standing`` -- the robot has not collapsed on the step the gate would otherwise fire.
 
-The successor climbs the ladder from a stance it spawns for itself
-(``subtask_tiers.balance.stand_robot_at_ladder_base``), so dropping the retired
-``robot_at_ladder_base`` conjunct costs the chain nothing: where this leg leaves the robot was
-never what the next leg started from.
+The successor climbs from a stance it spawns for itself
+(``subtask_tiers.balance.stand_robot_at_ladder_base``), so the retired ``robot_at_ladder_base``
+conjunct constrained a handoff that does not exist at run time.
 
-The ONE remaining constraint on how the ladder travels is ``ladder_tipped`` (0.6 rad from
-vertical), which terminates the episode. It is the family's shared constant, carried by nine other
-leaves and by ``FIATLUX-Replace-v0``, and it is what "standing" means here -- so laying the ladder
-flat and walking it end over end is out, while a 34-degree lean while shoving it along is not. If
-end-over-end walking is wanted, that is a change to this leaf's tilt bound, not to the gate.
+The one remaining constraint on how the ladder travels is the ``ladder_tipped`` termination
+(0.6 rad from vertical), the family's shared constant and what "standing" means here: a 34-degree
+lean while shoving the ladder along passes, laying it flat and walking it end over end does not.
 """
 
 from isaaclab.managers import RewardTermCfg as RewTerm
@@ -87,9 +80,9 @@ LADDER_MOVED_CONJUNCTS = [
 @configclass
 class S01RewardsCfg(PlaceRewardsCfg):
     """The place tier's ``placement_progress`` (ladder -> fixture) plus the navigate tier's
-    ``approach_progress`` (robot -> ladder), under both canonical names and both canonical
-    functions: this leaf spans the two legs those tiers score separately, and without the second
-    channel the breakdown is silent for the whole walk out to the ladder."""
+    ``approach_progress`` (robot -> ladder), under both canonical names: this leaf spans the two
+    legs those tiers score separately, and without the second channel the breakdown is silent for
+    the walk out to the ladder."""
 
     approach_progress = RewTerm(
         func=mdp.distance_progress, weight=500.0, params={"distance_fn": mdp.base_ladder_distance}
@@ -133,7 +126,6 @@ class S01MoveLadderEnvCfg(PlaceSubtaskCfg):
         add_ego_camera(self.scene)
         add_mid360_lidar(self.scene)
         # The three retired horizons summed (20 s approach + 45 s loaded traverse + 20 s
-        # placement), rounded up. PROVISIONAL, like every horizon in the family that no rollout
-        # has set.
+        # placement), rounded up. PROVISIONAL: no rollout has set it.
         self.episode_length_s = 90.0
         frame_viewer_between(self.viewer, self.scene.robot.init_state.pos, self.scene.ladder.init_state.pos)

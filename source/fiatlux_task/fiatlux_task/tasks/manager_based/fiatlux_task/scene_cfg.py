@@ -213,17 +213,15 @@ ZONE_MARGIN = 0.5  # minimum gap left between any two zones' bounding squares
 # reach and went unasserted, because both reach guards below are derived from the ceiling mount
 # and MAX_REACHABLE_MOUNT_Z checks height only.
 LADDER_LADDER_HALF_DEPTH = 0.49  # m, half the ladder's 0.979 m footprint depth
-# How far the ladder's reserved anchor sits from the fixture, measured in the floor plane from
-# the wall face or from the point directly beneath a ceiling mount. BOTH mount kinds: a ceiling
-# anchor used to sit exactly under the fixture, which put the on-ladder working stance's chest
-# inside it (see LADDER_FIXTURE_MIN_STANDOFF).
+# How far the ladder's reserved anchor sits from the fixture in the floor plane -- from the wall
+# face, or from the point directly beneath a ceiling mount. Both mount kinds: an anchor under a
+# ceiling fixture puts the on-ladder working stance's chest inside it.
 LADDER_FIXTURE_STANDOFF = 0.60  # m; for a wall draw that leaves 0.11 m of clearance behind the ladder
-# The stance has to clear the fixture, not just reach it. From the working stance the pelvis is
-# at 1.967 m and the fixture at 2.200 m, so the fixture sits at chest height and the robot's own
-# torso is what collides -- an arm reaching for it is the task, a shoulder occupying it is not.
-# MEASURED 2026-08-26 with ``scripts/verify_ladder_stance.py --measure`` at layout seed 1:
-# the widest non-arm body in a +/-0.15 m band around fixture height is right_shoulder_yaw_link at
-# 0.152 m from the pelvis axis, and the mounted socket's own AABB half-extents are 0.074 x 0.081 m.
+# The stance must clear the fixture, not just reach it: the working stance's pelvis is at 1.967 m
+# and the fixture at 2.200 m, so the fixture is at chest height and the torso is what collides.
+# MEASURED 2026-08-26, ``scripts/verify_ladder_stance.py --measure`` at layout seed 1: the widest
+# non-arm body in a +/-0.15 m band around fixture height is right_shoulder_yaw_link at 0.152 m
+# from the pelvis axis; the mounted socket's AABB half-extents are 0.074 x 0.081 m.
 G1_STANCE_TORSO_HALF_EXTENT = 0.152  # m
 FIXTURE_HALF_EXTENT = 0.081  # m
 # reset_robot_root jitters the stance +/-5 cm on each floor axis, so the worst case is the diagonal.
@@ -908,9 +906,8 @@ def _bearing_into_room(origin: Vec2, bearing: Vec2, standoff: float) -> Vec2:
     """Flip whichever component of ``bearing`` would push ``origin + bearing * standoff`` out of
     the floor box, so the offset point stays inside it.
 
-    Clamping the result instead would silently shorten the standoff -- and shortening it is
-    exactly the failure this offset exists to prevent. Reflection always succeeds: the room is
-    metres across and the fixture is inset from both bounds, so at most one axis can violate.
+    Reflected rather than clamped: clamping shortens the standoff, which is the failure this
+    offset prevents. At most one axis can violate, since the fixture is inset from both bounds.
     """
     out = [bearing[0], bearing[1]]
     for axis in (0, 1):
@@ -949,18 +946,16 @@ def set_layout_seed(seed: int | None) -> None:
 def _sample_fixture_mount(rng: random.Random) -> FixtureMount:
     """Randomly mount the fixture on the ceiling or a wall.
 
-    Returns ``(mount_kind, position, orientation, anchor_bearing, ladder_anchor)``. The anchor
-    is the floor point the ladder has to be able to stand on for the fixture to be workable, and
-    for BOTH mount kinds that is ``LADDER_FIXTURE_STANDOFF`` out from the fixture along the
-    bearing -- the wall's inward normal, or a sampled direction for a ceiling mount.
+    Returns ``(mount_kind, position, orientation, anchor_bearing, ladder_anchor)``. The anchor is
+    the floor point the ladder has to stand on for the fixture to be workable: for both mount
+    kinds, ``LADDER_FIXTURE_STANDOFF`` out from the fixture along the bearing -- the wall's inward
+    normal, or a sampled direction for a ceiling mount.
 
-    A ceiling anchor used to be the point directly beneath the fixture, which is wrong for the
-    same reason nobody stands with their head where the lamp is. ``stand_robot_on_ladder_top``
-    puts the pelvis over the ladder's root, and the fixture hangs 0.233 m above that pelvis --
-    i.e. at chest height, not overhead -- so an anchor under the fixture spawned the working
-    stance with the socket inside its torso (``imu_in_torso`` 0.039 m off the fixture axis,
-    measured). The robot then hung on the fixture's kinematic collider instead of falling. Both
-    mount kinds now stand the ladder off, so the fixture is in front of the stance either way.
+    The standoff applies to a ceiling mount too because ``stand_robot_on_ladder_top`` puts the
+    pelvis over the ladder's root and the fixture hangs only 0.233 m above it, at chest height.
+    An anchor directly beneath the fixture spawns the stance with the socket inside its torso
+    (``imu_in_torso`` 0.039 m off the fixture axis, measured), and the robot hangs on the
+    fixture's kinematic collider instead of falling.
 
     The mount is sampled so that the anchor's whole ladder zone fits inside the room, which
     is why the inset is a ladder zone rather than a decorative half-metre -- a fixture in the
@@ -977,8 +972,7 @@ def _sample_fixture_mount(rng: random.Random) -> FixtureMount:
         x = rng.uniform(ROOM_FLOOR_MIN[0] + inset, ROOM_FLOOR_MAX[0] - inset)
         y = rng.uniform(ROOM_FLOOR_MIN[1] + inset, ROOM_FLOOR_MAX[1] - inset)
         # A wall dictates which side the ladder stands on; a ceiling does not, so the bearing is
-        # drawn. Uniform over the circle rather than aligned to the room, so the working stance
-        # approaches the fixture from every direction across a run of layouts.
+        # drawn -- uniform over the circle, so the stance approaches from every direction.
         theta = rng.uniform(0.0, 2.0 * math.pi)
         normal = _bearing_into_room((x, y), (math.cos(theta), math.sin(theta)), standoff)
         anchor = _clamp_to_floor((x + normal[0] * standoff, y + normal[1] * standoff), LADDER_ANCHOR_HALF_SIZE)
@@ -1098,9 +1092,7 @@ def _sample_replace_layout(
         ladder_yaw = rng.uniform(0.0, 360.0)
         if couple_ladder_to_fixture:
             # Turn the ladder back down its own standoff bearing, so the stance on its tread
-            # faces the fixture. Applies to a ceiling draw as much as a wall one now that both
-            # stand off; before, a coupled ceiling ladder kept the free yaw and the stance faced
-            # whichever way the draw happened to point.
+            # faces the fixture. Both mount kinds, since both stand off.
             ladder_yaw = math.degrees(math.atan2(-anchor_bearing[1], -anchor_bearing[0]))
 
         half_sizes = [

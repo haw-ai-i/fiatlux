@@ -10,19 +10,36 @@ just pointed at the fresh bulb instead of the ladder. Success is arriving within
 bulb, facing it, standing -- no grip conjunct, since nothing is held yet.
 """
 
+from isaaclab.managers import SceneEntityCfg
 from isaaclab.utils import configclass
 
-from ..mdp.nav_terms import BULB_APPROACH_RADIUS, DISPOSAL_ARRIVAL_RADIUS, arrived_at_bulb, base_bulb_distance
+from .. import mdp
+from ..mdp.nav_terms import (
+    BULB_APPROACH_RADIUS,
+    DISPOSAL_ARRIVAL_RADIUS,
+    base_bulb_distance,
+    base_calm,
+    base_facing,
+    base_near,
+)
 from ..scene_cfg import (
     add_ego_camera,
     add_mid360_lidar,
     apply_replace_preset,
     face_robot_at,
     frame_viewer_between,
-    stand_robot_near,
     park_old_bulb_in_crate,
+    stand_robot_near,
 )
 from ..subtask_env_cfg import ARRIVAL_FACING_TOLERANCE, ARRIVAL_MAX_SPEED, NavigateSubtaskCfg
+
+# The success gate as data (mdp.all_of). No payload conjunct: hands are free here, and nothing
+# in this scene can tip over.
+AT_FRESH_BULB_CONJUNCTS = [
+    (base_near, {"asset_cfg": SceneEntityCfg("bulb"), "xy_radius": BULB_APPROACH_RADIUS}),
+    (base_facing, {"asset_cfg": SceneEntityCfg("bulb"), "facing_tolerance": ARRIVAL_FACING_TOLERANCE}),
+    (base_calm, {"max_speed": ARRIVAL_MAX_SPEED}),
+]
 
 
 @configclass
@@ -34,12 +51,8 @@ class S07ApproachNewBulbEnvCfg(NavigateSubtaskCfg):
     orbit_radius: float = 5.0
     orbit_height: float = 2.4
 
-    success_predicate = arrived_at_bulb
-    success_params: dict | None = {
-        "xy_radius": BULB_APPROACH_RADIUS,
-        "facing_tolerance": ARRIVAL_FACING_TOLERANCE,
-        "max_speed": ARRIVAL_MAX_SPEED,
-    }
+    success_predicate = mdp.all_of
+    success_params: dict | None = {"predicates": AT_FRESH_BULB_CONJUNCTS}
     progress_distance_fn = base_bulb_distance
 
     def __post_init__(self) -> None:

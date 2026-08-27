@@ -16,6 +16,7 @@ anywhere, so the stances and success gates read its live pose, not ``LADDER_POSI
 the inverted fixture on every subtask in this file, and nothing else keeps it from falling out
 under gravity. Only S03 and S11 score against it.
 """
+
 import math
 
 from isaaclab.managers import EventTermCfg as EventTerm
@@ -60,6 +61,7 @@ class BalanceEventCfg(SubtaskEventCfg):
             "orientation_tolerance": SEAT_ORI_THRESHOLD,
         },
     )
+
 
 # Shared by every climb/descend gate in the family.
 LADDER_SUCCESS_XY_RADIUS = 0.6  # m

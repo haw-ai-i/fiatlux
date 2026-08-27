@@ -44,7 +44,7 @@ from ..scene_cfg import (
     TABLETOP_ROBOT_POSITION,
     G1ReplaceSceneCfg,
 )
-from .rewards import LADDER_TILT_LIMIT, base_facing_error, base_ladder_distance, ladder_tipped
+from .rewards import base_facing_error, ladder_tipped
 
 if TYPE_CHECKING:
     from isaaclab.envs import ManagerBasedRLEnv
@@ -252,51 +252,31 @@ def base_bulb_distance(env: ManagerBasedRLEnv) -> torch.Tensor:
 
 
 # ---------------------------------------------------------------------------
-# Arrival predicates
+# Arrival conjuncts
 # ---------------------------------------------------------------------------
+# One condition each, so a leaf's gate is an ``mdp.all_of`` list rather than a function that
+# ``&``s them together in its own body. A list can be read from outside: tests assert a conjunct
+# is present, and ``mdp.gates.gate_progress`` counts how many an episode satisfied.
 
 
-def arrived_at_bulb(
-    env: ManagerBasedRLEnv,
-    xy_radius: float,
-    facing_tolerance: float,
-    max_speed: float,
-) -> torch.Tensor:
-    """The robot has walked to the fresh bulb and stopped, hands free: near enough, facing it,
-    below the speed cap. No tip conjunct -- nothing here can tip over."""
-    near = base_bulb_distance(env) < xy_radius
-    facing = base_facing_error(env, SceneEntityCfg("bulb")) < facing_tolerance
-    calm = env.scene["robot"].data.root_lin_vel_w.norm(dim=-1) < max_speed
-    return near & facing & calm
+def base_near(env: ManagerBasedRLEnv, asset_cfg: SceneEntityCfg, xy_radius: float) -> torch.Tensor:
+    """True where the robot's root is horizontally within ``xy_radius`` of the entity's root."""
+    robot: Articulation = env.scene["robot"]
+    target: RigidObject = env.scene[asset_cfg.name]
+    return torch.norm((robot.data.root_pos_w - target.data.root_pos_w)[:, :2], dim=1) < xy_radius
 
 
-def arrived_carrying_old_bulb(
-    env: ManagerBasedRLEnv,
-    xy_radius: float,
-    facing_tolerance: float,
-    max_speed: float,
-    grip_force_threshold: float,
-) -> torch.Tensor:
-    """``arrived_at_bulb``'s shape, pointed at the disposal crate, plus the grip conjunct:
-    without it a thrown bulb that skids into the crate's radius would score."""
-    near = base_disposal_distance(env) < xy_radius
-    facing = base_facing_error(env, SceneEntityCfg("bin")) < facing_tolerance
-    calm = env.scene["robot"].data.root_lin_vel_w.norm(dim=-1) < max_speed
-    held = payload_held(env, SceneEntityCfg("grip_contact"), grip_force_threshold)
-    return near & facing & calm & held
+def base_facing(env: ManagerBasedRLEnv, asset_cfg: SceneEntityCfg, facing_tolerance: float) -> torch.Tensor:
+    """True where the robot's heading is within ``facing_tolerance`` of the bearing to the entity."""
+    return base_facing_error(env, asset_cfg) < facing_tolerance
 
 
-def arrived_carrying_bulb(
-    env: ManagerBasedRLEnv,
-    xy_radius: float,
-    facing_tolerance: float,
-    max_speed: float,
-    grip_force_threshold: float,
-) -> torch.Tensor:
-    """``arrived_at_bulb``'s shape pointed at the ladder, plus an upright-ladder conjunct and the
-    grip conjunct for the fresh bulb carried back to it."""
-    near = base_ladder_distance(env) < xy_radius
-    facing = base_facing_error(env, SceneEntityCfg("ladder")) < facing_tolerance
-    calm = env.scene["robot"].data.root_lin_vel_w.norm(dim=-1) < max_speed
-    held = payload_held(env, SceneEntityCfg("grip_contact"), grip_force_threshold)
-    return near & facing & calm & held & ~ladder_tipped(env, LADDER_TILT_LIMIT)
+def base_calm(env: ManagerBasedRLEnv, max_speed: float) -> torch.Tensor:
+    """True where the robot's root speed is under ``max_speed`` -- rejects scoring while still
+    charging at the target."""
+    return env.scene["robot"].data.root_lin_vel_w.norm(dim=-1) < max_speed
+
+
+def ladder_upright(env: ManagerBasedRLEnv, tilt_limit: float) -> torch.Tensor:
+    """True where the ladder has NOT tipped past ``tilt_limit``."""
+    return ~ladder_tipped(env, tilt_limit)

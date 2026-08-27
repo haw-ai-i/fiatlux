@@ -57,7 +57,7 @@ from .events import (  # noqa: F401
     randomize_material_tint,
     randomize_prop_scale,
 )
-from .gates import all_of, success_term_fired, sustained  # noqa: F401
+from .gates import all_of, conjuncts_of, gate_progress, success_term_fired, sustained  # noqa: F401
 from .observations import (  # noqa: F401
     contact_net_forces,
     lidar_ranges,

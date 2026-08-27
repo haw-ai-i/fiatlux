@@ -5,14 +5,13 @@
 
 """Check that the on-ladder working stance stands CLEAR of the fixture, on every layout draw.
 
-The bug this exists to catch: ``stand_robot_on_ladder_top`` puts the pelvis over the ladder's
-root, and the fixture hangs only 0.233 m above that pelvis -- chest height, not overhead. A
-layout that stands the ladder directly beneath the fixture therefore spawns the robot with the
-socket inside its torso. It does not fall out; the socket is a kinematic rigid body with an exact
-triangle-mesh collider, so the robot **hangs on it** and the whole subtask scores against a
-start state no policy produced. Ceiling mounts did exactly that, on roughly half of all seeds.
+``stand_robot_on_ladder_top`` puts the pelvis over the ladder's root, and the fixture hangs only
+0.233 m above it -- chest height, not overhead. A layout that stands the ladder directly beneath
+the fixture spawns the robot with the socket inside its torso, and because the socket is a
+kinematic rigid body with an exact triangle-mesh collider the robot hangs on it instead of
+falling.
 
-Two passes, because they fail in opposite directions:
+Two passes, which fail in opposite directions:
 
 * ``geometry`` -- cfg-level, no simulation, so it can sweep many seeds. Asserts the stance is
   further from the fixture than ``LADDER_FIXTURE_MIN_STANDOFF`` on every draw. Cheap enough to
@@ -23,8 +22,8 @@ Two passes, because they fail in opposite directions:
   ``ManagerBasedRLEnv`` in the same process after ``close()`` hangs -- covering both mount kinds
   is two invocations (``--physics_seed``), not two passes.
 
-``--measure`` re-derives the two constants the guard is built from (the robot's torso half-extent
-at fixture height and the socket's own AABB) instead of checking anything.
+``--measure`` re-derives the two constants the guard is built from -- the robot's torso
+half-extent at fixture height and the socket's AABB -- instead of checking anything.
 
 Examples
 --------
@@ -79,9 +78,8 @@ from fiatlux_task.tasks.manager_based.fiatlux_task.subtasks.s03_remove_old_bulb_
 from isaaclab_tasks.utils import parse_env_cfg  # noqa: E402
 
 TASK = "FIATLUX-S03-RemoveOldBulb-v0"
-# Bodies that are SUPPOSED to reach the fixture -- taking the bulb out of it is the task.
-# Everything else has to clear it. ``hand`` is in the list for ``*_hand_base_link``, which is
-# the wrist end of the palm and reads as a torso body without it.
+# Bodies that are meant to reach the fixture; everything else must clear it. ``hand`` covers
+# ``*_hand_base_link``, the wrist end of the palm, which reads as a torso body without it.
 ARM_TOKENS = ("thumb", "index", "middle", "ring", "pinky", "wrist", "elbow", "hand")
 results: list[tuple[str, bool, str]] = []
 
@@ -104,8 +102,8 @@ def stance_geometry(seed: int) -> tuple[str, float]:
 def build(seed: int):
     set_layout_seed(seed)
     cfg = parse_env_cfg(TASK, num_envs=1)
-    # The jitter is already accounted for in LADDER_FIXTURE_MIN_STANDOFF; drop it here so the
-    # measurement is of the authored stance rather than of one draw from around it.
+    # LADDER_FIXTURE_MIN_STANDOFF already accounts for the jitter; drop it so the measurement is
+    # of the authored stance.
     cfg.events.reset_robot_root = None
     env = gym.make(TASK, cfg=cfg).unwrapped
     env.reset()
