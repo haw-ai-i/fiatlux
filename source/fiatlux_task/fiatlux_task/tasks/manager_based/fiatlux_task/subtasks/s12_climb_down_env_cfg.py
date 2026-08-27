@@ -3,9 +3,9 @@
 #
 # SPDX-License-Identifier: BSD-3-Clause
 
-"""``FIATLUX-S15-ClimbDown-v0`` -- come back down with the new bulb installed. Terminal subtask.
+"""``FIATLUX-S12-ClimbDown-v0`` -- come back down with the new bulb installed. Terminal subtask.
 
-Starts from S14's end state: the robot balanced on the upper steps with hands free, the fresh bulb
+Starts from S11's end state: the robot balanced on the upper steps with hands free, the fresh bulb
 seated in the fixture above, the old bulb at rest in the disposal crate.
 
 What makes this more than a descent is the last conjunct: the bulb must still be seated on
@@ -57,18 +57,18 @@ DESCENDED_INTACT_CONJUNCTS = [
 
 
 @configclass
-class S15RewardsCfg(DescendRewardsCfg):
+class S12RewardsCfg(DescendRewardsCfg):
     # Undoing the task's goal costs what destroying its equipment costs (ladder_tipped).
     bulb_unseated = RewTerm(func=mdp.bulb_unseated, weight=-200.0, params=_SEATING)
 
 
 @configclass
-class S15TerminationsCfg(BalanceTerminationsCfg):
+class S12TerminationsCfg(BalanceTerminationsCfg):
     bulb_unseated = DoneTerm(func=mdp.bulb_unseated, params=_SEATING)
 
 
 @configclass
-class S15ClimbDownEnvCfg(DescendSubtaskCfg):
+class S12ClimbDownEnvCfg(DescendSubtaskCfg):
     """Descend the placed ladder leaving the new bulb installed (randomized Replace layout)."""
 
     # Both hands are free, so the contact bootstrap keeps its full feet-and-palms denominator.
@@ -77,12 +77,12 @@ class S15ClimbDownEnvCfg(DescendSubtaskCfg):
     success_predicate = mdp.all_of
     success_params: dict | None = {"predicates": DESCENDED_INTACT_CONJUNCTS}
 
-    rewards: S15RewardsCfg = S15RewardsCfg()
-    terminations: S15TerminationsCfg = S15TerminationsCfg()
+    rewards: S12RewardsCfg = S12RewardsCfg()
+    terminations: S12TerminationsCfg = S12TerminationsCfg()
 
     def __post_init__(self) -> None:
         super().__post_init__()
-        # S14's end state: the job is done -- fresh bulb in the fixture, old one thrown away.
+        # S11's end state: the job is done -- fresh bulb in the fixture, old one thrown away.
         park_old_bulb_in_crate(self.scene)
         seat_bulb_in_fixture(self.scene)
         self.episode_length_s = 20.0

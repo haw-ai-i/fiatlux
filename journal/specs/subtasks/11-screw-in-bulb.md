@@ -1,6 +1,6 @@
-# S14 — Screw the bulb in while on the ladder
+# S11 — Screw the bulb in while on the ladder
 
-`FIATLUX-S14-ScrewInBulb-v0` · mode **grasping on balance** · object **bulb** + **socket**
+`FIATLUX-S11-ScrewInBulb-v0` · mode **grasping on balance** · object **bulb** + **socket**
 Read `00-foundation.md`, `ABSTRACTIONS.md`, `CONTINUITY.md` and `CRITIQUE.md` first. **Blocked on #54 — read the Blockers section first.**
 
 ## Objective
@@ -10,7 +10,7 @@ seated — the terminal manipulation of the whole task.
 
 ## Start state
 
-`START_STATE["S14"]` = S13's success state:
+`START_STATE["S11"]` = S10's success state:
 
 - Robot on the ladder's upper steps, balanced, fresh bulb in hand (`BULB_IN_ROOT_ON_LADDER`).
 - Ladder standing at the fixture target, at rest.
@@ -54,7 +54,7 @@ reward fights the screw. `object_socket_orientation_tanh` must be on the axis an
 
 Consider exposing the **accumulated signed roll about the mating axis while in contact** as a term
 here — it is the natural home for the spec's "accumulated wrist roll" gate, it costs nothing, and
-S14 is the only subtask that screws anything.
+S11 is the only subtask that screws anything.
 
 ## Terminations
 
@@ -113,7 +113,7 @@ authored. Tracked as **#69**.
 
 As foundation, plus: teleport the bulb to the socket's pose, soak 4 s, and confirm `bulb_seated`
 stays true — the success predicate's own acceptance test · the retained-after-release condition
-tested explicitly with a scripted release · `handoff:S13->S14` and `handoff:S14->S15` pass.
+tested explicitly with a scripted release · `handoff:S10->S11` and `handoff:S11->S12` pass.
 
 ## Blockers
 
@@ -121,7 +121,7 @@ tested explicitly with a scripted release · `handoff:S13->S14` and `handoff:S14
   fixture is inverted; nothing holds the bulb. Author the subtask, validate the start state, test
   every other condition, and mark the gate **provisional**.
 - **`verify_interactions --scenario socket` is 3/6**, all three being bulb↔socket contact (137 N,
-  never settles). Same root cause. Not an S14 regression.
+  never settles). Same root cause. Not an S11 regression.
 - **PR #64** — the fragility bound and the release detection read the filtered channel.
 
 ## As built
@@ -137,7 +137,7 @@ Retained-after-release is expressed by putting `place_terms.object_released` ins
 conjunction: `sustained` requires every conjunct to hold continuously for 1.0 s, so the seating
 must survive the release rather than being re-checked after it.
 
-The fragility bound is a termination, not a gate conjunct — same reasoning as S06.
+The fragility bound is a termination, not a gate conjunct — same reasoning as S03.
 
 The accumulated-signed-roll term this plan suggests considering is **not** implemented. It needs
 per-env state and a reset path, and nothing in this branch can exercise it.

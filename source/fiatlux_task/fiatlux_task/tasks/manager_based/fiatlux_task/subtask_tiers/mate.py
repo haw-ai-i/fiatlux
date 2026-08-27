@@ -3,7 +3,7 @@
 #
 # SPDX-License-Identifier: BSD-3-Clause
 
-"""Shared tier for S06 (remove the old bulb) and S14 (screw the fresh one in).
+"""Shared tier for S03 (remove the old bulb) and S11 (screw the fresh one in).
 
 Both are manipulation performed *while balancing*, so the tier is the balance tier plus the
 manipulation channels: it inherits the placed dynamic ladder, the tipping gates and the on-ladder

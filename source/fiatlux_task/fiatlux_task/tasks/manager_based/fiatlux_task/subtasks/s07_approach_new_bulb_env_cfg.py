@@ -3,9 +3,9 @@
 #
 # SPDX-License-Identifier: BSD-3-Clause
 
-"""``FIATLUX-S10-ApproachNewBulb-v0`` -- walk to the fresh bulb on the bench, hands free.
+"""``FIATLUX-S07-ApproachNewBulb-v0`` -- walk to the fresh bulb on the bench, hands free.
 
-Successor of S03/S04 (ladder placed) and predecessor of S11 (grasp it); a bare walk like S01's,
+Successor of S06 (old bulb binned) and predecessor of S08 (grasp the fresh one); a bare walk,
 just pointed at the fresh bulb instead of the ladder. Success is arriving within reach of the
 bulb, facing it, standing -- no grip conjunct, since nothing is held yet.
 """
@@ -26,7 +26,7 @@ from ..subtask_env_cfg import ARRIVAL_FACING_TOLERANCE, ARRIVAL_MAX_SPEED, Navig
 
 
 @configclass
-class S10ApproachNewBulbEnvCfg(NavigateSubtaskCfg):
+class S07ApproachNewBulbEnvCfg(NavigateSubtaskCfg):
     """Walk to the fresh bulb on the table (randomized Replace layout, hands free)."""
 
     scene_preset: str = "replace"
@@ -44,13 +44,13 @@ class S10ApproachNewBulbEnvCfg(NavigateSubtaskCfg):
 
     def __post_init__(self) -> None:
         super().__post_init__()
-        # S04 already stood the ladder at the fixture; every leg after it inherits that.
+        # S01 already stood the ladder at the fixture; every leg after it inherits that.
         apply_replace_preset(self.scene, couple_ladder_to_fixture=True)
-        # S09's end state: the old bulb is in the crate and the fixture is empty. Without this
+        # S06's end state: the old bulb is in the crate and the fixture is empty. Without this
         # the preset's seated old bulb is still overhead, three subtasks after it was disposed
         # of -- and with no attach FSM on this tier it drops out of the inverted socket at reset.
         park_old_bulb_in_crate(self.scene)
-        # S09's end state: standing at the disposal crate, hands free.
+        # S06's end state: standing at the disposal crate, hands free.
         stand_robot_near(self.scene, self.scene.bin.init_state.pos[:2], DISPOSAL_ARRIVAL_RADIUS)
         # This leg's target is the bulb itself, not the table's own origin apply_replace_preset
         # aims at.

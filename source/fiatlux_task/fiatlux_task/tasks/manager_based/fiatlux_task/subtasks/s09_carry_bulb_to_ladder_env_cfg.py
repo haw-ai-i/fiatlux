@@ -3,17 +3,17 @@
 #
 # SPDX-License-Identifier: BSD-3-Clause
 
-"""``FIATLUX-S12-CarryBulbToLadder-v0`` -- carry the fresh bulb back to the ladder and stop.
+"""``FIATLUX-S09-CarryBulbToLadder-v0`` -- carry the fresh bulb back to the ladder and stop.
 
-Starts from S11's end state: the fresh bulb already held upright in hand
+Starts from S08's end state: the fresh bulb already held upright in hand
 (``BULB_IN_ROOT_STANDING``), composed onto the robot's own (randomized) root pose. The ladder
 itself is untouched from ``apply_replace_preset`` -- it is this leg's navigation target, not its
-payload, and was placed by S04. Success is the robot at the ladder within foot-placement range to
+payload, and was placed by S01. Success is the robot at the ladder within foot-placement range to
 start climbing (``LADDER_MOUNT_RADIUS``, not the grasp-reach ``LADDER_APPROACH_RADIUS``), facing
 it, standing, ladder upright, and the bulb still gripped -- without that last conjunct a thrown
 bulb that skids into the radius would score.
 
-Ladder-tipped termination (unlike S08, which never touches the ladder): walking a carried payload
+Ladder-tipped termination (unlike S05, which never touches the ladder): walking a carried payload
 into the now free-standing, dynamic ladder can knock it over, a failure unrelated to the bulb grip.
 """
 
@@ -56,7 +56,7 @@ from ..subtask_env_cfg import (
 
 
 @configclass
-class S12EventCfg(SubtaskEventCfg):
+class S09EventCfg(SubtaskEventCfg):
     """Re-seats the bulb against the hand's live, actually-simulated pose -- see
     ``nav_terms.settle_carried_payload_live``. Root/joint randomization zeroed for now while
     the open-palm rest calibration is being worked out (adds noise we don't need yet)."""
@@ -84,17 +84,17 @@ class S12EventCfg(SubtaskEventCfg):
 
 
 @configclass
-class S12RewardsCfg(NavigateRewardsCfg):
+class S09RewardsCfg(NavigateRewardsCfg):
     ladder_tipped = RewTerm(func=mdp.ladder_tipped, weight=-200.0, params={"tilt_limit": mdp.LADDER_TILT_LIMIT})
 
 
 @configclass
-class S12TerminationsCfg(SubtaskTerminationsCfg):
+class S09TerminationsCfg(SubtaskTerminationsCfg):
     ladder_tipped = DoneTerm(func=mdp.ladder_tipped, params={"tilt_limit": mdp.LADDER_TILT_LIMIT})
 
 
 @configclass
-class S12CarryBulbToLadderEnvCfg(NavigateSubtaskCfg):
+class S09CarryBulbToLadderEnvCfg(NavigateSubtaskCfg):
     """Carry the fresh bulb back to the ladder (randomized Replace layout, ladder dynamic, held bulb)."""
 
     scene_preset: str = "replace"
@@ -111,23 +111,23 @@ class S12CarryBulbToLadderEnvCfg(NavigateSubtaskCfg):
     }
     progress_distance_fn = mdp.base_ladder_distance
 
-    events: S12EventCfg = S12EventCfg()
-    rewards: S12RewardsCfg = S12RewardsCfg()
-    terminations: S12TerminationsCfg = S12TerminationsCfg()
+    events: S09EventCfg = S09EventCfg()
+    rewards: S09RewardsCfg = S09RewardsCfg()
+    terminations: S09TerminationsCfg = S09TerminationsCfg()
 
     def __post_init__(self) -> None:
         super().__post_init__()
-        # S04 already stood the ladder at the fixture; every leg after it inherits that.
+        # S01 already stood the ladder at the fixture; every leg after it inherits that.
         apply_replace_preset(self.scene, couple_ladder_to_fixture=True)
-        # The old bulb was disposed of back in S09; the fixture is empty from here on.
+        # The old bulb was disposed of back in S06; the fixture is empty from here on.
         park_old_bulb_in_crate(self.scene)
-        # S11's end state: the robot is at the table where it picked the bulb up. Capture that
+        # S08's end state: the robot is at the table where it picked the bulb up. Capture that
         # before the carried pose overwrites the bulb's init_state, or the robot spawns in its
         # independently-sampled zone and the held bulb teleports there with it.
         stand_robot_at_offset(self.scene, self.scene.bulb.init_state.pos[:2], BULB_APPROACH_OFFSET)
-        # This leg's target is the ladder S04 placed, not the table apply_replace_preset aims at.
+        # This leg's target is the ladder S01 placed, not the table apply_replace_preset aims at.
         face_robot_at(self.scene, self.scene.ladder.init_state.pos[:2])
-        # S11's end state: the fresh bulb starts already held, at the carry offset from the
+        # S08's end state: the fresh bulb starts already held, at the carry offset from the
         # robot's own (now-final) root pose -- not on the table.
         self.scene.bulb.init_state.pos, self.scene.bulb.init_state.rot = compose_carried_pose(
             self.scene.robot.init_state.pos, self.scene.robot.init_state.rot, BULB_IN_ROOT_STANDING

@@ -1,6 +1,6 @@
-# S06 — Remove the old bulb while balancing on the ladder
+# S03 — Remove the old bulb while balancing on the ladder
 
-`FIATLUX-S06-RemoveOldBulb-v0` · mode **grasping on balance** · object **old_bulb**
+`FIATLUX-S03-RemoveOldBulb-v0` · mode **grasping on balance** · object **old_bulb**
 Read `00-foundation.md`, `ABSTRACTIONS.md`, `CONTINUITY.md` and `CRITIQUE.md` first. **Blocked on #54 — read the Blockers section first.**
 
 ## Objective
@@ -10,7 +10,7 @@ and end holding it — without falling, without tipping the ladder, and without 
 
 ## Start state
 
-`START_STATE["S06"]` = S05's success state:
+`START_STATE["S03"]` = S02's success state:
 
 - Robot on the ladder's upper steps, pelvis at the top-step height, balanced, hands free.
 - Ladder standing at the fixture target, at rest.
@@ -87,7 +87,7 @@ immediately, report that as the #54 blocker manifesting, and record the fall tim
 ## Deliverable for the chain
 
 **`BULB_IN_ROOT_ON_LADDER`** (foundation probe 2) — the bulb's root pose in the robot root frame
-for the on-ladder cradle grasp. S07 starts from it, so S06 owns measuring and freezing it. The
+for the on-ladder cradle grasp. S04 starts from it, so S03 owns measuring and freezing it. The
 on-ladder stance carries a torso lean, so this is *not* the standing value from probe 1.
 
 ## Blockers
@@ -97,7 +97,7 @@ on-ladder stance carries a torso lean, so this is *not* the standing value from 
   until #54 lands. Do not work around it by making the bulb kinematic: a kinematic bulb cannot be
   moved by any action, which is what made `FIATLUX-Remove-v0` unsolvable.
 - **`verify_interactions --scenario socket` is 3/6**, all three failures being bulb↔socket
-  contact — the same root cause. Do not treat those as S06 regressions.
+  contact — the same root cause. Do not treat those as S03 regressions.
 - **PR #64** — the held condition and the fragility bounds both read the filtered channel.
 
 ## As built

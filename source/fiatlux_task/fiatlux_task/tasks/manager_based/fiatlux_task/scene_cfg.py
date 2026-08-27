@@ -617,9 +617,9 @@ def stand_robot_near(scene: G1ReplaceSceneCfg, target: Vec2, standoff: float) ->
     """Pull the robot's sampled spawn in to within ``standoff`` of ``target`` and face it.
 
     ``apply_replace_preset`` draws the robot's spawn from its own floor zone, independent of
-    every other occupant -- correct for the navigate leaves (S01/S03/S08/S10/S12), whose whole
-    job is covering that gap, but wrong for a leaf that starts a grasp or a release (S02/S04/S09/
-    S11): those are written assuming a predecessor already carried the robot into range, an
+    every other occupant -- correct for the leaves whose whole job is covering that gap (S01,
+    S05, S07, S09), but wrong for a leaf that starts a grasp or a release (S06, S08): those are
+    written assuming a predecessor already carried the robot into range, an
     assumption only the full chained curriculum enforces. Built standalone, as every one of these
     envs is for training, eval, and this render, the robot's own random zone can land metres from
     the object it is meant to already be holding or reaching for. No-ops if the sampled spawn is
@@ -643,7 +643,7 @@ def stand_robot_at_offset(scene: G1ReplaceSceneCfg, target: Vec2, offset: Vec2) 
     direction it happens to already be on -- fine for a target with clearance on every side
     (a free-standing ladder), wrong for one that doesn't: pulled toward ``TABLETOP_BULB_
     POSITION`` by radius alone, a robot spawned behind the table can end up standing UNDER it,
-    clipped into the tabletop collision mesh, with the bulb nowhere near either hand (S11,
+    clipped into the tabletop collision mesh, with the bulb nowhere near either hand (S08,
     caught by inspecting the actual render, not assumed fixed by the radius change alone).
 
     ``offset`` should be a validated, authored relative position -- e.g. ``TABLETOP_ROBOT_

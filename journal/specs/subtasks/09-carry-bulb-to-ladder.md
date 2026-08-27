@@ -1,6 +1,6 @@
-# S12 — Walk to the ladder with the new bulb
+# S09 — Walk to the ladder with the new bulb
 
-`FIATLUX-S12-CarryBulbToLadder-v0` · mode **navigation (loaded)** · payload **bulb**
+`FIATLUX-S09-CarryBulbToLadder-v0` · mode **navigation (loaded)** · payload **bulb**
 Read `00-foundation.md`, `ABSTRACTIONS.md`, `CONTINUITY.md` and `CRITIQUE.md` first.
 
 ## Objective
@@ -10,9 +10,9 @@ holding it, unbroken.
 
 ## Start state
 
-`START_STATE["S12"]` = S11's success state:
+`START_STATE["S09"]` = S08's success state:
 
-- Robot standing at the bench, fresh bulb in hand — root pose from `BULB_IN_ROOT_STANDING` (S11's
+- Robot standing at the bench, fresh bulb in hand — root pose from `BULB_IN_ROOT_STANDING` (S08's
   deliverable). Grasping hand pinned by `mdp.hold_grasp_pose` for step 0.
 - Ladder standing at the fixture target, at rest; fixture empty.
 - Old bulb at rest in the disposal crate.
@@ -32,7 +32,7 @@ holding it, unbroken.
 | robot standing | `FALL_MIN_HEIGHT`, `FALL_TILT_LIMIT` |
 | sustained | 0.5 s |
 
-`ladder_tipped` is back as a condition and a termination, unlike S08: the robot is walking *toward*
+`ladder_tipped` is back as a condition and a termination, unlike S05: the robot is walking *toward*
 the ladder and can knock it over on arrival — which is exactly what happened in the WBC walk probe,
 where every episode ended on `ladder_tipped` because the robot walked into the ladder. Arriving by
 demolishing the thing you are about to climb must not score.
@@ -53,7 +53,7 @@ demolishing the thing you are about to climb must not score.
 ## Reuse
 
 `base_ladder_distance`, `base_facing_entity` (both from the approach-the-ladder subtask),
-`BULB_IN_ROOT_STANDING` (S11's), `object_dropped`, `FRESH_BULB_DROP_HEIGHT`, `ladder_tipped`,
+`BULB_IN_ROOT_STANDING` (S08's), `object_dropped`, `FRESH_BULB_DROP_HEIGHT`, `ladder_tipped`,
 `hand_contact_force_l2`, `distance_progress`, `completion_bonus`.
 New: `arrived_at_ladder_with_bulb`, `LADDER_MOUNT_RADIUS`.
 
@@ -63,9 +63,9 @@ foot-placement question — the robot must be at the ladder's step-facing side w
 distance, which is a different and probably shorter standoff. An earlier draft borrowed the grasp
 constant without noticing they are different requirements.
 
-Almost nothing new — S12 is S01's navigation with a payload condition and a drop termination
+Almost nothing new — S09 is a bare navigation leg with a payload condition and a drop termination
 bolted on. That is the intended shape: the shared logic lives in `mdp/rewards.py` and the two cfgs
-differ only in their gates, so S01 and S12 can be versioned independently while sharing the
+differ only in their gates, so S07 and S09 can be versioned independently while sharing the
 implementation.
 
 ## Visual start-state validation
@@ -82,9 +82,9 @@ difficulty note, not a defect (the mount is Unitree's spec; see foundation).
 ## Acceptance
 
 As foundation, plus the **retention gate** over the full 25 s horizon (this is the third loaded
-navigation leg; if S03 and S08 both retained their payloads, this should too, but the fresh bulb is
+navigation leg; if S05 retained its payload, this should too, but the fresh bulb is
 the lightest and most fragile of the three and its grip has no curl headroom left) ·
-`handoff:S12->S13` passes.
+`handoff:S09->S10` passes.
 
 ## Blockers
 

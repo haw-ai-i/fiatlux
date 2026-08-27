@@ -66,7 +66,6 @@ from .observations import (  # noqa: F401
 )
 from .rewards import (  # noqa: F401
     LADDER_TILT_LIMIT,
-    arrived_at_ladder,
     base_facing_error,
     base_ladder_distance,
     bulb_fixture_distance,

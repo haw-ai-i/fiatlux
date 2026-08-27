@@ -3,16 +3,16 @@
 #
 # SPDX-License-Identifier: BSD-3-Clause
 
-"""``FIATLUX-S08-CarryBulbToDisposal-v0`` -- carry the removed old bulb to the disposal crate.
+"""``FIATLUX-S05-CarryBulbToDisposal-v0`` -- carry the removed old bulb to the disposal crate.
 
-Starts from S07's end state: the old bulb already held upright in hand
+Starts from S04's end state: the old bulb already held upright in hand
 (``BULB_IN_ROOT_STANDING``), composed onto the robot's own (randomized) root pose rather than left
 seated at the fixture. Success is the robot at the disposal crate, facing it, standing, and the
 bulb still gripped -- without that last conjunct a thrown bulb that skids into the crate's radius
 would score.
 
 No ``ladder_tipped`` termination here: this leg never interacts with the ladder (deliberate,
-unlike S03/S12 which carry or approach it).
+unlike S01/S09 which carry or approach it).
 """
 
 from isaaclab.managers import EventTermCfg as EventTerm
@@ -45,7 +45,7 @@ from ..subtask_env_cfg import ARRIVAL_FACING_TOLERANCE, ARRIVAL_MAX_SPEED, Navig
 
 
 @configclass
-class S08EventCfg(SubtaskEventCfg):
+class S05EventCfg(SubtaskEventCfg):
     """Re-seats the bulb against the hand's live, actually-simulated pose -- see
     ``nav_terms.settle_carried_payload_live``. Root/joint randomization zeroed for now while
     the open-palm rest calibration is being worked out (adds noise we don't need yet)."""
@@ -73,7 +73,7 @@ class S08EventCfg(SubtaskEventCfg):
 
 
 @configclass
-class S08CarryBulbToDisposalEnvCfg(NavigateSubtaskCfg):
+class S05CarryBulbToDisposalEnvCfg(NavigateSubtaskCfg):
     """Carry the old bulb to the disposal crate (randomized Replace layout, bulb held)."""
 
     scene_preset: str = "replace"
@@ -89,18 +89,18 @@ class S08CarryBulbToDisposalEnvCfg(NavigateSubtaskCfg):
         "grip_force_threshold": GRIP_FORCE_THRESHOLD_N,
     }
     progress_distance_fn = base_disposal_distance
-    events: S08EventCfg = S08EventCfg()
+    events: S05EventCfg = S05EventCfg()
 
     def __post_init__(self) -> None:
         super().__post_init__()
-        # S04 already stood the ladder at the fixture; every leg after it inherits that.
+        # S01 already stood the ladder at the fixture; every leg after it inherits that.
         apply_replace_preset(self.scene, couple_ladder_to_fixture=True)
-        # S07's end state: back on the floor at the ladder it descended, holding the old bulb.
+        # S04's end state: back on the floor at the ladder it descended, holding the old bulb.
         # Without this the robot spawns in its own sampled zone and the held bulb teleports too.
         stand_robot_near(self.scene, self.scene.ladder.init_state.pos[:2], LADDER_MOUNT_RADIUS)
         # This leg's target is the disposal crate, not the table apply_replace_preset aims at.
         face_robot_at(self.scene, self.scene.bin.init_state.pos[:2])
-        # S07's end state: the old bulb starts already held, at the carry offset from the
+        # S04's end state: the old bulb starts already held, at the carry offset from the
         # robot's own (now-final) root pose -- not seated at the fixture.
         self.scene.old_bulb.init_state.pos, self.scene.old_bulb.init_state.rot = compose_carried_pose(
             self.scene.robot.init_state.pos, self.scene.robot.init_state.rot, BULB_IN_ROOT_STANDING
