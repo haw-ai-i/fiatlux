@@ -3,9 +3,9 @@
 #
 # SPDX-License-Identifier: BSD-3-Clause
 
-"""``FIATLUX-S13-ClimbWithBulb-v0`` -- climb to working height holding the fresh bulb.
+"""``FIATLUX-S10-ClimbWithBulb-v0`` -- climb to working height holding the fresh bulb.
 
-Starts from S12's end state: the robot at the ladder's steps with the fresh bulb in hand
+Starts from S09's end state: the robot at the ladder's steps with the fresh bulb in hand
 (``BULB_IN_ROOT_STANDING``), the old bulb already in the disposal crate, the fixture empty.
 
 The physically hardest subtask of the chain: one hand holds a 35 g bulb it must not crush, so the
@@ -69,7 +69,7 @@ CLIMBED_WITH_BULB_CONJUNCTS = [
 
 
 @configclass
-class S13EventCfg(BalanceEventCfg):
+class S10EventCfg(BalanceEventCfg):
     """Re-seats the bulb against the hand's live, actually-simulated pose -- see
     ``nav_terms.settle_carried_payload_live``. Root/joint randomization zeroed for now while
     the open-palm rest calibration is being worked out (adds noise we don't need yet)."""
@@ -97,7 +97,7 @@ class S13EventCfg(BalanceEventCfg):
 
 
 @configclass
-class S13RewardsCfg(ClimbRewardsCfg):
+class S10RewardsCfg(ClimbRewardsCfg):
     contact_penalty = RewTerm(func=mdp.hand_contact_force_l2, weight=-1.0e-4, params={"sensor_cfg": _GRIP})
     bulb_dropped = RewTerm(
         func=mdp.object_dropped, weight=-200.0, params={"asset_cfg": _BULB, "min_height": FRESH_BULB_DROP_HEIGHT}
@@ -105,12 +105,12 @@ class S13RewardsCfg(ClimbRewardsCfg):
 
 
 @configclass
-class S13TerminationsCfg(BalanceTerminationsCfg):
+class S10TerminationsCfg(BalanceTerminationsCfg):
     bulb_dropped = DoneTerm(func=mdp.object_dropped, params={"asset_cfg": _BULB, "min_height": FRESH_BULB_DROP_HEIGHT})
 
 
 @configclass
-class S13ClimbWithBulbEnvCfg(ClimbSubtaskCfg):
+class S10ClimbWithBulbEnvCfg(ClimbSubtaskCfg):
     """Climb the placed ladder holding the fresh bulb (randomized Replace layout, ladder dynamic)."""
 
     ladder_contact_bodies: list[str] | None = LOADED_LADDER_CONTACT_BODIES
@@ -118,14 +118,14 @@ class S13ClimbWithBulbEnvCfg(ClimbSubtaskCfg):
     success_predicate = mdp.all_of
     success_params: dict | None = {"predicates": CLIMBED_WITH_BULB_CONJUNCTS}
 
-    events: S13EventCfg = S13EventCfg()
-    rewards: S13RewardsCfg = S13RewardsCfg()
-    terminations: S13TerminationsCfg = S13TerminationsCfg()
+    events: S10EventCfg = S10EventCfg()
+    rewards: S10RewardsCfg = S10RewardsCfg()
+    terminations: S10TerminationsCfg = S10TerminationsCfg()
 
     def __post_init__(self) -> None:
         super().__post_init__()
         park_old_bulb_in_crate(self.scene)
-        # S12's end state: the fresh bulb starts already held, at the carry offset from the
+        # S09's end state: the fresh bulb starts already held, at the carry offset from the
         # robot's own (now-final) root pose -- not on the table.
         self.scene.bulb.init_state.pos, self.scene.bulb.init_state.rot = compose_carried_pose(
             self.scene.robot.init_state.pos, self.scene.robot.init_state.rot, BULB_IN_ROOT_STANDING
@@ -137,5 +137,5 @@ class S13ClimbWithBulbEnvCfg(ClimbSubtaskCfg):
             **HAND_CUP,
         }
         add_grip_contact_sensor(self.scene, self.scene.bulb.prim_path)
-        # Longer than S05's 20 s: one-handed is slower.
+        # Longer than S02's 20 s: one-handed is slower.
         self.episode_length_s = 30.0

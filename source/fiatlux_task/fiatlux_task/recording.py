@@ -36,6 +36,7 @@ from pathlib import Path
 import numpy as np
 import torch
 
+from .tasks.manager_based.fiatlux_task.mdp import attach as _attach
 from .tasks.manager_based.fiatlux_task.mdp import observations as _obs
 from .tasks.manager_based.fiatlux_task.mdp import rewards as _rewards
 
@@ -96,6 +97,12 @@ class TrajectoryRecorder:
         self._ee_ids, ee_names = robot.find_bodies(_ee_body_name(env))
         self._ee_id = self._ee_ids[0]
 
+        # Resolve the bayonet manager once, not per step: whether a task wires
+        # mdp.bulb_attachment is fixed for the whole run, and a key that appeared midway
+        # through would give the buffers ragged lengths. Tasks without the term (Remove,
+        # Install, Carry today) simply record no lock columns.
+        self._attachment = _attach.attachment_manager(env)
+
         self._buf: dict[str, list[np.ndarray]] = {}
         self._meta = self._build_meta(policy_spec=policy_spec, seed=seed, checkpoint=checkpoint, ee_name=ee_names[0])
 
@@ -134,6 +141,9 @@ class TrajectoryRecorder:
             "dropped_term": term_flag(env, "bulb_dropped", self.n, self.device),
             "timeout_term": term_flag(env, "time_out", self.n, self.device),
         }
+        # Bayonet lock state (issue #77). Only tasks that wire mdp.bulb_attachment have it.
+        if self._attachment is not None:
+            step.update(_attach.bulb_lock_telemetry(env))
         for key, value in step.items():
             self._buf.setdefault(key, []).append(_np(value))
 
@@ -240,6 +250,10 @@ class TrajectoryRecorder:
             "success_pos_threshold": float(success_params.get("pos_threshold", 0.015)),
             "success_ori_threshold": float(success_params.get("ori_threshold", 0.2)),
             "drop_min_height": float(drop_params.get("min_height", 0.4)),
+            # Issue #77: says whether the *_phase / *_theta columns are present, so an
+            # offline reader does not have to probe the arrays to find out.
+            "has_bulb_attachment": self._attachment is not None,
+            "bulb_rotation_sign": (None if self._attachment is None else self._attachment.rotation_sign),
         }
 
 

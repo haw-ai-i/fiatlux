@@ -206,30 +206,48 @@ TABLE_ZONE_HALF_SIZE = 1.5
 LADDER_ZONE_HALF_SIZE = 1.0
 DISPOSAL_ZONE_HALF_SIZE = 0.5  # the old-bulb disposal crate (crate footprint ~0.6 m + clearance)
 ZONE_MARGIN = 0.5  # minimum gap left between any two zones' bounding squares
-# Where a wall mount's reserved ladder anchor goes, measured from the wall face. As close as the
-# ladder physically fits: its footprint is 0.979 m deep and the coupled draw turns that depth
-# normal to the wall, so the root cannot come nearer than 0.49 m plus clearance. The previous
-# value was LADDER_ZONE_HALF_SIZE + 0.4 = 1.4 m, a zone-packing number that left every wall draw
-# well beyond reach and went unasserted, because both reach guards below are derived from the
-# ceiling mount and MAX_REACHABLE_MOUNT_Z checks height only.
+# The nearest a wall mount's reserved ladder anchor can physically be to the wall face: the
+# ladder's footprint is 0.979 m deep and the coupled draw turns that depth normal to the wall, so
+# the root cannot come nearer than 0.49 m plus clearance. The previous standoff was
+# LADDER_ZONE_HALF_SIZE + 0.4 = 1.4 m, a zone-packing number that left every wall draw well beyond
+# reach and went unasserted, because both reach guards below are derived from the ceiling mount
+# and MAX_REACHABLE_MOUNT_Z checks height only.
 LADDER_LADDER_HALF_DEPTH = 0.49  # m, half the ladder's 0.979 m footprint depth
-LADDER_WALL_STANDOFF = 0.60  # m from the wall face; 0.11 m of clearance behind the ladder
+# How far the ladder's reserved anchor sits from the fixture in the floor plane -- from the wall
+# face, or from the point directly beneath a ceiling mount. Both mount kinds: an anchor under a
+# ceiling fixture puts the on-ladder working stance's chest inside it.
+LADDER_FIXTURE_STANDOFF = 0.60  # m; for a wall draw that leaves 0.11 m of clearance behind the ladder
+# The stance must clear the fixture, not just reach it: the working stance's pelvis is at 1.967 m
+# and the fixture at 2.200 m, so the fixture is at chest height and the torso is what collides.
+# MEASURED 2026-08-26, ``scripts/verify_ladder_stance.py --measure`` at layout seed 1: the widest
+# non-arm body in a +/-0.15 m band around fixture height is right_shoulder_yaw_link at 0.152 m
+# from the pelvis axis; the mounted socket's AABB half-extents are 0.074 x 0.081 m.
+G1_STANCE_TORSO_HALF_EXTENT = 0.152  # m
+FIXTURE_HALF_EXTENT = 0.081  # m
+# reset_robot_root jitters the stance +/-5 cm on each floor axis, so the worst case is the diagonal.
+STANCE_RESET_JITTER = math.hypot(0.05, 0.05)  # m
+LADDER_FIXTURE_MIN_STANDOFF = G1_STANCE_TORSO_HALF_EXTENT + FIXTURE_HALF_EXTENT + STANCE_RESET_JITTER
 # Horizontal slack left over once the fixture's height above LADDER_WORK_FOOT_Z is accounted
 # for -- the gate-tolerant foot height, not the tread itself, so the ceiling and wall guards
 # agree on where the robot is standing. This is the SPHERICAL bound -- G1_OVERHEAD_REACH is a
 # vertical fingertip measurement used here as a radius -- so it is optimistic. The honest forward reach
 # (G1_HORIZONTAL_REACH) is 0.5045 m, which is less than the ladder's own half-depth: no standoff
-# satisfies both, and a wall fixture at this height is reachable only if the arm does better
+# satisfies both, and a fixture at this height is reachable only if the arm does better
 # reaching up-and-out than straight out. Re-measure by FK from the on-ladder stance before
-# treating a wall draw's score as meaningful.
-LADDER_WALL_REACH_SLACK = math.sqrt(
-    max(G1_OVERHEAD_REACH**2 - (WALL_MOUNT_Z - LADDER_WORK_FOOT_Z) ** 2, 0.0)
-)
-if not LADDER_LADDER_HALF_DEPTH < LADDER_WALL_STANDOFF <= LADDER_WALL_REACH_SLACK:
+# treating such a draw's score as meaningful.
+LADDER_FIXTURE_REACH_SLACK = math.sqrt(max(G1_OVERHEAD_REACH**2 - (WALL_MOUNT_Z - LADDER_WORK_FOOT_Z) ** 2, 0.0))
+if not LADDER_LADDER_HALF_DEPTH < LADDER_FIXTURE_STANDOFF <= LADDER_FIXTURE_REACH_SLACK:
     raise ValueError(
-        f"the wall standoff ({LADDER_WALL_STANDOFF} m) must clear the ladder's own half-depth "
+        f"the fixture standoff ({LADDER_FIXTURE_STANDOFF} m) must clear the ladder's own half-depth "
         f"({LADDER_LADDER_HALF_DEPTH} m) and stay inside the reach slack from the platform "
-        f"({LADDER_WALL_REACH_SLACK:.3f} m); no value satisfies both if the fixture is too high"
+        f"({LADDER_FIXTURE_REACH_SLACK:.3f} m); no value satisfies both if the fixture is too high"
+    )
+if LADDER_FIXTURE_STANDOFF <= LADDER_FIXTURE_MIN_STANDOFF:
+    raise ValueError(
+        f"the fixture standoff ({LADDER_FIXTURE_STANDOFF} m) leaves the working stance's torso "
+        f"inside the fixture: it must exceed {LADDER_FIXTURE_MIN_STANDOFF:.3f} m "
+        f"(torso {G1_STANCE_TORSO_HALF_EXTENT} + fixture {FIXTURE_HALF_EXTENT} + jitter "
+        f"{STANCE_RESET_JITTER:.3f})"
     )
 # The anchor's own reserved zone, small enough that clamping it to the floor box (itself inset
 # 0.41 m from the side walls) does not shove the ladder back out of reach. The ladder's real
@@ -289,8 +307,11 @@ def _quat_x_deg(angle_deg: float) -> tuple[float, float, float, float]:
 Quat = tuple[float, float, float, float]
 Vec3 = tuple[float, float, float]
 Vec2 = tuple[float, float]
-# (mount kind, fixture position, fixture orientation, inward wall normal, ladder anchor)
-FixtureMount = tuple[Literal["ceiling", "wall"], Vec3, Quat, Vec2 | None, Vec2]
+# (mount kind, fixture position, fixture orientation, anchor bearing, ladder anchor)
+# The bearing is the floor-plane unit vector from the fixture toward the ladder's reserved
+# anchor: a wall's inward normal, or a sampled direction for a ceiling mount. Never None --
+# a ceiling mount needs a direction to stand off in exactly as much as a wall one does.
+FixtureMount = tuple[Literal["ceiling", "wall"], Vec3, Quat, Vec2, Vec2]
 
 
 def _quat_mul(q1: Quat, q2: Quat) -> Quat:
@@ -321,6 +342,43 @@ def _spawn_usd_as_rigid_body(prim_path, cfg, translation=None, orientation=None)
     if cfg.mass_props is not None:
         UsdPhysics.MassAPI.Apply(prim)
         schemas.modify_mass_properties(prim.GetPath(), cfg.mass_props)
+    return prim
+
+
+@clone
+def _spawn_bulb_socket_filtered(prim_path, cfg, translation=None, orientation=None):
+    """``spawn_from_usd`` + a collision filter against this env's socket (issue #77 task 6).
+
+    ``mdp.bulb_attachment`` owns a constrained bulb's pose: it writes pose and velocity every
+    step. The contact solver owns the same body, because the bulb sits inside the socket. Two
+    authorities disagree every step, and the cost is not small -- measured at a median 1067 N of
+    socket contact, about 3100x the bulb's weight, against roughly 5 N of tangential force from
+    an 0.1 N.m twist. `theta` never settles, so the release never fires. See
+    ``scripts/step0_contact.py``.
+
+    Nothing is geometrically wrong. The seat pose is right and the collider is not oversized: a
+    bulb left alone at the seat settles by under 2 mm. The load comes from writing the pose every
+    step to a body that is already in contact.
+
+    So this filters the ONE pair that fights, and leaves every other contact alone. The bulb still
+    collides with the hand, so a grasp registers, and with the world, so a dropped bulb lands.
+    ``scripts/diagnose_contact_twist.py`` with ``DISABLE_SOCKET_COLLISION=1`` measures the
+    result: the release works at 1e-4 N.m, the smallest torque tried.
+
+    The filter is STATIC, not phase-dependent. Isaac Lab has no runtime per-pair control --
+    ``RigidObject`` exposes pose, velocity and wrench only, and ``scene.filter_collisions`` is
+    cross-env. A static filter is defensible here: while the bulb is constrained the state
+    machine owns its pose, so contact adds nothing, and the old bulb has left the socket by the
+    time it is ``FREE``. The cost is that a free bulb passes through the fixture instead of
+    bumping it. Scoring does not care -- every bulb channel reads the state machine, which still
+    gates engagement on alignment, depth and orientation.
+    """
+    from pxr import Sdf, UsdPhysics
+
+    prim = _spawn_from_usd_file(prim_path, cfg.usd_path, cfg, translation, orientation)
+    # Sibling socket in the SAME env. `prim_path` is this env's bulb, so the parent is its env.
+    socket_path = prim_path.rsplit("/", 1)[0] + "/Socket"
+    UsdPhysics.FilteredPairsAPI.Apply(prim).CreateFilteredPairsRel().AddTarget(Sdf.Path(socket_path))
     return prim
 
 
@@ -457,6 +515,7 @@ class G1ReplaceSceneCfg(DressedSceneCfg):
         prim_path="{ENV_REGEX_NS}/Bulb",
         spawn=sim_utils.UsdFileCfg(
             usd_path=BULB_USD,
+            func=_spawn_bulb_socket_filtered,
             rigid_props=sim_utils.RigidBodyPropertiesCfg(
                 solver_position_iteration_count=32,
                 solver_velocity_iteration_count=1,
@@ -625,9 +684,9 @@ def stand_robot_near(scene: G1ReplaceSceneCfg, target: Vec2, standoff: float) ->
     """Pull the robot's sampled spawn in to within ``standoff`` of ``target`` and face it.
 
     ``apply_replace_preset`` draws the robot's spawn from its own floor zone, independent of
-    every other occupant -- correct for the navigate leaves (S01/S03/S08/S10/S12), whose whole
-    job is covering that gap, but wrong for a leaf that starts a grasp or a release (S02/S04/S09/
-    S11): those are written assuming a predecessor already carried the robot into range, an
+    every other occupant -- correct for the leaves whose whole job is covering that gap (S01,
+    S05, S07, S09), but wrong for a leaf that starts a grasp or a release (S06, S08): those are
+    written assuming a predecessor already carried the robot into range, an
     assumption only the full chained curriculum enforces. Built standalone, as every one of these
     envs is for training, eval, and this render, the robot's own random zone can land metres from
     the object it is meant to already be holding or reaching for. No-ops if the sampled spawn is
@@ -651,7 +710,7 @@ def stand_robot_at_offset(scene: G1ReplaceSceneCfg, target: Vec2, offset: Vec2) 
     direction it happens to already be on -- fine for a target with clearance on every side
     (a free-standing ladder), wrong for one that doesn't: pulled toward ``TABLETOP_BULB_
     POSITION`` by radius alone, a robot spawned behind the table can end up standing UNDER it,
-    clipped into the tabletop collision mesh, with the bulb nowhere near either hand (S11,
+    clipped into the tabletop collision mesh, with the bulb nowhere near either hand (S08,
     caught by inspecting the actual render, not assumed fixed by the radius change alone).
 
     ``offset`` should be a validated, authored relative position -- e.g. ``TABLETOP_ROBOT_
@@ -889,6 +948,21 @@ def _clamp_to_floor(center: Vec2, half_size: float) -> Vec2:
     )
 
 
+def _bearing_into_room(origin: Vec2, bearing: Vec2, standoff: float) -> Vec2:
+    """Flip whichever component of ``bearing`` would push ``origin + bearing * standoff`` out of
+    the floor box, so the offset point stays inside it.
+
+    Reflected rather than clamped: clamping shortens the standoff, which is the failure this
+    offset prevents. At most one axis can violate, since the fixture is inset from both bounds.
+    """
+    out = [bearing[0], bearing[1]]
+    for axis in (0, 1):
+        target = origin[axis] + out[axis] * standoff
+        if not ROOM_FLOOR_MIN[axis] <= target <= ROOM_FLOOR_MAX[axis]:
+            out[axis] = -out[axis]
+    return (out[0], out[1])
+
+
 # OS entropy (None), except under FIATLUX_DEBUG_NO_RANDOMIZE, where every layout draw is fixed
 # to seed 0 unless a caller overrides via set_layout_seed().
 _layout_seed: int | None = 0 if os.environ.get("FIATLUX_DEBUG_NO_RANDOMIZE") else None
@@ -918,10 +992,17 @@ def set_layout_seed(seed: int | None) -> None:
 def _sample_fixture_mount(rng: random.Random) -> FixtureMount:
     """Randomly mount the fixture on the ceiling or a wall.
 
-    Returns ``(mount_kind, position, orientation, wall_inward_normal, ladder_anchor)`` -- the
-    normal is ``None`` for a ceiling mount (nothing to stand off from). The anchor is the
-    floor point the ladder has to be able to stand on for the fixture to be workable:
-    directly beneath a ceiling mount, or one ladder-zone + standoff out from a wall mount.
+    Returns ``(mount_kind, position, orientation, anchor_bearing, ladder_anchor)``. The anchor is
+    the floor point the ladder has to stand on for the fixture to be workable: for both mount
+    kinds, ``LADDER_FIXTURE_STANDOFF`` out from the fixture along the bearing -- the wall's inward
+    normal, or a sampled direction for a ceiling mount.
+
+    The standoff applies to a ceiling mount too because ``stand_robot_on_ladder_top`` puts the
+    pelvis over the ladder's root and the fixture hangs only 0.233 m above it, at chest height.
+    An anchor directly beneath the fixture spawns the stance with the socket inside its torso
+    (``imu_in_torso`` 0.039 m off the fixture axis, measured), and the robot hangs on the
+    fixture's kinematic collider instead of falling.
+
     The mount is sampled so that the anchor's whole ladder zone fits inside the room, which
     is why the inset is a ladder zone rather than a decorative half-metre -- a fixture in the
     corner of the room has no floor under it to put a ladder on.
@@ -932,17 +1013,22 @@ def _sample_fixture_mount(rng: random.Random) -> FixtureMount:
     outward from the wall face.
     """
     inset = LADDER_ANCHOR_HALF_SIZE
+    standoff = LADDER_FIXTURE_STANDOFF
     if rng.random() < 0.5:
         x = rng.uniform(ROOM_FLOOR_MIN[0] + inset, ROOM_FLOOR_MAX[0] - inset)
         y = rng.uniform(ROOM_FLOOR_MIN[1] + inset, ROOM_FLOOR_MAX[1] - inset)
-        return "ceiling", (x, y, CEILING_FIXTURE_Z), _quat_y_deg(180.0), None, (x, y)
+        # A wall dictates which side the ladder stands on; a ceiling does not, so the bearing is
+        # drawn -- uniform over the circle, so the stance approaches from every direction.
+        theta = rng.uniform(0.0, 2.0 * math.pi)
+        normal = _bearing_into_room((x, y), (math.cos(theta), math.sin(theta)), standoff)
+        anchor = _clamp_to_floor((x + normal[0] * standoff, y + normal[1] * standoff), LADDER_ANCHOR_HALF_SIZE)
+        return "ceiling", (x, y, CEILING_FIXTURE_Z), _quat_y_deg(180.0), normal, anchor
 
     wall_name = rng.choice(list(_WALLS))
     axis, value, normal, yaw, (span_lo, span_hi) = _WALLS[wall_name]
     # Sample along the REAL panel span, inset so the anchor's ladder zone stays in the room.
     along = rng.uniform(span_lo + inset, span_hi - inset)
     pos = (value, along, WALL_MOUNT_Z) if axis == 0 else (along, value, WALL_MOUNT_Z)
-    standoff = LADDER_WALL_STANDOFF
     anchor = _clamp_to_floor((pos[0] + normal[0] * standoff, pos[1] + normal[1] * standoff), LADDER_ANCHOR_HALF_SIZE)
     # +90, not -90: local +Z (the shade/socket opening) must map to local +X so the per-wall
     # yaw points the shade into the room. -90 gives dot(inward_normal) = -1.0.
@@ -1048,10 +1134,12 @@ def _sample_replace_layout(
     last: LayoutInfeasible | None = None
     for _ in range(max_tries):
         mount = _sample_fixture_mount(rng)
-        _, _, _, wall_normal, ladder_anchor = mount
+        _, _, _, anchor_bearing, ladder_anchor = mount
         ladder_yaw = rng.uniform(0.0, 360.0)
-        if couple_ladder_to_fixture and wall_normal is not None:
-            ladder_yaw = math.degrees(math.atan2(-wall_normal[1], -wall_normal[0]))
+        if couple_ladder_to_fixture:
+            # Turn the ladder back down its own standoff bearing, so the stance on its tread
+            # faces the fixture. Both mount kinds, since both stand off.
+            ladder_yaw = math.degrees(math.atan2(-anchor_bearing[1], -anchor_bearing[0]))
 
         half_sizes = [
             ROBOT_ZONE_HALF_SIZE,
@@ -1159,6 +1247,7 @@ def apply_replace_preset(
         prim_path="{ENV_REGEX_NS}/OldBulb",
         spawn=sim_utils.UsdFileCfg(
             usd_path=BULB_USD,
+            func=_spawn_bulb_socket_filtered,
             rigid_props=sim_utils.RigidBodyPropertiesCfg(
                 solver_position_iteration_count=32,
                 solver_velocity_iteration_count=1,

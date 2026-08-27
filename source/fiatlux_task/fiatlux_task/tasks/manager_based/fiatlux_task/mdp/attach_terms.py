@@ -15,9 +15,9 @@ uses to rigidly mount a tool onto a robot. :func:`weld_to_body` is that, scoped 
 manager-based env's ``mode="reset"`` event and vectorized over ``env_ids``.
 
 Scope: built for subtasks that never let go mid-episode (their own success gate requires the
-grip held the whole time, e.g. S03's "ladder still gripped" conjunct) -- there the weld is
-unconditional and correct for the full episode. It is deliberately NOT wired into S04 (or S09,
-or the mate-tier S06/S14): those subtasks' entire job is the act of releasing, which a
+grip held the whole time, e.g. S05's "old bulb still held" conjunct) -- there the weld is
+unconditional and correct for the full episode. It is deliberately NOT wired into S06 (or the
+mate-tier S03/S11): those subtasks' entire job is the act of releasing, which a
 permanent weld cannot demonstrate, and a *correct* release trigger has to come from something
 the policy actually controls (a commanded finger-open crossing some threshold, most likely),
 not the ``object_released`` contact-force sensor already used for their success gates --

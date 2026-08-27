@@ -1,6 +1,6 @@
-# S11 — Grab the new bulb
+# S08 — Grab the new bulb
 
-`FIATLUX-S11-GrabNewBulb-v0` · mode **grasping** · object **bulb**
+`FIATLUX-S08-GrabNewBulb-v0` · mode **grasping** · object **bulb**
 Read `00-foundation.md`, `ABSTRACTIONS.md`, `CONTINUITY.md` and `CRITIQUE.md` first.
 
 ## Objective
@@ -10,7 +10,7 @@ dropping it.
 
 ## Start state
 
-`START_STATE["S11"]` = S10's success state: robot standing beside the bench facing the fresh bulb,
+`START_STATE["S08"]` = S07's success state: robot standing beside the bench facing the fresh bulb,
 hands free; bulb standing on its cap on the tabletop; old bulb at rest in the crate.
 
 ## Success gate
@@ -26,9 +26,9 @@ hands free; bulb standing on its cap on the tabletop; old bulb at rest in the cr
 | robot standing | `FALL_MIN_HEIGHT`, `FALL_TILT_LIMIT` |
 | sustained | 1.0 s |
 
-Lift plus sustained hold, as in S02: contact alone is satisfied by pushing the bulb across the
+Lift plus sustained hold: contact alone is satisfied by pushing the bulb across the
 bench. The 1 s window is the longer one because this is the grasp the rest of the chain depends
-on — S12, S13 and S14 all assume a bulb that stays held.
+on — S09, S10 and S11 all assume a bulb that stays held.
 
 ## Grasp geometry — use the measured calibration, do not re-derive it
 
@@ -79,7 +79,7 @@ Everything named above, plus `object_contact_forces`, `hand_contact_force_l2`, `
 ## Deliverable for the chain
 
 **`BULB_IN_ROOT_STANDING`** (foundation probe 1) — the bulb's root pose in the robot root frame for
-the standing cradle grasp. S08 and S12 both start from it. S11 owns measuring and freezing it, from
+the standing cradle grasp. S05 and S09 both start from it. S08 owns measuring and freezing it, from
 a scripted grasp, with the probe command recorded at the constant.
 
 ## Visual start-state validation
@@ -98,7 +98,7 @@ pinched outside the hand, then squeezing out of the palm. Numbers are not suffic
 
 As foundation, plus: the grasped-state render inspected and reported at ≥ 3 angles · measured peak
 grip force reported and inside the glass bound · `BULB_IN_ROOT_STANDING` frozen · a static hold of
-≥ 5 s retains the bulb · `handoff:S11->S12` passes.
+≥ 5 s retains the bulb · `handoff:S08->S09` passes.
 
 ## Blockers
 

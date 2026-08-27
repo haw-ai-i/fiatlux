@@ -25,6 +25,7 @@ re-evaluating it. A leaf that forgets a hook fails at construction.
 them ordinary dataclass fields. Plain functions work as defaults without binding, and
 ``to_dict()`` skips the callables.
 """
+
 import os
 from collections.abc import Callable
 
@@ -172,9 +173,17 @@ class SubtaskRewardsCfg:
     ``success_bonus`` is the canonical name for the completion bonus. It reads the ``success``
     termination's flag rather than re-evaluating the gate, so the two cannot drift even when the
     gate is stateful, and it pays exactly on the terminating step.
+
+    ``gate_progress`` is the canonical name for partial credit; it is derived from the ``success``
+    gate rather than restating it.
     """
 
     success_bonus = RewTerm(func=mdp.success_term_fired, weight=500.0)
+    # Partial credit: the episode sum is the best fraction of the success gate's conjuncts the
+    # episode satisfied at once, in [0, 1]. Weight 1.0 against progress channels worth 500 keeps
+    # it a score channel, not a training signal. ``predicates`` is filled from the leaf's own gate
+    # in ``SubtaskEnvCfg.__post_init__``.
+    gate_progress = RewTerm(func=mdp.gate_progress, weight=1.0, params={"predicates": []})
     robot_fall = RewTerm(
         func=mdp.fall_terminated,
         weight=-200.0,
@@ -242,6 +251,11 @@ class SubtaskEnvCfg(ManagerBasedRLEnvCfg):
         # so there is one definition of success even when the gate is stateful.
         self.terminations.success.func = self.success_predicate
         self.terminations.success.params = dict(self.success_params or {})
+        # Partial credit reads the same gate, decomposed. A leaf whose gate is one opaque
+        # predicate becomes a single conjunct, and its partial credit is then its success flag.
+        self.rewards.gate_progress.params["predicates"] = mdp.conjuncts_of(
+            self.success_predicate, self.success_params
+        )
 
         # Family control rate (50 Hz).
         self.decimation = 4

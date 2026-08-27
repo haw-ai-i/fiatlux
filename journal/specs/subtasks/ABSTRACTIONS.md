@@ -100,6 +100,15 @@ Six intermediates, each with ≥2 members and real shared structure:
 | `DescendSubtaskCfg` | S07, S15 | `descend_height_progress`, same, inverted |
 | `MateSubtaskCfg` | S06, S14 | seat distance + mating-axis orientation, retained-after-release, fragility |
 
+> **Membership has since changed** and the numbering in this table is the original fifteen's (map
+> in `00-foundation.md`, "As built — the four ladder legs are one subtask"). Folding the four
+> ladder legs into `S01-MoveLadder` took the navigate tier to three members (S05, S07, S09 in the
+> new numbering), left the grasp tier with one (S08), and moved S01 onto the place tier beside
+> S06. The "≥2 members" line above was a description of what existed, not a rule the tiers have to
+> keep satisfying: what a tier buys is the split between which terms exist and which numbers a
+> leaf sets, and that is worth having at one member too.
+
+
 **This preserves per-task versioning.** Fifteen leaf classes, fifteen modules, fifteen `-v0` ids,
 each bumpable — the three-level hierarchy changes none of that. The division of labour is what makes
 it safe:

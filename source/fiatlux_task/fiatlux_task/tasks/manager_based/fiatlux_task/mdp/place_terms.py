@@ -3,10 +3,11 @@
 #
 # SPDX-License-Identifier: BSD-3-Clause
 
-"""Predicates for the place mode (S04 place-the-ladder, S09 dispose-of-the-bulb).
+"""Predicates for the place mode (S01 move-the-ladder, S06 dispose-of-the-bulb).
 
-Letting go is the goal in both, so the gate has to distinguish *placed* from *held in the right
-place*: the object is where it belongs, it is at rest, and the hand is off it. Every function here
+Leaving the object behind is the goal in both, so the gate has to distinguish *placed* from
+*passing through*: the object is where it belongs and it is at rest, plus -- where letting go is
+part of the claim, as it is for a bulb in a crate -- the hand is off it. Every function here
 is STATELESS -- the debounce is :class:`~.gates.sustained`, which lives only in the ``success``
 termination, so a second counter cannot exist to disagree with it.
 
@@ -30,7 +31,7 @@ import torch
 from isaaclab.assets import Articulation, RigidObject
 from isaaclab.managers import SceneEntityCfg
 from isaaclab.sensors import ContactSensor
-from isaaclab.utils.math import quat_apply, quat_apply_inverse
+from isaaclab.utils.math import quat_apply_inverse
 
 from fiatlux_task.assets import BULB_LIE_Z_OFFSET, BULB_STAND_Z_OFFSET
 
@@ -119,7 +120,7 @@ def robot_standing(
 
 
 # ---------------------------------------------------------------------------
-# S04 -- place the ladder
+# S01 -- move the ladder to the fixture
 # ---------------------------------------------------------------------------
 
 
@@ -145,38 +146,8 @@ def ladder_feet_down(
     return z.abs() < tolerance
 
 
-def _step_face_dir_w(env: ManagerBasedRLEnv, asset_cfg: SceneEntityCfg) -> torch.Tensor:
-    """Horizontal unit vector the ladder's steps face, from its live root quaternion."""
-    ladder: RigidObject = env.scene[asset_cfg.name]
-    local = torch.tensor(LADDER_STEP_FACE_LOCAL, device=env.device).expand(env.num_envs, 3)
-    face = quat_apply(ladder.data.root_quat_w, local)[:, :2]
-    return face / face.norm(dim=1, keepdim=True).clamp_min(1e-6)
-
-
-def robot_at_ladder_base(
-    env: ManagerBasedRLEnv,
-    forward_limit: float,
-    lateral_limit: float,
-    asset_cfg: SceneEntityCfg = SceneEntityCfg("ladder"),
-) -> torch.Tensor:
-    """True where the robot stands in front of the ladder's steps, within mounting range.
-
-    The successor subtask mounts the ladder, and the ladder's steps face one way, so a placement
-    that leaves the robot behind or beside it hands the successor a start state it cannot climb
-    from (CRITIQUE C2). Tested as a rectangle on the step side -- ``forward`` along the live step
-    face, ``lateral`` across it -- rather than a radius, because a radius accepts the back.
-    """
-    ladder: RigidObject = env.scene[asset_cfg.name]
-    robot: Articulation = env.scene["robot"]
-    face = _step_face_dir_w(env, asset_cfg)
-    offset = (robot.data.root_pos_w - ladder.data.root_pos_w)[:, :2]
-    forward = (offset * face).sum(dim=1)
-    lateral = offset[:, 0] * face[:, 1] - offset[:, 1] * face[:, 0]
-    return (forward > 0.0) & (forward < forward_limit) & (lateral.abs() < lateral_limit)
-
-
 # ---------------------------------------------------------------------------
-# S09 -- dispose of the old bulb
+# S06 -- dispose of the old bulb
 # ---------------------------------------------------------------------------
 
 
@@ -239,8 +210,8 @@ def old_bulb_in_bin(
 def step_face_dir_from_yaw(yaw_rad: float) -> tuple[float, float]:
     """The world direction the ladder's steps face, for a ladder at ``yaw_rad``.
 
-    The cfg-time twin of :func:`_step_face_dir_w`, for placing a start state against the layout
-    draw's sampled ladder yaw.
+    Cfg-time, from a frozen quaternion rather than a live one, for placing a start state against
+    the layout draw's sampled ladder yaw.
     """
     fx, fy = LADDER_STEP_FACE_LOCAL[0], LADDER_STEP_FACE_LOCAL[1]
     return (
