@@ -12,13 +12,13 @@ contact/penetration.
 It covers the whole task family: the entity list is derived from the task's scene cfg, so
 presets that drop entities (tabletop has no ladder, workshop has no table) verify with the
 same tool. RL members work too -- their step returns are ignored and mid-run auto-resets do
-not disturb the checks. ``FIATLUX-Insert-v0`` (wrist camera) and ``FIATLUX-Replace-v0``
-(torso camera) carry camera sensors, so verifying them needs ``--enable_cameras``.
+not disturb the checks. EVERY task carries a camera sensor (each env cfg calls
+``add_ego_camera``), so verifying any of them needs ``--enable_cameras``.
 
 Examples
 --------
     # headless verification (default base env)
-    uv run python scripts/verify_scene.py --headless
+    uv run python scripts/verify_scene.py --headless --enable_cameras
 
     # record an orbiting MP4 of the scene to logs/verify/ (the reliable way to see it headless)
     uv run python scripts/verify_scene.py --record --hold_base --headless --num_envs 1
@@ -26,7 +26,7 @@ Examples
     # verify a specific task env
     uv run python scripts/verify_scene.py --headless --task FIATLUX-Climb-v0
 
-    # the Insert task needs camera rendering for its wrist-camera sensor
+    # every task needs camera rendering; without the flag Isaac Lab raises at startup
     uv run python scripts/verify_scene.py --headless --enable_cameras --task FIATLUX-Insert-v0
 """
 
@@ -293,10 +293,12 @@ def main() -> int:
     kinematic_props = [n for n in rigid_tracked if is_kinematic(n)]
     dynamic_props = [n for n in rigid_tracked if not is_kinematic(n)]
     robot = base.scene["robot"]
-    # Which bulb this preset built. Named by placement since #76 Step 1: seated in the socket is
-    # ``old_bulb``, anywhere else is ``fresh_bulb``. Remove and Carry build only the seated one,
-    # so a hardcoded lookup covers neither.
-    bulb_entity = "fresh_bulb" if "fresh_bulb" in base.scene.rigid_objects else "old_bulb"
+    # Whichever bulbs this preset built. Named by placement since #76 Step 1: seated in the socket
+    # is ``old_bulb``, anywhere else is ``fresh_bulb``. Remove and Carry build only the seated one,
+    # and Replace builds BOTH -- so every bulb check below iterates rather than picking one. The
+    # generic dynamic-object bound is a loose > -0.2 m, so a second bulb through the floor would
+    # otherwise pass the stricter geometry-aware audit.
+    bulb_entities = [n for n in ("fresh_bulb", "old_bulb") if n in base.scene.rigid_objects]
 
     # =========================== 1. ASSETS PRESENT ===========================
     print("\n[verify] (1) Assets present")
@@ -370,7 +372,8 @@ def main() -> int:
         base.step(actions)
         if render_viewer:
             base.sim.render()
-        if torch.isnan(robot.data.root_pos_w).any() or torch.isnan(base.scene[bulb_entity].data.root_pos_w).any():
+        bulb_nan = any(torch.isnan(base.scene[n].data.root_pos_w).any() for n in bulb_entities)
+        if torch.isnan(robot.data.root_pos_w).any() or bulb_nan:
             nan_seen = True
             break
         rz = robot.data.root_pos_w[:, 2]
@@ -459,12 +462,12 @@ def main() -> int:
     # root: the bulb asset's origin sits BULB_STAND_Z_OFFSET *below* its own screw cap, so a
     # bulb legitimately standing on the floor reads a negative root z and a root-based test
     # would fail every time.
-    bulb_z = base.scene[bulb_entity].data.root_pos_w[:, 2]
-    bulb_bottom = bulb_z + BULB_STAND_Z_OFFSET
+    bottoms = {n: base.scene[n].data.root_pos_w[:, 2] + BULB_STAND_Z_OFFSET for n in bulb_entities}
+    bulb_bottom = torch.cat([v for v in bottoms.values()])
     record(
         "bulb:above_floor",
         bool((bulb_bottom > -0.02).all()) and not nan_seen,
-        f"min bulb bottom z={bulb_bottom.min().item():.3f} m (root {bulb_z.min().item():.3f})",
+        f"min bulb bottom z={bulb_bottom.min().item():.3f} m over {', '.join(bulb_entities)}",
     )
     # no large depenetration kick on the very first step (sign of initial interpenetration)
     first_kick = (step1_root[:, 2] - init_root_z).abs().max().item() if step1_root is not None else 0.0

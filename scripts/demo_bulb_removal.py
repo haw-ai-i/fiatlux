@@ -106,7 +106,7 @@ def build_cfg():
     cfg.scene.robot.spawn.articulation_props.fix_root_link = True
     # Same isolation the harness uses: the state machine owns the bulb here, and contact
     # artifacts would only add noise to a demonstration.
-    for bulb_cfg in (cfg.scene.bulb, cfg.scene.old_bulb):
+    for bulb_cfg in (cfg.scene.fresh_bulb, cfg.scene.old_bulb):
         if getattr(bulb_cfg.spawn, "rigid_props", None) is not None:
             bulb_cfg.spawn.rigid_props.disable_gravity = True
         bulb_cfg.spawn.collision_props = sim_utils.CollisionPropertiesCfg(collision_enabled=False)

@@ -107,6 +107,12 @@ class TrajectoryRecorder:
         # placement: a bulb seated in the socket is ``old_bulb``, one anywhere else is
         # ``fresh_bulb``. Remove and Carry build only the seated one, so a hardcoded lookup
         # raised KeyError for them. The serialized keys stay ``bulb_*`` so old bags still parse.
+        #
+        # KNOWN LIMIT, carried over from the `scene["bulb"]` lookup this replaces: presence
+        # cannot disambiguate a two-bulb scene. S06-S09 run the Replace scene and manipulate the
+        # OLD bulb, and this picks the fresh one for them, so their bags record a parked bulb.
+        # The behaviour is unchanged by the rename -- the old lookup resolved to the same fresh
+        # bulb -- but fixing it needs the task to DECLARE its manipuland, which is #76 Step 3.
         self._bulb_entity = "fresh_bulb" if "fresh_bulb" in env.scene.rigid_objects else "old_bulb"
 
         self._buf: dict[str, list[np.ndarray]] = {}
