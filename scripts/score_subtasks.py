@@ -32,7 +32,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "source" / "fiatlux_task"))
 
 from fiatlux_task.subtask_score import (  # noqa: E402
-    FACTOR_WEIGHTS,
+    FACTOR_MULTIPLIERS,
     SUBTASK_FACTORS,
     SUCCESS_SHARE,
     aggregate,
@@ -63,10 +63,10 @@ def load_results(paths: list[Path]) -> dict[str, dict[str, float]]:
 
 
 def print_weights() -> None:
-    print(f"factors: {FACTOR_WEIGHTS}\n")
+    print(f"factors: {FACTOR_MULTIPLIERS}\n")
     print(f"{'subtask':<38} {'weight':>6}  factors")
     for task_id, weight in subtask_weights().items():
-        print(f"{task_id:<38} {weight:>6}  {' + '.join(SUBTASK_FACTORS[task_id])}")
+        print(f"{task_id:<38} {weight:>6}  {' * '.join(SUBTASK_FACTORS[task_id])}")
     print(f"\n{'total':<38} {sum(subtask_weights().values()):>6}")
 
 
