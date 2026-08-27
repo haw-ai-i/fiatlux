@@ -109,7 +109,7 @@ def conjuncts_of(predicate_fn: Callable, params: dict | None) -> list[tuple[Call
     params = dict(params or {})
     if predicate_fn is sustained or getattr(predicate_fn, "__name__", "") == "sustained":
         return conjuncts_of(params["predicate_fn"], params.get("predicate_params"))
-    if predicate_fn is all_of:
+    if predicate_fn is all_of or getattr(predicate_fn, "__name__", "") == "all_of":
         return [(fn, dict(pp or {})) for fn, pp in params.get("predicates", [])]
     return [(predicate_fn, params)]
 
