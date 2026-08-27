@@ -139,6 +139,41 @@ def fixture_orbit(env_cfg) -> dict:
     raise ValueError("the fixture view needs a 'socket' or 'fixture' scene entity; this scene has neither")
 
 
+def _draw_overlay(frame: np.ndarray, text: str) -> np.ndarray:
+    """Burn a few lines of text into the top-left of a frame, over a dark panel.
+
+    Some state a recording needs to show has no visual signature at all. The bayonet unscrew is
+    the case in point: the bulb is a surface of revolution, so turning it about its own axis
+    changes almost nothing on screen -- measured at 5.7 percent of pixels between two
+    mid-rotation frames, and most of that is specular drift. The event is real, and the camera
+    cannot show it. Printing the state machine's own numbers is honest where implying visible
+    motion would not be.
+
+    Falls back to the unannotated frame if PIL is missing, because a recording without a caption
+    is still worth having.
+    """
+    try:
+        from PIL import Image, ImageDraw, ImageFont
+    except ImportError:
+        return frame
+
+    image = Image.fromarray(frame)
+    draw = ImageDraw.Draw(image, "RGBA")
+    try:
+        font = ImageFont.load_default(size=20)
+    except TypeError:  # Pillow < 10.1 takes no size
+        font = ImageFont.load_default()
+
+    lines = text.splitlines()
+    pad, line_h = 10, 24
+    box_h = pad * 2 + line_h * len(lines)
+    box_w = pad * 2 + max((int(draw.textlength(ln, font=font)) for ln in lines), default=0)
+    draw.rectangle([(0, 0), (box_w, box_h)], fill=(0, 0, 0, 150))
+    for i, line in enumerate(lines):
+        draw.text((pad, pad + i * line_h), line, fill=(255, 255, 255, 255), font=font)
+    return np.asarray(image, dtype=np.uint8)
+
+
 class VideoRecorder:
     """Buffers RGB frames from a scene camera; writes an MP4 plus a mid-video poster PNG.
 
@@ -164,12 +199,18 @@ class VideoRecorder:
         look_t = torch.tensor(lookat, dtype=torch.float32, device=device).expand(n_cam, 3)
         self._cam.set_world_poses_from_view(eye_t, look_t)
 
-    def capture(self, pose: tuple | None = None) -> None:
-        """Grab env 0's current RGB frame; optionally :meth:`set_pose` first."""
+    def capture(self, pose: tuple | None = None, overlay: str | None = None) -> None:
+        """Grab env 0's current RGB frame; optionally :meth:`set_pose` first.
+
+        ``overlay`` burns text into the frame, for state a camera cannot show on its own.
+        """
         if pose is not None:
             self.set_pose(*pose)
         rgb = self._cam.data.output["rgb"][0, ..., :3]  # (H, W, 3) uint8 on device
-        self._frames.append(rgb.detach().cpu().numpy().astype(np.uint8))
+        frame = rgb.detach().cpu().numpy().astype(np.uint8)
+        if overlay:
+            frame = _draw_overlay(frame, overlay)
+        self._frames.append(frame)
 
     def write(self) -> str:
         """Encode the buffered frames (libx264) and drop a poster PNG alongside."""

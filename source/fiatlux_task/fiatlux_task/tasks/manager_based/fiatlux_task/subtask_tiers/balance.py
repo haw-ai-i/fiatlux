@@ -56,7 +56,7 @@ class BalanceEventCfg(SubtaskEventCfg):
         params={
             "insertion_depth": BAYONET_INSERTION_DEPTH,
             "rotation_angle": BAYONET_ROTATION_ANGLE,
-            "rotation_sign": 1.0,
+            "rotation_sign": -1.0,
             "radial_tolerance": SEAT_POS_THRESHOLD,
             "orientation_tolerance": SEAT_ORI_THRESHOLD,
         },

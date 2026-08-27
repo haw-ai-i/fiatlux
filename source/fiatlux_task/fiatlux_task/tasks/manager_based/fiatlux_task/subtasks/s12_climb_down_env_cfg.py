@@ -14,9 +14,9 @@ down has undone the task, so leaving the socket also ends the episode.
 
 Its success region is the chain's declared terminal state -- there is no successor to hand off to.
 
-BLOCKED on #54 (bulb attach/detach): the fixture is inverted and nothing retains the bulb, so both
-the start state and the seated conjunct are unreachable until the mechanic lands. The seated
-conditions are PROVISIONAL.
+The bayonet attach/detach state machine (issue #54, ``mdp.bulb_attachment``) is wired at the
+balance tier (``subtask_tiers.balance.BalanceEventCfg``), retaining the bulb in the inverted fixture
+while the robot descends.
 """
 
 from isaaclab.managers import RewardTermCfg as RewTerm

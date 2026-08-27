@@ -1,0 +1,80 @@
+Three robustness fixes to SimArt's inference entry point, applied in-tree.
+
+1. `attn_implementation` was hardcoded to "flash_attention_2". Building
+   flash_attn from source needs an exact torch/CPython/CUDA match and ~30 min,
+   so an entire pipeline run should not hinge on that wheel resolving. It is
+   now an env var defaulting to "sdpa"; set SIMART_ATTN_IMPL=flash_attention_2
+   to restore the original behaviour.
+
+2. `json.loads(response.strip())` was unguarded, on up to 24k tokens of model
+   output, and ran AFTER generation had already been paid for. Stray prose or a
+   truncated response crashed with a bare JSONDecodeError and nothing to
+   inspect. The raw response is now written to disk and named in the error.
+
+3. The checkpoint samples (do_sample=true, temperature=0.7) and infer.py never
+   seeds, so identical inputs give different articulations run to run.
+   SIMART_SEED=<int> pins the sampler (offset per object in folder runs);
+   unset keeps upstream's non-deterministic behaviour.
+
+Apply/revert from the SimArt checkout:
+    git -C ../SimArt apply      ../pipeline/patches/simart_infer.patch
+    git -C ../SimArt apply -R   ../pipeline/patches/simart_infer.patch
+Check first with `git apply --check` -- it is a no-op if already applied.
+
+diff --git a/inference/infer.py b/inference/infer.py
+index 7399966..874445c 100644
+--- a/inference/infer.py
++++ b/inference/infer.py
+@@ -287,8 +287,13 @@ def main():
+     config = AutoConfig.from_pretrained(args.model_path, trust_remote_code=True)
+     config.text_config.dtype = torch.bfloat16
+     
+-    # Initialize the multimodal LLM (Qwen3VL) with Flash Attention 2 for efficiency
+-    model = Qwen3VLForConditionalGeneration.from_pretrained(args.model_path, config=config, dtype=torch.float16, device_map="auto", attn_implementation="flash_attention_2")
++    # Initialize the multimodal LLM (Qwen3VL). The attention backend is selectable:
++    # flash_attn needs a wheel matching the exact torch/CPython/CUDA triple, and
++    # building it from source takes ~30 min, so a whole pipeline run should not
++    # hinge on it. Set SIMART_ATTN_IMPL=flash_attention_2 to restore the original.
++    _attn_impl = os.environ.get("SIMART_ATTN_IMPL", "sdpa")
++    print(f"[simart] attn_implementation={_attn_impl}")
++    model = Qwen3VLForConditionalGeneration.from_pretrained(args.model_path, config=config, dtype=torch.float16, device_map="auto", attn_implementation=_attn_impl)
+     
+     # Load processor and tokenizer for text/image inputs
+     processor = AutoProcessor.from_pretrained(args.model_path)
+@@ -318,6 +323,14 @@ def main():
+         inputs = processor(text=[text], images=image_inputs, padding=True, return_tensors="pt").to(device)
+ 
+         gen_kwargs = {"max_new_tokens": args.max_new_tokens, **inputs}
++        # The checkpoint's generation_config has do_sample=True / temperature=0.7,
++        # so unseeded runs are not reproducible. SIMART_SEED pins the sampler
++        # (offset by an object counter so a folder run still varies per object);
++        # leaving it unset keeps upstream behaviour.
++        if os.environ.get("SIMART_SEED"):
++            _n = getattr(main, "_gen_count", 0)
++            main._gen_count = _n + 1
++            torch.manual_seed(int(os.environ["SIMART_SEED"]) + _n)
+         generated_ids = model.generate(**gen_kwargs)
+         response_ids = generated_ids[0][len(inputs.input_ids[0]):]
+         response = tokenizer.decode(response_ids, skip_special_tokens=True)
+@@ -326,7 +339,20 @@ def main():
+         pred_caps = parse_parts_captions_json(response)
+ 
+         # 1. Parse parts_voxels_dict once outside the loop to avoid redundant JSON loading
+-        parsed_output = json.loads(response.strip())
++        # Guarded: this runs on up to 24k tokens of model output, AFTER generation
++        # has already been paid for. Stray prose or a truncated response used to
++        # crash here with a bare JSONDecodeError and nothing to inspect.
++        try:
++            parsed_output = json.loads(response.strip())
++        except json.JSONDecodeError as exc:
++            os.makedirs(args.output_path, exist_ok=True)
++            _dump = os.path.join(args.output_path, f"{current_name}_raw_response.txt")
++            with open(_dump, "w") as _fh:
++                _fh.write(response)
++            raise SystemExit(
++                f"[simart] model response was not valid JSON ({exc}); "
++                f"raw {len(response)}-char response saved to {_dump}"
++            ) from exc
+         parts_voxels_dict = parsed_output.get("parts_voxels", {})
+ 
+         pred_points_map = {}

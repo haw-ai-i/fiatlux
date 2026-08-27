@@ -30,3 +30,20 @@ _isaac_sim*
 # Assets are handled by assets/.gitignore (pulled from GCS, not tracked)
 # Large USD/mesh assets pulled from Omniverse S3 / GCS — never tracked in Git.
 /fiatlux_assets/
+# image->mesh->USD pipeline. Ignore auto/'s *contents* by default -- the two
+# vendored upstream clones carry their own .git (~700 MB) and the run tree holds
+# ~55 GB of weights and outputs -- then re-admit the parts we actually author.
+# Note this must be `/auto/*` and not `/auto/`: git cannot re-include anything
+# beneath an excluded directory, so excluding the directory itself would make
+# the !-rules below silently dead.
+/auto/*
+!/auto/pipeline/
+!/auto/images/
+# Provisioned or generated inside the pipeline (also covered by
+# auto/pipeline/.gitignore, repeated here so a clone of this file alone is safe).
+/auto/pipeline/.venvs/
+/auto/pipeline/.tools/
+/auto/pipeline/runs/
+
+#npz
+*.npz

@@ -94,6 +94,13 @@ uv sync --extra groot
 scripts/groot/serve.sh &   # terminal 1: the VLA server (own venv, HF token required)
 uv run python scripts/eval.py --task FIATLUX-Replace-v0 --policy groot \
     --episodes 20 --seed 0 --enable_cameras
+
+# 8. Teleoperate the tasks (whole-body: SONIC walking + bimanual arms; keyboard or
+#    Pico VR) and record scored demo sessions -- guide: source/fiatlux_teleop/README.md
+./scripts/teleop/setup_sim_teleop.sh            # one-command setup (keyboard tier; `vr` adds CloudXR)
+PYTHONPATH=source/fiatlux_task:source/fiatlux_teleop \
+uv run --extra teleop python scripts/teleop/sonic_teleop.py \
+    --task FIATLUX-Carry-Teleop-v0 --input keyboard
 ```
 
 ## Sim-to-real

@@ -63,6 +63,10 @@ gym.register(
     },
 )
 
+# NOTE: the teleop task variants (FIATLUX-{Insert,Carry,LadderGallery}-Teleop-v0) live in the separate
+# `fiatlux_teleop` extension package (source/fiatlux_teleop) and are registered by importing it -- kept
+# out of the benchmark so this package imports/runs without teleop's OpenXR/CloudXR/SONIC deps.
+
 gym.register(
     id="FIATLUX-Climb-v0",
     entry_point="isaaclab.envs:ManagerBasedRLEnv",

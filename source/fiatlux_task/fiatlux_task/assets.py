@@ -24,6 +24,12 @@ G1_DEX3_USD = os.path.join(FIATLUX_ASSETS_DIR, "unitree_g1", "wholebody_dex3", "
 BULB_USD = os.path.join(FIATLUX_ASSETS_DIR, "omniverse_bulb", "LightBulb_bulb_z_rigid.usda")
 SOCKET_USD = os.path.join(FIATLUX_ASSETS_DIR, "omniverse_bulb", "LightBulb_socket_z_static.usda")
 
+# Curated Omniverse LightBulb split into a graspable bulb + its socket base (Y-up, cm-authored ->
+# spawn scale + an X rotation). Clean-rendering (unlike the flat-texpath B1K lamp); used by the
+# teleop bench (FIATLUX-Insert-Teleop-v0).
+OMNI_BULB_USD = os.path.join(FIATLUX_ASSETS_DIR, "omniverse_bulb", "LightBulb_bulb.usda")
+OMNI_SOCKET_USD = os.path.join(FIATLUX_ASSETS_DIR, "omniverse_bulb", "LightBulb_socket.usda")
+
 # Metres, in each object's own root frame, Z-up. Both halves are authored assembled at
 # identity, so "seated" is *bulb root pose == socket root pose*.
 SOCKET_SEAT_OFFSET = (0.0, 0.0, 0.036259)

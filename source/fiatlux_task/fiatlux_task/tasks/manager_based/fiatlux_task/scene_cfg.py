@@ -298,6 +298,12 @@ def _quat_z_deg(angle_deg: float) -> tuple[float, float, float, float]:
     return (math.cos(half), 0.0, 0.0, math.sin(half))
 
 
+def _quat_x_deg(angle_deg: float) -> tuple[float, float, float, float]:
+    """(w, x, y, z) quaternion for a rotation about +X, in degrees (Y-up -> Z-up assets)."""
+    half = math.radians(angle_deg) / 2.0
+    return (math.cos(half), math.sin(half), 0.0, 0.0)
+
+
 Quat = tuple[float, float, float, float]
 Vec3 = tuple[float, float, float]
 Vec2 = tuple[float, float]
@@ -336,6 +342,43 @@ def _spawn_usd_as_rigid_body(prim_path, cfg, translation=None, orientation=None)
     if cfg.mass_props is not None:
         UsdPhysics.MassAPI.Apply(prim)
         schemas.modify_mass_properties(prim.GetPath(), cfg.mass_props)
+    return prim
+
+
+@clone
+def _spawn_bulb_socket_filtered(prim_path, cfg, translation=None, orientation=None):
+    """``spawn_from_usd`` + a collision filter against this env's socket (issue #77 task 6).
+
+    ``mdp.bulb_attachment`` owns a constrained bulb's pose: it writes pose and velocity every
+    step. The contact solver owns the same body, because the bulb sits inside the socket. Two
+    authorities disagree every step, and the cost is not small -- measured at a median 1067 N of
+    socket contact, about 3100x the bulb's weight, against roughly 5 N of tangential force from
+    an 0.1 N.m twist. `theta` never settles, so the release never fires. See
+    ``scripts/step0_contact.py``.
+
+    Nothing is geometrically wrong. The seat pose is right and the collider is not oversized: a
+    bulb left alone at the seat settles by under 2 mm. The load comes from writing the pose every
+    step to a body that is already in contact.
+
+    So this filters the ONE pair that fights, and leaves every other contact alone. The bulb still
+    collides with the hand, so a grasp registers, and with the world, so a dropped bulb lands.
+    ``scripts/diagnose_contact_twist.py`` with ``DISABLE_SOCKET_COLLISION=1`` measures the
+    result: the release works at 1e-4 N.m, the smallest torque tried.
+
+    The filter is STATIC, not phase-dependent. Isaac Lab has no runtime per-pair control --
+    ``RigidObject`` exposes pose, velocity and wrench only, and ``scene.filter_collisions`` is
+    cross-env. A static filter is defensible here: while the bulb is constrained the state
+    machine owns its pose, so contact adds nothing, and the old bulb has left the socket by the
+    time it is ``FREE``. The cost is that a free bulb passes through the fixture instead of
+    bumping it. Scoring does not care -- every bulb channel reads the state machine, which still
+    gates engagement on alignment, depth and orientation.
+    """
+    from pxr import Sdf, UsdPhysics
+
+    prim = _spawn_from_usd_file(prim_path, cfg.usd_path, cfg, translation, orientation)
+    # Sibling socket in the SAME env. `prim_path` is this env's bulb, so the parent is its env.
+    socket_path = prim_path.rsplit("/", 1)[0] + "/Socket"
+    UsdPhysics.FilteredPairsAPI.Apply(prim).CreateFilteredPairsRel().AddTarget(Sdf.Path(socket_path))
     return prim
 
 
@@ -383,6 +426,8 @@ def _spawn_usd_as_rigid_body_frictional(prim_path, cfg, translation=None, orient
         schemas.modify_rigid_body_properties(prim.GetPath(), cfg.rigid_props)
     if cfg.mass_props is not None:
         schemas.modify_mass_properties(prim.GetPath(), cfg.mass_props)
+    # (The ~6 mm contact offset now lives in the asset -- authored by omniverse_ladder_collision.py --
+    # so no code-side trim is needed here; the ladder USD carries both the tight shape and the offset.)
     grip = sim_utils.RigidBodyMaterialCfg(static_friction=1.5, dynamic_friction=1.2, restitution=0.0)
     grip.func(f"{prim_path}/physicsMaterial", grip)
     bind_physics_material(prim_path, f"{prim_path}/physicsMaterial")
@@ -470,6 +515,7 @@ class G1ReplaceSceneCfg(DressedSceneCfg):
         prim_path="{ENV_REGEX_NS}/Bulb",
         spawn=sim_utils.UsdFileCfg(
             usd_path=BULB_USD,
+            func=_spawn_bulb_socket_filtered,
             rigid_props=sim_utils.RigidBodyPropertiesCfg(
                 solver_position_iteration_count=32,
                 solver_velocity_iteration_count=1,
@@ -1201,6 +1247,7 @@ def apply_replace_preset(
         prim_path="{ENV_REGEX_NS}/OldBulb",
         spawn=sim_utils.UsdFileCfg(
             usd_path=BULB_USD,
+            func=_spawn_bulb_socket_filtered,
             rigid_props=sim_utils.RigidBodyPropertiesCfg(
                 solver_position_iteration_count=32,
                 solver_velocity_iteration_count=1,

@@ -93,15 +93,22 @@ def _load_npz(path: Path) -> list[dict[str, np.ndarray]]:
 # --------------------------------------------------------------------------- #
 def _peak_contact_force(ep: dict[str, np.ndarray]) -> float:
     """Max contact-force magnitude over steps and hand bodies (N)."""
-    f = ep["contact_force"]  # (T, B, 3)
-    return float(np.linalg.norm(f, axis=-1).max()) if f.size else 0.0
+    f = ep.get("contact_force")  # (T, B, 3)
+    if f is None or not getattr(f, "size", 0):
+        return 0.0
+    return float(np.linalg.norm(f, axis=-1).max())
 
 
 def score_episode(ep: dict[str, np.ndarray], cfg: ScoreConfig) -> dict:
-    seated = bool(ep["success_term"][-1])
-    dropped = bool(ep["dropped_term"][-1]) or bool(
-        ep["bulb_pos"][:, 2].min() < cfg.drop_min_height
-    )
+    success = ep.get("success_term")
+    seated = bool(success[-1]) if success is not None and getattr(success, "size", 0) else False
+
+    dropped_term = ep.get("dropped_term")
+    dropped = bool(dropped_term[-1]) if dropped_term is not None and getattr(dropped_term, "size", 0) else False
+    bulb_pos = ep.get("bulb_pos")
+    if not dropped and bulb_pos is not None and getattr(bulb_pos, "size", 0):
+        dropped = bool(bulb_pos[:, 2].min() < cfg.drop_min_height)
+
     peak_force = _peak_contact_force(ep)
     broken = peak_force > cfg.fragility_threshold
 
@@ -112,13 +119,18 @@ def score_episode(ep: dict[str, np.ndarray], cfg: ScoreConfig) -> dict:
         score -= cfg.dropped_penalty
     score = max(cfg.min_score, score)
 
+    pos_error = ep.get("pos_error")
+    min_pos_error = float(pos_error.min()) if pos_error is not None and getattr(pos_error, "size", 0) else 0.0
+    done = ep.get("done")
+    length = int(done.shape[0]) if done is not None and getattr(done, "size", 0) else 0
+
     return {
         "seated": seated,
         "broken": broken,
         "dropped": dropped,
         "peak_contact_force": peak_force,
-        "min_pos_error": float(ep["pos_error"].min()),
-        "length": int(ep["done"].shape[0]),
+        "min_pos_error": min_pos_error,
+        "length": length,
         "score": score,
     }
 
