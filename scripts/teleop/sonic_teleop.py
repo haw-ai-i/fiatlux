@@ -20,6 +20,8 @@ the walk part to SONIC.
 import argparse
 import contextlib
 import os
+import random
+import re
 
 from isaaclab.app import AppLauncher
 
@@ -31,6 +33,11 @@ parser = argparse.ArgumentParser()
 parser.add_argument("--task", default="FIATLUX-Insert-Teleop-v0")
 parser.add_argument("--input", choices=["vr", "keyboard"], default="vr",
                     help="vr = Pico controllers over CloudXR; keyboard = desktop keys (no headset)")
+parser.add_argument("--layout_seed", default="random",
+                    help="room layout: an integer picks a specific reproducible room; 'random' "
+                         "(default) draws one; 'none' leaves the layout unseeded. The seed in "
+                         "use is ALWAYS printed and stored in the demo bag's meta, so any "
+                         "session -- including a bad draw -- can be reproduced later.")
 parser.add_argument("--teleop_device", default="controller_rel")
 parser.add_argument("--hand", default="dex3", choices=["dex3", "inspire"])
 parser.add_argument("--walk_onnx", default=f"{_POLICY_DIR}/GR00T-WholeBodyControl-Walk.onnx")
@@ -108,6 +115,10 @@ from isaaclab.utils.math import subtract_frame_transforms  # noqa: E402
 import isaaclab_tasks  # noqa: F401,E402
 from isaaclab_tasks.utils import parse_env_cfg  # noqa: E402
 
+from fiatlux_task.tasks.manager_based.fiatlux_task.scene_cfg import (  # noqa: E402
+    set_layout_seed,
+)
+
 # ---------------------------------------------------------------------------
 # SONIC contract (29-joint obs / 15-action legs+waist; from NVIDIA's GR00T-WholeBodyControl)
 # ---------------------------------------------------------------------------
@@ -180,6 +191,30 @@ class WalkRetargeterCfg(RetargeterCfg):
 
 def main():  # noqa: C901  (one long orchestration: env setup + settle/resettle + the teleop loop)
     # --- env: real Insert-Teleop scene, retimed for SONIC, base freed ---
+    # Subtask teleop envs read the hand from the environment (the swap has to happen inside the
+    # cfg's __post_init__, before its action terms are built). Insert/Carry keep their own
+    # post-parse patches below.
+    if re.search(r"-S\d\d-", args.task):
+        os.environ["FIATLUX_TELEOP_HAND"] = args.hand.lower()
+
+    # Room layout seed. Drawn here rather than left to the scene module's unseeded default so
+    # the value is KNOWN: an unreproducible bad draw (robot spawned collapsed, ladder tipped at
+    # settle) is otherwise impossible to hand to anyone else. Applied before parse_env_cfg --
+    # the layout is sampled inside the cfg's __post_init__.
+    layout_seed: int | None = None
+    if str(args.layout_seed).lower() != "none":
+        if str(args.layout_seed).lower() == "random":
+            layout_seed = random.randrange(2**31)
+        else:
+            try:
+                layout_seed = int(args.layout_seed)
+            except ValueError:
+                raise SystemExit(f"--layout_seed must be an integer, 'random', or 'none'; "
+                                 f"got {args.layout_seed!r}")
+        set_layout_seed(layout_seed)
+        print(f"[sonic] room layout seed {layout_seed}  "
+              f"(reproduce this exact room with --layout_seed {layout_seed})", flush=True)
+
     env_cfg = parse_env_cfg(args.task, device=args.device, num_envs=args.num_envs)
     if not isinstance(env_cfg, ManagerBasedRLEnvCfg):
         raise ValueError("expected a ManagerBasedRLEnv task")
@@ -223,14 +258,42 @@ def main():  # noqa: C901  (one long orchestration: env setup + settle/resettle 
     _legs = {".*_hip_pitch_joint": -0.1, ".*_knee_joint": 0.3, ".*_ankle_pitch_joint": -0.2}
     # LadderGallery is a Carry-derived task -- its IK HOLDS the spawn pose too, so it needs the same
     # natural low spawn as Carry (spawning it at Insert's 1.57 would leave the arm tucked up at 90 deg).
-    if "Carry" in args.task or "Gallery" in args.task:
+    # The S01..S15 subtask teleop envs are whole-body walking tasks like Carry, so they take the
+    # same natural low spawn (their ids carry no "Carry"/"Gallery" marker -- match "-S<NN>-").
+    _is_subtask = re.search(r"-S\d\d-", args.task) is not None
+    if "Carry" in args.task or "Gallery" in args.task or _is_subtask:
         # Drop the SHOULDER so the arm hangs low. The elbow drifts up to ~1.1 on its own (redundant IK),
         # so we don't fight it -- a low/back shoulder points the upper arm down so the bent forearm sits
         # low instead of up at the chest. (Per operator: change the joint above the 90-deg elbow.)
         _arm_spawn = {".*_shoulder_pitch_joint": -0.35, ".*_elbow_joint": 0.35}
     else:
         _arm_spawn = {".*_elbow_joint": 1.57}  # Insert etc: IK relaxes this to ~0.17 (unchanged from before)
-    env_cfg.scene.robot.init_state.joint_pos = {**_legs, **_arm_spawn}
+    # MERGE, don't assign: subtasks stage joints that the task depends on -- the carry/hold ones
+    # place the arms where they must be to hold the payload (e.g. S03's LADDER_CARRY_ARM_JOINT_POS,
+    # merged in by the subtask itself). A hard assign here threw those away, so the operator
+    # started NOT holding the ladder/bulb and the payload dropped onto the robot.
+    # Our generic teleop spawn is the BASE; anything the task staged specifically wins.
+    # Expand OUR ".*_x_joint" defaults to explicit left_/right_ names first. Isaac Lab rejects
+    # a joint matched by two keys ("Multiple matches for 'right_shoulder_pitch_joint':
+    # '.*_shoulder_pitch_joint' and 'right_shoulder_pitch_joint'"), which is exactly what happens
+    # when a subtask stages ONE arm (S03/S07 name only right-arm joints) and we also carry a
+    # both-sides pattern. Explicit names let the task's entry simply replace ours, per joint.
+    def _explicit(d):
+        out = {}
+        for k, v in d.items():
+            if k.startswith(".*_"):
+                out[f"left_{k[3:]}"] = v
+                out[f"right_{k[3:]}"] = v
+            else:
+                out[k] = v
+        return out
+
+    _staged = dict(env_cfg.scene.robot.init_state.joint_pos or {})
+    _base_generic = {".*_hip_pitch_joint", ".*_knee_joint", ".*_ankle_pitch_joint"}
+    _task_specific = {k: v for k, v in _staged.items() if k not in _base_generic}
+    env_cfg.scene.robot.init_state.joint_pos = {
+        **_explicit(_legs), **_explicit(_arm_spawn), **_task_specific,
+    }
     # Stiffen the arms so the ready pose (elbow ~90) HOLDS against gravity + the heavy Dex3 hand. The
     # RL-tuned arm gains (~50 at the elbow) are too soft, so the arm droops toward straight before the
     # operator connects. A firmer PD tracks the IK's joint targets, keeping the elbow bent, and also
@@ -252,6 +315,25 @@ def main():  # noqa: C901  (one long orchestration: env setup + settle/resettle 
     dev = env.device
 
     reset_flag = {"do": False}
+    def _score_line(info: dict) -> str:
+        """One-line benchmark score for the operator, printed on every flush.
+
+        The score is already computed and embedded in meta.json by the recorder's write();
+        without printing it the operator has to open the file to learn whether the take they
+        just finished actually counted as a success.
+        """
+        sc = info.get("score") or {}
+        if not sc:
+            return "  score: unavailable (see meta.json)"
+        n = sc.get("episodes") or 0
+        rate = sc.get("success_rate") or 0.0
+        return (f"  score: success {round(rate * n)}/{n} ({rate:.0%})  "
+                f"mean_score={sc.get('mean_score', 0.0):.2f}  "
+                f"clean={sc.get('clean_success_rate', 0.0):.0%}  "
+                f"broken={sc.get('broken_rate', 0.0):.0%}  "
+                f"dropped={sc.get('dropped_rate', 0.0):.0%}  "
+                f"peak_force={sc.get('peak_contact_force', 0.0):.1f}N")
+
     rec_flag = {"toggle": False}   # operator asked to flip recording on/off (keyboard C / VR right B=upper)
 
     def _reset():
@@ -346,7 +428,8 @@ def main():  # noqa: C901  (one long orchestration: env setup + settle/resettle 
                       f"filing the session under {_hand}/", flush=True)
             args.out = os.path.join(_captures, args.task, _hand, _kind, args.input,
                                     _time.strftime("%Y-%m-%d"), _time.strftime("%H%M%S"))
-        recorder = TeleopTrajectoryRecorder(env, policy_spec=f"teleop_{args.input}", seed=0)
+        recorder = TeleopTrajectoryRecorder(env, policy_spec=f"teleop_{args.input}",
+                                                seed=layout_seed if layout_seed is not None else 0)
         if args.record_video:
             from fiatlux_teleop.teleop_recording import StreamingVideoRecorder
             video = StreamingVideoRecorder(env, env.scene["video_cam"],
@@ -607,6 +690,17 @@ def main():  # noqa: C901  (one long orchestration: env setup + settle/resettle 
         home_xy = robot.data.root_pos_w[0, 0:2].cpu().numpy().copy()  # hold where it actually stands
         last_arm = rest_arm
 
+    # Room interior for the follow-cam, inset from the walls (ROOM_FLOOR_MIN/MAX in scene_cfg).
+    from fiatlux_task.tasks.manager_based.fiatlux_task.scene_cfg import (
+        ROOM_FLOOR_MAX as _RMAX,
+    )
+    from fiatlux_task.tasks.manager_based.fiatlux_task.scene_cfg import (
+        ROOM_FLOOR_MIN as _RMIN,
+    )
+    _CAM_INSET = 0.4
+    _CAM_MIN = (_RMIN[0] + _CAM_INSET, _RMIN[1] + _CAM_INSET)
+    _CAM_MAX = (_RMAX[0] - _CAM_INSET, _RMAX[1] - _CAM_INSET)
+
     n_walk = 6
     vr_rec_prev = False   # rising-edge detect for the VR record-toggle button
     step_i = 0
@@ -625,6 +719,7 @@ def main():  # noqa: C901  (one long orchestration: env setup + settle/resettle 
                                 _info = recorder.write(args.out, fmt=args.record_format)
                                 print(f"[sonic] RECORDING OFF -- bag updated: {_info['episodes']} "
                                       f"episode(s) -> {_info['bag']}", flush=True)
+                                print(f"[sonic] {_score_line(_info)}", flush=True)
                             else:
                                 print("[sonic] RECORDING OFF (nothing buffered)", flush=True)
 
@@ -636,6 +731,7 @@ def main():  # noqa: C901  (one long orchestration: env setup + settle/resettle 
                         _info = recorder.write(args.out, fmt=args.record_format)
                         print(f"[sonic] bag updated: {_info['episodes']} episode(s) -> {_info['bag']}",
                               flush=True)
+                        print(f"[sonic] {_score_line(_info)}", flush=True)
                     env.reset()                              # reset the task (bulb/socket, episode buffers)
                     # A FREE base isn't re-homed by env.reset() -> teleport the root back to the good
                     # centered spawn (zero velocity), THEN re-plant with the same pin + SONIC settle-in
@@ -735,9 +831,15 @@ def main():  # noqa: C901  (one long orchestration: env setup + settle/resettle 
                     }
                     recorder.record_step(_obs_t, arm_action, _rew_t, _term_t, _trunc_t, extras=_extras)
                     if video is not None:
-                        # follow-cam: shoulder-height orbit point tracking the (possibly walking) base
+                        # follow-cam: shoulder-height orbit point tracking the (possibly walking)
+                        # base, CLAMPED INSIDE THE ROOM. The fixed (+1.8, -2.4) offset puts the eye
+                        # outside the walls whenever the robot works near an edge (subtask scenes
+                        # spawn it all around the room), and a camera outside the room renders FLAT
+                        # GREY -- see viz.py's `_radius_inside`. Clamp, then re-aim at the robot.
                         _b = robot.data.root_pos_w[0].cpu().numpy()
-                        video.capture(pose=((float(_b[0] + 1.8), float(_b[1] - 2.4), float(_b[2] + 0.9)),
+                        _ex = min(max(float(_b[0] + 1.8), _CAM_MIN[0]), _CAM_MAX[0])
+                        _ey = min(max(float(_b[1] - 2.4), _CAM_MIN[1]), _CAM_MAX[1])
+                        video.capture(pose=((_ex, _ey, float(_b[2] + 0.9)),
                                             (float(_b[0]), float(_b[1]), float(_b[2] + 0.2))))
                     if images is not None:
                         images.maybe_capture(len(recorder._buf["done"]) - 1)  # flat recorded-step index
@@ -769,10 +871,9 @@ def main():  # noqa: C901  (one long orchestration: env setup + settle/resettle 
         recorder.mark_episode_end()                          # close the trailing (un-reset) episode
         if recorder._buf:
             _info = recorder.write(args.out, fmt=args.record_format)
-            _sc = _info.get("score") or {}
-            print(f"[sonic] wrote teleop bag {_info['bag']} ({_info['episodes']} episodes; "
-                  f"score in meta.json: success={_sc.get('success_rate')}, "
-                  f"mean_score={_sc.get('mean_score')})", flush=True)
+            print(f"[sonic] wrote teleop bag {_info['bag']} ({_info['episodes']} episodes)",
+                  flush=True)
+            print(f"[sonic] {_score_line(_info)}", flush=True)
             if video is not None and len(video):
                 _vp = video.write()              # close the stream BEFORE the score-rename below
                 print(f"[sonic] wrote session video {_vp} ({len(video)} frames)", flush=True)
