@@ -43,7 +43,10 @@ parser.add_argument(
     "--task",
     type=str,
     default="FIATLUX-Base-v0",
-    help="Gym id of the env/task to verify (any FIATLUX id; Insert also needs --enable_cameras).",
+    help="Gym id of the env/task to verify (any FIATLUX id). EVERY task needs --enable_cameras: "
+    "each one calls add_ego_camera, and Isaac Lab raises at startup for a camera spawned without "
+    "the flag. This used to name Insert alone, which sent seven of the eight presets into a "
+    "startup crash that reads like a scene fault.",
 )
 parser.add_argument("--num_envs", type=int, default=4, help="Number of environments to spawn.")
 parser.add_argument(
