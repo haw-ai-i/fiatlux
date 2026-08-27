@@ -127,3 +127,73 @@ def test_unknown_task_ids_are_rejected():
         aggregate({"FIATLUX-Replace-v0": {"success_rate": 1.0, "gate_progress": 1.0}})
     with pytest.raises(KeyError):
         subtask_weight("FIATLUX-Climb-v0")
+
+
+def test_score_subtasks_script_print_weights(capsys):
+    """Verify scripts/score_subtasks.py print_weights() runs cleanly and formats factors as products."""
+    import sys
+    from pathlib import Path
+
+    scripts_dir = Path(__file__).resolve().parents[4] / "scripts"
+    sys.path.insert(0, str(scripts_dir))
+    import score_subtasks
+
+    score_subtasks.print_weights()
+    captured = capsys.readouterr().out
+    assert "factors: {" in captured
+    assert "FIATLUX-S01-MoveLadder-v0" in captured
+    assert "carry * span" in captured
+    assert "FIATLUX-S11-ScrewInBulb-v0" in captured
+    assert "release * balance * mate" in captured
+    assert "34.05" in captured
+
+
+def test_score_subtasks_script_load_results_and_main(tmp_path, monkeypatch, capsys):
+    """Verify scripts/score_subtasks.py CLI loads eval JSONs and produces weighted aggregate scores."""
+    import json
+    import sys
+    from pathlib import Path
+
+    scripts_dir = Path(__file__).resolve().parents[4] / "scripts"
+    sys.path.insert(0, str(scripts_dir))
+    import score_subtasks
+
+    # Create mock eval results
+    f1 = tmp_path / "s01.json"
+    f1.write_text(json.dumps({"task": "FIATLUX-S01-MoveLadder-v0", "success_rate": 1.0, "gate_progress": 1.0}))
+    f2 = tmp_path / "s02.json"
+    f2.write_text(json.dumps({"task": "FIATLUX-S02-ClimbLadder-v0", "success_rate": 0.5, "gate_progress": 0.8}))
+
+    results = score_subtasks.load_results([f1, f2])
+    assert len(results) == 2
+    assert results["FIATLUX-S01-MoveLadder-v0"]["success_rate"] == 1.0
+
+    out_json = tmp_path / "out.json"
+    monkeypatch.setattr(sys, "argv", ["score_subtasks.py", str(tmp_path), "--output", str(out_json)])
+    ret = score_subtasks.main()
+    assert ret == 0
+    assert out_json.exists()
+    summary = json.loads(out_json.read_text())
+    assert summary["subtasks_scored"] == 2
+    assert len(summary["subtasks_missing"]) == 10
+
+
+def test_score_subtasks_script_load_results_errors(tmp_path):
+    """Verify score_subtasks.load_results rejects invalid / duplicate JSON files."""
+    import json
+    import sys
+    from pathlib import Path
+
+    scripts_dir = Path(__file__).resolve().parents[4] / "scripts"
+    sys.path.insert(0, str(scripts_dir))
+    import score_subtasks
+
+    no_task = tmp_path / "no_task.json"
+    no_task.write_text(json.dumps({"success_rate": 1.0, "gate_progress": 1.0}))
+    with pytest.raises(ValueError, match="no 'task' field"):
+        score_subtasks.load_results([no_task])
+
+    no_progress = tmp_path / "no_progress.json"
+    no_progress.write_text(json.dumps({"task": "FIATLUX-S01-MoveLadder-v0", "success_rate": 1.0}))
+    with pytest.raises(ValueError, match="predates partial credit"):
+        score_subtasks.load_results([no_progress])
