@@ -102,7 +102,7 @@ are unreachable. Author it, validate everything else, and mark the seated condit
 
 ## As built
 
-`subtasks/s15_climb_down_env_cfg.py`, on `subtask_tiers.balance.DescendSubtaskCfg`. Constructs.
+`subtasks/s12_climb_down_env_cfg.py`, on `subtask_tiers.balance.DescendSubtaskCfg`. Constructs.
 
 Shares `balance_terms.descended_from_ladder` with S04 and differs only in the gate, as intended.
 `mdp.bulb_unseated` is the negated seating predicate, added beside `bulb_seated`; it is both the

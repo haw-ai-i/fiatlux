@@ -121,7 +121,7 @@ so their retention measurements are in hand before this one is attempted.
 
 ## As built
 
-`subtasks/s13_climb_with_bulb_env_cfg.py`, on `subtask_tiers.balance.ClimbSubtaskCfg`. Constructs.
+`subtasks/s10_climb_with_bulb_env_cfg.py`, on `subtask_tiers.balance.ClimbSubtaskCfg`. Constructs.
 
 The scoped contact fraction this plan predicted is implemented as
 `balance.LOADED_LADDER_CONTACT_BODIES` — feet plus both variants' *left* palm, passed to

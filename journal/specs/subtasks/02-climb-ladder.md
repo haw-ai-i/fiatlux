@@ -104,7 +104,7 @@ difficulty, both kept — see the foundation's difficulty-ladder note.
 
 ## As built
 
-`subtasks/s05_climb_ladder_env_cfg.py`, on `subtask_tiers.balance.ClimbSubtaskCfg`. Constructs.
+`subtasks/s02_climb_ladder_env_cfg.py`, on `subtask_tiers.balance.ClimbSubtaskCfg`. Constructs.
 
 The gate is `mdp.all_of` over three conjuncts — `balance_terms.climbed_to_ladder_top` (height slack
 0.15 m below the live top point, 0.6 m xy, 1.5 m/s), `place_terms.robot_standing`,

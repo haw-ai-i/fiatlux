@@ -102,7 +102,7 @@ on-ladder stance carries a torso lean, so this is *not* the standing value from 
 
 ## As built
 
-`subtasks/s06_remove_old_bulb_env_cfg.py`, on `subtask_tiers.mate.MateSubtaskCfg` — the balance
+`subtasks/s03_remove_old_bulb_env_cfg.py`, on `subtask_tiers.mate.MateSubtaskCfg` — the balance
 tier plus manipulation channels, since this is manipulation performed while balancing. Constructs.
 
 The held conjunct is in the gate, as this plan insists. The zero-action rollout that must score 0
@@ -117,3 +117,33 @@ off it and onto the fixture.
 
 `BULB_IN_ROOT_ON_LADDER` — this subtask's deliverable for the chain — is still the uncalibrated
 geometric estimate in `grasp_poses.py`. Not measured.
+
+### Fixed: the working stance spawned inside the fixture on ceiling draws
+
+Reported as "the robot intersects the fixture and just hangs on it", and it did. The stance puts
+the pelvis at 1.967 m and the fixture hangs at 2.200 m, so the fixture is at the robot's *chest*,
+not overhead — the robot's torso reaches 0.152 m out from the pelvis axis at that height, and its
+tallest body 0.463 m above the pelvis. `_sample_fixture_mount` then anchored a **ceiling** mount's
+ladder zone at the point directly beneath the fixture, and `stand_robot_on_ladder_top` stands the
+robot over the ladder's root, so the socket spawned inside the torso: `imu_in_torso` measured
+**0.039 m** from the fixture axis. The socket is a kinematic rigid body with an exact triangle-mesh
+collider, so the robot did not fall through it — it hung there. Under zero action the pelvis moved
+1.967 → 1.950 m over 3 s, where the same stance on a wall draw collapses to 1.194 m.
+
+Roughly half of all layouts, since the mount kind is a coin flip: **13 of 24 seeds** sampled, all
+13 at `dxy = 0.000`. It hit every on-ladder leaf, not just this one — S02, S04, S10, S11 and S12
+all take the same stance.
+
+Fixed in the sampler, not in the stance: a ceiling mount now stands its ladder anchor
+`LADDER_FIXTURE_STANDOFF` (0.60 m) off the point beneath the fixture along a sampled bearing, the
+way a wall mount already stood off from the wall face, and the coupled ladder yaw turns back down
+that bearing so the stance faces the fixture on either mount kind. `scene_cfg` carries a new
+import-time guard tying the standoff to the measured clearance it has to buy
+(`LADDER_FIXTURE_MIN_STANDOFF` = torso 0.152 + fixture 0.081 + reset jitter 0.071 = 0.304 m).
+
+Consequence to accept: a ceiling fixture is now 0.60 m away in the floor plane instead of 0 m, so
+it is exactly as hard to reach as a wall one — and `scene_cfg`'s standing caveat that the honest
+forward reach (`G1_HORIZONTAL_REACH` = 0.5045 m) is shorter than that standoff now applies to both
+mount kinds rather than only to wall draws. The reach was never *usable* on a ceiling draw before
+this, since the fixture was inside the robot; what changes is that the open question is now
+uniform.

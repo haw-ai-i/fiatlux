@@ -126,7 +126,7 @@ tested explicitly with a scripted release · `handoff:S10->S11` and `handoff:S11
 
 ## As built
 
-`subtasks/s14_screw_in_bulb_env_cfg.py`, on `subtask_tiers.mate.MateSubtaskCfg`. Constructs.
+`subtasks/s11_screw_in_bulb_env_cfg.py`, on `subtask_tiers.mate.MateSubtaskCfg`. Constructs.
 
 The axis-alignment term is **new** (`mate_terms.bulb_axis_alignment_tanh`), not a rewrite of
 `object_socket_orientation_tanh`. That function is live in Insert, Install and Replace, and

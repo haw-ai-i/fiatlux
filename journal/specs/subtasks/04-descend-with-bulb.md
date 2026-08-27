@@ -105,7 +105,7 @@ start state cannot be reached by the chain, though it can still be authored and 
 
 ## As built
 
-`subtasks/s07_descend_with_bulb_env_cfg.py`, on `subtask_tiers.balance.DescendSubtaskCfg`.
+`subtasks/s04_descend_with_bulb_env_cfg.py`, on `subtask_tiers.balance.DescendSubtaskCfg`.
 Constructs.
 
 `balance_terms.descended_from_ladder` takes the xy centre from the ladder's live root and the

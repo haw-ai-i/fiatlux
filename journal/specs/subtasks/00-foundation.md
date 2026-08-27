@@ -632,7 +632,36 @@ Consequences to accept deliberately:
   conjunct was false from step one. That start state no longer exists — S01 picks the ladder up
   itself. The gap remains real for the bulb-carrying legs.
 - **`CRITIQUE.md`, `CONTINUITY.md` and `ISSUES_2026-08-22.md` keep the old numbering.** They are
-  dated review records; renumbering them would falsify what was reviewed. Read them against the
+  dated review records; renumbering them would falsify what was reviewed.
+
+## As built — the on-ladder stance used to spawn inside the fixture
+
+Separate from the fold, and it hit every leaf that stands on the tread (S02, S03, S04, S10, S11,
+S12). The working stance puts the pelvis at 1.967 m; the fixture hangs at 2.200 m. That is 0.233 m
+— the fixture is at the robot's **chest**, not overhead, and the torso reaches 0.152 m out from the
+pelvis axis at that height. A **ceiling** mount anchored its ladder zone at the point directly
+beneath the fixture, and the stance stands over the ladder's root, so the socket spawned inside the
+torso (`imu_in_torso` 0.039 m from the fixture axis, measured). Being a kinematic rigid body with
+an exact triangle-mesh collider, it held the robot up: under zero action the pelvis moved
+1.967 → 1.950 m over 3 s where a wall draw's identical stance collapses to 1.194 m. 13 of 24
+sampled seeds, i.e. every ceiling draw.
+
+The plans never caught it because each of the two numbers is defensible alone. `CEILING_FIXTURE_Z`
+= 2.2 m is derived from `MAX_REACHABLE_MOUNT_Z`, which assumes feet at `LADDER_WORK_FOOT_Z` =
+1.03 m — the gate-tolerant height, deliberately *not* the tread. `stand_robot_on_ladder_top` puts
+the feet on the tread at 1.18 m, because that is where the platform collider is. Nothing compared
+the two, and the reach guards check height only ("nothing here bounds the HORIZONTAL distance", as
+`MAX_REACHABLE_MOUNT_Z`'s own comment says).
+
+Fixed in the sampler: both mount kinds now stand the ladder `LADDER_FIXTURE_STANDOFF` off the
+fixture, and `scene_cfg` gained the missing guard — a horizontal one, tying the standoff to the
+measured torso and fixture extents plus the reset jitter. Checked by
+`scripts/verify_ladder_stance.py`, which sweeps layout seeds geometrically and then instantiates
+one draw of each mount kind to confirm the robot falls under zero action rather than hanging.
+
+The general lesson, since this is the second time it has bitten: **a start state validated one
+axis at a time is not validated.** The vertical reach guard passed, the layout feasibility check
+passed, and the subtask constructed and rendered — the robot was simply inside the fixture. Read them against the
   map above.
 
 ## Not in scope: "move the ladder back" (S16)
