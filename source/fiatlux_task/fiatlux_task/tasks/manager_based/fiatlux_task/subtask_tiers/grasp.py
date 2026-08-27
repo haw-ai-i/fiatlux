@@ -3,14 +3,18 @@
 #
 # SPDX-License-Identifier: BSD-3-Clause
 
-"""Shared tier for S02 (grab-the-ladder) and S11 (grab-the-bulb).
+"""Tier for the grasp mode -- S08 (grab-the-bulb), its only member since the ladder legs folded.
 
-Both subtasks end a grasp attempt by taking an object's weight: a reach-progress channel toward
-the object, a contact-force bootstrap so the policy can find "close the hand" before the sparse
-gate is reachable, a grip-force penalty on the same filtered channel, and a single-target contact
-sensor the leaf's gate reads for the force conjunct. The family's usual ``sustained`` window is
+A grasp subtask ends by taking an object's weight: a reach-progress channel toward the object, a
+contact-force bootstrap so the policy can find "close the hand" before the sparse gate is
+reachable, a grip-force penalty on the same filtered channel, and a single-target contact sensor
+the leaf's gate reads for the force conjunct. The family's usual ``sustained`` window is
 shortened here (0.5 s, not the 1.0 s ``place`` tier uses): a grasp only needs to prove the hold
 isn't a glancing contact, not that the object has settled.
+
+Kept as a tier at one member rather than inlined into the leaf: the split it encodes -- which
+terms exist here, which numbers live in the leaf -- is what keeps routine retuning out of shared
+code, and that argument does not depend on the member count.
 """
 
 from collections.abc import Callable
@@ -28,9 +32,9 @@ from ..subtask_env_cfg import SubtaskEnvCfg, SubtaskRewardsCfg
 # Shorter than ``place``'s 1.0 s: proving a hold isn't a glance, not that the object has settled.
 GRASP_SUSTAIN_SECONDS = 0.5
 
-# Dense bootstrap saturates well under either leaf's gate/fragility threshold (57 N ladder grip,
-# 50 N bulb-glass limit) so it never fights the grip-force penalty on the way to a real grasp --
-# it only has to signal "the hand is pressing", not "the hand is holding". PROVISIONAL.
+# Dense bootstrap saturates well under the leaf's fragility threshold (the 50 N bulb-glass limit)
+# so it never fights the grip-force penalty on the way to a real grasp -- it only has to signal
+# "the hand is pressing", not "the hand is holding". PROVISIONAL.
 GRASP_BOOTSTRAP_SATURATION_N = 10.0
 
 
@@ -55,7 +59,7 @@ class GraspRewardsCfg(SubtaskRewardsCfg):
     """Reach + bootstrap + grip-force discipline; ``distance_fn`` comes from the leaf."""
 
     reach_progress = RewTerm(
-        func=mdp.distance_progress, weight=500.0, params={"distance_fn": grasp_terms.hand_ladder_distance}
+        func=mdp.distance_progress, weight=500.0, params={"distance_fn": grasp_terms.hand_bulb_distance}
     )
     contact_bootstrap = RewTerm(
         func=grasp_terms.grasp_contact_bootstrap,

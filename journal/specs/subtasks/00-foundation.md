@@ -1,8 +1,14 @@
 # Subtask re-discretization — foundation (issue #66)
 
-Read this before any of the 15 subtask plans. It owns everything they share: the primitive
+Read this before any of the subtask plans. It owns everything they share: the primitive
 reduction, the shared env base, the start-state mechanism, the handoff contract, and the
 visual validation gate every subtask agent must pass.
+
+> **There are twelve subtasks, not fifteen.** Everything below is written against the original
+> fifteen, and its numbering is the original numbering. The four ladder legs were later folded
+> into one and the chain renumbered; see **"As built — the four ladder legs are one subtask"**
+> at the end of this file for the map, and `01-move-ladder.md` for the leg itself. Nothing else
+> in this document changed.
 
 ## The rule
 
@@ -568,6 +574,95 @@ describes the caller it was written for, not the flag.
   seven checks passing — was caught only by a rendered ego frame.
 - **Scoring is still undefined.** See the section above; five of fifteen are "walk to X", so an
   unweighted mean hands a walk-only policy a third of the benchmark.
+
+## As built — the four ladder legs are one subtask
+
+Later than everything above, and it supersedes the fifteen-item list. `S01-ApproachLadder`,
+`S02-GrabLadder`, `S03-CarryLadder` and `S04-PlaceLadder` are now one
+`FIATLUX-S01-MoveLadder-v0`: **the ladder ends up standing close enough to the fixture**, and
+nothing about how it got there. The plan for it is `01-move-ladder.md`.
+
+The reason is one this document already half-states in its own "What these envs are for" section.
+These are evaluation envs, so a gate that fires on the wrong thing corrupts every number. Between
+them the four gates required a rail grasped and loaded, the feet lifted clear, the grip retained,
+the hand released, and the robot left on a particular side — five conditions on *technique*, none
+of them a property of the deliverable, each an independent way to score zero after already
+standing the ladder where it belongs. For an operator driving the benchmark by hand that is four
+separate cliffs in front of one job. The gate now reads the ladder's pose and nothing else: no
+contact sensor is wired into the leaf at all, so carrying, dragging, shouldering and pushing are
+indistinguishable to it by construction. `ladder_tipped` (0.6 rad) survives, because it is what
+"standing" means.
+
+Stated plainly, since this document argued the other way: **the four boundaries isolated where a
+policy fails on the ladder, and one episode cannot.** That diagnostic moves rather than
+disappearing — `FIATLUX-Carry-v0` remains the coarse-tier task that spans the same four modes, and
+the leg's own breakdown (`approach_progress` vs `placement_progress`) is what now separates
+"never reached the ladder" from "reached it and could not move it".
+
+The chain renumbered to stay contiguous:
+
+| Was | Now | | Was | Now |
+|---|---|---|---|---|
+| S01 ApproachLadder | **S01 MoveLadder** | | S09 DisposeBulb | S06 DisposeBulb |
+| S02 GrabLadder | ″ | | S10 ApproachNewBulb | S07 ApproachNewBulb |
+| S03 CarryLadder | ″ | | S11 GrabNewBulb | S08 GrabNewBulb |
+| S04 PlaceLadder | ″ | | S12 CarryBulbToLadder | S09 CarryBulbToLadder |
+| S05 ClimbLadder | S02 ClimbLadder | | S13 ClimbWithBulb | S10 ClimbWithBulb |
+| S06 RemoveOldBulb | S03 RemoveOldBulb | | S14 ScrewInBulb | S11 ScrewInBulb |
+| S07 DescendWithBulb | S04 DescendWithBulb | | S15 ClimbDown | S12 ClimbDown |
+| S08 CarryBulbToDisposal | S05 CarryBulbToDisposal | | | |
+
+Consequences to accept deliberately:
+
+- **Every id changed, so every recorded subtask score is orphaned.** Under the versioning policy
+  above this is not a `-v1` bump: the old numbering names a different chain, so the old ids are
+  gone rather than kept registered beside new ones. Twelve `-v0` contracts, none comparable with
+  anything recorded before this change.
+- **Two tiers thinned.** `GraspSubtaskCfg` is down to one member (S08) and `PlaceSubtaskCfg`
+  regained S01 under its new name. Both stay: the split a tier encodes — which terms exist here,
+  which numbers live in the leaf — is what keeps routine retuning out of shared code, and that
+  argument never depended on having two members.
+- **Dead gate machinery was removed, not left behind.** `mdp.arrived_at_ladder`,
+  `nav_terms.arrived_carrying_ladder`, `grasp_terms.hand_ladder_distance`,
+  `grasp_terms.grasp_force_above`, `grasp_terms.ladder_feet_clear`,
+  `place_terms.robot_at_ladder_base`, and `grasp_poses`' `LADDER_IN_ROOT_CARRIED` /
+  `LADDER_CARRY_ARM_JOINT_POS` / `LADDER_GRIP_TRIPWIRE_N` had no remaining caller.
+- **One item on the still-open list is closed by this, not fixed.** The grip-pose gap listed above
+  named S03 first: its start state spawned a ladder beside an open hand, so the still-held
+  conjunct was false from step one. That start state no longer exists — S01 picks the ladder up
+  itself. The gap remains real for the bulb-carrying legs.
+- **`CRITIQUE.md`, `CONTINUITY.md` and `ISSUES_2026-08-22.md` keep the old numbering.** They are
+  dated review records; renumbering them would falsify what was reviewed.
+
+## As built — the on-ladder stance used to spawn inside the fixture
+
+Separate from the fold, and it hit every leaf that stands on the tread (S02, S03, S04, S10, S11,
+S12). The working stance puts the pelvis at 1.967 m; the fixture hangs at 2.200 m. That is 0.233 m
+— the fixture is at the robot's **chest**, not overhead, and the torso reaches 0.152 m out from the
+pelvis axis at that height. A **ceiling** mount anchored its ladder zone at the point directly
+beneath the fixture, and the stance stands over the ladder's root, so the socket spawned inside the
+torso (`imu_in_torso` 0.039 m from the fixture axis, measured). Being a kinematic rigid body with
+an exact triangle-mesh collider, it held the robot up: under zero action the pelvis moved
+1.967 → 1.950 m over 3 s where a wall draw's identical stance collapses to 1.194 m. 13 of 24
+sampled seeds, i.e. every ceiling draw.
+
+The plans never caught it because each of the two numbers is defensible alone. `CEILING_FIXTURE_Z`
+= 2.2 m is derived from `MAX_REACHABLE_MOUNT_Z`, which assumes feet at `LADDER_WORK_FOOT_Z` =
+1.03 m — the gate-tolerant height, deliberately *not* the tread. `stand_robot_on_ladder_top` puts
+the feet on the tread at 1.18 m, because that is where the platform collider is. Nothing compared
+the two, and the reach guards check height only ("nothing here bounds the HORIZONTAL distance", as
+`MAX_REACHABLE_MOUNT_Z`'s own comment says).
+
+Fixed in the sampler: both mount kinds now stand the ladder `LADDER_FIXTURE_STANDOFF` off the
+fixture, and `scene_cfg` gained the missing guard — a horizontal one, tying the standoff to the
+measured torso and fixture extents plus the reset jitter. Checked by
+`scripts/verify_ladder_stance.py`, which sweeps layout seeds geometrically and then instantiates
+one draw of each mount kind to confirm the robot falls under zero action rather than hanging.
+
+The general lesson, since this is the second time it has bitten: **a start state validated one
+axis at a time is not validated.** The vertical reach guard passed, the layout feasibility check
+passed, and the subtask constructed and rendered — the robot was simply inside the fixture. Read them against the
+  map above.
 
 ## Not in scope: "move the ladder back" (S16)
 

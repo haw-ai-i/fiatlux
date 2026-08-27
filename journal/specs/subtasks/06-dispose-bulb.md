@@ -1,6 +1,6 @@
-# S09 — Dispose of the old bulb
+# S06 — Dispose of the old bulb
 
-`FIATLUX-S09-DisposeBulb-v0` · mode **grasping (release)** · object **old_bulb**
+`FIATLUX-S06-DisposeBulb-v0` · mode **grasping (release)** · object **old_bulb**
 Read `00-foundation.md`, `ABSTRACTIONS.md`, `CONTINUITY.md` and `CRITIQUE.md` first.
 
 ## Objective
@@ -9,7 +9,7 @@ Put the old bulb into the disposal crate and let go, leaving it at rest inside �
 
 ## Start state
 
-`START_STATE["S09"]` = S08's success state: robot standing within `CRATE_APPROACH_RADIUS` of the
+`START_STATE["S06"]` = S05's success state: robot standing within `CRATE_APPROACH_RADIUS` of the
 crate, facing it, old bulb in hand (`BULB_IN_ROOT_STANDING`), crate on the floor in its zone.
 
 ## Success gate
@@ -87,10 +87,10 @@ would accept them.
 ## Blockers
 
 **PR #64** — the released condition and the fragility bound read the filtered channel.
-**#54** — inherits the provisional start state from S06.
+**#54** — inherits the provisional start state from S03.
 
 ## Note
 
-This is the chain's natural mid-point checkpoint: after S09 the old bulb is gone and the robot is
-free-handed on the floor. S10 restarts a clean navigation leg. If the chain is ever run partially,
-S01–S09 and S10–S15 are the two halves to run.
+This is the chain's natural mid-point checkpoint: after S06 the old bulb is gone and the robot is
+free-handed on the floor. S07 restarts a clean navigation leg. If the chain is ever run partially,
+S01–S06 and S07–S12 are the two halves to run.

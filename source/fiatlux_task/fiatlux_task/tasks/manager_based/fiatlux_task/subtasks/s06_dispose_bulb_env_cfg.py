@@ -3,9 +3,9 @@
 #
 # SPDX-License-Identifier: BSD-3-Clause
 
-"""``FIATLUX-S09-DisposeBulb-v0`` -- put the old bulb in the disposal crate and let go.
+"""``FIATLUX-S06-DisposeBulb-v0`` -- put the old bulb in the disposal crate and let go.
 
-Starts from S08's end state: the robot at the crate with the old bulb already held
+Starts from S05's end state: the robot at the crate with the old bulb already held
 (``BULB_IN_ROOT_STANDING``), composed onto its own root pose rather than left seated at the
 fixture.
 
@@ -65,7 +65,7 @@ OLD_BULB_DISPOSED_CONJUNCTS = [
 
 
 @configclass
-class S09EventCfg(SubtaskEventCfg):
+class S06EventCfg(SubtaskEventCfg):
     """Re-seats the bulb against the hand's live, actually-simulated pose -- see
     ``nav_terms.settle_carried_payload_live``."""
 
@@ -78,7 +78,7 @@ class S09EventCfg(SubtaskEventCfg):
 
 
 @configclass
-class S09DisposeBulbEnvCfg(PlaceSubtaskCfg):
+class S06DisposeBulbEnvCfg(PlaceSubtaskCfg):
     """Put the old bulb in the disposal crate and let go (randomized Replace layout)."""
 
     scene_preset: str = "replace"
@@ -95,16 +95,16 @@ class S09DisposeBulbEnvCfg(PlaceSubtaskCfg):
     }
     progress_distance_fn = mdp.old_bulb_disposal_distance
 
-    events: S09EventCfg = S09EventCfg()
+    events: S06EventCfg = S06EventCfg()
 
     def __post_init__(self) -> None:
         super().__post_init__()
-        # S04 already stood the ladder at the fixture; every leg after it inherits that.
+        # S01 already stood the ladder at the fixture; every leg after it inherits that.
         apply_replace_preset(self.scene, couple_ladder_to_fixture=True)
         # The preset's own robot zone is independent of the bin's; pull the robot to where it
         # would be holding the old bulb it starts this subtask already carrying.
         stand_robot_near(self.scene, self.scene.bin.init_state.pos[:2], DISPOSAL_ARRIVAL_RADIUS)
-        # S08's end state: the old bulb starts already held, at the carry offset from the robot's
+        # S05's end state: the old bulb starts already held, at the carry offset from the robot's
         # own (now-final) root pose -- not seated at the fixture, which is where the preset
         # leaves it and where it stayed until this was added.
         self.scene.old_bulb.init_state.pos, self.scene.old_bulb.init_state.rot = compose_carried_pose(

@@ -3,19 +3,20 @@
 #
 # SPDX-License-Identifier: BSD-3-Clause
 
-"""Shared tier for the on-the-ladder subtasks (S05, S07, S13, S15, and via ``mate`` S06 and S14).
+"""Shared tier for the on-the-ladder subtasks (S02, S04, S10, S12, and via ``mate`` S03 and S11).
 
 The preset is drawn with the ladder's zone coupled to the fixture's anchor.
 
-The ladder is dynamic here (S02-S04 carry and place it), so it can tip -- tipping is a
+The ladder is dynamic here (S01 moves it into place), so it can tip -- tipping is a
 termination and a penalty in every subtask in this file, and absent from
 ``FIATLUX-Climb-v0``/``FIATLUX-Descend-v0``, which climb a kinematic ladder -- and it can stand
 anywhere, so the stances and success gates read its live pose, not ``LADDER_POSITION``.
 
 ``mdp.bulb_attachment`` is wired here rather than on the mate tier: the old bulb starts locked in
 the inverted fixture on every subtask in this file, and nothing else keeps it from falling out
-under gravity. Only S06 and S14 score against it.
+under gravity. Only S03 and S11 score against it.
 """
+
 import math
 
 from isaaclab.managers import EventTermCfg as EventTerm
@@ -55,11 +56,12 @@ class BalanceEventCfg(SubtaskEventCfg):
         params={
             "insertion_depth": BAYONET_INSERTION_DEPTH,
             "rotation_angle": BAYONET_ROTATION_ANGLE,
-            "rotation_sign": 1.0,
+            "rotation_sign": -1.0,
             "radial_tolerance": SEAT_POS_THRESHOLD,
             "orientation_tolerance": SEAT_ORI_THRESHOLD,
         },
     )
+
 
 # Shared by every climb/descend gate in the family.
 LADDER_SUCCESS_XY_RADIUS = 0.6  # m
@@ -78,7 +80,7 @@ MOUNT_STANCE_STANDOFF = math.dist(CLIMB_ROBOT_POSITION[:2], LADDER_POSITION[:2])
 # the convex-decomposed ladder leaves there.
 #
 # The placement is on real geometry now, but the stance is not stable unattended: under zero
-# action the pelvis leaves 1.967 m and reads 1.28 / 0.27 / 1.18 after 1.8 s in S06 / S14 / S15.
+# action the pelvis leaves 1.967 m and reads 1.28 / 0.27 / 1.18 after 1.8 s in S03 / S11 / S12.
 # Zero action gives a free-base biped no balance correction at all, so some settling is expected;
 # this is more than settling. Needs either a stance that is stable passively or an explicit
 # statement that these start states assume a controller from step one.

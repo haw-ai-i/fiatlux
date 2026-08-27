@@ -3,9 +3,9 @@
 #
 # SPDX-License-Identifier: BSD-3-Clause
 
-"""``FIATLUX-S14-ScrewInBulb-v0`` -- seat the fresh bulb in the fixture. Terminal manipulation.
+"""``FIATLUX-S11-ScrewInBulb-v0`` -- seat the fresh bulb in the fixture. Terminal manipulation.
 
-Starts from S13's end state: the robot balanced on the upper steps with the fresh bulb in hand
+Starts from S10's end state: the robot balanced on the upper steps with the fresh bulb in hand
 (``BULB_IN_ROOT_ON_LADDER``), the fixture inverted and empty, the old bulb in the disposal crate.
 
 The bayonet attach/detach state machine (issue #54, ``mdp.bulb_attachment``, wired once for the
@@ -78,7 +78,7 @@ BULB_SCREWED_IN_CONJUNCTS = [
 
 
 @configclass
-class S14EventCfg(BalanceEventCfg):
+class S11EventCfg(BalanceEventCfg):
     """Re-seats the bulb against the hand's live, actually-simulated pose -- see
     ``nav_terms.settle_carried_payload_live``. Declared after the inherited ``bulb_attachment``
     (issue #54), so on the settling step the bayonet FSM still sees the bulb wherever
@@ -109,7 +109,7 @@ class S14EventCfg(BalanceEventCfg):
 
 
 @configclass
-class S14RewardsCfg(MateRewardsCfg):
+class S11RewardsCfg(MateRewardsCfg):
     approach_progress = RewTerm(
         func=mdp.distance_progress, weight=500.0, params={"distance_fn": mdp.bulb_fixture_distance}
     )
@@ -122,12 +122,12 @@ class S14RewardsCfg(MateRewardsCfg):
 
 
 @configclass
-class S14TerminationsCfg(MateTerminationsCfg):
+class S11TerminationsCfg(MateTerminationsCfg):
     bulb_dropped = DoneTerm(func=mdp.object_dropped, params={"asset_cfg": _BULB, "min_height": FRESH_BULB_DROP_HEIGHT})
 
 
 @configclass
-class S14ScrewInBulbEnvCfg(MateSubtaskCfg):
+class S11ScrewInBulbEnvCfg(MateSubtaskCfg):
     """Seat the fresh bulb in the fixture from the ladder (randomized Replace layout)."""
 
     success_predicate = mdp.sustained
@@ -137,14 +137,14 @@ class S14ScrewInBulbEnvCfg(MateSubtaskCfg):
         "predicate_params": {"predicates": BULB_SCREWED_IN_CONJUNCTS},
     }
 
-    events: S14EventCfg = S14EventCfg()
-    rewards: S14RewardsCfg = S14RewardsCfg()
-    terminations: S14TerminationsCfg = S14TerminationsCfg()
+    events: S11EventCfg = S11EventCfg()
+    rewards: S11RewardsCfg = S11RewardsCfg()
+    terminations: S11TerminationsCfg = S11TerminationsCfg()
 
     def __post_init__(self) -> None:
         super().__post_init__()
         park_old_bulb_in_crate(self.scene)
-        # S13's end state: the fresh bulb starts already held, at the carry offset from the
+        # S10's end state: the fresh bulb starts already held, at the carry offset from the
         # robot's own (now-final) on-ladder root pose.
         self.scene.bulb.init_state.pos, self.scene.bulb.init_state.rot = compose_carried_pose(
             self.scene.robot.init_state.pos, self.scene.robot.init_state.rot, BULB_IN_ROOT_ON_LADDER

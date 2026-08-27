@@ -3,9 +3,9 @@
 #
 # SPDX-License-Identifier: BSD-3-Clause
 
-"""``FIATLUX-S07-DescendWithBulb-v0`` -- carry the removed old bulb down the ladder.
+"""``FIATLUX-S04-DescendWithBulb-v0`` -- carry the removed old bulb down the ladder.
 
-Starts from S06's end state: the robot on the upper steps with the old bulb in hand
+Starts from S03's end state: the robot on the upper steps with the old bulb in hand
 (``BULB_IN_ROOT_ON_LADDER``), the fixture above now empty. Success is a controlled arrival at
 floor stance beside the ladder with the bulb still held and unbroken -- without the held conjunct,
 dropping the bulb off the top and walking down after it would score.
@@ -68,7 +68,7 @@ DESCENDED_WITH_BULB_CONJUNCTS = [
 
 
 @configclass
-class S07EventCfg(BalanceEventCfg):
+class S04EventCfg(BalanceEventCfg):
     """Re-seats the bulb against the hand's live, actually-simulated pose -- see
     ``nav_terms.settle_carried_payload_live``. Root/joint randomization zeroed for now while
     the open-palm rest calibration is being worked out (adds noise we don't need yet)."""
@@ -96,7 +96,7 @@ class S07EventCfg(BalanceEventCfg):
 
 
 @configclass
-class S07RewardsCfg(DescendRewardsCfg):
+class S04RewardsCfg(DescendRewardsCfg):
     # Force on the OBJECT, not the hand's net force: a panicked grip while balancing is exactly
     # how a real bulb gets crushed, but an arm braced on a rail is not.
     contact_penalty = RewTerm(func=mdp.hand_contact_force_l2, weight=-1.0e-4, params={"sensor_cfg": _GRIP})
@@ -106,14 +106,14 @@ class S07RewardsCfg(DescendRewardsCfg):
 
 
 @configclass
-class S07TerminationsCfg(BalanceTerminationsCfg):
+class S04TerminationsCfg(BalanceTerminationsCfg):
     bulb_dropped = DoneTerm(
         func=mdp.object_dropped, params={"asset_cfg": _OLD_BULB, "min_height": OLD_BULB_DROP_HEIGHT}
     )
 
 
 @configclass
-class S07DescendWithBulbEnvCfg(DescendSubtaskCfg):
+class S04DescendWithBulbEnvCfg(DescendSubtaskCfg):
     """Descend the placed ladder holding the old bulb (randomized Replace layout, ladder dynamic)."""
 
     # The right hand is occupied for the whole episode, so the contact bootstrap must not divide
@@ -123,13 +123,13 @@ class S07DescendWithBulbEnvCfg(DescendSubtaskCfg):
     success_predicate = mdp.all_of
     success_params: dict | None = {"predicates": DESCENDED_WITH_BULB_CONJUNCTS}
 
-    events: S07EventCfg = S07EventCfg()
-    rewards: S07RewardsCfg = S07RewardsCfg()
-    terminations: S07TerminationsCfg = S07TerminationsCfg()
+    events: S04EventCfg = S04EventCfg()
+    rewards: S04RewardsCfg = S04RewardsCfg()
+    terminations: S04TerminationsCfg = S04TerminationsCfg()
 
     def __post_init__(self) -> None:
         super().__post_init__()
-        # S06's end state: the old bulb is out of the fixture and in the hand, at the carry offset
+        # S03's end state: the old bulb is out of the fixture and in the hand, at the carry offset
         # from the robot's own (now-final) on-ladder root pose.
         self.scene.old_bulb.init_state.pos, self.scene.old_bulb.init_state.rot = compose_carried_pose(
             self.scene.robot.init_state.pos, self.scene.robot.init_state.rot, BULB_IN_ROOT_ON_LADDER

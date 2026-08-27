@@ -129,7 +129,7 @@ class bulb_attachment(ManagerTermBase):
     def __init__(self, cfg: EventTermCfg, env: ManagerBasedEnv):
         super().__init__(cfg, env)
         setattr(env, _ENV_ATTR, self)
-        self._rotation_sign = float(cfg.params.get("rotation_sign", 1.0))
+        self._rotation_sign = float(cfg.params.get("rotation_sign", -1.0))
         if abs(self._rotation_sign) != 1.0:
             raise ValueError(f"rotation_sign must be -1 or 1, got {self._rotation_sign}")
         self._insertion_depth_spec = cfg.params.get("insertion_depth", 0.034)
@@ -146,7 +146,37 @@ class bulb_attachment(ManagerTermBase):
         self._axis_l = torch.tensor(SOCKET_SEAT_AXIS, device=dev).expand(n, 3)
         self._seat_offset = torch.tensor(SOCKET_SEAT_OFFSET, device=dev).expand(n, 3)
         self._plug_offset = torch.tensor(BULB_PLUG_OFFSET, device=dev).expand(n, 3)
+        # Telemetry snapshot, taken at the end of every __call__ and never touched by reset().
+        # `ManagerBasedRLEnv.step` runs interval events BEFORE it auto-resets finished
+        # episodes, so this holds the state as of the terminating step -- which is what a
+        # recorder wants for that row. Reading the live tensors there would report the *next*
+        # episode's reset phases and freshly sampled limits instead.
+        self._snapshot = (
+            torch.zeros(2, n, device=dev),  # phase, as float
+            torch.zeros(2, n, device=dev),  # theta
+            torch.zeros(n, device=dev),  # sampled rotation angle
+            torch.zeros(n, device=dev),  # sampled insertion depth
+        )
         self.reset()
+        self._take_snapshot()
+
+    def _take_snapshot(self) -> None:
+        """Copy the current lock state into the telemetry snapshot. See ``_snapshot``."""
+        phase, theta, angle, depth = self._snapshot
+        phase.copy_(self._phase.float())
+        theta.copy_(self._theta)
+        angle.copy_(self._angle)
+        depth.copy_(self._depth)
+
+    @property
+    def rotation_sign(self) -> float:
+        """Sign convention of the unlock twist. Issue #77 settles which face is correct.
+
+        The wrong face is silent: the old bulb resets *at* the clamp ceiling, so a twist
+        further into the lock changes nothing and ``at_lock_stop`` damps it away. Recording
+        this value tells an operator which convention a run used.
+        """
+        return self._rotation_sign
 
     def reset(self, env_ids: Sequence[int] | None = None) -> None:
         ids = slice(None) if env_ids is None else env_ids
@@ -166,7 +196,7 @@ class bulb_attachment(ManagerTermBase):
         env_ids: torch.Tensor,
         insertion_depth: ParameterSpec = 0.034,
         rotation_angle: ParameterSpec = 0.5 * math.pi,
-        rotation_sign: float = 1.0,
+        rotation_sign: float = -1.0,
         radial_tolerance: float = 0.015,
         orientation_tolerance: float = 0.2,
         seat_tolerance: float = 0.004,
@@ -193,6 +223,7 @@ class bulb_attachment(ManagerTermBase):
             orientation_tolerance=orientation_tolerance,
             seat_tolerance=seat_tolerance,
         )
+        self._take_snapshot()
 
     def _advance(
         self,
@@ -288,6 +319,60 @@ def _attachment(env: ManagerBasedRLEnv) -> bulb_attachment:
             "predicates only work on tasks that wire mdp.bulb_attachment into their EventCfg"
         )
     return mgr
+
+
+def attachment_manager(env: ManagerBasedRLEnv) -> bulb_attachment | None:
+    """The env's ``bulb_attachment`` manager, or ``None`` when the task wires no term.
+
+    ``_attachment()`` raises for an unwired task by design: a silent miss is the defect
+    issue #76 exists to remove. Task-generic writers such as ``recording.py`` need to ask
+    the question instead of answering it with an exception, so they use this accessor.
+    """
+    return getattr(env, _ENV_ATTR, None)
+
+
+def bulb_lock_state(env: ManagerBasedRLEnv) -> torch.Tensor:
+    """Bayonet lock state of both bulbs, for the privileged observation group (issue #77).
+
+    Columns: old phase, old ``theta`` (rad), fresh phase, fresh ``theta`` (rad). Phase is
+    0 ``FREE``, 1 ``AXIAL``, 2 ``ROTATING``, cast to float so the group concatenates.
+
+    Until this term existed, ``_phase`` and ``_theta`` reached no observation, telemetry or
+    recording path. An operator could not see whether a twist registered, which is why the
+    three candidate causes in #77 could not be told apart -- nor told apart from a bad grasp.
+
+    Returns:
+        Tensor of shape (num_envs, 4).
+    """
+    mgr = _attachment(env)
+    return torch.stack(
+        [mgr._phase[_OLD].float(), mgr._theta[_OLD], mgr._phase[_FRESH].float(), mgr._theta[_FRESH]],
+        dim=-1,
+    )
+
+
+def bulb_lock_telemetry(env: ManagerBasedRLEnv) -> dict[str, torch.Tensor]:
+    """Per-bulb lock state plus the per-env sampled parameters, for ``recording.py``.
+
+    ``rotation_angle`` and ``insertion_depth`` re-sample per env at every reset, so a
+    recorded ``theta`` alone is not interpretable: the same 1.4 rad is a fully locked bulb
+    under one sample and a half-turned one under the next.
+
+    Reads the snapshot rather than the live tensors, because a recorder runs after
+    ``ManagerBasedRLEnv.step`` has auto-reset whichever episodes finished. The live state of a
+    done env already belongs to the NEXT episode, so a terminal row would otherwise carry that
+    episode's reset phases and newly sampled limits. This is the same hazard ``recording.py``
+    documents for object poses, and the reason it reads termination term flags.
+    """
+    phase, theta, angle, depth = _attachment(env)._snapshot
+    return {
+        "old_bulb_phase": phase[_OLD],
+        "old_bulb_theta": theta[_OLD],
+        "fresh_bulb_phase": phase[_FRESH],
+        "fresh_bulb_theta": theta[_FRESH],
+        "lock_rotation_angle": angle,
+        "lock_insertion_depth": depth,
+    }
 
 
 def old_bulb_attached(env: ManagerBasedRLEnv) -> torch.Tensor:

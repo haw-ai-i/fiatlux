@@ -3,12 +3,16 @@
 #
 # SPDX-License-Identifier: BSD-3-Clause
 
-"""Shared tier for S04 (place-the-ladder) and S09 (dispose-of-the-bulb).
+"""Shared tier for S01 (move-the-ladder) and S06 (dispose-of-the-bulb).
 
-Both subtasks end a grasp by releasing the held object where it belongs: a placement-progress
-channel toward the target, a single-target contact sensor for release detection, and the
-thresholds the leaves' success gates share (the family's usual ``sustained`` window is too
-short here -- a release that only holds while a hand steadies it is not a placement).
+Both subtasks end with an object left where it belongs: a placement-progress channel toward the
+target, a single-target contact sensor for release detection, and the thresholds the leaves'
+success gates share (the family's usual ``sustained`` window is too short here -- a placement
+that only holds while a hand steadies it has not been made).
+
+Release detection is offered, not mandated. S06 gates on it, because a bulb still in the hand
+over the crate has not been disposed of. S01 does not: whether the ladder was carried, dragged or
+walked upright is not a property of the ladder standing at the fixture, so it adds no sensor.
 """
 
 from collections.abc import Callable

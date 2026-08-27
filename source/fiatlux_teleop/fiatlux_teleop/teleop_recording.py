@@ -30,7 +30,7 @@ from pathlib import Path
 import numpy as np
 from fiatlux_task import recording as _rec
 from fiatlux_task.recording import TrajectoryRecorder, term_flag
-from fiatlux_task.viz import VideoRecorder
+from fiatlux_task.viz import VideoRecorder, _draw_overlay
 
 
 class StreamingVideoRecorder(VideoRecorder):
@@ -44,10 +44,12 @@ class StreamingVideoRecorder(VideoRecorder):
         self._n = 0
         self._poster: np.ndarray | None = None
 
-    def capture(self, pose: tuple | None = None) -> None:
+    def capture(self, pose: tuple | None = None, overlay: str | None = None) -> None:
         if pose is not None:
             self.set_pose(*pose)
         rgb = self._cam.data.output["rgb"][0, ..., :3].detach().cpu().numpy().astype(np.uint8)
+        if overlay:
+            rgb = _draw_overlay(rgb, overlay)
         if self._writer is None:
             import imageio.v2 as imageio
             os.makedirs(os.path.dirname(self._out_path) or ".", exist_ok=True)

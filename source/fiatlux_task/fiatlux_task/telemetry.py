@@ -114,6 +114,9 @@ class ScoreLogger:
         self._ep_lengths: list[int] = []
         self._control_efforts: list[float] = []
         self.peak_contact_force = 0.0
+        # Read on the first step; undoes the manager's scaling in `gate_progress`.
+        self._max_episode_length_s: float | None = None
+        self._step_dt: float | None = None
         # Weighted sums of the managers' per-episode term stats (each `log` entry is
         # already averaged over the envs that reset that step, so weight by count).
         self._sums: dict[str, float] = {}
@@ -182,6 +185,9 @@ class ScoreLogger:
             for key, value in policy_info.items():
                 self._policy_sums[key] = self._policy_sums.get(key, 0.0) + float(value)
                 self._policy_counts[key] = self._policy_counts.get(key, 0) + 1
+        if self._max_episode_length_s is None:
+            self._max_episode_length_s = float(getattr(env, "max_episode_length_s", 0.0)) or None
+            self._step_dt = float(getattr(env, "step_dt", 0.0)) or None
         if "hand_contact" in env.scene.sensors:
             # Force on the OBJECT, matching the recorded contact_force channel and the
             # scorer. The sensor's net force also carries scenery and self-contact.
@@ -226,6 +232,21 @@ class ScoreLogger:
     def success_rate(self) -> float:
         return self.successes / max(self.episodes_done, 1)
 
+    @property
+    def gate_progress(self) -> float:
+        """Mean partial credit per episode, in [0, 1] (``mdp.gates.gate_progress``).
+
+        ``RewardManager`` scales every term by ``weight * dt`` and logs the episode sum divided
+        by ``max_episode_length_s``, so the telescoped value the channel is built to carry is
+        ``logged * max_episode_length_s / step_dt``. The logged value on its own is not
+        comparable across subtasks: their horizons run 20 s to 90 s.
+        """
+        key = "Episode_Reward/gate_progress"
+        if key not in self._sums or not self._max_episode_length_s or not self._step_dt:
+            return 0.0
+        mean_logged = self._sums[key] / self._counts[key]
+        return mean_logged * self._max_episode_length_s / self._step_dt
+
     def results(self) -> dict:
         """The final aggregate results (also what :meth:`close` stamps into sinks)."""
 
@@ -236,6 +257,7 @@ class ScoreLogger:
             **self._config,
             "episodes": self.episodes_done,
             "success_rate": self.success_rate,
+            "gate_progress": self.gate_progress,
             "mean_episode_length": _mean(self._ep_lengths),
             "mean_control_effort": _mean(self._control_efforts),
             "peak_contact_force": self.peak_contact_force,

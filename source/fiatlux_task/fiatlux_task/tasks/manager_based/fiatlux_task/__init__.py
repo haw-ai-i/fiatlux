@@ -142,137 +142,122 @@ gym.register(
     },
 )
 
+
 ##
 # Subtask family (issue #66): one mode per episode, one module/class/id each.
+#
+# Twelve, not the original fifteen: approach / grab / carry / place the ladder are one
+# ``S01-MoveLadder`` episode. Gating an operator on how the ladder travelled -- rail grasped,
+# feet lifted, grip retained, hand released -- put four ways to score zero in front of a
+# deliverable that is just "the ladder ends up standing at the fixture". The rest of the chain
+# renumbered to stay contiguous, which is a `-v0` contract change for every id below (the
+# foundation spec's versioning policy: a new id, not a bump, since the old numbering names a
+# different chain).
 ##
 
 gym.register(
-    id="FIATLUX-S01-ApproachLadder-v0",
+    id="FIATLUX-S01-MoveLadder-v0",
     entry_point="isaaclab.envs:ManagerBasedRLEnv",
     disable_env_checker=True,
-    kwargs={
-        "env_cfg_entry_point": f"{__name__}.subtasks.s01_approach_ladder_env_cfg:S01ApproachLadderEnvCfg",
-    },
+    kwargs={"env_cfg_entry_point": f"{__name__}.subtasks.s01_move_ladder_env_cfg:S01MoveLadderEnvCfg"},
 )
 
 gym.register(
-    id="FIATLUX-S04-PlaceLadder-v0",
+    id="FIATLUX-S02-ClimbLadder-v0",
     entry_point="isaaclab.envs:ManagerBasedRLEnv",
     disable_env_checker=True,
-    kwargs={"env_cfg_entry_point": f"{__name__}.subtasks.s04_place_ladder_env_cfg:S04PlaceLadderEnvCfg"},
+    kwargs={"env_cfg_entry_point": f"{__name__}.subtasks.s02_climb_ladder_env_cfg:S02ClimbLadderEnvCfg"},
 )
 
 gym.register(
-    id="FIATLUX-S09-DisposeBulb-v0",
+    id="FIATLUX-S03-RemoveOldBulb-v0",
     entry_point="isaaclab.envs:ManagerBasedRLEnv",
     disable_env_checker=True,
-    kwargs={"env_cfg_entry_point": f"{__name__}.subtasks.s09_dispose_bulb_env_cfg:S09DisposeBulbEnvCfg"},
+    kwargs={"env_cfg_entry_point": f"{__name__}.subtasks.s03_remove_old_bulb_env_cfg:S03RemoveOldBulbEnvCfg"},
 )
 
 gym.register(
-    id="FIATLUX-S03-CarryLadder-v0",
+    id="FIATLUX-S04-DescendWithBulb-v0",
     entry_point="isaaclab.envs:ManagerBasedRLEnv",
     disable_env_checker=True,
-    kwargs={"env_cfg_entry_point": f"{__name__}.subtasks.s03_carry_ladder_env_cfg:S03CarryLadderEnvCfg"},
+    kwargs={"env_cfg_entry_point": f"{__name__}.subtasks.s04_descend_with_bulb_env_cfg:S04DescendWithBulbEnvCfg"},
 )
 
 gym.register(
-    id="FIATLUX-S08-CarryBulbToDisposal-v0",
+    id="FIATLUX-S05-CarryBulbToDisposal-v0",
     entry_point="isaaclab.envs:ManagerBasedRLEnv",
     disable_env_checker=True,
     kwargs={
         "env_cfg_entry_point": (
-            f"{__name__}.subtasks.s08_carry_bulb_to_disposal_env_cfg:S08CarryBulbToDisposalEnvCfg"
+            f"{__name__}.subtasks.s05_carry_bulb_to_disposal_env_cfg:S05CarryBulbToDisposalEnvCfg"
         ),
     },
 )
 
 gym.register(
-    id="FIATLUX-S10-ApproachNewBulb-v0",
+    id="FIATLUX-S06-DisposeBulb-v0",
     entry_point="isaaclab.envs:ManagerBasedRLEnv",
     disable_env_checker=True,
-    kwargs={"env_cfg_entry_point": f"{__name__}.subtasks.s10_approach_new_bulb_env_cfg:S10ApproachNewBulbEnvCfg"},
+    kwargs={"env_cfg_entry_point": f"{__name__}.subtasks.s06_dispose_bulb_env_cfg:S06DisposeBulbEnvCfg"},
 )
 
 gym.register(
-    id="FIATLUX-S12-CarryBulbToLadder-v0",
+    id="FIATLUX-S07-ApproachNewBulb-v0",
     entry_point="isaaclab.envs:ManagerBasedRLEnv",
     disable_env_checker=True,
-    kwargs={"env_cfg_entry_point": f"{__name__}.subtasks.s12_carry_bulb_to_ladder_env_cfg:S12CarryBulbToLadderEnvCfg"},
+    kwargs={"env_cfg_entry_point": f"{__name__}.subtasks.s07_approach_new_bulb_env_cfg:S07ApproachNewBulbEnvCfg"},
 )
 
 gym.register(
-    id="FIATLUX-S02-GrabLadder-v0",
+    id="FIATLUX-S08-GrabNewBulb-v0",
     entry_point="isaaclab.envs:ManagerBasedRLEnv",
     disable_env_checker=True,
-    kwargs={"env_cfg_entry_point": f"{__name__}.subtasks.s02_grab_ladder_env_cfg:S02GrabLadderEnvCfg"},
+    kwargs={"env_cfg_entry_point": f"{__name__}.subtasks.s08_grab_new_bulb_env_cfg:S08GrabNewBulbEnvCfg"},
 )
 
 gym.register(
-    id="FIATLUX-S11-GrabNewBulb-v0",
+    id="FIATLUX-S09-CarryBulbToLadder-v0",
     entry_point="isaaclab.envs:ManagerBasedRLEnv",
     disable_env_checker=True,
-    kwargs={"env_cfg_entry_point": f"{__name__}.subtasks.s11_grab_new_bulb_env_cfg:S11GrabNewBulbEnvCfg"},
+    kwargs={
+        "env_cfg_entry_point": f"{__name__}.subtasks.s09_carry_bulb_to_ladder_env_cfg:S09CarryBulbToLadderEnvCfg"
+    },
 )
 
 gym.register(
-    id="FIATLUX-S05-ClimbLadder-v0",
+    id="FIATLUX-S10-ClimbWithBulb-v0",
     entry_point="isaaclab.envs:ManagerBasedRLEnv",
     disable_env_checker=True,
-    kwargs={"env_cfg_entry_point": f"{__name__}.subtasks.s05_climb_ladder_env_cfg:S05ClimbLadderEnvCfg"},
+    kwargs={"env_cfg_entry_point": f"{__name__}.subtasks.s10_climb_with_bulb_env_cfg:S10ClimbWithBulbEnvCfg"},
 )
 
 gym.register(
-    id="FIATLUX-S07-DescendWithBulb-v0",
+    id="FIATLUX-S11-ScrewInBulb-v0",
     entry_point="isaaclab.envs:ManagerBasedRLEnv",
     disable_env_checker=True,
-    kwargs={"env_cfg_entry_point": f"{__name__}.subtasks.s07_descend_with_bulb_env_cfg:S07DescendWithBulbEnvCfg"},
+    kwargs={"env_cfg_entry_point": f"{__name__}.subtasks.s11_screw_in_bulb_env_cfg:S11ScrewInBulbEnvCfg"},
 )
 
 gym.register(
-    id="FIATLUX-S13-ClimbWithBulb-v0",
+    id="FIATLUX-S12-ClimbDown-v0",
     entry_point="isaaclab.envs:ManagerBasedRLEnv",
     disable_env_checker=True,
-    kwargs={"env_cfg_entry_point": f"{__name__}.subtasks.s13_climb_with_bulb_env_cfg:S13ClimbWithBulbEnvCfg"},
-)
-
-gym.register(
-    id="FIATLUX-S15-ClimbDown-v0",
-    entry_point="isaaclab.envs:ManagerBasedRLEnv",
-    disable_env_checker=True,
-    kwargs={"env_cfg_entry_point": f"{__name__}.subtasks.s15_climb_down_env_cfg:S15ClimbDownEnvCfg"},
-)
-
-gym.register(
-    id="FIATLUX-S06-RemoveOldBulb-v0",
-    entry_point="isaaclab.envs:ManagerBasedRLEnv",
-    disable_env_checker=True,
-    kwargs={"env_cfg_entry_point": f"{__name__}.subtasks.s06_remove_old_bulb_env_cfg:S06RemoveOldBulbEnvCfg"},
-)
-
-gym.register(
-    id="FIATLUX-S14-ScrewInBulb-v0",
-    entry_point="isaaclab.envs:ManagerBasedRLEnv",
-    disable_env_checker=True,
-    kwargs={"env_cfg_entry_point": f"{__name__}.subtasks.s14_screw_in_bulb_env_cfg:S14ScrewInBulbEnvCfg"},
+    kwargs={"env_cfg_entry_point": f"{__name__}.subtasks.s12_climb_down_env_cfg:S12ClimbDownEnvCfg"},
 )
 
 SUBTASK_IDS = [
-    "FIATLUX-S01-ApproachLadder-v0",
-    "FIATLUX-S02-GrabLadder-v0",
-    "FIATLUX-S03-CarryLadder-v0",
-    "FIATLUX-S04-PlaceLadder-v0",
-    "FIATLUX-S05-ClimbLadder-v0",
-    "FIATLUX-S06-RemoveOldBulb-v0",
-    "FIATLUX-S07-DescendWithBulb-v0",
-    "FIATLUX-S08-CarryBulbToDisposal-v0",
-    "FIATLUX-S09-DisposeBulb-v0",
-    "FIATLUX-S10-ApproachNewBulb-v0",
-    "FIATLUX-S11-GrabNewBulb-v0",
-    "FIATLUX-S12-CarryBulbToLadder-v0",
-    "FIATLUX-S13-ClimbWithBulb-v0",
-    "FIATLUX-S14-ScrewInBulb-v0",
-    "FIATLUX-S15-ClimbDown-v0",
+    "FIATLUX-S01-MoveLadder-v0",
+    "FIATLUX-S02-ClimbLadder-v0",
+    "FIATLUX-S03-RemoveOldBulb-v0",
+    "FIATLUX-S04-DescendWithBulb-v0",
+    "FIATLUX-S05-CarryBulbToDisposal-v0",
+    "FIATLUX-S06-DisposeBulb-v0",
+    "FIATLUX-S07-ApproachNewBulb-v0",
+    "FIATLUX-S08-GrabNewBulb-v0",
+    "FIATLUX-S09-CarryBulbToLadder-v0",
+    "FIATLUX-S10-ClimbWithBulb-v0",
+    "FIATLUX-S11-ScrewInBulb-v0",
+    "FIATLUX-S12-ClimbDown-v0",
 ]
 
 # Convenience list for scripts/tests that iterate the ladder family. Every member except

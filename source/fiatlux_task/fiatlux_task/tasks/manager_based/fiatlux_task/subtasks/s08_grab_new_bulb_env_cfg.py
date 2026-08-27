@@ -3,12 +3,12 @@
 #
 # SPDX-License-Identifier: BSD-3-Clause
 
-"""``FIATLUX-S11-GrabNewBulb-v0`` -- pick the fresh bulb off the bench.
+"""``FIATLUX-S08-GrabNewBulb-v0`` -- pick the fresh bulb off the bench.
 
 Success is the bulb lifted clear of the tabletop, held by at least two hand bodies, filtered
 grip force within the glass fragility limit, and the robot standing -- held for
 ``GRASP_SUSTAIN_SECONDS``. Produces ``grasp_poses.BULB_IN_ROOT_STANDING`` as its end state
-(consumed by S08 and S12).
+(consumed by S05 and S09).
 
 The glass shell is fragile (``grasp_poses.GLASS_CONTACT_LIMIT_N`` = 50 N, also
 ``scripts/score.py``'s fragility threshold): unlike the ladder leaf, this gate's force conjunct
@@ -75,7 +75,7 @@ BULB_GRASPED_CONJUNCTS = [
 
 
 @configclass
-class S11RewardsCfg(GraspRewardsCfg):
+class S08RewardsCfg(GraspRewardsCfg):
     bulb_dropped = RewTerm(
         func=mdp.object_dropped,
         weight=-200.0,
@@ -84,14 +84,14 @@ class S11RewardsCfg(GraspRewardsCfg):
 
 
 @configclass
-class S11TerminationsCfg(SubtaskTerminationsCfg):
+class S08TerminationsCfg(SubtaskTerminationsCfg):
     bulb_dropped = DoneTerm(
         func=mdp.object_dropped, params={"asset_cfg": SceneEntityCfg("bulb"), "min_height": BULB_DROPPED_HEIGHT_M}
     )
 
 
 @configclass
-class S11GrabNewBulbEnvCfg(GraspSubtaskCfg):
+class S08GrabNewBulbEnvCfg(GraspSubtaskCfg):
     """Pick the fresh bulb off the bench (randomized Replace layout)."""
 
     scene_preset: str = "replace"
@@ -107,14 +107,14 @@ class S11GrabNewBulbEnvCfg(GraspSubtaskCfg):
     }
     progress_distance_fn = grasp_terms.hand_bulb_distance
 
-    rewards: S11RewardsCfg = S11RewardsCfg()
-    terminations: S11TerminationsCfg = S11TerminationsCfg()
+    rewards: S08RewardsCfg = S08RewardsCfg()
+    terminations: S08TerminationsCfg = S08TerminationsCfg()
 
     def __post_init__(self) -> None:
         super().__post_init__()
-        # S04 already stood the ladder at the fixture; every leg after it inherits that.
+        # S01 already stood the ladder at the fixture; every leg after it inherits that.
         apply_replace_preset(self.scene, couple_ladder_to_fixture=True)
-        # The old bulb was disposed of back in S09; the fixture is empty from here on.
+        # The old bulb was disposed of back in S06; the fixture is empty from here on.
         park_old_bulb_in_crate(self.scene)
         # A radius alone can land the robot under the table, so use the table's own approach
         # vector from the bulb.
