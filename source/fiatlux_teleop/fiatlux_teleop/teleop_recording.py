@@ -235,6 +235,15 @@ class TeleopTrajectoryRecorder(TrajectoryRecorder):
             info["score"] = score
         return info
 
+    def reset_buffers(self) -> None:
+        """Drop everything buffered.
+
+        For per-take bag mode: the driver writes each closed take to its own ``epNN/`` folder,
+        then clears the buffer so the next take starts a fresh bag. Without this, ``write()``
+        re-emits every prior take into every later folder.
+        """
+        self._buf = {}
+
     def mark_episode_end(self) -> bool:
         """Flag the LAST buffered step as the end of an episode (operator reset / quit).
 

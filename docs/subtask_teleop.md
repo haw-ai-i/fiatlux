@@ -137,21 +137,42 @@ names only — never body names, never variant-valued parameters:
 Without those, the grasp-tier subtasks failed at env creation under Dex3 with
 `Not all regular expressions are matched: right_hand_base_link`.
 
-## Demo scoring
+## Recording and scoring
 
-A take is bounded by the record toggle: press to start, press again to stop. On stop the
-episode is closed, the bag is flushed, and the benchmark's own scorer runs over it — the score
-is both printed and merged into `meta.json`.
+A take is bounded by the record toggle: press to start, press again to stop. Each take gets its
+own folder, sealed with its own score once the bag and video are closed:
 
 ```
-[sonic] RECORDING OFF -- bag updated: 1 episode(s) -> .../run.h5
-[sonic]   score: success 1/1 (100%)  mean_score=1.00  clean=100%  broken=0%  dropped=0%
+teleop-captures/<task>/<hand>/hdf5/vr/2026-08-27/143052/
+  ep00_score1.00/    run.h5   meta.json   video.mp4   video_poster.png
+  ep01_score0.00/    ...
+  ep02_score1.00/    ...
 ```
 
-`score.py` reads the **last step** of each episode, which is why `success` must terminate: it
-puts the success flag exactly where the scorer looks. The per-episode score is binary (1.0 or
-0.0, minus penalties for a crushed or dropped payload); continuous signal — `reward`,
-`pos_error`, `contact_force` — is recorded per step in the bag alongside it.
+The session folder keeps its plain timestamp — the score belongs on the take, and a session
+average is dragged down by a single mis-press. Each `meta.json` carries that take's own score
+(`episodes: 1`), the layout seed, joint order and action terms, so a demo can be replayed into
+the room it came from.
+
+The score is also printed the moment you stop, so a take's result is known without opening
+anything:
+
+```
+[sonic] RECORDING OFF -- take saved: .../ep01_score0.00
+[sonic]   score: success 0/1 (0%)  mean_score=0.00  clean=0%  broken=0%  dropped=0%
+```
+
+Takes are flushed at record-off, at `R`, and at exit — never held until the end, since Kit's
+SIGINT handler exits past `finally`/`atexit`.
+
+`score.py` reads the **last step** of each episode, which is why `success` must remain a
+termination: it puts the success flag exactly where the scorer looks. The per-episode score is
+binary (1.0 or 0.0, minus penalties for a crushed or dropped payload); continuous signal —
+`reward`, `pos_error`, `contact_force` — is recorded per step in the bag alongside it.
+
+Every take is kept and scored, including accidental ones. One step is 20 ms at the 50 Hz
+control rate, so a double-press writes a real folder with a one-frame bag — visible by its
+`_score0.00` suffix and by `episode_lengths` in its meta.
 
 ## Known issues
 

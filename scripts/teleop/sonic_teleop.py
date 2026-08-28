@@ -68,10 +68,11 @@ parser.add_argument("--images-stride", type=int, default=5,
                     help="capture every Nth recorded step for --record-images (default 5 = 10 Hz "
                          "at the 50 Hz control rate).")
 parser.add_argument("--out", default="",
-                    help="output directory for the --record bag. Default: the dataset-first tree "
-                         "<captures>/<task>/<hand>/<kind>/<input>/<YYYY-MM-DD>/<HHMMSS>/, session "
-                         "renamed to <HHMMSS>_score<mean> on clean exit (explicit --out is never "
-                         "renamed). One dimension per level: hand (dex3=43 vs inspire=53 joint "
+                    help="output directory for the --record bags. Default: the dataset-first tree "
+                         "<captures>/<task>/<hand>/<kind>/<input>/<YYYY-MM-DD>/<HHMMSS>/, with one "
+                         "epNN_score<X.XX>/ folder (bag + meta + video) per record-on..off take -- "
+                         "each take carries its OWN score, so a listing reads as per-demo results. "
+                         "One dimension per level: hand (dex3=43 vs inspire=53 joint "
                          "columns), kind = hdf5|npz(+images), input device -- so <task>/<hand>/"
                          "<kind>/ is always a schema-homogeneous training dataset. <captures> = "
                          "$FIATLUX_CAPTURES_DIR, else ../teleop-captures beside the repo -- OUTSIDE "
@@ -401,8 +402,7 @@ def main():  # noqa: C901  (one long orchestration: env setup + settle/resettle 
         import time as _time
 
         from fiatlux_teleop.teleop_recording import TeleopTrajectoryRecorder
-        out_auto_named = not args.out
-        if out_auto_named:
+        if not args.out:
             # <captures>/task/input-mode/date/session-time; the session folder gains a _score<mean>
             # suffix at clean exit (the score exists only once the session is over). Captures live
             # OUTSIDE the git tree (../teleop-captures beside the repo) unless overridden.
@@ -430,23 +430,53 @@ def main():  # noqa: C901  (one long orchestration: env setup + settle/resettle 
                                     _time.strftime("%Y-%m-%d"), _time.strftime("%H%M%S"))
         recorder = TeleopTrajectoryRecorder(env, policy_spec=f"teleop_{args.input}",
                                                 seed=layout_seed if layout_seed is not None else 0)
-        if args.record_video:
-            from fiatlux_teleop.teleop_recording import StreamingVideoRecorder
-            video = StreamingVideoRecorder(env, env.scene["video_cam"],
-                                           os.path.join(args.out, "video.mp4"), fps=50)
+        # Per-take capture: every record-on..record-off span writes its OWN epNN/ subfolder --
+        # a single-demo bag, a meta.json carrying THAT take's score, and a finalized,
+        # immediately-playable video. Each take is shareable the moment it ends, and a bad take
+        # is deleted on its own without touching the rest of the session.
+        from fiatlux_teleop.teleop_recording import ImageCapture, StreamingVideoRecorder
+        ep_idx = 0
+        ep_scores = []
         if args.record_images:
-            from fiatlux_teleop.teleop_recording import ImageCapture
-            images = ImageCapture(env, os.path.join(args.out, "images"), stride=args.images_stride)
             recorder._meta["images"] = {
-                "dir": "images", "stride": args.images_stride, "cameras": images.cameras,
-                "index": "recorded-step counter (flat stream; split via the bag's done column)",
+                "dir": "images", "stride": args.images_stride,
+                "index": "this take's bag row (f<row>.jpg pairs 1:1 with run.* row <row>)",
             }
-            print(f"[sonic] image capture: {images.cameras} every {args.images_stride} steps "
-                  f"-> {os.path.join(args.out, 'images')}", flush=True)
+
+        def _seal_take(_ep_dir, _info):
+            """Rename a finished take's folder to carry its own score: ep03 -> ep03_score1.00.
+
+            Called only after the bag AND the video are closed, so nothing is still writing into
+            the old path. meta.json refers to its bag by bare filename, so the rename is safe.
+            The score belongs on the take, not on the session: a listing of a collection session
+            then reads as per-demo results rather than one averaged number.
+            """
+            _sc = (_info.get("score") or {}).get("mean_score")
+            if _sc is None:
+                return _ep_dir
+            _dst = f"{_ep_dir}_score{_sc:.2f}"
+            try:
+                os.rename(_ep_dir, _dst)
+                return _dst
+            except OSError as _e:
+                print(f"[sonic] could not append score to {_ep_dir} ({_e})", flush=True)
+                return _ep_dir
+
+        def _open_take_capture(_ep_dir):
+            """Per-take video/image writers, opened at record-ON and closed at record-OFF."""
+            _v = (StreamingVideoRecorder(env, env.scene["video_cam"],
+                                         os.path.join(_ep_dir, "video.mp4"), fps=50)
+                  if args.record_video else None)
+            _im = (ImageCapture(env, os.path.join(_ep_dir, "images"), stride=args.images_stride)
+                   if args.record_images else None)
+            return _v, _im
+
         recording_on = args.record_start == "auto"
+        if recording_on:
+            video, images = _open_take_capture(os.path.join(args.out, "ep00"))
         _state = "ON from start" if recording_on else "OFF -- press [C] / right ctrl B (upper) to start"
         print(f"[sonic] recording demos -> {args.out} ({_state}; "
-              "episodes split on [R] reset / record-off / exit)", flush=True)
+              "one epNN/ folder -- bag + meta + video -- per record-on..off take)", flush=True)
 
     # true world spawn (to re-home on reset) + the position-hold target.
     spawn_root = robot.data.root_state_w[:, 0:7].clone()
@@ -711,15 +741,34 @@ def main():  # noqa: C901  (one long orchestration: env setup + settle/resettle 
                     rec_flag["toggle"] = False
                     if recorder is not None:
                         recording_on = not recording_on
+                        _ep_dir = os.path.join(args.out, f"ep{ep_idx:02d}")
                         if recording_on:
-                            print("[sonic] RECORDING ON", flush=True)
+                            if video is None and images is None:
+                                video, images = _open_take_capture(_ep_dir)
+                            print(f"[sonic] RECORDING ON -> {_ep_dir}", flush=True)
                         else:
-                            # OFF closes the episode and flushes, so what was captured is durable.
-                            if recorder.mark_episode_end():
-                                _info = recorder.write(args.out, fmt=args.record_format)
-                                print(f"[sonic] RECORDING OFF -- bag updated: {_info['episodes']} "
-                                      f"episode(s) -> {_info['bag']}", flush=True)
+                            # OFF closes the take: its own folder gets the bag, meta and a
+                            # finalized video; buffers reset so the next take starts fresh.
+                            _took = recorder.mark_episode_end()
+                            _info = None
+                            if _took:
+                                _info = recorder.write(_ep_dir, fmt=args.record_format)
+                                recorder.reset_buffers()
+                                _sc = _info.get("score") or {}
+                                if _sc.get("mean_score") is not None:
+                                    ep_scores.append(_sc["mean_score"])
+                            # close the writers BEFORE sealing -- the rename moves the folder
+                            if video is not None:
+                                if len(video):
+                                    video.write()
+                                video = None
+                            if images is not None:
+                                images = None
+                            if _took:
+                                _sealed = _seal_take(_ep_dir, _info)
+                                print(f"[sonic] RECORDING OFF -- take saved: {_sealed}", flush=True)
                                 print(f"[sonic] {_score_line(_info)}", flush=True)
+                                ep_idx += 1
                             else:
                                 print("[sonic] RECORDING OFF (nothing buffered)", flush=True)
 
@@ -728,10 +777,20 @@ def main():  # noqa: C901  (one long orchestration: env setup + settle/resettle 
                     if recorder is not None and recording_on and recorder.mark_episode_end():
                         # Flush NOW, not just at exit: Kit's SIGINT handler fast-exits past any
                         # finally/atexit, so the bag on disk must always hold every closed episode.
-                        _info = recorder.write(args.out, fmt=args.record_format)
-                        print(f"[sonic] bag updated: {_info['episodes']} episode(s) -> {_info['bag']}",
-                              flush=True)
+                        _ep_dir = os.path.join(args.out, f"ep{ep_idx:02d}")
+                        _info = recorder.write(_ep_dir, fmt=args.record_format)
+                        recorder.reset_buffers()
+                        _sc = _info.get("score") or {}
+                        if _sc.get("mean_score") is not None:
+                            ep_scores.append(_sc["mean_score"])
+                        if video is not None and len(video):
+                            video.write()                     # close before the seal renames
+                        _sealed = _seal_take(_ep_dir, _info)
+                        print(f"[sonic] take saved on reset: {_sealed}", flush=True)
                         print(f"[sonic] {_score_line(_info)}", flush=True)
+                        ep_idx += 1
+                        # recording stays ON across the reset -> next take gets fresh writers
+                        video, images = _open_take_capture(os.path.join(args.out, f"ep{ep_idx:02d}"))
                     env.reset()                              # reset the task (bulb/socket, episode buffers)
                     # A FREE base isn't re-homed by env.reset() -> teleport the root back to the good
                     # centered spawn (zero velocity), THEN re-plant with the same pin + SONIC settle-in
@@ -868,31 +927,32 @@ def main():  # noqa: C901  (one long orchestration: env setup + settle/resettle 
                 env.sim.render()
 
     if recorder is not None:
-        recorder.mark_episode_end()                          # close the trailing (un-reset) episode
+        recorder.mark_episode_end()                          # close a trailing (still-recording) take
+        _trailing = None
         if recorder._buf:
-            _info = recorder.write(args.out, fmt=args.record_format)
-            print(f"[sonic] wrote teleop bag {_info['bag']} ({_info['episodes']} episodes)",
-                  flush=True)
-            print(f"[sonic] {_score_line(_info)}", flush=True)
-            if video is not None and len(video):
-                _vp = video.write()              # close the stream BEFORE the score-rename below
-                print(f"[sonic] wrote session video {_vp} ({len(video)} frames)", flush=True)
-            if images is not None and len(images):
-                print(f"[sonic] wrote {len(images)} image sets ({', '.join(images.cameras)}) -> "
-                      f"{os.path.join(args.out, 'images')}", flush=True)
-            # Auto-named session dirs gain the score as a suffix so a listing reads as a ranking.
-            # Only on clean exit (a killed session keeps the plain timestamp; meta.json still has
-            # the last flushed score) and never on an operator-chosen --out.
-            if out_auto_named and _sc.get("mean_score") is not None:
-                _scored_dir = f"{args.out}_score{_sc['mean_score']:.2f}"
-                try:
-                    os.rename(args.out, _scored_dir)
-                    print(f"[sonic] session dir -> {_scored_dir}", flush=True)
-                except OSError as _e:
-                    print(f"[sonic] could not append score to dir name ({_e}); bag stays at {args.out}",
-                          flush=True)
+            _ep_dir = os.path.join(args.out, f"ep{ep_idx:02d}")
+            _trailing = recorder.write(_ep_dir, fmt=args.record_format)
+            _sc = _trailing.get("score") or {}
+            if _sc.get("mean_score") is not None:
+                ep_scores.append(_sc["mean_score"])
+        if video is not None and len(video):
+            video.write()                        # close the stream BEFORE the seal renames
+        if images is not None and len(images):
+            print(f"[sonic] trailing take images: {len(images)} sets", flush=True)
+        if _trailing is not None:
+            _sealed = _seal_take(os.path.join(args.out, f"ep{ep_idx:02d}"), _trailing)
+            print(f"[sonic] trailing take saved: {_sealed}", flush=True)
+            print(f"[sonic] {_score_line(_trailing)}", flush=True)
+            ep_idx += 1
+        if ep_idx:
+            # The session dir keeps its plain timestamp: the score lives on each take
+            # (epNN_score<X.XX>), so a listing reads as per-demo results rather than one
+            # averaged number that a single mis-press could drag down.
+            _mean = sum(ep_scores) / len(ep_scores) if ep_scores else 0.0
+            print(f"[sonic] session: {ep_idx} take(s) under {args.out} "
+                  f"(mean of take scores {_mean:.2f})", flush=True)
         else:
-            print("[sonic] recording was on but nothing was captured -- no bag written.", flush=True)
+            print("[sonic] recording was on but nothing was captured -- no take written.", flush=True)
 
     env.close()
     simulation_app.close()
