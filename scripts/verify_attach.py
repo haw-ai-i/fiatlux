@@ -80,6 +80,8 @@ import gymnasium as gym
 import torch
 from fiatlux_task.assets import BULB_PLUG_OFFSET, SOCKET_SEAT_AXIS, SOCKET_SEAT_OFFSET
 from fiatlux_task.tasks.manager_based.fiatlux_task.mdp import attach as task_attach
+from fiatlux_task.tasks.manager_based.fiatlux_task.mdp import mate_terms as task_mate
+from fiatlux_task.tasks.manager_based.fiatlux_task.mdp import rewards as task_rewards
 from fiatlux_task.tasks.manager_based.fiatlux_task.replace_env_cfg import (
     BAYONET_INSERTION_DEPTH,
     BAYONET_ROTATION_ANGLE,
@@ -732,6 +734,51 @@ def main() -> int:
             fresh_phase() == task_attach._FREE,
             f"3 cm lateral offset stays FREE (phase={fresh_phase()})",
         )
+
+        # --- issue #90: the clock angle a bayonet enters at is free -------------------------
+        # A cap goes into the bore at whatever angle the operator's wrist happens to be at and
+        # turns from there. The gate used to read FULL-frame orientation error, so any entry
+        # twist past the tolerance was rejected -- 326 of 358 blocked steps in the 2026-08-21
+        # bags had their tilt within tolerance and were refused on twist alone.
+        entry_clock = 0.40  # rad, twice the tolerance the full-frame gate allowed
+        place_bulb(fresh_bulb, 0.5 * depth, entry_clock)
+        step()
+        record(
+            "bayonet:enters_at_any_clock_angle",
+            fresh_phase() == task_attach._AXIAL,
+            f"entered at {entry_clock:.3f} rad of twist (phase={fresh_phase()})",
+        )
+
+        # ...and the mechanic keeps that angle instead of teleporting the bulb onto the socket's
+        # own. The projection used to write `socket_quat` outright, which moved a gripped bulb
+        # 0.155 rad in one 20 ms step.
+        retained_clock = bulb_twist(fresh_bulb)
+        expected_clock = task_attach.attachment_manager(env).rotation_sign * entry_clock
+        record(
+            "bayonet:entry_clock_angle_preserved",
+            abs(retained_clock - expected_clock) < 0.02,
+            f"entered at {expected_clock:+.3f} rad, retained {retained_clock:+.3f} rad",
+        )
+
+        # The dense alignment reward must not fall as the bulb turns toward the lock. Measured
+        # clear of the socket (5 cm lateral, so nothing engages) at two clock angles.
+        place_bulb(fresh_bulb, 0.5 * depth, 0.0, lateral_distance=0.05)
+        step()
+        axis_untwisted = task_mate.bulb_axis_alignment_tanh(env, std=0.3)[0].item()
+        full_untwisted = task_rewards.object_socket_orientation_tanh(env, std=0.3)[0].item()
+        place_bulb(fresh_bulb, 0.5 * depth, angle, lateral_distance=0.05)
+        step()
+        axis_twisted = task_mate.bulb_axis_alignment_tanh(env, std=0.3)[0].item()
+        full_twisted = task_rewards.object_socket_orientation_tanh(env, std=0.3)[0].item()
+        record(
+            "bayonet:alignment_reward_ignores_twist",
+            abs(axis_twisted - axis_untwisted) < 0.01 and (full_untwisted - full_twisted) > 0.1,
+            f"axis-only {axis_untwisted:.3f} -> {axis_twisted:.3f} over a {angle:.3f} rad turn; "
+            f"full-frame would have fallen {full_untwisted:.3f} -> {full_twisted:.3f}",
+        )
+
+        place_bulb(fresh_bulb, 1.15 * depth, 0.0)
+        step()
 
         drive_pose(fresh_bulb, 1.15 * depth, 0.75 * depth, 0.0, 0.0, 18)
         fresh_axial = fresh_phase() == task_attach._AXIAL
