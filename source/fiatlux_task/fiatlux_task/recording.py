@@ -103,6 +103,18 @@ class TrajectoryRecorder:
         # Install, Carry today) simply record no lock columns.
         self._attachment = _attach.attachment_manager(env)
 
+        # Which bulb this task manipulates, resolved once (issue #76 Step 1). Bulbs are named by
+        # placement: a bulb seated in the socket is ``old_bulb``, one anywhere else is
+        # ``fresh_bulb``. Remove and Carry build only the seated one, so a hardcoded lookup
+        # raised KeyError for them. The serialized keys stay ``bulb_*`` so old bags still parse.
+        #
+        # KNOWN LIMIT, carried over from the `scene["bulb"]` lookup this replaces: presence
+        # cannot disambiguate a two-bulb scene. S06-S09 run the Replace scene and manipulate the
+        # OLD bulb, and this picks the fresh one for them, so their bags record a parked bulb.
+        # The behaviour is unchanged by the rename -- the old lookup resolved to the same fresh
+        # bulb -- but fixing it needs the task to DECLARE its manipuland, which is #76 Step 3.
+        self._bulb_entity = "fresh_bulb" if "fresh_bulb" in env.scene.rigid_objects else "old_bulb"
+
         self._buf: dict[str, list[np.ndarray]] = {}
         self._meta = self._build_meta(policy_spec=policy_spec, seed=seed, checkpoint=checkpoint, ee_name=ee_names[0])
 
@@ -110,7 +122,7 @@ class TrajectoryRecorder:
     def record_step(self, obs, actions, reward, terminated, truncated) -> None:
         env = self.env
         robot = env.scene["robot"]
-        bulb = env.scene["bulb"]
+        bulb = env.scene[self._bulb_entity]
         socket = env.scene["socket"]
         contact = env.scene.sensors["hand_contact"]
 
@@ -131,8 +143,8 @@ class TrajectoryRecorder:
             "contact_force": _obs.object_contact_forces(contact),  # (N, B, 3), objects only
             "policy_obs": obs["policy"] if isinstance(obs, dict) else obs,
             "reward": reward,
-            "pos_error": _rewards._bulb_socket_pos_error(env),
-            "ori_error": _rewards._bulb_socket_ori_error(env),
+            "pos_error": _rewards._bulb_socket_pos_error(env, self._bulb_entity),
+            "ori_error": _rewards._bulb_socket_ori_error(env, self._bulb_entity),
             "step_in_episode": env.episode_length_buf.clone(),
             "terminated": terminated,
             "truncated": truncated,

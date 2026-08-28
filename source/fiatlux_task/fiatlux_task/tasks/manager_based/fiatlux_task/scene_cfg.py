@@ -452,6 +452,43 @@ def _spawn_invisible_ground_plane(prim_path, cfg, translation=None, orientation=
     return prim
 
 
+def _make_bulb_cfg(prim_path: str, pos: Vec3, rot: Quat | None = None, *, kinematic: bool = False) -> RigidObjectCfg:
+    """One bulb entity, whichever role it plays (issue #76 Step 1).
+
+    ``fresh_bulb`` and ``old_bulb`` are the same asset with the same physics. Only the prim path,
+    the spawn pose and whether it is kinematic differ, so a factory retires the duplicate spawn
+    block that the Replace preset used to carry.
+
+    ``contact_offset`` is cut from the PhysX default 0.02 m, half the screw cap's diameter, which
+    would otherwise generate contacts 2 cm before touch and buzz a seated bulb in the hole. The
+    spawner applies the bulb-socket collision filter -- see ``_spawn_bulb_socket_filtered``.
+    """
+    return RigidObjectCfg(
+        prim_path=prim_path,
+        spawn=sim_utils.UsdFileCfg(
+            usd_path=BULB_USD,
+            func=_spawn_bulb_socket_filtered,
+            rigid_props=sim_utils.RigidBodyPropertiesCfg(
+                kinematic_enabled=kinematic,
+                solver_position_iteration_count=32,
+                solver_velocity_iteration_count=1,
+                max_depenetration_velocity=1.0,
+                enable_gyroscopic_forces=True,
+            ),
+            collision_props=sim_utils.CollisionPropertiesCfg(
+                contact_offset=0.005, rest_offset=0.0, torsional_patch_radius=0.005
+            ),
+            mass_props=sim_utils.MassPropertiesCfg(mass=BULB_MASS_KG),
+            activate_contact_sensors=True,
+        ),
+        init_state=(
+            RigidObjectCfg.InitialStateCfg(pos=pos)
+            if rot is None
+            else RigidObjectCfg.InitialStateCfg(pos=pos, rot=rot)
+        ),
+    )
+
+
 @configclass
 class G1ReplaceSceneCfg(DressedSceneCfg):
     """The G1 light-bulb-replacement world (see module docstring for the preset layouts)."""
@@ -508,31 +545,17 @@ class G1ReplaceSceneCfg(DressedSceneCfg):
         ),
         init_state=RigidObjectCfg.InitialStateCfg(pos=SOCKET_POSITION),
     )
-    # The wrapper layer already carries RigidBodyAPI + MassAPI, so the plain spawner suffices.
-    # contact_offset is cut from the PhysX default 0.02 m, half the screw cap's diameter, which
-    # would generate contacts 2 cm before touch and buzz a seated bulb in the hole.
-    bulb: RigidObjectCfg = RigidObjectCfg(
-        prim_path="{ENV_REGEX_NS}/Bulb",
-        spawn=sim_utils.UsdFileCfg(
-            usd_path=BULB_USD,
-            func=_spawn_bulb_socket_filtered,
-            rigid_props=sim_utils.RigidBodyPropertiesCfg(
-                solver_position_iteration_count=32,
-                solver_velocity_iteration_count=1,
-                max_depenetration_velocity=1.0,
-                enable_gyroscopic_forces=True,
-            ),
-            collision_props=sim_utils.CollisionPropertiesCfg(
-                contact_offset=0.005, rest_offset=0.0, torsional_patch_radius=0.005
-            ),
-            mass_props=sim_utils.MassPropertiesCfg(mass=BULB_MASS_KG),
-            activate_contact_sensors=True,
-        ),
-        init_state=RigidObjectCfg.InitialStateCfg(pos=BULB_POSITION),
-    )
-    # Old bulb, seated in the elevated fixture (replace preset only), dynamic. Retention is
-    # ``mdp.bulb_attachment``, which pins it at the seat until it is rotated to the release
-    # angle and travels out of the channel.
+    # Bulbs are named by PLACEMENT, not by task (issue #76 Step 1): a bulb seated in the socket
+    # is the ``old_bulb``, a bulb anywhere else is the ``fresh_bulb``. Both are optional and
+    # every preset builds what it owns with ``_make_bulb_cfg``, so no task inherits a bulb it
+    # does not want. Replace is the only preset that builds both.
+    #
+    # The class carries no bulb of its own. It used to, and ``apply_workshop_preset`` was an
+    # empty function because that default WAS the workshop layout -- which is exactly how Remove
+    # ended up calling its single seated bulb ``bulb`` and the scoring layer ``old_bulb``.
+    fresh_bulb: RigidObjectCfg | None = None
+    # Seated in the socket. Retention is ``mdp.bulb_attachment``, which pins it at the seat until
+    # it is rotated to the release angle and travels out of the channel.
     old_bulb: RigidObjectCfg | None = None
     # Rod a ceiling-mounted fixture hangs from (see add_ceiling_pendant). Only the presets
     # that mount overhead spawn it; wall mounts and the bench have no pendant.
@@ -552,8 +575,9 @@ class G1ReplaceSceneCfg(DressedSceneCfg):
     hand_contact: ContactSensorCfg = ContactSensorCfg(
         prim_path="{ENV_REGEX_NS}/Robot/(right_hand_.*|right_wrist_.*|R_.*)",
         # Filtered to the manipulated object: the net force would also carry furniture the arm
-        # rests against and the robot's own colliders. Presets with a second bulb extend this.
-        filter_prim_paths_expr=["{ENV_REGEX_NS}/Bulb"],
+        # rests against and the robot's own colliders. ``_sync_bulb_contact_filters`` fills this
+        # from whichever bulbs the preset built -- do not set it per preset.
+        filter_prim_paths_expr=[],
         history_length=1,
         track_air_time=False,
     )
@@ -582,12 +606,31 @@ G1LadderSceneCfg = G1ReplaceSceneCfg
 ##
 
 
+def _sync_bulb_contact_filters(scene: G1ReplaceSceneCfg) -> None:
+    """Rebuild ``hand_contact``'s filter list from whichever bulbs the preset actually built.
+
+    Call this at the END of every preset. Rebuilding, rather than appending per preset, is what
+    makes preset chaining safe: ``apply_remove_preset`` runs the tabletop preset first, which
+    builds a ``fresh_bulb``, and then clears it. An appended filter would leave an expression
+    pointing at a prim that no longer exists.
+
+    This fails SILENTLY when it is wrong, which is why it is centralized: the sensor reports zero
+    force for an unfiltered body, and zero force reads as "not touching".
+    """
+    scene.hand_contact.filter_prim_paths_expr = [
+        bulb.prim_path for bulb in (scene.fresh_bulb, scene.old_bulb) if bulb is not None
+    ]
+
+
 def apply_workshop_preset(scene: G1ReplaceSceneCfg) -> None:
     """The default floor layout: climb ladder + socket-lamp and bulb on the floor.
 
-    This is the scene's authored default, so the function is a documented no-op -- it
-    exists so every task cfg states its preset explicitly.
+    This was a documented no-op while the scene class carried a ``bulb`` field whose default
+    WAS this layout. The class no longer does (issue #76 Step 1), so the layout is built here.
     """
+    scene.fresh_bulb = _make_bulb_cfg("{ENV_REGEX_NS}/Bulb", BULB_POSITION)
+    scene.old_bulb = None
+    _sync_bulb_contact_filters(scene)
 
 
 def apply_tabletop_preset(scene: G1ReplaceSceneCfg) -> None:
@@ -608,7 +651,9 @@ def apply_tabletop_preset(scene: G1ReplaceSceneCfg) -> None:
     scene.robot.init_state.pos = TABLETOP_ROBOT_POSITION
     scene.robot.init_state.rot = _quat_z_deg(TABLETOP_ROBOT_YAW_DEG)
     scene.socket.init_state.pos = TABLETOP_SOCKET_POSITION
-    scene.bulb.init_state.pos = TABLETOP_BULB_POSITION
+    scene.fresh_bulb = _make_bulb_cfg("{ENV_REGEX_NS}/Bulb", TABLETOP_BULB_POSITION)
+    scene.old_bulb = None
+    _sync_bulb_contact_filters(scene)
 
 
 def apply_position_preset(scene: G1ReplaceSceneCfg) -> None:
@@ -645,10 +690,12 @@ def apply_position_preset(scene: G1ReplaceSceneCfg) -> None:
     fixture_quat = _quat_y_deg(180.0)
     scene.socket.init_state.pos = fixture_pos
     scene.socket.init_state.rot = fixture_quat
-    scene.bulb.init_state.pos = fixture_pos
-    scene.bulb.init_state.rot = fixture_quat
-    scene.bulb.spawn.rigid_props.kinematic_enabled = True  # overhead context, not the manipuland
+    # Seated in the socket, so it is the OLD bulb by placement. Kinematic: this task scores the
+    # ladder pose, so the bulb is overhead context, not the manipuland, and needs no retention.
+    scene.fresh_bulb = None
+    scene.old_bulb = _make_bulb_cfg("{ENV_REGEX_NS}/OldBulb", fixture_pos, fixture_quat, kinematic=True)
     add_ceiling_pendant(scene, fixture_pos[0], fixture_pos[1], fixture_pos[2])
+    _sync_bulb_contact_filters(scene)
     # hand_contact stays for the net-force obs + compliance penalty; no ladder force-matrix
     # filter.
 
@@ -663,10 +710,12 @@ def apply_at_height_preset(scene: G1ReplaceSceneCfg, robot_at: str = "base") -> 
     """
     scene.socket.spawn.usd_path = ELEVATED_SOCKET_USD
     scene.socket.init_state.pos = ELEVATED_SOCKET_POSITION
-    scene.bulb.init_state.pos = PARKED_BULB_POSITION
+    scene.fresh_bulb = _make_bulb_cfg("{ENV_REGEX_NS}/Bulb", PARKED_BULB_POSITION)
+    scene.old_bulb = None
     scene.robot.init_state.pos = CLIMB_ROBOT_POSITION if robot_at == "base" else TOP_ROBOT_POSITION
     scene.fixture = None
     add_ceiling_pendant(scene, ELEVATED_SOCKET_POSITION[0], ELEVATED_SOCKET_POSITION[1], ELEVATED_SOCKET_POSITION[2])
+    _sync_bulb_contact_filters(scene)
 
 
 def face_robot_at(scene: G1ReplaceSceneCfg, target: Vec2) -> None:
@@ -795,8 +844,8 @@ def seat_bulb_in_fixture(scene: G1ReplaceSceneCfg) -> None:
     Seated is the fixture's own pose: both halves are authored assembled at identity
     (``SOCKET_SEAT_OFFSET == BULB_PLUG_OFFSET``), so there is no offset arithmetic per mount kind.
     """
-    scene.bulb.init_state.pos = scene.socket.init_state.pos
-    scene.bulb.init_state.rot = scene.socket.init_state.rot
+    scene.fresh_bulb.init_state.pos = scene.socket.init_state.pos
+    scene.fresh_bulb.init_state.rot = scene.socket.init_state.rot
 
 
 def add_ladder_contact_sensor(scene: G1ReplaceSceneCfg, bodies: list[str] | None = None) -> None:
@@ -899,14 +948,21 @@ def apply_remove_preset(scene: G1ReplaceSceneCfg) -> None:
     """
     apply_tabletop_preset(scene)
     _add_parts_bin(scene)
-    scene.bulb.init_state.pos = TABLETOP_SEATED_BULB_POSITION
+    # The bench preset builds a fresh bulb at hand height. Remove's single bulb is SEATED, so it
+    # is the old bulb, and the inherited fresh one has to go -- two bulbs would make
+    # ``socket_empty`` read the wrong row.
+    scene.fresh_bulb = None
+    scene.old_bulb = _make_bulb_cfg("{ENV_REGEX_NS}/OldBulb", TABLETOP_SEATED_BULB_POSITION)
+    _sync_bulb_contact_filters(scene)
 
 
 def apply_install_preset(scene: G1ReplaceSceneCfg) -> None:
     """Bulb-installation start: Insert's bench, empty lamp socket, fresh bulb in the crate."""
     apply_tabletop_preset(scene)
     _add_parts_bin(scene)
-    scene.bulb.init_state.pos = BIN_BULB_POSITION
+    # Keeps the bench's fresh bulb; only its placement changes. The socket starts empty.
+    scene.fresh_bulb.init_state.pos = BIN_BULB_POSITION
+    _sync_bulb_contact_filters(scene)
 
 
 ##
@@ -1223,11 +1279,16 @@ def apply_replace_preset(
     facing = math.degrees(math.atan2(table_center[1] - robot_center[1], table_center[0] - robot_center[0]))
     scene.robot.init_state.rot = _quat_z_deg(facing + rng.uniform(-15.0, 15.0))
     scene.table.init_state.pos = (table_center[0], table_center[1], TABLE_POSITION[2])
+    # Replace builds BOTH bulbs, and it chains through no preset that would build one for it --
+    # it used to inherit the class default. The fresh bulb rides the table at the bench offset.
     bulb_local_offset = tuple(b - t for b, t in zip(TABLETOP_BULB_POSITION, TABLE_POSITION))
-    scene.bulb.init_state.pos = (
-        table_center[0] + bulb_local_offset[0],
-        table_center[1] + bulb_local_offset[1],
-        TABLE_POSITION[2] + bulb_local_offset[2],
+    scene.fresh_bulb = _make_bulb_cfg(
+        "{ENV_REGEX_NS}/Bulb",
+        (
+            table_center[0] + bulb_local_offset[0],
+            table_center[1] + bulb_local_offset[1],
+            TABLE_POSITION[2] + bulb_local_offset[2],
+        ),
     )
     scene.ladder.init_state.pos = (ladder_center[0], ladder_center[1], LADDER_POSITION[2])
     scene.ladder.init_state.rot = _quat_z_deg(ladder_yaw)
@@ -1242,32 +1303,10 @@ def apply_replace_preset(
 
     # Old bulb, seated: the fixture's own pose, both halves being authored assembled at
     # identity. Dynamic, and the fixture is inverted, so it is held by the seat constraint
-    # (mdp/attach.py), not by gravity.
-    scene.old_bulb = RigidObjectCfg(
-        prim_path="{ENV_REGEX_NS}/OldBulb",
-        spawn=sim_utils.UsdFileCfg(
-            usd_path=BULB_USD,
-            func=_spawn_bulb_socket_filtered,
-            rigid_props=sim_utils.RigidBodyPropertiesCfg(
-                solver_position_iteration_count=32,
-                solver_velocity_iteration_count=1,
-                max_depenetration_velocity=1.0,
-                enable_gyroscopic_forces=True,
-            ),
-            collision_props=sim_utils.CollisionPropertiesCfg(
-                contact_offset=0.005, rest_offset=0.0, torsional_patch_radius=0.005
-            ),
-            mass_props=sim_utils.MassPropertiesCfg(mass=BULB_MASS_KG),
-            activate_contact_sensors=True,
-        ),
-        init_state=RigidObjectCfg.InitialStateCfg(pos=fixture_pos, rot=fixture_quat),
-    )
-
-    # The old bulb is manipulated too, so the hand-contact channel must count it.
-    scene.hand_contact.filter_prim_paths_expr = [
-        *scene.hand_contact.filter_prim_paths_expr,
-        "{ENV_REGEX_NS}/OldBulb",
-    ]
+    # (mdp/attach.py), not by gravity. Replace is the only preset that builds BOTH bulbs.
+    scene.old_bulb = _make_bulb_cfg("{ENV_REGEX_NS}/OldBulb", fixture_pos, fixture_quat)
 
     # Disposal crate: the old bulb's destination, in its own sampled zone.
     _add_parts_bin(scene, position=(disposal_center[0], disposal_center[1], BIN_POSITION[2]))
+    # Both bulbs are manipulated, so the hand-contact channel counts both.
+    _sync_bulb_contact_filters(scene)

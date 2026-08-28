@@ -159,7 +159,9 @@ class TeleopTrajectoryRecorder(TrajectoryRecorder):
             except Exception:  # noqa: BLE001 - scene raises KeyError/ValueError depending on version
                 return False
 
-        self._has_insert = _has("bulb") and _has("socket")
+        # Bulbs are named by placement since #76 Step 1. The parent resolved which one this task
+        # manipulates; reuse that rather than guessing a second time.
+        self._has_insert = _has(self._bulb_entity) and _has("socket")
         self._has_contact = "hand_contact" in getattr(env.scene, "sensors", {})
 
         # The parent's meta hardcodes action_joint_order from the benchmark's STATIC constants
@@ -207,15 +209,15 @@ class TeleopTrajectoryRecorder(TrajectoryRecorder):
             "timeout_term": term_flag(env, "time_out", self.n, self.device),
         }
         if self._has_insert:
-            bulb, socket = env.scene["bulb"], env.scene["socket"]
+            bulb, socket = env.scene[self._bulb_entity], env.scene["socket"]
             step.update({
                 "bulb_pos": bulb.data.root_pos_w,
                 "bulb_quat": bulb.data.root_quat_w,
                 "bulb_lin_vel": bulb.data.root_lin_vel_w,
                 "socket_pos": socket.data.root_pos_w,
                 "socket_quat": socket.data.root_quat_w,
-                "pos_error": _rec._rewards._bulb_socket_pos_error(env),
-                "ori_error": _rec._rewards._bulb_socket_ori_error(env),
+                "pos_error": _rec._rewards._bulb_socket_pos_error(env, self._bulb_entity),
+                "ori_error": _rec._rewards._bulb_socket_ori_error(env, self._bulb_entity),
             })
         if self._has_contact:
             step["contact_force"] = _rec._obs.object_contact_forces(env.scene.sensors["hand_contact"])

@@ -57,7 +57,7 @@ BULB_HELD_MIN_HAND_BODIES = 2
 # The success gate, as reviewable data (mdp.all_of) rather than a hand-written conjunction --
 # an omitted conjunct here is a gate that passes vacuously.
 BULB_GRASPED_CONJUNCTS = [
-    (grasp_terms.object_lifted, {"asset_cfg": SceneEntityCfg("bulb"), "min_height": BULB_LIFTED_HEIGHT_M}),
+    (grasp_terms.object_lifted, {"asset_cfg": SceneEntityCfg("fresh_bulb"), "min_height": BULB_LIFTED_HEIGHT_M}),
     (
         grasp_terms.hand_bodies_in_contact,
         {
@@ -79,14 +79,14 @@ class S08RewardsCfg(GraspRewardsCfg):
     bulb_dropped = RewTerm(
         func=mdp.object_dropped,
         weight=-200.0,
-        params={"asset_cfg": SceneEntityCfg("bulb"), "min_height": BULB_DROPPED_HEIGHT_M},
+        params={"asset_cfg": SceneEntityCfg("fresh_bulb"), "min_height": BULB_DROPPED_HEIGHT_M},
     )
 
 
 @configclass
 class S08TerminationsCfg(SubtaskTerminationsCfg):
     bulb_dropped = DoneTerm(
-        func=mdp.object_dropped, params={"asset_cfg": SceneEntityCfg("bulb"), "min_height": BULB_DROPPED_HEIGHT_M}
+        func=mdp.object_dropped, params={"asset_cfg": SceneEntityCfg("fresh_bulb"), "min_height": BULB_DROPPED_HEIGHT_M}
     )
 
 
@@ -118,9 +118,9 @@ class S08GrabNewBulbEnvCfg(GraspSubtaskCfg):
         park_old_bulb_in_crate(self.scene)
         # A radius alone can land the robot under the table, so use the table's own approach
         # vector from the bulb.
-        stand_robot_at_offset(self.scene, self.scene.bulb.init_state.pos[:2], BULB_APPROACH_OFFSET)
+        stand_robot_at_offset(self.scene, self.scene.fresh_bulb.init_state.pos[:2], BULB_APPROACH_OFFSET)
         add_ego_camera(self.scene)
         add_mid360_lidar(self.scene)
-        add_grasp_contact_sensor(self.scene, self.scene.bulb.prim_path)
+        add_grasp_contact_sensor(self.scene, self.scene.fresh_bulb.prim_path)
         self.episode_length_s = 20.0
         frame_viewer_on(self.viewer, self.scene.robot.init_state.pos)

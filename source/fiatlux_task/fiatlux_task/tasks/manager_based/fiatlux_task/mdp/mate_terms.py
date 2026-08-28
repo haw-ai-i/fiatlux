@@ -50,7 +50,7 @@ def _axis_w(env: ManagerBasedRLEnv, asset_cfg: SceneEntityCfg, axis: tuple[float
 
 def bulb_mating_axis_angle(
     env: ManagerBasedRLEnv,
-    asset_cfg: SceneEntityCfg = SceneEntityCfg("bulb"),
+    asset_cfg: SceneEntityCfg = SceneEntityCfg("fresh_bulb"),
     socket_cfg: SceneEntityCfg = SceneEntityCfg("socket"),
 ) -> torch.Tensor:
     """Angle (rad) between the bulb's plug axis and the socket's seat axis.
@@ -65,7 +65,7 @@ def bulb_mating_axis_angle(
 def bulb_axis_alignment_tanh(
     env: ManagerBasedRLEnv,
     std: float,
-    asset_cfg: SceneEntityCfg = SceneEntityCfg("bulb"),
+    asset_cfg: SceneEntityCfg = SceneEntityCfg("fresh_bulb"),
     socket_cfg: SceneEntityCfg = SceneEntityCfg("socket"),
 ) -> torch.Tensor:
     """Dense alignment reward via ``1 - tanh(axis_angle / std)``; the screw itself costs nothing."""

@@ -78,20 +78,24 @@ def _seat_point_w(env: ManagerBasedRLEnv) -> torch.Tensor:
     return socket.data.root_pos_w + quat_apply(socket.data.root_quat_w, offset)
 
 
-def _plug_point_w(env: ManagerBasedRLEnv) -> torch.Tensor:
-    """World position of the bulb's plug (bulblampM metalink)."""
-    bulb: RigidObject = env.scene["bulb"]
+def _plug_point_w(env: ManagerBasedRLEnv, entity: str = "fresh_bulb") -> torch.Tensor:
+    """World position of the bulb's plug (bulblampM metalink).
+
+    ``entity`` exists for the task-generic writers in ``recording.py``: Remove and Carry build
+    no ``fresh_bulb``, so they pass ``old_bulb``. Every reward term keeps the default.
+    """
+    bulb: RigidObject = env.scene[entity]
     offset = torch.tensor(BULB_PLUG_OFFSET, device=env.device).expand(env.num_envs, 3)
     return bulb.data.root_pos_w + quat_apply(bulb.data.root_quat_w, offset)
 
 
-def _bulb_socket_pos_error(env: ManagerBasedRLEnv) -> torch.Tensor:
+def _bulb_socket_pos_error(env: ManagerBasedRLEnv, entity: str = "fresh_bulb") -> torch.Tensor:
     """Euclidean distance (m) between the bulb's plug point and the lamp's socket seat.
 
     Both are the OmniGibson attachment metalinks (bulblampM / bulblampF), not the object
     origins: seating means the plug reaches the socket, and the two origins are offset by
     the plug geometry even when fully mated (issue #29)."""
-    return torch.norm(_plug_point_w(env) - _seat_point_w(env), dim=1)
+    return torch.norm(_plug_point_w(env, entity) - _seat_point_w(env), dim=1)
 
 
 def _bulb_socket_axis_error(env: ManagerBasedRLEnv) -> torch.Tensor:
@@ -102,7 +106,7 @@ def _bulb_socket_axis_error(env: ManagerBasedRLEnv) -> torch.Tensor:
     motion. A full-frame comparison makes rotation about the mating axis read as
     misalignment, so it is not appropriate during the rotation stage (issue #54).
     """
-    bulb: RigidObject = env.scene["bulb"]
+    bulb: RigidObject = env.scene["fresh_bulb"]
     socket: RigidObject = env.scene["socket"]
     n = env.num_envs
     plug = torch.tensor(BULB_PLUG_AXIS, device=env.device).expand(n, 3)
@@ -113,9 +117,9 @@ def _bulb_socket_axis_error(env: ManagerBasedRLEnv) -> torch.Tensor:
     return torch.acos(cos.clamp(-1.0, 1.0))
 
 
-def _bulb_socket_ori_error(env: ManagerBasedRLEnv) -> torch.Tensor:
+def _bulb_socket_ori_error(env: ManagerBasedRLEnv, entity: str = "fresh_bulb") -> torch.Tensor:
     """Shortest-path angular distance (rad) between bulb and socket frames."""
-    bulb: RigidObject = env.scene["bulb"]
+    bulb: RigidObject = env.scene[entity]
     socket: RigidObject = env.scene["socket"]
     return quat_error_magnitude(bulb.data.root_quat_w, socket.data.root_quat_w)
 
@@ -403,9 +407,8 @@ def _old_bulb_plug_point_w(
 ) -> torch.Tensor:
     """World position of the seated bulb's plug point.
 
-    ``asset_cfg`` defaults to Replace's ``old_bulb`` entity; Remove's standalone scene
-    names its single (dynamic) seated bulb ``bulb``, so its cfg passes
-    ``asset_cfg=SceneEntityCfg("bulb")`` through every function below.
+    Every seated bulb is the ``old_bulb`` entity since #76 Step 1, so ``asset_cfg`` keeps its
+    default everywhere. It stays a parameter only because the manager API passes one.
     """
     old_bulb: RigidObject = env.scene[asset_cfg.name]
     offset = torch.tensor(BULB_PLUG_OFFSET, device=env.device).expand(env.num_envs, 3)
@@ -521,22 +524,6 @@ class completion_bonus(ManagerTermBase):
         fire = pred & ~self._paid
         self._paid |= pred
         return fire.float()
-
-
-def removal_bulb_fixture_clearance(env: ManagerBasedRLEnv) -> torch.Tensor:
-    """``old_bulb_fixture_clearance`` bound to Remove's standalone ``bulb`` entity.
-
-    ``distance_progress``'s ``distance_fn`` must be a bare module-level ``(env) -> Tensor``
-    callable (no lambdas/closures -- see its docstring), so the ``asset_cfg`` override
-    needed for Remove's single-bulb scene (named ``bulb``, not Replace's ``old_bulb``)
-    is baked into this thin wrapper instead of passed as an extra param.
-    """
-    return old_bulb_fixture_clearance(env, asset_cfg=SceneEntityCfg("bulb"))
-
-
-def removal_bulb_disposal_distance(env: ManagerBasedRLEnv) -> torch.Tensor:
-    """``old_bulb_disposal_distance`` bound to Remove's standalone ``bulb`` entity."""
-    return old_bulb_disposal_distance(env, asset_cfg=SceneEntityCfg("bulb"))
 
 
 def ladder_ready(env: ManagerBasedRLEnv, xy_radius: float, tilt_limit: float) -> torch.Tensor:

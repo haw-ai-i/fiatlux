@@ -139,7 +139,7 @@ class EventCfg:
     randomize_bulb_scale = EventTerm(
         func=mdp.randomize_rigid_body_scale,
         mode="prestartup",
-        params={"asset_cfg": SceneEntityCfg("bulb"), "scale_range": (0.9, 1.1)},
+        params={"asset_cfg": SceneEntityCfg("fresh_bulb"), "scale_range": (0.9, 1.1)},
     )
 
     # ---- (B) STARTING POSE: root pose + joint offsets -- mdp.reset_root_state_uniform / reset_joints_by_offset ----
@@ -183,7 +183,7 @@ class EventCfg:
     #             "restitution_range": (0.0, 0.1), "num_buckets": 64},
     # )
     # randomize_bulb_material = EventTerm(func=mdp.randomize_rigid_body_material, mode="reset",
-    #     params={"asset_cfg": SceneEntityCfg("bulb"), "static_friction_range": (0.5, 0.9),
+    #     params={"asset_cfg": SceneEntityCfg("fresh_bulb"), "static_friction_range": (0.5, 0.9),
     #             "dynamic_friction_range": (0.5, 0.9), "restitution_range": (0.0, 0.1), "num_buckets": 64})
 
     # ---- (E) LIGHTING ----

@@ -157,7 +157,7 @@ class ObservationsCfg:
         robot_pose = ObsTerm(func=mdp.root_pose_w, params={"asset_cfg": SceneEntityCfg("robot")})
         ladder_pose = ObsTerm(func=mdp.root_pose_w, params={"asset_cfg": SceneEntityCfg("ladder")})
         fixture_pose = ObsTerm(func=mdp.root_pose_w, params={"asset_cfg": SceneEntityCfg("socket")})
-        fresh_bulb_pose = ObsTerm(func=mdp.root_pose_w, params={"asset_cfg": SceneEntityCfg("bulb")})
+        fresh_bulb_pose = ObsTerm(func=mdp.root_pose_w, params={"asset_cfg": SceneEntityCfg("fresh_bulb")})
         old_bulb_pose = ObsTerm(func=mdp.root_pose_w, params={"asset_cfg": SceneEntityCfg("old_bulb")})
         disposal_pose = ObsTerm(func=mdp.root_pose_w, params={"asset_cfg": SceneEntityCfg("bin")})
         score_distances = ObsTerm(func=mdp.replace_score_distances)
@@ -348,7 +348,7 @@ class RewardsCfg:
     fresh_bulb_dropped = RewTerm(
         func=mdp.object_dropped,
         weight=-100.0,
-        params={"asset_cfg": SceneEntityCfg("bulb"), "min_height": FRESH_BULB_DROP_HEIGHT},
+        params={"asset_cfg": SceneEntityCfg("fresh_bulb"), "min_height": FRESH_BULB_DROP_HEIGHT},
     )
     old_bulb_dropped = RewTerm(
         func=mdp.old_bulb_dropped_after_release,
@@ -400,7 +400,7 @@ class TerminationsCfg:
     ladder_tipped = DoneTerm(func=mdp.ladder_tipped, params={"tilt_limit": LADDER_TILT_LIMIT})
     fresh_bulb_dropped = DoneTerm(
         func=mdp.object_dropped,
-        params={"asset_cfg": SceneEntityCfg("bulb"), "min_height": FRESH_BULB_DROP_HEIGHT},
+        params={"asset_cfg": SceneEntityCfg("fresh_bulb"), "min_height": FRESH_BULB_DROP_HEIGHT},
     )
     old_bulb_dropped = DoneTerm(
         func=mdp.old_bulb_dropped_after_release,

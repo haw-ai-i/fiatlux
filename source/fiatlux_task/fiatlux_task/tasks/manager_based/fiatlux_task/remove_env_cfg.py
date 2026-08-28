@@ -47,7 +47,7 @@ from .scene_cfg import (
 # Task thresholds (Replace's own values for the same mechanic)
 ##
 
-BULB_ENTITY = SceneEntityCfg("bulb")  # this scene's single, dynamic "old" bulb
+BULB_ENTITY = SceneEntityCfg("old_bulb")  # this scene's single, dynamic "old" bulb
 REMOVAL_CLEARANCE = 0.10  # m; plug this far from the seat counts as removed
 DISPOSAL_THRESHOLD = 0.25  # m; within this of the crate origin counts as disposed
 OLD_BULB_DROP_HEIGHT = 0.15  # m; must clear a bulb resting *inside* the floor crate (~0.1)
@@ -166,14 +166,14 @@ class RewardsCfg:
         func=mdp.distance_progress,
         weight=250.0,
         params={
-            "distance_fn": mdp.removal_bulb_fixture_clearance,
+            "distance_fn": mdp.old_bulb_fixture_clearance,
             "away_threshold": REMOVAL_CLEARANCE,
         },
     )
     disposal_progress = RewTerm(
         func=mdp.distance_progress,
         weight=500.0,
-        params={"distance_fn": mdp.removal_bulb_disposal_distance},
+        params={"distance_fn": mdp.old_bulb_disposal_distance},
     )
     # -- sparse completions (each pays once per episode) --
     removed_bonus = RewTerm(

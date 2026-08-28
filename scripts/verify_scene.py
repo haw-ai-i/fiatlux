@@ -12,13 +12,13 @@ contact/penetration.
 It covers the whole task family: the entity list is derived from the task's scene cfg, so
 presets that drop entities (tabletop has no ladder, workshop has no table) verify with the
 same tool. RL members work too -- their step returns are ignored and mid-run auto-resets do
-not disturb the checks. ``FIATLUX-Insert-v0`` (wrist camera) and ``FIATLUX-Replace-v0``
-(torso camera) carry camera sensors, so verifying them needs ``--enable_cameras``.
+not disturb the checks. EVERY task carries a camera sensor (each env cfg calls
+``add_ego_camera``), so verifying any of them needs ``--enable_cameras``.
 
 Examples
 --------
     # headless verification (default base env)
-    uv run python scripts/verify_scene.py --headless
+    uv run python scripts/verify_scene.py --headless --enable_cameras
 
     # record an orbiting MP4 of the scene to logs/verify/ (the reliable way to see it headless)
     uv run python scripts/verify_scene.py --record --hold_base --headless --num_envs 1
@@ -26,7 +26,7 @@ Examples
     # verify a specific task env
     uv run python scripts/verify_scene.py --headless --task FIATLUX-Climb-v0
 
-    # the Insert task needs camera rendering for its wrist-camera sensor
+    # every task needs camera rendering; without the flag Isaac Lab raises at startup
     uv run python scripts/verify_scene.py --headless --enable_cameras --task FIATLUX-Insert-v0
 """
 
@@ -43,7 +43,10 @@ parser.add_argument(
     "--task",
     type=str,
     default="FIATLUX-Base-v0",
-    help="Gym id of the env/task to verify (any FIATLUX id; Insert also needs --enable_cameras).",
+    help="Gym id of the env/task to verify (any FIATLUX id). EVERY task needs --enable_cameras: "
+    "each one calls add_ego_camera, and Isaac Lab raises at startup for a camera spawned without "
+    "the flag. This used to name Insert alone, which sent seven of the eight presets into a "
+    "startup crash that reads like a scene fault.",
 )
 parser.add_argument("--num_envs", type=int, default=4, help="Number of environments to spawn.")
 parser.add_argument(
@@ -123,20 +126,23 @@ from isaaclab_tasks.utils import parse_env_cfg
 # ``room`` and ``pendant`` are per-env (each env owns a colliding room), so they belong to
 # the tracked list -- their prim paths carry {ENV_REGEX_NS} and only resolve under env_0.
 GLOBAL_CANDIDATES = ["ground", "dome_light", "key_light"]
-TRACKED_CANDIDATES = ["robot", "ladder", "lamp", "socket", "bulb", "old_bulb", "table", "bin", "room", "pendant"]
+TRACKED_CANDIDATES = ["robot", "ladder", "lamp", "socket", "fresh_bulb", "old_bulb", "table", "bin", "room", "pendant"]
 
 # Presence expectations per scene preset (env cfg attr `scene_preset`): entities that MUST
 # be present / MUST be absent. Layout *positions* are covered generically by the
 # init-state drift check, which compares spawned poses to the cfg's own init_state.
+# Every preset states its bulb role. A bulb seated in the socket is ``old_bulb``, one anywhere
+# else is ``fresh_bulb`` (issue #76 Step 1), and the pair of expectations below is what stops a
+# preset from silently inheriting or dropping one -- the failure mode the rename exists to end.
 PRESET_PRESENCE = {
-    "tabletop": ({"table"}, {"ladder"}),
-    "workshop": ({"ladder"}, {"table"}),
-    "carry": ({"ladder"}, {"table"}),
-    "climb": ({"ladder"}, {"table"}),
-    "descend": ({"ladder"}, {"table"}),
-    "remove": ({"table", "bin"}, {"ladder"}),
-    "install": ({"table", "bin"}, {"ladder"}),
-    "replace": ({"table", "ladder", "bin", "old_bulb"}, set()),
+    "tabletop": ({"table", "fresh_bulb"}, {"ladder", "old_bulb"}),
+    "workshop": ({"ladder", "fresh_bulb"}, {"table", "old_bulb"}),
+    "carry": ({"ladder", "old_bulb"}, {"table", "fresh_bulb"}),
+    "climb": ({"ladder", "fresh_bulb"}, {"table", "old_bulb"}),
+    "descend": ({"ladder", "fresh_bulb"}, {"table", "old_bulb"}),
+    "remove": ({"table", "bin", "old_bulb"}, {"ladder", "fresh_bulb"}),
+    "install": ({"table", "bin", "fresh_bulb"}, {"ladder", "old_bulb"}),
+    "replace": ({"table", "ladder", "bin", "old_bulb", "fresh_bulb"}, set()),
 }
 
 # where --record writes MP4s (repo-root logs/ dir, next to the RL runs; gitignored)
@@ -287,6 +293,12 @@ def main() -> int:
     kinematic_props = [n for n in rigid_tracked if is_kinematic(n)]
     dynamic_props = [n for n in rigid_tracked if not is_kinematic(n)]
     robot = base.scene["robot"]
+    # Whichever bulbs this preset built. Named by placement since #76 Step 1: seated in the socket
+    # is ``old_bulb``, anywhere else is ``fresh_bulb``. Remove and Carry build only the seated one,
+    # and Replace builds BOTH -- so every bulb check below iterates rather than picking one. The
+    # generic dynamic-object bound is a loose > -0.2 m, so a second bulb through the floor would
+    # otherwise pass the stricter geometry-aware audit.
+    bulb_entities = [n for n in ("fresh_bulb", "old_bulb") if n in base.scene.rigid_objects]
 
     # =========================== 1. ASSETS PRESENT ===========================
     print("\n[verify] (1) Assets present")
@@ -360,7 +372,8 @@ def main() -> int:
         base.step(actions)
         if render_viewer:
             base.sim.render()
-        if torch.isnan(robot.data.root_pos_w).any() or torch.isnan(base.scene["bulb"].data.root_pos_w).any():
+        bulb_nan = any(torch.isnan(base.scene[n].data.root_pos_w).any() for n in bulb_entities)
+        if torch.isnan(robot.data.root_pos_w).any() or bulb_nan:
             nan_seen = True
             break
         rz = robot.data.root_pos_w[:, 2]
@@ -449,12 +462,12 @@ def main() -> int:
     # root: the bulb asset's origin sits BULB_STAND_Z_OFFSET *below* its own screw cap, so a
     # bulb legitimately standing on the floor reads a negative root z and a root-based test
     # would fail every time.
-    bulb_z = base.scene["bulb"].data.root_pos_w[:, 2]
-    bulb_bottom = bulb_z + BULB_STAND_Z_OFFSET
+    bottoms = {n: base.scene[n].data.root_pos_w[:, 2] + BULB_STAND_Z_OFFSET for n in bulb_entities}
+    bulb_bottom = torch.cat([v for v in bottoms.values()])
     record(
         "bulb:above_floor",
         bool((bulb_bottom > -0.02).all()) and not nan_seen,
-        f"min bulb bottom z={bulb_bottom.min().item():.3f} m (root {bulb_z.min().item():.3f})",
+        f"min bulb bottom z={bulb_bottom.min().item():.3f} m over {', '.join(bulb_entities)}",
     )
     # no large depenetration kick on the very first step (sign of initial interpenetration)
     first_kick = (step1_root[:, 2] - init_root_z).abs().max().item() if step1_root is not None else 0.0
