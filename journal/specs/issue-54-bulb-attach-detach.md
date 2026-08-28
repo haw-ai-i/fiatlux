@@ -87,8 +87,10 @@ the live pose each step, never stored.
 
 - **FREE** — unconstrained rigid body. Physics owns it entirely.
 - **AXIAL** — the insertion channel. The bulb keeps only its axial coordinate,
-  clamped to `[0, insertion_depth]` measured from the seat; lateral offset and all
-  rotation relative to the socket are projected away. Entered from FREE when the plug
+  clamped to `[0, insertion_depth]` measured from the seat; lateral offset is projected
+  away, and so is rotation relative to the socket EXCEPT the clock angle the bulb entered
+  at, which is held (issue #90 — the entry angle is free, and forcing it to the socket's
+  own zero teleported a gripped bulb). Entered from FREE when the plug
   point is inside the channel mouth, the bulb is aligned within tolerance, and the
   socket holds no other bulb; entered from ROTATING when `theta` returns to 0.
 - **ROTATING** — the lock groove. Position pinned at full depth; the bulb keeps only
@@ -113,7 +115,7 @@ installation is the exact reverse.
 | `rotation_angle`        | `π/2` rad | released → locked twist (quarter turn)                |
 | `rotation_sign`         | `+1`      | which twist direction locks                           |
 | `radial_tolerance`      | `0.015` m | channel-entry lateral tolerance (= seating tolerance) |
-| `orientation_tolerance` | `0.2` rad | channel-entry axis-alignment tolerance                |
+| `tilt_tolerance`        | `0.2` rad | channel-entry TILT tolerance: the angle between the plug and seat axes only. Twist about the seat axis is free, because that rotation is the screwing motion (issue #90; the parameter was `orientation_tolerance` and measured the full frame) |
 | `seat_tolerance`        | `0.004` m | "bottomed" gate: locking may begin within this axial distance of the seat (contact stops the bulb slightly short of exact zero) |
 
 `insertion_depth` and `rotation_angle` accept a scalar or a `(low, high)` range;

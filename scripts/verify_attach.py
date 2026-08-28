@@ -753,7 +753,8 @@ def main() -> int:
         # own. The projection used to write `socket_quat` outright, which moved a gripped bulb
         # 0.155 rad in one 20 ms step.
         retained_clock = bulb_twist(fresh_bulb)
-        expected_clock = task_attach.attachment_manager(env).rotation_sign * entry_clock
+        manager_sign = task_attach.attachment_manager(env).rotation_sign
+        expected_clock = manager_sign * entry_clock
         record(
             "bayonet:entry_clock_angle_preserved",
             # The phase conjunct is load-bearing. Without it this passes whenever the bulb never
@@ -761,6 +762,30 @@ def main() -> int:
             fresh_phase() == task_attach._AXIAL and abs(retained_clock - expected_clock) < 0.02,
             f"entered at {expected_clock:+.3f} rad, retained {retained_clock:+.3f} rad "
             f"(phase={fresh_phase()})",
+        )
+
+        # A lock, driven all the way through from that non-zero entry angle. Entry preservation
+        # on its own is not enough: the projection could keep the clock angle at engage and then
+        # quietly rotate the bulb relative to the socket's own zero once theta starts moving.
+        # This is the behaviour the whole entry-twist change exists to produce.
+        drive_pose(fresh_bulb, 0.5 * depth, -0.002, entry_clock, entry_clock, 18)
+        drive_pose(fresh_bulb, -0.002, -0.002, entry_clock, entry_clock + angle, 24)
+        locked_from_entry = fresh_phase() == task_attach._ROTATING
+        theta_from_entry = fresh_theta()
+        twist_from_entry = bulb_twist(fresh_bulb)
+        expected_twist = task_attach._wrap_to_pi(
+            torch.tensor([manager_sign * (entry_clock + angle)])
+        )[0].item()
+        record(
+            "bayonet:locks_from_a_non_zero_entry_angle",
+            locked_from_entry
+            and abs(theta_from_entry - angle) < 0.02
+            and abs(task_attach._wrap_to_pi(torch.tensor([twist_from_entry - expected_twist]))[0].item()) < 0.03
+            and abs(axial_distance(fresh_bulb)) < 0.003
+            and bool(task_attach.fresh_bulb_attached(env)[0].item()),
+            f"phase={fresh_phase()}, theta={theta_from_entry:.3f}/{angle:.3f} rad, "
+            f"twist={twist_from_entry:+.3f} rad (want {expected_twist:+.3f}), "
+            f"axial={axial_distance(fresh_bulb) * 1000:.1f} mm",
         )
 
         # The dense alignment reward must not fall as the bulb turns toward the lock. This pins the
