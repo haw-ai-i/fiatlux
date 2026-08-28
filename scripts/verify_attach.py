@@ -756,14 +756,23 @@ def main() -> int:
         expected_clock = task_attach.attachment_manager(env).rotation_sign * entry_clock
         record(
             "bayonet:entry_clock_angle_preserved",
-            abs(retained_clock - expected_clock) < 0.02,
-            f"entered at {expected_clock:+.3f} rad, retained {retained_clock:+.3f} rad",
+            # The phase conjunct is load-bearing. Without it this passes whenever the bulb never
+            # engaged at all -- nothing constrains a FREE bulb, so its twist is trivially retained.
+            fresh_phase() == task_attach._AXIAL and abs(retained_clock - expected_clock) < 0.02,
+            f"entered at {expected_clock:+.3f} rad, retained {retained_clock:+.3f} rad "
+            f"(phase={fresh_phase()})",
         )
 
-        # The dense alignment reward must not fall as the bulb turns toward the lock. Measured
-        # clear of the socket (5 cm lateral, so nothing engages) at two clock angles.
-        place_bulb(fresh_bulb, 0.5 * depth, 0.0, lateral_distance=0.05)
+        # The dense alignment reward must not fall as the bulb turns toward the lock. This pins the
+        # PROPERTY the two reward helpers have, which is why Install must score the axis-only one.
+        #
+        # It has to run on a FREE bulb. A constrained one is pose-written every step, so both
+        # readings land on the same projected pose, the full-frame term does not move either, and
+        # the check reports a difference that is really leftover FSM state.
+        drive_pose(fresh_bulb, 0.5 * depth, 1.6 * depth, 0.0, 0.0, 12)  # travel out -> FREE
+        place_bulb(fresh_bulb, 2.0 * depth, 0.0, lateral_distance=0.05)
         step()
+        free_for_reward = fresh_phase() == task_attach._FREE
         axis_untwisted = task_mate.bulb_axis_alignment_tanh(env, std=0.3)[0].item()
         full_untwisted = task_rewards.object_socket_orientation_tanh(env, std=0.3)[0].item()
         place_bulb(fresh_bulb, 0.5 * depth, angle, lateral_distance=0.05)
@@ -771,10 +780,22 @@ def main() -> int:
         axis_twisted = task_mate.bulb_axis_alignment_tanh(env, std=0.3)[0].item()
         full_twisted = task_rewards.object_socket_orientation_tanh(env, std=0.3)[0].item()
         record(
-            "bayonet:alignment_reward_ignores_twist",
-            abs(axis_twisted - axis_untwisted) < 0.01 and (full_untwisted - full_twisted) > 0.1,
+            "bayonet:axis_alignment_is_twist_invariant",
+            free_for_reward
+            and abs(axis_twisted - axis_untwisted) < 0.01
+            and (full_untwisted - full_twisted) > 0.1,
             f"axis-only {axis_untwisted:.3f} -> {axis_twisted:.3f} over a {angle:.3f} rad turn; "
-            f"full-frame would have fallen {full_untwisted:.3f} -> {full_twisted:.3f}",
+            f"full-frame falls {full_untwisted:.3f} -> {full_twisted:.3f} (free={free_for_reward})",
+        )
+
+        # And the wiring: Install must score the axis-only term. Read off the cfg class, because
+        # this script builds Replace and a second env build in one Isaac process hangs.
+        from fiatlux_task.tasks.manager_based.fiatlux_task.install_env_cfg import RewardsCfg as _InstallRewards
+
+        record(
+            "bayonet:install_scores_axis_alignment",
+            _InstallRewards.align_orientation.func is task_mate.bulb_axis_alignment_tanh,
+            f"Install align_orientation -> {_InstallRewards.align_orientation.func.__name__}",
         )
 
         place_bulb(fresh_bulb, 1.15 * depth, 0.0)
