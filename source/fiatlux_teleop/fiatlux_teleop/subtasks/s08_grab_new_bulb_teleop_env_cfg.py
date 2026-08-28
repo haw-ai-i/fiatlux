@@ -1,6 +1,6 @@
-"""``FIATLUX-S06-RemoveOldBulb-Teleop-v0`` -- unscrew and remove the old bulb, teleoperated.
+"""``FIATLUX-S08-GrabNewBulb-Teleop-v0`` -- pick up the fresh bulb, teleoperated.
 
-S06RemoveOldBulbEnvCfg with the shared teleop interface applied (arm-IK + binary grip in place of the RL
+S08GrabNewBulbEnvCfg with the shared teleop interface applied (arm-IK + binary grip in place of the RL
 whole-body joint action, the pelvis-anchored XR follow camera and ``controller_rel`` device,
 and terminations cleared so the session is operator-paced). Legs and waist stay SONIC's,
 driven by ``scripts/teleop/sonic_teleop.py``.
@@ -9,15 +9,15 @@ Per-task teleop tweaks (camera height, arm spawn, staged object poses) belong HE
 shared recipe -- keep :func:`~fiatlux_teleop.subtask_teleop.apply_subtask_teleop` generic.
 """
 
-from fiatlux_task.tasks.manager_based.fiatlux_task.subtasks.s06_remove_old_bulb_env_cfg import S06RemoveOldBulbEnvCfg
+from fiatlux_task.tasks.manager_based.fiatlux_task.subtasks.s08_grab_new_bulb_env_cfg import S08GrabNewBulbEnvCfg
 from isaaclab.utils import configclass
 
 from ..subtask_teleop import apply_subtask_teleop
 
 
 @configclass
-class S06RemoveOldBulbTeleopEnvCfg(S06RemoveOldBulbEnvCfg):
-    """S06RemoveOldBulbEnvCfg with the teleop action/XR interface."""
+class S08GrabNewBulbTeleopEnvCfg(S08GrabNewBulbEnvCfg):
+    """S08GrabNewBulbEnvCfg with the teleop action/XR interface."""
 
     def __post_init__(self) -> None:
         super().__post_init__()

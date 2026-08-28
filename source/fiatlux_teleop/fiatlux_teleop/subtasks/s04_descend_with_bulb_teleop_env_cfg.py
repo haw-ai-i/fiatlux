@@ -1,6 +1,6 @@
-"""``FIATLUX-S12-CarryBulbToLadder-Teleop-v0`` -- carry the fresh bulb back to the ladder, teleoperated.
+"""``FIATLUX-S04-DescendWithBulb-Teleop-v0`` -- climb down holding the old bulb, teleoperated.
 
-S12CarryBulbToLadderEnvCfg with the shared teleop interface applied (arm-IK + binary grip in place of the RL
+S04DescendWithBulbEnvCfg with the shared teleop interface applied (arm-IK + binary grip in place of the RL
 whole-body joint action, the pelvis-anchored XR follow camera and ``controller_rel`` device,
 and terminations cleared so the session is operator-paced). Legs and waist stay SONIC's,
 driven by ``scripts/teleop/sonic_teleop.py``.
@@ -9,15 +9,15 @@ Per-task teleop tweaks (camera height, arm spawn, staged object poses) belong HE
 shared recipe -- keep :func:`~fiatlux_teleop.subtask_teleop.apply_subtask_teleop` generic.
 """
 
-from fiatlux_task.tasks.manager_based.fiatlux_task.subtasks.s12_carry_bulb_to_ladder_env_cfg import S12CarryBulbToLadderEnvCfg
+from fiatlux_task.tasks.manager_based.fiatlux_task.subtasks.s04_descend_with_bulb_env_cfg import S04DescendWithBulbEnvCfg
 from isaaclab.utils import configclass
 
 from ..subtask_teleop import apply_subtask_teleop
 
 
 @configclass
-class S12CarryBulbToLadderTeleopEnvCfg(S12CarryBulbToLadderEnvCfg):
-    """S12CarryBulbToLadderEnvCfg with the teleop action/XR interface."""
+class S04DescendWithBulbTeleopEnvCfg(S04DescendWithBulbEnvCfg):
+    """S04DescendWithBulbEnvCfg with the teleop action/XR interface."""
 
     def __post_init__(self) -> None:
         super().__post_init__()

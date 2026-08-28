@@ -64,23 +64,20 @@ from .xr_controller_retargeters import (
 
 # (task id stem, module under fiatlux_task...subtasks, cfg class)
 SUBTASKS: tuple[tuple[str, str, str], ...] = (
-    ("FIATLUX-S01-ApproachLadder", "s01_approach_ladder_env_cfg", "S01ApproachLadderEnvCfg"),
-    ("FIATLUX-S02-GrabLadder", "s02_grab_ladder_env_cfg", "S02GrabLadderEnvCfg"),
-    ("FIATLUX-S03-CarryLadder", "s03_carry_ladder_env_cfg", "S03CarryLadderEnvCfg"),
-    ("FIATLUX-S04-PlaceLadder", "s04_place_ladder_env_cfg", "S04PlaceLadderEnvCfg"),
-    ("FIATLUX-S05-ClimbLadder", "s05_climb_ladder_env_cfg", "S05ClimbLadderEnvCfg"),
-    ("FIATLUX-S06-RemoveOldBulb", "s06_remove_old_bulb_env_cfg", "S06RemoveOldBulbEnvCfg"),
-    ("FIATLUX-S07-DescendWithBulb", "s07_descend_with_bulb_env_cfg", "S07DescendWithBulbEnvCfg"),
-    ("FIATLUX-S08-CarryBulbToDisposal", "s08_carry_bulb_to_disposal_env_cfg",
-     "S08CarryBulbToDisposalEnvCfg"),
-    ("FIATLUX-S09-DisposeBulb", "s09_dispose_bulb_env_cfg", "S09DisposeBulbEnvCfg"),
-    ("FIATLUX-S10-ApproachNewBulb", "s10_approach_new_bulb_env_cfg", "S10ApproachNewBulbEnvCfg"),
-    ("FIATLUX-S11-GrabNewBulb", "s11_grab_new_bulb_env_cfg", "S11GrabNewBulbEnvCfg"),
-    ("FIATLUX-S12-CarryBulbToLadder", "s12_carry_bulb_to_ladder_env_cfg",
-     "S12CarryBulbToLadderEnvCfg"),
-    ("FIATLUX-S13-ClimbWithBulb", "s13_climb_with_bulb_env_cfg", "S13ClimbWithBulbEnvCfg"),
-    ("FIATLUX-S14-ScrewInBulb", "s14_screw_in_bulb_env_cfg", "S14ScrewInBulbEnvCfg"),
-    ("FIATLUX-S15-ClimbDown", "s15_climb_down_env_cfg", "S15ClimbDownEnvCfg"),
+    ("FIATLUX-S01-MoveLadder", "s01_move_ladder_env_cfg", "S01MoveLadderEnvCfg"),
+    ("FIATLUX-S02-ClimbLadder", "s02_climb_ladder_env_cfg", "S02ClimbLadderEnvCfg"),
+    ("FIATLUX-S03-RemoveOldBulb", "s03_remove_old_bulb_env_cfg", "S03RemoveOldBulbEnvCfg"),
+    ("FIATLUX-S04-DescendWithBulb", "s04_descend_with_bulb_env_cfg", "S04DescendWithBulbEnvCfg"),
+    ("FIATLUX-S05-CarryBulbToDisposal", "s05_carry_bulb_to_disposal_env_cfg",
+     "S05CarryBulbToDisposalEnvCfg"),
+    ("FIATLUX-S06-DisposeBulb", "s06_dispose_bulb_env_cfg", "S06DisposeBulbEnvCfg"),
+    ("FIATLUX-S07-ApproachNewBulb", "s07_approach_new_bulb_env_cfg", "S07ApproachNewBulbEnvCfg"),
+    ("FIATLUX-S08-GrabNewBulb", "s08_grab_new_bulb_env_cfg", "S08GrabNewBulbEnvCfg"),
+    ("FIATLUX-S09-CarryBulbToLadder", "s09_carry_bulb_to_ladder_env_cfg",
+     "S09CarryBulbToLadderEnvCfg"),
+    ("FIATLUX-S10-ClimbWithBulb", "s10_climb_with_bulb_env_cfg", "S10ClimbWithBulbEnvCfg"),
+    ("FIATLUX-S11-ScrewInBulb", "s11_screw_in_bulb_env_cfg", "S11ScrewInBulbEnvCfg"),
+    ("FIATLUX-S12-ClimbDown", "s12_climb_down_env_cfg", "S12ClimbDownEnvCfg"),
 )
 
 _IK = DifferentialIKControllerCfg(
