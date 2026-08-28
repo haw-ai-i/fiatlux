@@ -764,7 +764,9 @@ def main() -> int:
         )
 
         # The dense alignment reward must not fall as the bulb turns toward the lock. This pins the
-        # PROPERTY the two reward helpers have, which is why Install must score the axis-only one.
+        # PROPERTY the two reward helpers have. It is why a task whose bulb the FSM turns must
+        # score the axis-only one -- Install cannot until #76 Step 2 ports the FSM and makes its
+        # success attach-aware, because its success predicate is still full-frame.
         #
         # It has to run on a FREE bulb. A constrained one is pose-written every step, so both
         # readings land on the same projected pose, the full-frame term does not move either, and
@@ -786,16 +788,6 @@ def main() -> int:
             and (full_untwisted - full_twisted) > 0.1,
             f"axis-only {axis_untwisted:.3f} -> {axis_twisted:.3f} over a {angle:.3f} rad turn; "
             f"full-frame falls {full_untwisted:.3f} -> {full_twisted:.3f} (free={free_for_reward})",
-        )
-
-        # And the wiring: Install must score the axis-only term. Read off the cfg class, because
-        # this script builds Replace and a second env build in one Isaac process hangs.
-        from fiatlux_task.tasks.manager_based.fiatlux_task.install_env_cfg import RewardsCfg as _InstallRewards
-
-        record(
-            "bayonet:install_scores_axis_alignment",
-            _InstallRewards().align_orientation.func is task_mate.bulb_axis_alignment_tanh,
-            f"Install align_orientation -> {_InstallRewards().align_orientation.func.__name__}",
         )
 
         place_bulb(fresh_bulb, 1.15 * depth, 0.0)

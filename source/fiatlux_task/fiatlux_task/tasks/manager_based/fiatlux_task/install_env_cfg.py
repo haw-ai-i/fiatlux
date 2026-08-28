@@ -33,7 +33,6 @@ from fiatlux_task.robots.g1 import G1_ARM_JOINTS, G1_EE_BODY, G1_HAND_JOINTS
 
 from . import mdp
 from .climb_env_cfg import FALL_MIN_HEIGHT, FALL_TILT_LIMIT
-from .mdp import mate_terms
 from .scene_cfg import (
     BIN_BULB_POSITION,
     ROOM_ENV_SPACING,
@@ -173,12 +172,13 @@ class RewardsCfg:
     align_position = RewTerm(func=mdp.object_socket_distance, weight=-1.0)
     align_position_tanh = RewTerm(func=mdp.object_socket_distance_tanh, weight=0.5, params={"std": 0.1})
     seat_position_exp = RewTerm(func=mdp.object_socket_distance_exp, weight=1.0, params={"sigma": 0.02})
-    # Axis-only, NOT the full-frame error this used to read (issue #90). The attach FSM writes
-    # `proj_quat = socket_quat * axis_angle(sign * theta)`, so a full-frame error GROWS as the
-    # bulb turns toward the lock -- this channel was paying the policy to hold `theta = 0` and
-    # resist the quarter turn the task requires. `bulb_axis_alignment_tanh` scores the angle
-    # BETWEEN the plug and seat axes, which the screw leaves invariant, and S11 already uses it.
-    align_orientation = RewTerm(func=mate_terms.bulb_axis_alignment_tanh, weight=0.3, params={"std": 0.3})
+    # Full-frame, and it has to stay that way while Install has no state machine. Axis-only
+    # alignment would pay a bulb at any clock angle in full, while `seated_bonus` and the success
+    # DoneTerm below both gate on `bulb_seated`, whose ori_threshold is full-frame -- the dense
+    # channel would point somewhere success cannot follow. Switch this to
+    # `mate_terms.bulb_axis_alignment_tanh` in the same change that ports `bulb_attachment` here
+    # and makes success attach-aware (#76 Step 2), not before.
+    align_orientation = RewTerm(func=mdp.object_socket_orientation_tanh, weight=0.3, params={"std": 0.3})
     seated_bonus = RewTerm(
         func=mdp.bulb_seated,
         weight=5.0,
