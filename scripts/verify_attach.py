@@ -794,8 +794,8 @@ def main() -> int:
 
         record(
             "bayonet:install_scores_axis_alignment",
-            _InstallRewards.align_orientation.func is task_mate.bulb_axis_alignment_tanh,
-            f"Install align_orientation -> {_InstallRewards.align_orientation.func.__name__}",
+            _InstallRewards().align_orientation.func is task_mate.bulb_axis_alignment_tanh,
+            f"Install align_orientation -> {_InstallRewards().align_orientation.func.__name__}",
         )
 
         place_bulb(fresh_bulb, 1.15 * depth, 0.0)
@@ -919,6 +919,14 @@ if __name__ == "__main__":
     exit_code = 1
     try:
         exit_code = main()
+    except BaseException:
+        # os._exit below skips the interpreter's own traceback printing, so a crash inside
+        # main() would otherwise leave nothing but exit code 1 -- the log simply stops after
+        # the last check that passed. Same fix demo_bulb_removal.py carries.
+        import traceback
+
+        traceback.print_exc()
+        raise
     finally:
         sys.stdout.flush()
         sys.stderr.flush()
