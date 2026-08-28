@@ -74,6 +74,62 @@ independently-sampled zone rather than the fixture's anchor.
 the robot to exactly its staged pose. The open-palm payload staging is too fragile to survive
 the noise.
 
+## The objects
+
+Five things exist in every subtask scene. The names in brackets are the scene asset names, which
+are what appear in a bag's columns and in error messages.
+
+| What you see | Asset | Notes |
+|---|---|---|
+| Step ladder | `ladder` | A **free rigid body** — nothing bolts it down. It can tip, and `ladder_tipped` is a real termination. |
+| Ceiling/wall fixture | `socket` | Where bulbs go. Mounted at **2.2 m**, ceiling- or wall-mounted per draw. |
+| Old bulb | `old_bulb` | Starts **locked in the fixture** (bayonet). The one you remove and throw away. |
+| Fresh bulb | `bulb` | Starts **on the bench**. The one you install. |
+| Disposal crate | `bin` | The **only** container in the scene. The old bulb goes in here. Not the bench. |
+| Bench | `table` | Holds the fresh bulb. Not a target for anything. |
+
+There is one crate and one bench, so "the crate" is never ambiguous — but note the two bulbs are
+distinct assets with opposite jobs: `old_bulb` comes **out** of the fixture and goes **into** the
+crate; `bulb` comes **off** the bench and goes **into** the fixture.
+
+## What counts as complete
+
+Each subtask's `success` termination is a conjunction — **every** row must hold at the same
+instant. Tasks marked *sustained* additionally require the whole conjunction to hold
+continuously for `GRASP_SUSTAIN_SECONDS` (0.5 s), so a momentary brush does not score.
+
+Shared thresholds: **robot standing** = pelvis above 0.35 m and tilt under 1.0 rad;
+**ladder near-vertical** = tilt under 0.6 rad; **at rest** = under 0.05 m/s and 0.10 rad/s;
+**held** = grip contact force over 1.0 N; **released** = under 1.0 N.
+
+| | Task | Gate | Complete when |
+|---|---|---|---|
+| S01 | MoveLadder | sustained | ladder within **0.67 m** of the fixture, upright · feet down within **2 cm** of the floor · ladder at rest · robot standing |
+| S02 | ClimbLadder | all_of | pelvis within **0.15 m** of the top stance height · within **0.6 m** of the ladder in xy · moving under **1.5 m/s** · standing · ladder vertical |
+| S03 | RemoveOldBulb | sustained | old bulb **0.10 m** clear of the fixture after release · held (>1 N) · lifted above **0.15 m** · standing · ladder vertical |
+| S04 | DescendWithBulb | all_of | pelvis below the floor-stance height, within **0.6 m** of the ladder, under **1.5 m/s** · bulb held · lifted · standing · ladder vertical |
+| S05 | CarryBulbToDisposal | all_of | within **0.5 m** of the disposal crate (`bin`) · facing it within **0.5 rad** · moving under **1.0 m/s** · bulb still held |
+| S06 | DisposeBulb | sustained | old bulb inside the disposal crate (`bin`) · at rest · **released** (<1 N) · standing |
+| S07 | ApproachNewBulb | all_of | within reach of the fresh bulb (`bulb`, on the bench) · facing it within **0.5 rad** · under **1.0 m/s** |
+| S08 | GrabNewBulb | sustained | fresh bulb lifted **3 cm** off the bench · **≥2 hand bodies** in contact (>1 N each) · total grip force under **50 N** · standing |
+| S09 | CarryBulbToLadder | all_of | within mounting range of the ladder · facing it within **0.5 rad** · under **1.0 m/s** · bulb held · ladder upright |
+| S10 | ClimbWithBulb | all_of | at top stance (as S02) · bulb held · lifted · standing · ladder vertical |
+| S11 | ScrewInBulb | sustained | fresh bulb **attached** in the fixture's bayonet · at rest · **released** (grip <1 N) · standing · ladder vertical |
+| S12 | ClimbDown | all_of | descended to floor stance (as S04) · **fresh bulb still seated** in the fixture · standing · ladder vertical |
+
+Three patterns worth internalising before operating:
+
+**You have to let go.** S06, S11 and S08's release-adjacent checks require grip force *below*
+1 N. Holding the bulb in the bin is not disposal; holding it in the socket is not seating.
+
+**Speed gates exist.** Arrival tasks reject a score while the robot is still moving faster than
+1.0 m/s (1.5 m/s on the ladder), so charging at the target and stopping short of settled will
+not fire.
+
+**S08 is the only task with an upper force bound.** Over 50 N total contact and the glass is
+counted as crushed — that is also the `broken` penalty in the score, so a take can complete the
+motion and still score 0.00.
+
 ## Randomization: two levels
 
 Layout and reset randomization are separate, and confusing them wastes time.
