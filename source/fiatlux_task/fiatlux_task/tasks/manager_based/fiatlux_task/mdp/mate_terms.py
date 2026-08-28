@@ -3,7 +3,7 @@
 #
 # SPDX-License-Identifier: BSD-3-Clause
 
-"""Terms for the mate mode (S06 remove-the-old-bulb, S14 screw-the-fresh-one-in).
+"""Terms for the mate mode (S03 remove-the-old-bulb, S11 screw-the-fresh-one-in).
 
 Both subtasks manipulate a bulb at an inverted fixture while balanced on a ladder, so both need
 the same two things the rest of the family does not:

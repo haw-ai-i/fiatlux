@@ -3,10 +3,10 @@
 #
 # SPDX-License-Identifier: BSD-3-Clause
 
-"""Predicates for the navigate mode's carrying legs (S03, S08, S12) and bench approach (S10).
+"""Predicates for the navigate mode's carrying legs (S05, S09) and bench approach (S07).
 
-``NavigateSubtaskCfg``/``NavigateRewardsCfg`` (``subtask_env_cfg.py``) already cover a bare walk
-like S01's; what a CARRYING leg adds on top is two things:
+``NavigateSubtaskCfg``/``NavigateRewardsCfg`` (``subtask_env_cfg.py``) already cover a bare walk;
+what a CARRYING leg adds on top is two things:
 
 * a start state where the payload is already in hand, composed from the carrier's own (randomized)
   root pose and a frozen in-root grasp (``grasp_poses.py``) -- cfg-build-time geometry, since a
@@ -19,8 +19,8 @@ like S01's; what a CARRYING leg adds on top is two things:
   needs its own single-target sensor. ``add_grip_contact_sensor`` mirrors
   ``subtask_tiers.place.add_release_contact_sensor`` for exactly that reason, read the other way.
 
-S10 (approach the fresh bulb, hands free) needs neither: it is a bare walk like S01's, just
-pointed at the bulb instead of the ladder, so it only needs the missing distance channel.
+S07 (approach the fresh bulb, hands free) needs neither: it is a bare walk, just pointed at the
+bulb, so it only needs the missing distance channel.
 """
 
 from __future__ import annotations
@@ -44,7 +44,7 @@ from ..scene_cfg import (
     TABLETOP_ROBOT_POSITION,
     G1ReplaceSceneCfg,
 )
-from .rewards import LADDER_TILT_LIMIT, base_facing_error, base_ladder_distance, ladder_ready, ladder_tipped
+from .rewards import base_facing_error, ladder_tipped
 
 if TYPE_CHECKING:
     from isaaclab.envs import ManagerBasedRLEnv
@@ -252,72 +252,31 @@ def base_bulb_distance(env: ManagerBasedRLEnv) -> torch.Tensor:
 
 
 # ---------------------------------------------------------------------------
-# Arrival predicates
+# Arrival conjuncts
 # ---------------------------------------------------------------------------
+# One condition each, so a leaf's gate is an ``mdp.all_of`` list rather than a function that
+# ``&``s them together in its own body. A list can be read from outside: tests assert a conjunct
+# is present, and ``mdp.gates.gate_progress`` counts how many an episode satisfied.
 
 
-def arrived_at_bulb(
-    env: ManagerBasedRLEnv,
-    xy_radius: float,
-    facing_tolerance: float,
-    max_speed: float,
-) -> torch.Tensor:
-    """Same shape as ``arrived_at_ladder`` minus the tip conjunct (nothing here to tip over):
-    the robot has walked to the fresh bulb and stopped, hands free."""
-    near = base_bulb_distance(env) < xy_radius
-    facing = base_facing_error(env, SceneEntityCfg("fresh_bulb")) < facing_tolerance
-    calm = env.scene["robot"].data.root_lin_vel_w.norm(dim=-1) < max_speed
-    return near & facing & calm
+def base_near(env: ManagerBasedRLEnv, asset_cfg: SceneEntityCfg, xy_radius: float) -> torch.Tensor:
+    """True where the robot's root is horizontally within ``xy_radius`` of the entity's root."""
+    robot: Articulation = env.scene["robot"]
+    target: RigidObject = env.scene[asset_cfg.name]
+    return torch.norm((robot.data.root_pos_w - target.data.root_pos_w)[:, :2], dim=1) < xy_radius
 
 
-def arrived_carrying_ladder(
-    env: ManagerBasedRLEnv,
-    xy_radius: float,
-    facing_tolerance: float,
-    max_speed: float,
-    grip_force_threshold: float,
-) -> torch.Tensor:
-    """The carried ladder has reached the fixture, robot facing it and standing, still gripped.
-
-    ``near`` reuses ``ladder_ready`` -- the LADDER's position relative to the fixture (also
-    upright), not the robot's own footprint, since positioning the ladder is the point of this
-    leg. Without the grip conjunct a robot that flings the ladder ahead and merely walks into the
-    facing/speed gate empty-handed would score.
-    """
-    ready = ladder_ready(env, xy_radius, LADDER_TILT_LIMIT)
-    facing = base_facing_error(env, SceneEntityCfg("socket")) < facing_tolerance
-    calm = env.scene["robot"].data.root_lin_vel_w.norm(dim=-1) < max_speed
-    held = payload_held(env, SceneEntityCfg("grip_contact"), grip_force_threshold)
-    return ready & facing & calm & held
+def base_facing(env: ManagerBasedRLEnv, asset_cfg: SceneEntityCfg, facing_tolerance: float) -> torch.Tensor:
+    """True where the robot's heading is within ``facing_tolerance`` of the bearing to the entity."""
+    return base_facing_error(env, asset_cfg) < facing_tolerance
 
 
-def arrived_carrying_old_bulb(
-    env: ManagerBasedRLEnv,
-    xy_radius: float,
-    facing_tolerance: float,
-    max_speed: float,
-    grip_force_threshold: float,
-) -> torch.Tensor:
-    """Same shape as ``arrived_at_ladder``, pointed at the disposal crate, plus the grip
-    conjunct: without it a thrown bulb that skids into the crate's radius would score."""
-    near = base_disposal_distance(env) < xy_radius
-    facing = base_facing_error(env, SceneEntityCfg("bin")) < facing_tolerance
-    calm = env.scene["robot"].data.root_lin_vel_w.norm(dim=-1) < max_speed
-    held = payload_held(env, SceneEntityCfg("grip_contact"), grip_force_threshold)
-    return near & facing & calm & held
+def base_calm(env: ManagerBasedRLEnv, max_speed: float) -> torch.Tensor:
+    """True where the robot's root speed is under ``max_speed`` -- rejects scoring while still
+    charging at the target."""
+    return env.scene["robot"].data.root_lin_vel_w.norm(dim=-1) < max_speed
 
 
-def arrived_carrying_bulb(
-    env: ManagerBasedRLEnv,
-    xy_radius: float,
-    facing_tolerance: float,
-    max_speed: float,
-    grip_force_threshold: float,
-) -> torch.Tensor:
-    """Same shape as ``arrived_at_ladder`` (upright-ladder conjunct included), plus the grip
-    conjunct for the fresh bulb carried back to it."""
-    near = base_ladder_distance(env) < xy_radius
-    facing = base_facing_error(env, SceneEntityCfg("ladder")) < facing_tolerance
-    calm = env.scene["robot"].data.root_lin_vel_w.norm(dim=-1) < max_speed
-    held = payload_held(env, SceneEntityCfg("grip_contact"), grip_force_threshold)
-    return near & facing & calm & held & ~ladder_tipped(env, LADDER_TILT_LIMIT)
+def ladder_upright(env: ManagerBasedRLEnv, tilt_limit: float) -> torch.Tensor:
+    """True where the ladder has NOT tipped past ``tilt_limit``."""
+    return ~ladder_tipped(env, tilt_limit)

@@ -3,6 +3,11 @@
 Adversarial pass over `00-foundation.md`, `ABSTRACTIONS.md`, `CONTINUITY.md` and the 15 subtask
 plans. Written against my own work; findings are ordered by how much damage they do if they ship.
 
+> Written against the original fifteen subtasks; its numbering is theirs. The four ladder legs
+> are now one `S01-MoveLadder` and the chain renumbered — see the map in `00-foundation.md`
+> ("As built — the four ladder legs are one subtask"). Left un-renumbered on purpose: this is a
+> dated review record, and rewriting it would falsify what was reviewed.
+
 ## A. Confirmed defects, with numbers
 
 **Status:** A1 and A2 are **fixed in code** on this branch and tracked as issue #69 (they were

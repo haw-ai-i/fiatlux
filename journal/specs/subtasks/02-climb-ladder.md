@@ -1,6 +1,6 @@
-# S05 — Climb the ladder
+# S02 — Climb the ladder
 
-`FIATLUX-S05-ClimbLadder-v0` · mode **balance** · payload **none**
+`FIATLUX-S02-ClimbLadder-v0` · mode **balance** · payload **none**
 Read `00-foundation.md`, `ABSTRACTIONS.md`, `CONTINUITY.md` and `CRITIQUE.md` first.
 
 ## Objective
@@ -10,7 +10,7 @@ the fixture, under control.
 
 ## Start state
 
-`START_STATE["S05"]` = S04's success state:
+`START_STATE["S02"]` = S01's success state:
 
 - Ladder standing, at rest, at the fixture-derived target — **not** `LADDER_POSITION`.
 - Robot standing at the ladder's base, facing the steps, hands free.
@@ -53,7 +53,7 @@ stance on the top steps scores rather than requiring the pelvis exactly at rail 
 
 `add_ladder_contact_sensor(scene)` — feet + palms filtered against `{ENV_REGEX_NS}/Ladder`.
 
-Note the ladder is **dynamic** in this chain (S02–S04 required it), whereas Climb's at-height
+Note the ladder is **dynamic** in this chain (S01 moves it into place), whereas Climb's at-height
 preset uses a *kinematic* ladder. That is a real physics difference, not a detail: a dynamic
 ladder can be climbed off-centre and tip, which is why `ladder_tipped` is a termination here and
 is absent from `FIATLUX-Climb-v0`. Keep it dynamic — a kinematic ladder would make the placement
@@ -91,7 +91,7 @@ Tracked as **#69**.
 
 ## Acceptance
 
-As foundation, plus: `handoff:S04->S05` and `handoff:S05->S06` pass · a scripted mounting stance
+As foundation, plus: `handoff:S01->S02` and `handoff:S02->S03` pass · a scripted mounting stance
 (`LADDER_STANCE_JOINTS`) registers non-zero `ladder_contact` on the feet, proving the sensor and
 the ladder's collider actually meet · the settle soak does not tip the ladder.
 
@@ -104,7 +104,7 @@ difficulty, both kept — see the foundation's difficulty-ladder note.
 
 ## As built
 
-`subtasks/s05_climb_ladder_env_cfg.py`, on `subtask_tiers.balance.ClimbSubtaskCfg`. Constructs.
+`subtasks/s02_climb_ladder_env_cfg.py`, on `subtask_tiers.balance.ClimbSubtaskCfg`. Constructs.
 
 The gate is `mdp.all_of` over three conjuncts — `balance_terms.climbed_to_ladder_top` (height slack
 0.15 m below the live top point, 0.6 m xy, 1.5 m/s), `place_terms.robot_standing`,

@@ -3,7 +3,7 @@
 #
 # SPDX-License-Identifier: BSD-3-Clause
 
-"""Predicates for the balance mode (S05, S07, S13, S15 -- climbing and descending).
+"""Predicates for the balance mode (S02, S04, S10, S12 -- climbing and descending).
 
 ``FIATLUX-Climb-v0`` and ``FIATLUX-Descend-v0`` gate on a hardcoded ``xy_center`` taken from
 ``TOP_ROBOT_POSITION`` / ``CLIMB_ROBOT_POSITION``, which describe the default workshop layout's

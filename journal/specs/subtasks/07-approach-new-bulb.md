@@ -1,6 +1,6 @@
-# S10 — Walk to the new bulb
+# S07 — Walk to the new bulb
 
-`FIATLUX-S10-ApproachNewBulb-v0` · mode **navigation** · payload **none**
+`FIATLUX-S07-ApproachNewBulb-v0` · mode **navigation** · payload **none**
 Read `00-foundation.md`, `ABSTRACTIONS.md`, `CONTINUITY.md` and `CRITIQUE.md` first.
 
 ## Objective
@@ -10,7 +10,7 @@ reach of it, facing it.
 
 ## Start state
 
-`START_STATE["S10"]` = S09's success state:
+`START_STATE["S07"]` = S06's success state:
 
 - Robot standing at the disposal crate, **hands free**, old bulb at rest inside the crate.
 - Table at its sampled zone with the fresh bulb on it: `TABLETOP_BULB_POSITION` offset from the
@@ -31,7 +31,7 @@ reach of it, facing it.
 | robot standing | `FALL_MIN_HEIGHT`, `FALL_TILT_LIMIT` |
 | sustained | 0.5 s |
 
-The undisturbed condition matters more here than in S01: the target is a 35 g object standing on
+The undisturbed condition matters more here than on the ladder leg: the target is a 35 g object standing on
 its cap at the edge of a bench, and walking into the table can knock it to the floor. Arriving
 next to a bulb that is no longer there must not score.
 
@@ -66,7 +66,7 @@ validated offset rather than probing from scratch.
 ## Visual start-state validation
 
 Frames must show: robot standing at the crate with empty hands; the old bulb visible **inside** the
-crate (the S09 handoff, rendered); the table at its zone with all legs on the floor; the fresh bulb
+crate (the S06 handoff, rendered); the table at its zone with all legs on the floor; the fresh bulb
 standing upright on its cap on the tabletop, not sunk into it and not floating. Confirm the fresh
 bulb is on the table's *reachable* side — the bulb offset is applied relative to the table centre
 and the table's yaw is not randomized, so this should hold, but the robot approaches from wherever
@@ -76,13 +76,13 @@ Report whether the table and bulb are in the ego camera frustum at t=0 — as a 
 
 ## Acceptance
 
-As foundation, plus: `handoff:S09->S10` and `handoff:S10->S11` pass · the settle soak leaves the
+As foundation, plus: `handoff:S06->S07` and `handoff:S07->S08` pass · the settle soak leaves the
 fresh bulb standing on its cap with drift < 2 mm (a bulb that topples on its own during the soak
-makes S11's start state wrong, and an upright bulb on a cap is the marginal case — the calibration
+makes S08's start state wrong, and an upright bulb on a cap is the marginal case — the calibration
 notes record that the *old* B1K bulb toppled when stood upright, which is why `BULB_LYING_QUAT`
 exists; the Omniverse bulb's cap is its stable base, so confirm rather than assume).
 
 ## Blockers
 
-None of its own. Inherits the provisional S06–S09 start states only in the sense that the chain
-must reach it; S10 can be authored and validated standalone.
+None of its own. Inherits the provisional S03–S06 start states only in the sense that the chain
+must reach it; S07 can be authored and validated standalone.

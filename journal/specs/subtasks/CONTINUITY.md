@@ -4,6 +4,11 @@ A pass over all 15 plans asking one question at each of the 14 boundaries: **is 
 end state the same physical situation as subtask N+1's authored start state?** Seven gaps found.
 Each subtask plan must be read together with this file.
 
+> Written against the original fifteen subtasks; its numbering is theirs. The four ladder legs
+> are now one `S01-MoveLadder` and the chain renumbered — see the map in `00-foundation.md`
+> ("As built — the four ladder legs are one subtask"). Left un-renumbered on purpose: this is a
+> dated review record, and rewriting it would falsify what was reviewed.
+
 Verdict: the chain is physically coherent in its *ordering* — nothing is picked up twice, nothing
 is needed before it exists, the disposal leg correctly precedes the fetch leg.
 

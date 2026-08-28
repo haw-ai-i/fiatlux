@@ -1,6 +1,6 @@
-# S13 — Climb up with the bulb in hand
+# S10 — Climb up with the bulb in hand
 
-`FIATLUX-S13-ClimbWithBulb-v0` · mode **balance (loaded)** · payload **bulb**
+`FIATLUX-S10-ClimbWithBulb-v0` · mode **balance (loaded)** · payload **bulb**
 Read `00-foundation.md`, `ABSTRACTIONS.md`, `CONTINUITY.md` and `CRITIQUE.md` first.
 
 ## Objective
@@ -10,7 +10,7 @@ steps with the bulb still in hand and unbroken.
 
 ## Start state
 
-`START_STATE["S13"]` = S12's success state:
+`START_STATE["S10"]` = S09's success state:
 
 - Robot standing at the ladder's base, facing the steps, fresh bulb in hand
   (`BULB_IN_ROOT_STANDING`). Grasping hand pinned by `mdp.hold_grasp_pose` for step 0.
@@ -19,7 +19,7 @@ steps with the bulb still in hand and unbroken.
 
 ## Success gate
 
-`climbed_with_bulb` — S05's `climbed_to_ladder_top` plus the payload conditions:
+`climbed_with_bulb` — S02's `climbed_to_ladder_top` plus the payload conditions:
 
 | Condition | Value |
 |---|---|
@@ -31,7 +31,7 @@ steps with the bulb still in hand and unbroken.
 
 ## The hard problem: one hand is occupied
 
-S05 climbs with both hands free and its bootstrap reward pays limb-on-ladder contact across feet
+S02 climbs with both hands free and its bootstrap reward pays limb-on-ladder contact across feet
 *and palms*. Here one hand holds a 35 g bulb it must not crush, so the climb has to be done with
 one hand and two feet.
 
@@ -47,8 +47,8 @@ rather than discover it. Two consequences for the implementation:
    An earlier draft asserted this as a live problem. It is not, yet: on Dex3 the sensor currently
    resolves **no palms at all** (see below), so the denominator is 2 feet. The concern becomes real
    the moment that is fixed, which is why both belong in the same change.
-2. **The grip must survive climbing accelerations**, which is a stronger requirement than S03's or
-   S12's steady walk. See Acceptance.
+2. **The grip must survive climbing accelerations**, which is a stronger requirement than S05's or
+   S09's steady walk. See Acceptance.
 
 ## Rewards
 
@@ -64,19 +64,19 @@ rather than discover it. Two consequences for the implementation:
 ## Terminations
 
 `time_out`, `success=climbed_with_bulb`, `fell_below`, `fell_over`, `ladder_tipped`,
-`bulb_dropped`. `episode_length_s = 30.0` — longer than S05's 20 s; one-handed is slower.
+`bulb_dropped`. `episode_length_s = 30.0` — longer than S02's 20 s; one-handed is slower.
 
 ## Reuse
 
-`climb_height_progress`, `climbed_to_ladder_top` (S05's), `ladder_contact_fraction`,
+`climb_height_progress`, `climbed_to_ladder_top` (S02's), `ladder_contact_fraction`,
 `add_ladder_contact_sensor`, `_ladder_top_point_w`, `STEP_LADDER_TOP_OFFSET`,
 `BULB_IN_ROOT_STANDING`, `object_dropped`, `hand_contact_force_l2`, `GLASS_CONTACT_LIMIT_N`,
 `completion_bonus`. New: `climbed_with_bulb`, the scoped contact-fraction variant.
 
 ## Deliverable for the chain
 
-**`BULB_IN_ROOT_ON_LADDER`** is consumed here as the *end* state, and S06 owns producing it. If S06
-has not run yet, S13 must measure it instead — the two must agree, so whichever lands first freezes
+**`BULB_IN_ROOT_ON_LADDER`** is consumed here as the *end* state, and S03 owns producing it. If S03
+has not run yet, S10 must measure it instead — the two must agree, so whichever lands first freezes
 it and the other imports it. Do not let two subtasks each freeze their own copy.
 
 ## Visual start-state validation
@@ -109,31 +109,31 @@ subtask is viable at all: hold the grasp pose and drive the body through a climb
 envelope, then check the bulb is still in the hand. A static hold does not test this. Report the
 measurement and the peak grip force.
 
-If the bulb leaves the hand, report it plainly: S13 is unsolvable as specified, and the honest fix
+If the bulb leaves the hand, report it plainly: S10 is unsolvable as specified, and the honest fix
 is folding hand retention into #54's mechanic. Increasing `_DEX3_CURL` is not available — 1.2 is
 already the calibrated value and 1.3 exceeds the glass bound.
 
 ## Blockers
 
 **PR #64** — the still-held condition and the fragility penalty read the filtered channel.
-Highest risk of the chain's four loaded subtasks. Recommend implementing it **after** S03 and S12,
+Highest risk of the chain's loaded subtasks. Recommend implementing it **after** S05 and S09,
 so their retention measurements are in hand before this one is attempted.
 
 ## As built
 
-`subtasks/s13_climb_with_bulb_env_cfg.py`, on `subtask_tiers.balance.ClimbSubtaskCfg`. Constructs.
+`subtasks/s10_climb_with_bulb_env_cfg.py`, on `subtask_tiers.balance.ClimbSubtaskCfg`. Constructs.
 
 The scoped contact fraction this plan predicted is implemented as
 `balance.LOADED_LADDER_CONTACT_BODIES` — feet plus both variants' *left* palm, passed to
 `add_ladder_contact_sensor`, which now takes a body list. Names belonging to the absent hand
 variant never resolve, so the live denominator is three.
 
-The gate is `mdp.all_of` over the S05 climb conjunct, `payload_held`, `object_lifted` at
+The gate is `mdp.all_of` over the S02 climb conjunct, `payload_held`, `object_lifted` at
 `FRESH_BULB_DROP_HEIGHT`, `robot_standing` and `ladder_near_vertical`.
 
-`BULB_IN_ROOT_ON_LADDER` was **not** measured here — S13 consumes `BULB_IN_ROOT_STANDING` as its
+`BULB_IN_ROOT_ON_LADDER` was **not** measured here — S10 consumes `BULB_IN_ROOT_STANDING` as its
 start state and produces the on-ladder pose only as an end state, so the deliverable stays with
-S06. Both remain `UNCALIBRATED`.
+S03. Both remain `UNCALIBRATED`.
 
 Not validated. The retention-under-motion gate — the measurement that decides whether this subtask
 is viable at all — has not been run.

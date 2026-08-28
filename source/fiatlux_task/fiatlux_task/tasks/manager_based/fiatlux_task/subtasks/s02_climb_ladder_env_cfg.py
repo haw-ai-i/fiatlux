@@ -3,9 +3,9 @@
 #
 # SPDX-License-Identifier: BSD-3-Clause
 
-"""``FIATLUX-S05-ClimbLadder-v0`` -- climb the placed ladder to working height, hands free.
+"""``FIATLUX-S02-ClimbLadder-v0`` -- climb the placed ladder to working height, hands free.
 
-Starts from S04's end state: the ladder standing at rest at the fixture, the robot on the floor at
+Starts from S01's end state: the ladder standing at rest at the fixture, the robot on the floor at
 its steps, the old bulb still seated above. Success is a controlled stance on the upper steps, with
 the height and the horizontal centre read from the ladder's LIVE pose -- ``FIATLUX-Climb-v0``
 hardcodes both from ``TOP_ROBOT_POSITION``, which describes the default workshop layout rather than
@@ -41,7 +41,7 @@ CLIMBED_CONJUNCTS = [
 
 
 @configclass
-class S05ClimbLadderEnvCfg(ClimbSubtaskCfg):
+class S02ClimbLadderEnvCfg(ClimbSubtaskCfg):
     """Climb the placed ladder (randomized Replace layout, ladder dynamic, hands free)."""
 
     success_predicate = mdp.all_of

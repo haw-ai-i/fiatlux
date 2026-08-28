@@ -3,9 +3,9 @@
 #
 # SPDX-License-Identifier: BSD-3-Clause
 
-"""``FIATLUX-S06-RemoveOldBulb-v0`` -- free the old bulb from the fixture while on the ladder.
+"""``FIATLUX-S03-RemoveOldBulb-v0`` -- free the old bulb from the fixture while on the ladder.
 
-Starts from S05's end state: the robot balanced on the upper steps with hands free, the old bulb
+Starts from S02's end state: the robot balanced on the upper steps with hands free, the old bulb
 locked in the fixture's bayonet channel (``mdp.bulb_attachment`` resets it ``ROTATING`` at full
 lock angle -- issue #54, wired once for the tier in ``subtask_tiers.mate.MateEventCfg``).
 
@@ -48,7 +48,7 @@ OLD_BULB_TAKEN_CONJUNCTS = [
 
 
 @configclass
-class S06RewardsCfg(MateRewardsCfg):
+class S03RewardsCfg(MateRewardsCfg):
     reach_progress = RewTerm(
         func=mdp.distance_progress, weight=500.0, params={"distance_fn": grasp_terms.hand_old_bulb_distance}
     )
@@ -66,14 +66,14 @@ class S06RewardsCfg(MateRewardsCfg):
 
 
 @configclass
-class S06TerminationsCfg(MateTerminationsCfg):
+class S03TerminationsCfg(MateTerminationsCfg):
     bulb_dropped = DoneTerm(
         func=mdp.object_dropped, params={"asset_cfg": _OLD_BULB, "min_height": OLD_BULB_DROP_HEIGHT}
     )
 
 
 @configclass
-class S06RemoveOldBulbEnvCfg(MateSubtaskCfg):
+class S03RemoveOldBulbEnvCfg(MateSubtaskCfg):
     """Take the old bulb out of the fixture from the ladder (randomized Replace layout)."""
 
     success_predicate = mdp.sustained
@@ -83,8 +83,8 @@ class S06RemoveOldBulbEnvCfg(MateSubtaskCfg):
         "predicate_params": {"predicates": OLD_BULB_TAKEN_CONJUNCTS},
     }
 
-    rewards: S06RewardsCfg = S06RewardsCfg()
-    terminations: S06TerminationsCfg = S06TerminationsCfg()
+    rewards: S03RewardsCfg = S03RewardsCfg()
+    terminations: S03TerminationsCfg = S03TerminationsCfg()
 
     def __post_init__(self) -> None:
         super().__post_init__()

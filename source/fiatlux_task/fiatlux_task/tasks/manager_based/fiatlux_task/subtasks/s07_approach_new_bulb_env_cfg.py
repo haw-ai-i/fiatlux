@@ -3,16 +3,25 @@
 #
 # SPDX-License-Identifier: BSD-3-Clause
 
-"""``FIATLUX-S10-ApproachNewBulb-v0`` -- walk to the fresh bulb on the bench, hands free.
+"""``FIATLUX-S07-ApproachNewBulb-v0`` -- walk to the fresh bulb on the bench, hands free.
 
-Successor of S03/S04 (ladder placed) and predecessor of S11 (grasp it); a bare walk like S01's,
+Successor of S06 (old bulb binned) and predecessor of S08 (grasp the fresh one); a bare walk,
 just pointed at the fresh bulb instead of the ladder. Success is arriving within reach of the
 bulb, facing it, standing -- no grip conjunct, since nothing is held yet.
 """
 
+from isaaclab.managers import SceneEntityCfg
 from isaaclab.utils import configclass
 
-from ..mdp.nav_terms import BULB_APPROACH_RADIUS, DISPOSAL_ARRIVAL_RADIUS, arrived_at_bulb, base_bulb_distance
+from .. import mdp
+from ..mdp.nav_terms import (
+    BULB_APPROACH_RADIUS,
+    DISPOSAL_ARRIVAL_RADIUS,
+    base_bulb_distance,
+    base_calm,
+    base_facing,
+    base_near,
+)
 from ..scene_cfg import (
     add_ego_camera,
     add_mid360_lidar,
@@ -24,9 +33,17 @@ from ..scene_cfg import (
 )
 from ..subtask_env_cfg import ARRIVAL_FACING_TOLERANCE, ARRIVAL_MAX_SPEED, NavigateSubtaskCfg
 
+# The success gate as data (mdp.all_of). No payload conjunct: hands are free here, and nothing
+# in this scene can tip over.
+AT_FRESH_BULB_CONJUNCTS = [
+    (base_near, {"asset_cfg": SceneEntityCfg("fresh_bulb"), "xy_radius": BULB_APPROACH_RADIUS}),
+    (base_facing, {"asset_cfg": SceneEntityCfg("fresh_bulb"), "facing_tolerance": ARRIVAL_FACING_TOLERANCE}),
+    (base_calm, {"max_speed": ARRIVAL_MAX_SPEED}),
+]
+
 
 @configclass
-class S10ApproachNewBulbEnvCfg(NavigateSubtaskCfg):
+class S07ApproachNewBulbEnvCfg(NavigateSubtaskCfg):
     """Walk to the fresh bulb on the table (randomized Replace layout, hands free)."""
 
     scene_preset: str = "replace"
@@ -34,23 +51,19 @@ class S10ApproachNewBulbEnvCfg(NavigateSubtaskCfg):
     orbit_radius: float = 5.0
     orbit_height: float = 2.4
 
-    success_predicate = arrived_at_bulb
-    success_params: dict | None = {
-        "xy_radius": BULB_APPROACH_RADIUS,
-        "facing_tolerance": ARRIVAL_FACING_TOLERANCE,
-        "max_speed": ARRIVAL_MAX_SPEED,
-    }
+    success_predicate = mdp.all_of
+    success_params: dict | None = {"predicates": AT_FRESH_BULB_CONJUNCTS}
     progress_distance_fn = base_bulb_distance
 
     def __post_init__(self) -> None:
         super().__post_init__()
-        # S04 already stood the ladder at the fixture; every leg after it inherits that.
+        # S01 already stood the ladder at the fixture; every leg after it inherits that.
         apply_replace_preset(self.scene, couple_ladder_to_fixture=True)
-        # S09's end state: the old bulb is in the crate and the fixture is empty. Without this
+        # S06's end state: the old bulb is in the crate and the fixture is empty. Without this
         # the preset's seated old bulb is still overhead, three subtasks after it was disposed
         # of -- and with no attach FSM on this tier it drops out of the inverted socket at reset.
         park_old_bulb_in_crate(self.scene)
-        # S09's end state: standing at the disposal crate, hands free.
+        # S06's end state: standing at the disposal crate, hands free.
         stand_robot_near(self.scene, self.scene.bin.init_state.pos[:2], DISPOSAL_ARRIVAL_RADIUS)
         # This leg's target is the bulb itself, not the table's own origin apply_replace_preset
         # aims at.

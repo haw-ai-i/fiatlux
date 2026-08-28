@@ -1,6 +1,6 @@
-# S07 — Walk down the ladder with the old bulb in hand
+# S04 — Walk down the ladder with the old bulb in hand
 
-`FIATLUX-S07-DescendWithBulb-v0` · mode **balance (loaded)** · payload **old_bulb**
+`FIATLUX-S04-DescendWithBulb-v0` · mode **balance (loaded)** · payload **old_bulb**
 Read `00-foundation.md`, `ABSTRACTIONS.md`, `CONTINUITY.md` and `CRITIQUE.md` first.
 
 ## Objective
@@ -10,10 +10,10 @@ unbroken.
 
 ## Start state
 
-`START_STATE["S07"]` = S06's success state:
+`START_STATE["S04"]` = S03's success state:
 
 - Robot on the upper steps, balanced.
-- Old bulb **in hand** — root pose from `BULB_IN_ROOT_ON_LADDER` (S06's deliverable), composed with
+- Old bulb **in hand** — root pose from `BULB_IN_ROOT_ON_LADDER` (S03's deliverable), composed with
   the robot root pose. Grasping hand pinned by `mdp.hold_grasp_pose` for step 0.
 - Ladder standing at the fixture target; fixture now empty.
 
@@ -31,7 +31,7 @@ unbroken.
 | robot not fallen | `FALL_MIN_HEIGHT`, `FALL_TILT_LIMIT` |
 | ladder not tipped | `LADDER_TILT_LIMIT` |
 
-As in S05, the height and xy centre must come from the ladder's **live** pose, not from
+As in S02, the height and xy centre must come from the ladder's **live** pose, not from
 `CLIMB_ROBOT_POSITION` — `FIATLUX-Descend-v0` hardcodes `SUCCESS_XY` from that constant and it
 describes the default workshop layout, not this chain's placed ladder. New predicate
 `descended_from_ladder(payload=...)`, mirroring `climbed_to_ladder_top`.
@@ -92,7 +92,7 @@ Tracked as **#69**.
 As foundation, plus **the retention gate**, which is the real risk here: hold the start pose under
 zero action for the full 30 s and confirm the bulb stays in the hand. Then repeat while the body
 is in motion — a static hold proves nothing about a descent's accelerations. If the bulb leaves the
-hand under either, report it: S07 is then unsolvable as specified, and the honest fix is folding
+hand under either, report it: S04 is then unsolvable as specified, and the honest fix is folding
 hand retention into #54's mechanic rather than tightening the finger curl (curl above ~1.3 already
 exceeds the 50 N glass bound, and past ~1.4 the closing fingers eject the bulb — the grip has no
 headroom left).
@@ -100,12 +100,12 @@ headroom left).
 ## Blockers
 
 **PR #64** — the still-held condition and the fragility penalty read the filtered channel.
-**#54** — inherits S06's provisional start state: if the bulb cannot be removed and held, S07's
+**#54** — inherits S03's provisional start state: if the bulb cannot be removed and held, S04's
 start state cannot be reached by the chain, though it can still be authored and validated directly.
 
 ## As built
 
-`subtasks/s07_descend_with_bulb_env_cfg.py`, on `subtask_tiers.balance.DescendSubtaskCfg`.
+`subtasks/s04_descend_with_bulb_env_cfg.py`, on `subtask_tiers.balance.DescendSubtaskCfg`.
 Constructs.
 
 `balance_terms.descended_from_ladder` takes the xy centre from the ladder's live root and the

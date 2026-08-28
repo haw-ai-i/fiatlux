@@ -3,19 +3,17 @@
 #
 # SPDX-License-Identifier: BSD-3-Clause
 
-"""Predicates and distance fns for the grasp mode (S02 grab-the-ladder, S11 grab-the-bulb).
+"""Predicates and distance fns for the grasp mode (S08 grab-the-bulb).
 
-Both subtasks end in the hand taking an object's weight, so the gate has to distinguish
-*holding* from merely *touching*: filtered contact force past a threshold, plus whatever
-geometric fact rules out cheating the force reading. Every function here is STATELESS -- the
-debounce is :class:`~.gates.sustained`, which lives only in the ``success`` termination, so a
-second counter cannot exist to disagree with it.
+The subtask ends in the hand taking an object's weight, so the gate has to distinguish *holding*
+from merely *touching*: filtered contact force past a threshold, plus whatever geometric fact
+rules out cheating the force reading. Every function here is STATELESS -- the debounce is
+:class:`~.gates.sustained`, which lives only in the ``success`` termination, so a second counter
+cannot exist to disagree with it.
 
-The ladder's root sits at the ladder's base centre, so tilting it raises the root exactly like
-lifting it does: a 3 cm rise needs only ~5 deg of lean, well under the 34 deg ``ladder_tipped``
-termination. ``ladder_feet_clear``/``ladder_near_vertical`` exist so a leaf's gate can require
-"lifted AND upright" without ever reading the root height as a stand-in for either -- see the
-leaves for how the conjuncts combine.
+``ladder_near_vertical`` lives here rather than with the ladder gates because it is the same
+positive-form-of-a-termination shape: the balance and mate leaves carry it as an "and the ladder
+is still standing" conjunct at a stricter bound than the tipping termination's.
 
 Contact helpers read a sensor filtered to ONE target prim (see
 ``subtask_tiers.grasp.add_grasp_contact_sensor``), for the same reason ``place_terms`` does:
@@ -35,8 +33,6 @@ from isaaclab.sensors import ContactSensor
 from isaaclab.utils.math import quat_apply
 
 from fiatlux_task.robots.g1 import G1_PALM_BODIES
-
-from .place_terms import ladder_feet_height
 
 if TYPE_CHECKING:
     from isaaclab.envs import ManagerBasedRLEnv
@@ -59,24 +55,14 @@ def _right_hand_pos_w(env: ManagerBasedRLEnv) -> torch.Tensor:
     return robot.data.body_pos_w[:, body_id, :]
 
 
-def hand_ladder_distance(env: ManagerBasedRLEnv) -> torch.Tensor:
-    """Distance (m) from the right hand to the ladder's root; S02's reach signal.
-
-    Coarse by construction: the exact rail the policy closes on is whatever it finds, not a
-    single authored contact point.
-    """
-    ladder: RigidObject = env.scene["ladder"]
-    return torch.norm(_right_hand_pos_w(env) - ladder.data.root_pos_w, dim=1)
-
-
 def hand_bulb_distance(env: ManagerBasedRLEnv) -> torch.Tensor:
-    """Distance (m) from the right hand to the fresh bulb; S11's reach signal."""
+    """Distance (m) from the right hand to the fresh bulb; S08's reach signal."""
     bulb: RigidObject = env.scene["fresh_bulb"]
     return torch.norm(_right_hand_pos_w(env) - bulb.data.root_pos_w, dim=1)
 
 
 def hand_old_bulb_distance(env: ManagerBasedRLEnv) -> torch.Tensor:
-    """Distance (m) from the right hand to the seated old bulb; S06's reach signal."""
+    """Distance (m) from the right hand to the seated old bulb; S03's reach signal."""
     old_bulb: RigidObject = env.scene["old_bulb"]
     return torch.norm(_right_hand_pos_w(env) - old_bulb.data.root_pos_w, dim=1)
 
@@ -106,15 +92,6 @@ def grasp_contact_bootstrap(
     return torch.tanh(force / saturation_force)
 
 
-def grasp_force_above(env: ManagerBasedRLEnv, sensor_cfg: SceneEntityCfg, force_threshold: float) -> torch.Tensor:
-    """True where some hand body's filtered contact force exceeds ``force_threshold``.
-
-    The positive half of a grip-force gate: "the hand is genuinely loaded", not merely resting
-    against the object.
-    """
-    return _filtered_hand_force(env, sensor_cfg).max(dim=1).values > force_threshold
-
-
 def grasp_force_within(env: ManagerBasedRLEnv, sensor_cfg: SceneEntityCfg, limit: float) -> torch.Tensor:
     """True where no hand body's filtered contact force exceeds ``limit`` (a fragility bound)."""
     return _filtered_hand_force(env, sensor_cfg).max(dim=1).values <= limit
@@ -133,18 +110,8 @@ def hand_bodies_in_contact(
 
 
 # ---------------------------------------------------------------------------
-# S02 -- grab the ladder
+# The ladder still standing -- a conjunct for every leaf that works on or beside it
 # ---------------------------------------------------------------------------
-
-
-def ladder_feet_clear(env: ManagerBasedRLEnv, tolerance: float) -> torch.Tensor:
-    """True where the ladder's root has risen more than ``tolerance`` above the floor.
-
-    The positive-lift mirror of ``place_terms.ladder_feet_down``: that reads "resting on the
-    floor" (root within tolerance of it), this reads "off it". Uses
-    ``place_terms.ladder_feet_height`` for the same root-is-the-gap-under-the-feet reading.
-    """
-    return ladder_feet_height(env) > tolerance
 
 
 def ladder_near_vertical(
@@ -153,9 +120,9 @@ def ladder_near_vertical(
     """True where the ladder's tilt from vertical is under ``tilt_limit`` (rad).
 
     The positive form of ``mdp.ladder_tipped`` (same up-axis angle, reversed comparison), so a
-    grasp gate can carry a STRICTER bound than the 0.6 rad tipping termination without
-    conflating the two: a lift that leans right up to the tipping point must not read as a clean
-    grasp.
+    gate can carry a STRICTER bound than the 0.6 rad tipping termination without conflating the
+    two: a ladder leaning right up to the tipping point must not read as one a robot can work
+    from.
     """
     ladder: RigidObject = env.scene[asset_cfg.name]
     up = torch.zeros(env.num_envs, 3, device=env.device)
@@ -165,7 +132,7 @@ def ladder_near_vertical(
 
 
 # ---------------------------------------------------------------------------
-# S11 -- grab the fresh bulb
+# S08 -- grab the fresh bulb
 # ---------------------------------------------------------------------------
 
 

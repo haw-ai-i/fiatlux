@@ -60,7 +60,7 @@ from .events import (  # noqa: F401
     randomize_material_tint,
     randomize_prop_scale,
 )
-from .gates import all_of, success_term_fired, sustained  # noqa: F401
+from .gates import all_of, conjuncts_of, gate_progress, success_term_fired, sustained  # noqa: F401
 from .observations import (  # noqa: F401
     contact_net_forces,
     lidar_ranges,
@@ -69,7 +69,6 @@ from .observations import (  # noqa: F401
 )
 from .rewards import (  # noqa: F401
     LADDER_TILT_LIMIT,
-    arrived_at_ladder,
     base_facing_error,
     base_ladder_distance,
     bulb_fixture_distance,

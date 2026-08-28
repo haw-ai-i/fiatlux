@@ -3,16 +3,16 @@
 #
 # SPDX-License-Identifier: BSD-3-Clause
 
-"""``FIATLUX-S07-DescendWithBulb-v0`` -- carry the removed old bulb down the ladder.
+"""``FIATLUX-S10-ClimbWithBulb-v0`` -- climb to working height holding the fresh bulb.
 
-Starts from S06's end state: the robot on the upper steps with the old bulb in hand
-(``BULB_IN_ROOT_ON_LADDER``), the fixture above now empty. Success is a controlled arrival at
-floor stance beside the ladder with the bulb still held and unbroken -- without the held conjunct,
-dropping the bulb off the top and walking down after it would score.
+Starts from S09's end state: the robot at the ladder's steps with the fresh bulb in hand
+(``BULB_IN_ROOT_STANDING``), the old bulb already in the disposal crate, the fixture empty.
 
-``fell_below`` (0.35 m) sits well under the success height, so a controlled arrival fires
-``success``; a landing hard enough to dip the pelvis under 0.35 m reads as a fall, which is
-correct rather than something to tune away.
+The physically hardest subtask of the chain: one hand holds a 35 g bulb it must not crush, so the
+climb is done with one hand and two feet. Two consequences are wired below -- the contact
+bootstrap divides by feet plus the FREE palm only, or it would charge the policy for holding the
+bulb, and the glass bound is the live constraint on the way up, since gripping harder is the
+obvious way to keep the bulb while climbing.
 """
 
 from isaaclab.managers import EventTermCfg as EventTerm
@@ -21,7 +21,7 @@ from isaaclab.managers import SceneEntityCfg
 from isaaclab.managers import TerminationTermCfg as DoneTerm
 from isaaclab.utils import configclass
 
-from fiatlux_task.grasp_poses import BULB_IN_ROOT_ON_LADDER
+from fiatlux_task.grasp_poses import BULB_IN_ROOT_STANDING
 from fiatlux_task.poses import ARM_CRADLE, HAND_CUP
 
 from .. import mdp
@@ -33,42 +33,43 @@ from ..mdp.nav_terms import (
     payload_held,
     settle_carried_payload_live,
 )
-from ..replace_env_cfg import OLD_BULB_DROP_HEIGHT
+from ..replace_env_cfg import FRESH_BULB_DROP_HEIGHT
+from ..scene_cfg import park_old_bulb_in_crate
 from ..subtask_env_cfg import FALL_MIN_HEIGHT, FALL_TILT_LIMIT
 from ..subtask_tiers.balance import (
-    LADDER_FLOOR_STANCE_HEIGHT,
     LADDER_SUCCESS_MAX_SPEED,
     LADDER_SUCCESS_XY_RADIUS,
+    LADDER_TOP_HEIGHT_SLACK,
     LOADED_LADDER_CONTACT_BODIES,
     BalanceEventCfg,
     BalanceTerminationsCfg,
-    DescendRewardsCfg,
-    DescendSubtaskCfg,
+    ClimbRewardsCfg,
+    ClimbSubtaskCfg,
 )
 
-_OLD_BULB = SceneEntityCfg("old_bulb")
+_BULB = SceneEntityCfg("fresh_bulb")
 _GRIP = SceneEntityCfg("grip_contact")
 
 # The success gate, as reviewable data (mdp.all_of) rather than a hand-written conjunction --
 # an omitted conjunct here is a gate that passes vacuously.
-DESCENDED_WITH_BULB_CONJUNCTS = [
+CLIMBED_WITH_BULB_CONJUNCTS = [
     (
-        balance_terms.descended_from_ladder,
+        balance_terms.climbed_to_ladder_top,
         {
-            "maximum_height": LADDER_FLOOR_STANCE_HEIGHT,
+            "height_slack": LADDER_TOP_HEIGHT_SLACK,
             "xy_radius": LADDER_SUCCESS_XY_RADIUS,
             "max_speed": LADDER_SUCCESS_MAX_SPEED,
         },
     ),
     (payload_held, {"sensor_cfg": _GRIP, "force_threshold": GRIP_FORCE_THRESHOLD_N}),
-    (grasp_terms.object_lifted, {"asset_cfg": _OLD_BULB, "min_height": OLD_BULB_DROP_HEIGHT}),
+    (grasp_terms.object_lifted, {"asset_cfg": _BULB, "min_height": FRESH_BULB_DROP_HEIGHT}),
     (place_terms.robot_standing, {"minimum_height": FALL_MIN_HEIGHT, "limit_angle": FALL_TILT_LIMIT}),
     (grasp_terms.ladder_near_vertical, {"tilt_limit": mdp.LADDER_TILT_LIMIT}),
 ]
 
 
 @configclass
-class S07EventCfg(BalanceEventCfg):
+class S10EventCfg(BalanceEventCfg):
     """Re-seats the bulb against the hand's live, actually-simulated pose -- see
     ``nav_terms.settle_carried_payload_live``. Root/joint randomization zeroed for now while
     the open-palm rest calibration is being worked out (adds noise we don't need yet)."""
@@ -77,7 +78,7 @@ class S07EventCfg(BalanceEventCfg):
         func=settle_carried_payload_live,
         mode="interval",
         interval_range_s=(0.0, 0.0),
-        params={"payload_cfg": SceneEntityCfg("old_bulb")},
+        params={"payload_cfg": SceneEntityCfg("fresh_bulb")},
     )
     reset_robot_joints = EventTerm(
         func=mdp.reset_joints_by_offset,
@@ -96,43 +97,38 @@ class S07EventCfg(BalanceEventCfg):
 
 
 @configclass
-class S07RewardsCfg(DescendRewardsCfg):
-    # Force on the OBJECT, not the hand's net force: a panicked grip while balancing is exactly
-    # how a real bulb gets crushed, but an arm braced on a rail is not.
+class S10RewardsCfg(ClimbRewardsCfg):
     contact_penalty = RewTerm(func=mdp.hand_contact_force_l2, weight=-1.0e-4, params={"sensor_cfg": _GRIP})
     bulb_dropped = RewTerm(
-        func=mdp.object_dropped, weight=-200.0, params={"asset_cfg": _OLD_BULB, "min_height": OLD_BULB_DROP_HEIGHT}
+        func=mdp.object_dropped, weight=-200.0, params={"asset_cfg": _BULB, "min_height": FRESH_BULB_DROP_HEIGHT}
     )
 
 
 @configclass
-class S07TerminationsCfg(BalanceTerminationsCfg):
-    bulb_dropped = DoneTerm(
-        func=mdp.object_dropped, params={"asset_cfg": _OLD_BULB, "min_height": OLD_BULB_DROP_HEIGHT}
-    )
+class S10TerminationsCfg(BalanceTerminationsCfg):
+    bulb_dropped = DoneTerm(func=mdp.object_dropped, params={"asset_cfg": _BULB, "min_height": FRESH_BULB_DROP_HEIGHT})
 
 
 @configclass
-class S07DescendWithBulbEnvCfg(DescendSubtaskCfg):
-    """Descend the placed ladder holding the old bulb (randomized Replace layout, ladder dynamic)."""
+class S10ClimbWithBulbEnvCfg(ClimbSubtaskCfg):
+    """Climb the placed ladder holding the fresh bulb (randomized Replace layout, ladder dynamic)."""
 
-    # The right hand is occupied for the whole episode, so the contact bootstrap must not divide
-    # by a palm that can never touch the ladder.
     ladder_contact_bodies: list[str] | None = LOADED_LADDER_CONTACT_BODIES
 
     success_predicate = mdp.all_of
-    success_params: dict | None = {"predicates": DESCENDED_WITH_BULB_CONJUNCTS}
+    success_params: dict | None = {"predicates": CLIMBED_WITH_BULB_CONJUNCTS}
 
-    events: S07EventCfg = S07EventCfg()
-    rewards: S07RewardsCfg = S07RewardsCfg()
-    terminations: S07TerminationsCfg = S07TerminationsCfg()
+    events: S10EventCfg = S10EventCfg()
+    rewards: S10RewardsCfg = S10RewardsCfg()
+    terminations: S10TerminationsCfg = S10TerminationsCfg()
 
     def __post_init__(self) -> None:
         super().__post_init__()
-        # S06's end state: the old bulb is out of the fixture and in the hand, at the carry offset
-        # from the robot's own (now-final) on-ladder root pose.
-        self.scene.old_bulb.init_state.pos, self.scene.old_bulb.init_state.rot = compose_carried_pose(
-            self.scene.robot.init_state.pos, self.scene.robot.init_state.rot, BULB_IN_ROOT_ON_LADDER
+        park_old_bulb_in_crate(self.scene)
+        # S09's end state: the fresh bulb starts already held, at the carry offset from the
+        # robot's own (now-final) root pose -- not on the table.
+        self.scene.fresh_bulb.init_state.pos, self.scene.fresh_bulb.init_state.rot = compose_carried_pose(
+            self.scene.robot.init_state.pos, self.scene.robot.init_state.rot, BULB_IN_ROOT_STANDING
         )
         # Merge, don't assign: these dicts only name right-arm/right-hand joints.
         self.scene.robot.init_state.joint_pos = {
@@ -140,5 +136,6 @@ class S07DescendWithBulbEnvCfg(DescendSubtaskCfg):
             **ARM_CRADLE,
             **HAND_CUP,
         }
-        add_grip_contact_sensor(self.scene, self.scene.old_bulb.prim_path)
+        add_grip_contact_sensor(self.scene, self.scene.fresh_bulb.prim_path)
+        # Longer than S02's 20 s: one-handed is slower.
         self.episode_length_s = 30.0

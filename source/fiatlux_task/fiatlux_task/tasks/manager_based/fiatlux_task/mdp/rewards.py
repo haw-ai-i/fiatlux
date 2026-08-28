@@ -632,22 +632,3 @@ def base_facing_error(env: ManagerBasedRLEnv, asset_cfg: SceneEntityCfg) -> torc
     delta = (target.data.root_pos_w - env.scene["robot"].data.root_pos_w)[:, :2]
     err = torch.atan2(delta[:, 1], delta[:, 0]) - _base_yaw(env)
     return torch.abs(torch.atan2(torch.sin(err), torch.cos(err)))
-
-
-def arrived_at_ladder(
-    env: ManagerBasedRLEnv,
-    xy_radius: float,
-    facing_tolerance: float,
-    max_speed: float,
-) -> torch.Tensor:
-    """True where the robot has walked to the ladder and is standing at it, ready to grasp.
-
-    The speed cap and the upright-ladder conjunct are what make this unfarmable: without them a
-    robot that charges the ladder, knocks it over and lands inside the radius would score. No
-    sustain term is needed -- the speed cap already excludes a fly-through, and the fall gates are
-    separate terminations.
-    """
-    near = base_ladder_distance(env) < xy_radius
-    facing = base_facing_error(env, SceneEntityCfg("ladder")) < facing_tolerance
-    calm = env.scene["robot"].data.root_lin_vel_w.norm(dim=-1) < max_speed
-    return near & facing & calm & ~ladder_tipped(env, LADDER_TILT_LIMIT)

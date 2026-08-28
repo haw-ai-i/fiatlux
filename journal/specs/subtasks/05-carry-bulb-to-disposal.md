@@ -1,6 +1,6 @@
-# S08 — Walk to the disposal box with the bulb in hand
+# S05 — Walk to the disposal box with the bulb in hand
 
-`FIATLUX-S08-CarryBulbToDisposal-v0` · mode **navigation (loaded)** · payload **old_bulb**
+`FIATLUX-S05-CarryBulbToDisposal-v0` · mode **navigation (loaded)** · payload **old_bulb**
 Read `00-foundation.md`, `ABSTRACTIONS.md`, `CONTINUITY.md` and `CRITIQUE.md` first.
 
 ## Objective
@@ -10,11 +10,11 @@ standing within reach of it, still holding the bulb.
 
 ## Start state
 
-`START_STATE["S08"]` = S07's success state:
+`START_STATE["S05"]` = S04's success state:
 
 - Robot standing on the floor at the ladder's base, old bulb in hand — root pose from
   `BULB_IN_ROOT_STANDING` (foundation probe 1; the standing cradle, **not** the on-ladder value
-  S07 used). Grasping hand pinned by `mdp.hold_grasp_pose` for step 0.
+  S04 used). Grasping hand pinned by `mdp.hold_grasp_pose` for step 0.
 - Ladder standing at the fixture target, empty fixture above.
 - Disposal crate at its sampled zone, `DISPOSAL_ZONE_HALF_SIZE = 0.5`.
 
@@ -34,11 +34,11 @@ standing within reach of it, still holding the bulb.
 
 **Probe:** `CRATE_APPROACH_RADIUS` — the crate is 0.60 × 0.40 × 0.17 m with its interior floor at
 `BIN_BULB_INTERIOR_Z = 0.055`, so "within reach to drop a bulb in" is a shorter standoff than the
-ladder's. Reuse the horizontal-reach measurement from S01 rather than re-deriving it; the crate's
+ladder's. Reuse the horizontal-reach measurement from S01 (the ladder leg) rather than re-deriving it; the crate's
 half-extent replaces the ladder's.
 
 Dropping the bulb *en route* must not score, hence the held condition; dropping it *into the
-crate* is S09, not S08.
+crate* is S06, not S05.
 
 ## Rewards
 
@@ -85,4 +85,4 @@ plan should record it.
 ## Blockers
 
 **PR #64** — the still-held condition reads the filtered channel.
-**#54** — inherits the provisional start state from S06/S07.
+**#54** — inherits the provisional start state from S03/S04.
