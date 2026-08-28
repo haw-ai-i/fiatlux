@@ -65,7 +65,7 @@ class S12EventCfg(SubtaskEventCfg):
         func=settle_carried_payload_live,
         mode="interval",
         interval_range_s=(0.0, 0.0),
-        params={"payload_cfg": SceneEntityCfg("bulb")},
+        params={"payload_cfg": SceneEntityCfg("fresh_bulb")},
     )
     reset_robot_joints = EventTerm(
         func=mdp.reset_joints_by_offset,
@@ -124,12 +124,12 @@ class S12CarryBulbToLadderEnvCfg(NavigateSubtaskCfg):
         # S11's end state: the robot is at the table where it picked the bulb up. Capture that
         # before the carried pose overwrites the bulb's init_state, or the robot spawns in its
         # independently-sampled zone and the held bulb teleports there with it.
-        stand_robot_at_offset(self.scene, self.scene.bulb.init_state.pos[:2], BULB_APPROACH_OFFSET)
+        stand_robot_at_offset(self.scene, self.scene.fresh_bulb.init_state.pos[:2], BULB_APPROACH_OFFSET)
         # This leg's target is the ladder S04 placed, not the table apply_replace_preset aims at.
         face_robot_at(self.scene, self.scene.ladder.init_state.pos[:2])
         # S11's end state: the fresh bulb starts already held, at the carry offset from the
         # robot's own (now-final) root pose -- not on the table.
-        self.scene.bulb.init_state.pos, self.scene.bulb.init_state.rot = compose_carried_pose(
+        self.scene.fresh_bulb.init_state.pos, self.scene.fresh_bulb.init_state.rot = compose_carried_pose(
             self.scene.robot.init_state.pos, self.scene.robot.init_state.rot, BULB_IN_ROOT_STANDING
         )
         # Merge, don't assign: these dicts only name right-arm/right-hand joints.
@@ -138,7 +138,7 @@ class S12CarryBulbToLadderEnvCfg(NavigateSubtaskCfg):
             **ARM_CRADLE,
             **HAND_CUP,
         }
-        add_grip_contact_sensor(self.scene, self.scene.bulb.prim_path)
+        add_grip_contact_sensor(self.scene, self.scene.fresh_bulb.prim_path)
         add_ego_camera(self.scene)
         add_mid360_lidar(self.scene)
         # Worst-case room-diagonal traverse (~10.8 m) at the ~0.5 m/s reference speed, 2x margin;

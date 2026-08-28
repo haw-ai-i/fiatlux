@@ -72,7 +72,7 @@ _FREE = 0
 _AXIAL = 1
 _ROTATING = 2
 _OLD = 0  # state row of the old bulb (scene entity "old_bulb")
-_FRESH = 1  # state row of the fresh bulb (scene entity "bulb")
+_FRESH = 1  # state row of the fresh bulb (scene entity "fresh_bulb")
 _EPS = 1e-5
 
 ParameterSpec = float | tuple[float, float]
@@ -206,7 +206,7 @@ class bulb_attachment(ManagerTermBase):
         # enforced every step, which the zero interval guarantees.
         del env_ids, insertion_depth, rotation_angle, rotation_sign
         old_bulb: RigidObject = env.scene["old_bulb"]
-        fresh_bulb: RigidObject = env.scene["bulb"]
+        fresh_bulb: RigidObject = env.scene["fresh_bulb"]
         self._advance(
             old_bulb,
             _OLD,
