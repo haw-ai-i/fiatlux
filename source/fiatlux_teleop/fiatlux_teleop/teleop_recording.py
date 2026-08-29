@@ -163,6 +163,10 @@ class TeleopTrajectoryRecorder(TrajectoryRecorder):
         # manipulates; reuse that rather than guessing a second time.
         self._has_insert = _has(self._bulb_entity) and _has("socket")
         self._has_contact = "hand_contact" in getattr(env.scene, "sensors", {})
+        # Both hands (#89). Teleop is where this matters most: an operator uses whichever hand is
+        # convenient, and the 2026-08-21 session drove the old bulb left-handed, which the bags
+        # recorded as 0.0 N of contact throughout.
+        self._has_left_contact = "left_hand_contact" in getattr(env.scene, "sensors", {})
 
         # The parent's meta hardcodes action_joint_order from the benchmark's STATIC constants
         # (Inspire hand names) -- wrong whenever the operator picked the other hand (--hand
@@ -198,6 +202,11 @@ class TeleopTrajectoryRecorder(TrajectoryRecorder):
             "joint_vel": robot.data.joint_vel,
             "joint_acc": robot.data.joint_acc,
             "eef_pose": body_state,
+            **(
+                {"eef_pose_left": robot.data.body_state_w[:, self._left_ee_id, :7]}
+                if getattr(self, "_left_ee_id", None) is not None
+                else {}
+            ),
             "policy_obs": obs["policy"] if isinstance(obs, dict) else obs,
             "reward": reward,
             "step_in_episode": env.episode_length_buf.clone(),
@@ -221,6 +230,10 @@ class TeleopTrajectoryRecorder(TrajectoryRecorder):
             })
         if self._has_contact:
             step["contact_force"] = _rec._obs.object_contact_forces(env.scene.sensors["hand_contact"])
+        if self._has_left_contact:
+            step["contact_force_left"] = _rec._obs.object_contact_forces(
+                env.scene.sensors["left_hand_contact"]
+            )
         if extras:
             # Driver-supplied operator/policy signals (loco_cmd, SONIC leg action, ...). Tensors or
             # numpy accepted; each must already carry the (N, ...) leading env axis.
