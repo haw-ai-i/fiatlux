@@ -52,8 +52,24 @@ parser.add_argument("--lock-base", dest="lock_base", action="store_true",
                          "holds the staged pose exactly, so the arms can be exercised against the "
                          "fixture. NOT for collecting demos -- the legs are inert and the base "
                          "cannot fall, so the trajectory is not a real attempt.")
-parser.add_argument("--camera", choices=["follow", "static"], default="follow",
-                    help="follow = over-the-shoulder chase cam that orbits with the robot. "
+parser.add_argument("--record-settle", dest="record_settle", action="store_true",
+                    help="also record the ~90 startup settle steps (feet planting + SONIC warm-in) "
+                         "that run BEFORE 'Teleop ready'. Off by default: those steps are not "
+                         "operator-driven. On for evidence of spawn-time failures -- a staged "
+                         "payload is lost during this window, and a take that starts at the main "
+                         "loop only ever shows it already on the floor. Requires --record.")
+parser.add_argument("--no-arm-pin", dest="no_arm_pin", action="store_true",
+                    help="do not pin the idle arm at its settle joints. The pin (a joint-state write "
+                         "every idle step) stops IK null-space droop, but it also makes a hands-off "
+                         "robot lean forward and fall at ~3 s on any floor task -- S07 with no payload "
+                         "falls at 3.5 s with it and stands indefinitely without it. Use this for any "
+                         "session where the robot must still be standing when the operator connects.")
+parser.add_argument("--camera", choices=["follow", "static", "fixture"], default="follow",
+                    help="fixture = one fixed shot of the socket from the SIDE (off the robot->socket "
+                         "line, so neither robot nor ladder hides it), level at 1.5 m: the socket sits "
+                         "in the upper third of frame and the floor beneath it in the lower -- for "
+                         "evidence of anything that falls out of, or snaps into, the socket. "
+                         "follow = over-the-shoulder chase cam that orbits with the robot. "
                          "static = one fixed wide shot, placed once from the scene layout so the "
                          "robot, the whole ladder and the fixture all stay in frame (better for "
                          "tasks where the action moves between two fixed places, e.g. S01).")
@@ -581,11 +597,156 @@ def main():  # noqa: C901  (one long orchestration: env setup + settle/resettle 
     pin_pose = robot.data.root_state_w[:, 0:7].clone()
     zero_vel = torch.zeros((env.num_envs, 6), device=dev)
     leg_default = torch.as_tensor(DEFAULT_15, device=dev).unsqueeze(0)
+
+    from fiatlux_task.tasks.manager_based.fiatlux_task.scene_cfg import (
+        ROOM_FLOOR_MAX as _RMAX,
+    )
+    from fiatlux_task.tasks.manager_based.fiatlux_task.scene_cfg import (
+        ROOM_FLOOR_MIN as _RMIN,
+    )
+    # Follow-cam offset expressed in the ROBOT's frame, not the world's: (behind, right, up).
+    # A world-fixed offset means a 180 deg turn shows the camera the robot's back, which is
+    # exactly when a manipulation demo becomes unreviewable. Rotating the offset by the robot's
+    # yaw keeps the same over-the-shoulder angle whichever way it faces.
+    _CAM_BEHIND, _CAM_RIGHT, _CAM_UP = -2.0, -1.6, 0.9
+    # SONIC sways continuously, so raw yaw would jitter the camera every frame. Track it with a
+    # first-order filter instead; 0.04 settles a 180 deg turn in about a second at 50 Hz.
+    _CAM_YAW_GAIN = 0.04
+    _cam_yaw = [None]        # filtered camera yaw, seeded on the first captured frame
+    # The thing the robot is working toward, if this scene has one (socket = the ceiling/wall
+    # fixture). Used only to frame the follow-cam; absent on scenes without it.
+    # Points the shot must contain: the robot, whatever it is manipulating, and the fixture it is
+    # working toward. Framing only the robot loses the fixture; framing robot+fixture crops the
+    # ladder, which is the thing the operator is actually steering.
+    _rigids = getattr(env.scene, "rigid_objects", {})
+    _frame_names = [n for n in ("ladder", "socket") if n in _rigids]
+
+    def _frame_points():
+        pts = []
+        for _n in _frame_names:
+            _o = env.scene[_n]
+            _pp = _o.data.root_pos_w[0].cpu().numpy()
+            pts.append(_pp)
+            if _n == "ladder":       # its TOP, not just the base -- that is what gets cropped
+                _q = _o.data.root_quat_w[0].cpu().numpy()
+                _up = np.array([
+                    2.0 * (_q[1] * _q[3] + _q[0] * _q[2]),
+                    2.0 * (_q[2] * _q[3] - _q[0] * _q[1]),
+                    1.0 - 2.0 * (_q[1] ** 2 + _q[2] ** 2)])
+                pts.append(_pp + 1.18 * _up)
+        return pts
+    _CAM_INSET = 0.4
+    _static_pose = None
+    _CAM_MIN = (_RMIN[0] + _CAM_INSET, _RMIN[1] + _CAM_INSET)
+    _CAM_MAX = (_RMAX[0] - _CAM_INSET, _RMAX[1] - _CAM_INSET)
+    if args.camera == "static":
+        # One fixed shot, chosen once from the layout: centre on everything that matters, then
+        # search the azimuths for the viewpoint that both fits inside the room and stands furthest
+        # off the walls -- a fixed camera that clips a wall renders the flat grey the follow-cam
+        # clamp exists to avoid.
+        _pts = [robot.data.root_pos_w[0].cpu().numpy()] + _frame_points()
+        _c = np.mean(_pts, axis=0)
+        _rad = max(float(np.linalg.norm(np.asarray(_p) - _c)) for _p in _pts)
+        _dist = 3.0 + 1.1 * _rad
+        _best, _best_margin = None, -1e9
+        for _k in range(24):
+            _th = 2.0 * math.pi * _k / 24.0
+            _cx = float(_c[0] + _dist * math.cos(_th))
+            _cy = float(_c[1] + _dist * math.sin(_th))
+            _margin = min(_cx - _CAM_MIN[0], _CAM_MAX[0] - _cx,
+                          _cy - _CAM_MIN[1], _CAM_MAX[1] - _cy)
+            if _margin > _best_margin:
+                _best, _best_margin = (_cx, _cy), _margin
+        _cx = min(max(_best[0], _CAM_MIN[0]), _CAM_MAX[0])
+        _cy = min(max(_best[1], _CAM_MIN[1]), _CAM_MAX[1])
+        _cz = float(max(2.2, _c[2] + 0.6 * _rad))      # above the fixture, looking down at it
+        _static_pose = ((_cx, _cy, _cz), (float(_c[0]), float(_c[1]), float(_c[2])))
+        print(f"[sonic] static camera at ({_cx:.2f},{_cy:.2f},{_cz:.2f}) "
+              f"looking at ({_c[0]:.2f},{_c[1]:.2f},{_c[2]:.2f})  wall margin {_best_margin:.2f} m",
+              flush=True)
+    elif args.camera == "fixture":
+        # Side view of the socket. Standing on the ROBOT's side of the socket put the robot and
+        # the ladder in the line of sight (S10: socket hidden behind both), and aiming at the
+        # mid-drop height left the socket clipped at the top edge. So: stand off to the SIDE of
+        # the robot->socket line, 4 m out, level with 1.5 m and aiming there, which puts the
+        # socket (2.2 m) ten degrees above centre and the floor beneath it in the bottom of frame.
+        # Of the two sides, take the one that lands further from the walls.
+        _sk = env.scene["socket"].data.root_pos_w[0].cpu().numpy()
+        _rb = robot.data.root_pos_w[0].cpu().numpy()
+        _dir = _rb[:2] - _sk[:2]
+        _dir = _dir / (np.linalg.norm(_dir) + 1e-6)
+        _best, _best_m = None, -1e9
+        for _sgn in (1.0, -1.0):
+            _px, _py = -_dir[1] * _sgn, _dir[0] * _sgn            # perpendicular
+            _cx = float(_sk[0] + 4.0 * _px)
+            _cy = float(_sk[1] + 4.0 * _py)
+            _m = min(_cx - _CAM_MIN[0], _CAM_MAX[0] - _cx, _cy - _CAM_MIN[1], _CAM_MAX[1] - _cy)
+            if _m > _best_m:
+                _best, _best_m = (_cx, _cy), _m
+        _cx = min(max(_best[0], _CAM_MIN[0]), _CAM_MAX[0])
+        _cy = min(max(_best[1], _CAM_MIN[1]), _CAM_MAX[1])
+        _static_pose = ((_cx, _cy, 1.5), (float(_sk[0]), float(_sk[1]), 1.5))
+        print(f"[sonic] fixture camera at ({_cx:.2f},{_cy:.2f},1.50) side-on to the socket at "
+              f"({_sk[0]:.2f},{_sk[1]:.2f},{_sk[2]:.2f}), wall margin {_best_m:.2f} m", flush=True)
+
+    def _follow_pose():
+        """Over-the-shoulder orbit point that TURNS WITH the robot, clamped inside the room.
+
+        A camera outside the walls renders flat grey (see viz.py's `_radius_inside`), and subtask
+        scenes put the robot anywhere in the room -- so clamp, then re-aim. Frames the robot AND
+        the fixture it is working toward: aiming at the robot alone puts a 2.2 m ceiling fixture
+        out of shot, which loses the very relationship the ladder tasks are about. Called for
+        every captured frame, settle included -- the settle is where spawn failures happen, and
+        an unposed camera there recorded 1.8 s of grey.
+        """
+        _b = robot.data.root_pos_w[0].cpu().numpy()
+        _q = robot.data.root_quat_w[0].cpu().numpy()          # wxyz
+        _yaw = math.atan2(2.0 * (_q[0] * _q[3] + _q[1] * _q[2]),
+                          1.0 - 2.0 * (_q[2] ** 2 + _q[3] ** 2))
+        if _cam_yaw[0] is None:
+            _cam_yaw[0] = _yaw
+        else:                                                  # filter, shortest way round
+            _d = (_yaw - _cam_yaw[0] + math.pi) % (2 * math.pi) - math.pi
+            _cam_yaw[0] += _CAM_YAW_GAIN * _d
+        _pts = [_b] + _frame_points()
+        _c = np.mean(_pts, axis=0)
+        _rad = max(float(np.linalg.norm(np.asarray(_p) - _c)) for _p in _pts)
+        _pull = 1.0 + 0.55 * _rad          # widen until every point is held
+        _cy, _sy = math.cos(_cam_yaw[0]), math.sin(_cam_yaw[0])
+        _ox = (_CAM_BEHIND * _pull) * _cy - (_CAM_RIGHT * _pull) * _sy
+        _oy = (_CAM_BEHIND * _pull) * _sy + (_CAM_RIGHT * _pull) * _cy
+        _ex = min(max(float(_b[0] + _ox), _CAM_MIN[0]), _CAM_MAX[0])
+        _ey = min(max(float(_b[1] + _oy), _CAM_MIN[1]), _CAM_MAX[1])
+        return ((_ex, _ey, float(_b[2] + _CAM_UP * _pull)), (float(_c[0]), float(_c[1]), float(_c[2])))
+
+    def _video_pose():
+        """The pose to capture the third-person video from this frame, whatever --camera says."""
+        return _static_pose if _static_pose is not None else _follow_pose()
+
+    def _settle_step(_arm):
+        """env.step during the settle, recorded when --record-settle asks for it.
+
+        The recorder normally only sees the main loop, so the settle -- where a staged payload
+        is actually lost -- never appears in a bag. Tag these rows in extras so a reader can
+        split "settle" from "operator" without guessing at step indices.
+        """
+        _out = env.step(_arm)
+        if args.record_settle and recorder is not None and recording_on:
+            # No extras: the recorder pads a column that is absent on some rows rather than
+            # aligning it, so a settle-only tag ends up 90 rows long against a 340-row bag. Settle
+            # rows are simply the first ones -- 40 pin + 50 SONIC warm = 90 -- before the main loop.
+            recorder.record_step(_out[0], _arm, _out[1], _out[2], _out[3])
+            if video is not None:
+                video.capture(pose=_video_pose())
+            if ego_video is not None:
+                ego_video.capture()
+        return _out
+
     for _k in range(40):
         robot.set_joint_position_target(leg_default, joint_ids=act_idx)
         robot.write_root_pose_to_sim(pin_pose)                   # hold base upright while feet plant
         robot.write_root_velocity_to_sim(zero_vel)
-        env.step(rest_arm_action().repeat(env.num_envs, 1))
+        _settle_step(rest_arm_action().repeat(env.num_envs, 1))
     robot.write_root_pose_to_sim(pin_pose)                       # final: level + still, then release to SONIC
     robot.write_root_velocity_to_sim(zero_vel)
     obs_hist = collections.deque([build_obs()] * HIST_LEN, maxlen=HIST_LEN)  # warm history w/ real state
@@ -598,7 +759,7 @@ def main():  # noqa: C901  (one long orchestration: env setup + settle/resettle 
         last_action = bal_sess.run(None, {in_name: flat})[0][0]
         leg_target = torch.as_tensor(last_action * ACTION_SCALE + DEFAULT_15, device=dev)
         robot.set_joint_position_target(leg_target.unsqueeze(0), joint_ids=act_idx)
-        env.step(rest_arm_action().repeat(env.num_envs, 1))
+        _settle_step(rest_arm_action().repeat(env.num_envs, 1))
     spawn_root = robot.data.root_state_w[:, 0:7].clone()         # centered pose = re-home + hold target
     home_xy = spawn_root[0, 0:2].cpu().numpy().copy()
     # Capture the hold-arms IK target ONCE, now, after the settle -- re-solving it every main-loop
@@ -810,72 +971,6 @@ def main():  # noqa: C901  (one long orchestration: env setup + settle/resettle 
         last_arm = rest_arm
 
     # Room interior for the follow-cam, inset from the walls (ROOM_FLOOR_MIN/MAX in scene_cfg).
-    from fiatlux_task.tasks.manager_based.fiatlux_task.scene_cfg import (
-        ROOM_FLOOR_MAX as _RMAX,
-    )
-    from fiatlux_task.tasks.manager_based.fiatlux_task.scene_cfg import (
-        ROOM_FLOOR_MIN as _RMIN,
-    )
-    # Follow-cam offset expressed in the ROBOT's frame, not the world's: (behind, right, up).
-    # A world-fixed offset means a 180 deg turn shows the camera the robot's back, which is
-    # exactly when a manipulation demo becomes unreviewable. Rotating the offset by the robot's
-    # yaw keeps the same over-the-shoulder angle whichever way it faces.
-    _CAM_BEHIND, _CAM_RIGHT, _CAM_UP = -2.0, -1.6, 0.9
-    # SONIC sways continuously, so raw yaw would jitter the camera every frame. Track it with a
-    # first-order filter instead; 0.04 settles a 180 deg turn in about a second at 50 Hz.
-    _CAM_YAW_GAIN = 0.04
-    _cam_yaw = [None]        # filtered camera yaw, seeded on the first captured frame
-    # The thing the robot is working toward, if this scene has one (socket = the ceiling/wall
-    # fixture). Used only to frame the follow-cam; absent on scenes without it.
-    # Points the shot must contain: the robot, whatever it is manipulating, and the fixture it is
-    # working toward. Framing only the robot loses the fixture; framing robot+fixture crops the
-    # ladder, which is the thing the operator is actually steering.
-    _rigids = getattr(env.scene, "rigid_objects", {})
-    _frame_names = [n for n in ("ladder", "socket") if n in _rigids]
-
-    def _frame_points():
-        pts = []
-        for _n in _frame_names:
-            _o = env.scene[_n]
-            _pp = _o.data.root_pos_w[0].cpu().numpy()
-            pts.append(_pp)
-            if _n == "ladder":       # its TOP, not just the base -- that is what gets cropped
-                _q = _o.data.root_quat_w[0].cpu().numpy()
-                _up = np.array([
-                    2.0 * (_q[1] * _q[3] + _q[0] * _q[2]),
-                    2.0 * (_q[2] * _q[3] - _q[0] * _q[1]),
-                    1.0 - 2.0 * (_q[1] ** 2 + _q[2] ** 2)])
-                pts.append(_pp + 1.18 * _up)
-        return pts
-    _CAM_INSET = 0.4
-    _static_pose = None
-    _CAM_MIN = (_RMIN[0] + _CAM_INSET, _RMIN[1] + _CAM_INSET)
-    _CAM_MAX = (_RMAX[0] - _CAM_INSET, _RMAX[1] - _CAM_INSET)
-    if args.camera == "static":
-        # One fixed shot, chosen once from the layout: centre on everything that matters, then
-        # search the azimuths for the viewpoint that both fits inside the room and stands furthest
-        # off the walls -- a fixed camera that clips a wall renders the flat grey the follow-cam
-        # clamp exists to avoid.
-        _pts = [robot.data.root_pos_w[0].cpu().numpy()] + _frame_points()
-        _c = np.mean(_pts, axis=0)
-        _rad = max(float(np.linalg.norm(np.asarray(_p) - _c)) for _p in _pts)
-        _dist = 3.0 + 1.1 * _rad
-        _best, _best_margin = None, -1e9
-        for _k in range(24):
-            _th = 2.0 * math.pi * _k / 24.0
-            _cx = float(_c[0] + _dist * math.cos(_th))
-            _cy = float(_c[1] + _dist * math.sin(_th))
-            _margin = min(_cx - _CAM_MIN[0], _CAM_MAX[0] - _cx,
-                          _cy - _CAM_MIN[1], _CAM_MAX[1] - _cy)
-            if _margin > _best_margin:
-                _best, _best_margin = (_cx, _cy), _margin
-        _cx = min(max(_best[0], _CAM_MIN[0]), _CAM_MAX[0])
-        _cy = min(max(_best[1], _CAM_MIN[1]), _CAM_MAX[1])
-        _cz = float(max(2.2, _c[2] + 0.6 * _rad))      # above the fixture, looking down at it
-        _static_pose = ((_cx, _cy, _cz), (float(_c[0]), float(_c[1]), float(_c[2])))
-        print(f"[sonic] static camera at ({_cx:.2f},{_cy:.2f},{_cz:.2f}) "
-              f"looking at ({_c[0]:.2f},{_c[1]:.2f},{_c[2]:.2f})  wall margin {_best_margin:.2f} m",
-              flush=True)
 
     n_walk = 6
     vr_rec_prev = False   # rising-edge detect for the VR record-toggle button
@@ -1063,38 +1158,8 @@ def main():  # noqa: C901  (one long orchestration: env setup + settle/resettle 
                         print("[sonic] *** SUCCESS -- gate satisfied; closing the take ***",
                               flush=True)
                         rec_flag["toggle"] = True
-                    if video is not None and _static_pose is not None:
-                        video.capture(pose=_static_pose)          # fixed wide shot, computed once
-                    elif video is not None:
-                        # Follow-cam: an over-the-shoulder orbit point that TURNS WITH the robot,
-                        # then CLAMPED INSIDE THE ROOM -- a camera outside the walls renders flat
-                        # grey (see viz.py's `_radius_inside`), and subtask scenes put the robot
-                        # anywhere in the room. Clamp, then re-aim at the robot.
-                        _b = robot.data.root_pos_w[0].cpu().numpy()
-                        _q = robot.data.root_quat_w[0].cpu().numpy()          # wxyz
-                        _yaw = math.atan2(2.0 * (_q[0] * _q[3] + _q[1] * _q[2]),
-                                          1.0 - 2.0 * (_q[2] ** 2 + _q[3] ** 2))
-                        if _cam_yaw[0] is None:
-                            _cam_yaw[0] = _yaw
-                        else:                                                  # filter, shortest way round
-                            _d = (_yaw - _cam_yaw[0] + math.pi) % (2 * math.pi) - math.pi
-                            _cam_yaw[0] += _CAM_YAW_GAIN * _d
-                        # Frame the robot AND the fixture it is working toward. Aiming at the
-                        # robot alone puts a 2.2 m ceiling fixture out of shot, which loses the
-                        # very relationship the ladder tasks are about; aim at their midpoint and
-                        # pull back in proportion to how far apart they are.
-                        _pts = [_b] + _frame_points()
-                        _c = np.mean(_pts, axis=0)
-                        _rad = max(float(np.linalg.norm(np.asarray(_p) - _c)) for _p in _pts)
-                        _tx, _ty, _tz = float(_c[0]), float(_c[1]), float(_c[2])
-                        _pull = 1.0 + 0.55 * _rad          # widen until every point is held
-                        _cy, _sy = math.cos(_cam_yaw[0]), math.sin(_cam_yaw[0])
-                        _ox = (_CAM_BEHIND * _pull) * _cy - (_CAM_RIGHT * _pull) * _sy
-                        _oy = (_CAM_BEHIND * _pull) * _sy + (_CAM_RIGHT * _pull) * _cy
-                        _ex = min(max(float(_b[0] + _ox), _CAM_MIN[0]), _CAM_MAX[0])
-                        _ey = min(max(float(_b[1] + _oy), _CAM_MIN[1]), _CAM_MAX[1])
-                        video.capture(pose=((_ex, _ey, float(_b[2] + _CAM_UP * _pull)),
-                                            (_tx, _ty, _tz)))
+                    if video is not None:
+                        video.capture(pose=_video_pose())
                     if ego_video is not None:
                         ego_video.capture()          # head-mounted: pose comes from the robot
                     if images is not None:
@@ -1103,7 +1168,7 @@ def main():  # noqa: C901  (one long orchestration: env setup + settle/resettle 
                 # commanded arm EE is still ~at the rest target. (The retargeters return HELD, non-None
                 # values even with the headset off, so gating on `out is None` never fired.) This stops the
                 # redundant IK's slow null-space drift; the instant the operator moves the arm it releases.
-                if bool(torch.allclose(last_arm, rest_arm, atol=0.05)):
+                if not args.no_arm_pin and bool(torch.allclose(last_arm, rest_arm, atol=0.05)):
                     robot.write_joint_state_to_sim(_hold_pose, _hold_zero, joint_ids=_hold_idx)
 
                 step_i += 1
