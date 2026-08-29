@@ -86,6 +86,10 @@ FRESH_BULB_DROP_HEIGHT = 0.4  # m; the fresh bulb's working heights are table (~
 OLD_BULB_DROP_HEIGHT = 0.15  # m; must clear a bulb resting *inside* the floor crate (~0.1)
 BAYONET_INSERTION_DEPTH = 0.034  # m; travel from socket mouth to fully seated
 BAYONET_ROTATION_ANGLE = 0.5 * math.pi  # rad; quarter turn from released to locked
+# rad; how far the bulb may point away from the seat axis and still enter the channel. Its own
+# constant since #90: it used to borrow SEAT_ORI_THRESHOLD, a seating-SUCCESS threshold, which
+# measures the full frame and so counted the screwing motion itself as misalignment.
+BAYONET_ENTRY_TILT = 0.2
 
 ##
 # MDP settings
@@ -205,7 +209,7 @@ class EventCfg:
             # exactly, and it is the failure mode #77 predicted a wrong sign would produce.
             "rotation_sign": -1.0,
             "radial_tolerance": SEAT_POS_THRESHOLD,
-            "orientation_tolerance": SEAT_ORI_THRESHOLD,
+            "tilt_tolerance": BAYONET_ENTRY_TILT,
         },
     )
     reset_all = EventTerm(func=mdp.reset_scene_to_default, mode="reset")

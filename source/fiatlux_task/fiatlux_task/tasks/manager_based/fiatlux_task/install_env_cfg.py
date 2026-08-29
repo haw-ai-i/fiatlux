@@ -172,6 +172,12 @@ class RewardsCfg:
     align_position = RewTerm(func=mdp.object_socket_distance, weight=-1.0)
     align_position_tanh = RewTerm(func=mdp.object_socket_distance_tanh, weight=0.5, params={"std": 0.1})
     seat_position_exp = RewTerm(func=mdp.object_socket_distance_exp, weight=1.0, params={"sigma": 0.02})
+    # Full-frame, and it has to stay that way while Install has no state machine. Axis-only
+    # alignment would pay a bulb at any clock angle in full, while `seated_bonus` and the success
+    # DoneTerm below both gate on `bulb_seated`, whose ori_threshold is full-frame -- the dense
+    # channel would point somewhere success cannot follow. Switch this to
+    # `mate_terms.bulb_axis_alignment_tanh` in the same change that ports `bulb_attachment` here
+    # and makes success attach-aware (#76 Step 2), not before.
     align_orientation = RewTerm(func=mdp.object_socket_orientation_tanh, weight=0.3, params={"std": 0.3})
     seated_bonus = RewTerm(
         func=mdp.bulb_seated,
