@@ -83,7 +83,10 @@ def grasp_targets(variant: str, hand: str) -> dict[str, float]:
 def main() -> int:
     set_layout_seed(args_cli.seed)
     cfg = parse_env_cfg(args_cli.task, device=args_cli.device, num_envs=1)
-    swap_robot_variant(cfg, args_cli.variant)
+    # The scene is authored Inspire, and swapping a variant onto itself trips the remap guard on
+    # the task's own hand-scoped action term. Only swap when the target differs.
+    if args_cli.variant != "inspire":
+        swap_robot_variant(cfg, args_cli.variant)
     env = gym.make(args_cli.task, cfg=cfg).unwrapped
     env.reset()
 
@@ -109,7 +112,7 @@ def main() -> int:
             bulb.write_root_velocity_to_sim(zeros6)
         env.step(action)
 
-    def report() -> tuple[float, float, float, float]:
+    def report() -> tuple[float, float, float, float, float]:
         palm = robot.data.body_pos_w[0, palm_idx, :]
         pos = bulb.data.root_pos_w[0]
         dist = float(torch.norm(pos - palm)) * 1000.0
@@ -117,7 +120,10 @@ def main() -> int:
         force = max(
             (float(torch.norm(_obs.object_contact_forces(env.scene.sensors[s]), dim=-1).max())) for s in sensors
         )
-        return dist, float(pos[2]), speed, force
+        # The ACTUAL finger angles, not the commanded target. "The bulb did not fall" has a
+        # trivial explanation -- the fingers never opened -- and nothing else here rules it out.
+        curl = float(robot.data.joint_pos[0, joint_ids].abs().max())
+        return dist, float(pos[2]), speed, force, curl
 
     print(f"SETUP variant={args_cli.variant} hand={args_cli.hand} task={args_cli.task}", flush=True)
 
@@ -127,7 +133,7 @@ def main() -> int:
     grasped = report()
     print(
         f"GRASPED   dist={grasped[0]:6.1f} mm  z={grasped[1]:.4f} m  "
-        f"|v|={grasped[2]:6.1f} mm/s  force={grasped[3]:8.2f} N",
+        f"|v|={grasped[2]:6.1f} mm/s  force={grasped[3]:8.2f} N  max|curl|={grasped[4]:.3f} rad",
         flush=True,
     )
 
@@ -135,19 +141,27 @@ def main() -> int:
     for step_index in range(args_cli.release_steps):
         hold(opened, park_bulb=False)
         if step_index in (0, 4, 9, 19, 39, args_cli.release_steps - 1):
-            dist, z, speed, force = report()
+            dist, z, speed, force, curl = report()
             print(
                 f"  +{step_index + 1:3d} steps  dist={dist:6.1f} mm  z={z:.4f} m  "
-                f"|v|={speed:6.1f} mm/s  force={force:8.2f} N",
+                f"|v|={speed:6.1f} mm/s  force={force:8.2f} N  max|curl|={curl:.3f} rad",
                 flush=True,
             )
 
     final = report()
-    fell = final[1] < grasped[1] - 0.05  # 5 cm below where it was held
-    left = final[0] > grasped[0] + 50.0  # 5 cm further from the palm
+    dropped_mm = (grasped[1] - final[1]) * 1000.0
+    moved_mm = final[0] - grasped[0]
+    # Three outcomes, not two. An earlier version scored "moved far from the palm" as RELEASED,
+    # which called a bulb flung upward across the room a successful drop.
+    if dropped_mm > 50.0:
+        verdict = "RELEASED (fell)"
+    elif moved_mm > 50.0:
+        verdict = "EJECTED (left the hand without falling -- flung, not dropped)"
+    else:
+        verdict = "STUCK"
     print(
-        f"\nVERDICT {'RELEASED' if (fell or left) else 'STUCK'} -- "
-        f"dropped {(grasped[1] - final[1]) * 1000:.1f} mm, moved {final[0] - grasped[0]:+.1f} mm from the palm",
+        f"\nVERDICT {verdict} -- dropped {dropped_mm:+.1f} mm, moved {moved_mm:+.1f} mm from the "
+        f"palm, fingers at max|curl|={final[4]:.3f} rad (0 = fully open)",
         flush=True,
     )
     env.close()
