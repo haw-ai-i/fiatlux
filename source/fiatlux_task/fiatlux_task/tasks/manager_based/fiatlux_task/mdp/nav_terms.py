@@ -34,8 +34,6 @@ from isaaclab.assets import Articulation, RigidObject
 from isaaclab.managers import SceneEntityCfg
 from isaaclab.sensors import ContactSensor, ContactSensorCfg
 
-from fiatlux_task.assets import G1_HORIZONTAL_REACH
-
 from ..scene_cfg import (
     CLIMB_ROBOT_POSITION,
     DISPOSAL_ZONE_HALF_SIZE,
@@ -65,16 +63,25 @@ LADDER_MOUNT_RADIUS = math.dist(CLIMB_ROBOT_POSITION[:2], LADDER_POSITION[:2])
 # manipulation standoff, applied to the replace preset's randomly placed copy of that table.
 BULB_APPROACH_RADIUS = math.dist(TABLETOP_ROBOT_POSITION[:2], TABLETOP_BULB_POSITION[:2])
 
-# Which side of the table to stand on, scaled to G1_HORIZONTAL_REACH less a margin. A radius
-# alone can land the robot under the table; the un-scaled tabletop offset (0.626 m) is a
-# walking-approach distance, at which the bulb is 12 cm outside reach even fully extended.
+# Which side of the table to stand on: the tabletop preset's authored approach vector, UNSCALED
+# (0.626 m). A radius alone can land the robot under the table, hence a direction rather than a
+# distance.
+#
+# This used to be rescaled to ``G1_HORIZONTAL_REACH - 0.05`` (0.4545 m) so the bulb was within
+# arm's reach from a standing start. That put the robot's arms inside the bench: MEASURED at the
+# staged pose against the table's real collider, 20 links overlap it at seed 0 and 25 at seed 1 --
+# both wrists, both hands and nearly every finger -- with a 6.6 mm first-step depenetration jump.
+# At 0.626 the same measurement gives 0 overlapping links (seed 0) and 3 shallow finger links
+# (seed 1, from the +/-5 cm reset jitter), and the jump falls to 1.2 mm. Issue #104.
+#
+# The two constraints do not both fit: the crossover is around 0.48-0.50 m, so ANY standoff that
+# clears the bench already has the bulb outside ``G1_HORIZONTAL_REACH``. Resolved in favour of
+# clearance -- S08 may take a step to close the last ~0.12 m. It is a grasp task, not a walking
+# one, but a policy that cannot step to its object cannot do the job either, and a start state
+# whose arms begin inside the furniture is not a start state.
 _TABLETOP_APPROACH_DX = TABLETOP_ROBOT_POSITION[0] - TABLETOP_BULB_POSITION[0]
 _TABLETOP_APPROACH_DY = TABLETOP_ROBOT_POSITION[1] - TABLETOP_BULB_POSITION[1]
-_TABLETOP_APPROACH_DIST = math.hypot(_TABLETOP_APPROACH_DX, _TABLETOP_APPROACH_DY)
-BULB_APPROACH_OFFSET = (
-    _TABLETOP_APPROACH_DX / _TABLETOP_APPROACH_DIST * (G1_HORIZONTAL_REACH - 0.05),
-    _TABLETOP_APPROACH_DY / _TABLETOP_APPROACH_DIST * (G1_HORIZONTAL_REACH - 0.05),
-)
+BULB_APPROACH_OFFSET = (_TABLETOP_APPROACH_DX, _TABLETOP_APPROACH_DY)
 
 # "Close enough to be standing at the crate." PROVISIONAL: the crate's own layout zone
 # half-extent (footprint + working clearance); no authored robot-relative standoff exists.
