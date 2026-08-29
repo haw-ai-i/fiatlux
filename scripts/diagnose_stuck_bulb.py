@@ -37,7 +37,14 @@ parser.add_argument("--task", type=str, default="FIATLUX-Remove-v0")
 parser.add_argument("--variant", type=str, default="dex3", choices=["dex3", "inspire"])
 parser.add_argument("--hand", type=str, default="left", choices=["left", "right"])
 parser.add_argument("--settle-steps", type=int, default=60, help="Steps to hold the closed grasp.")
-parser.add_argument("--release-steps", type=int, default=60, help="Steps to watch after opening.")
+parser.add_argument(
+    "--release-steps",
+    type=int,
+    default=180,
+    help="Steps to watch after opening. Needs to exceed the hand actuators' travel time: at 60 the "
+    "fingers were still at 0.37-0.49 rad when the verdict was read, so 'the bulb stayed' had a "
+    "trivial explanation.",
+)
 parser.add_argument("--seed", type=int, default=0)
 AppLauncher.add_app_launcher_args(parser)
 args_cli = parser.parse_args()
@@ -140,7 +147,7 @@ def main() -> int:
     # 3. release: the bulb is now physics-owned, nothing writes its pose again
     for step_index in range(args_cli.release_steps):
         hold(opened, park_bulb=False)
-        if step_index in (0, 4, 9, 19, 39, args_cli.release_steps - 1):
+        if step_index in (0, 9, 39, 89, 139, args_cli.release_steps - 1):
             dist, z, speed, force, curl = report()
             print(
                 f"  +{step_index + 1:3d} steps  dist={dist:6.1f} mm  z={z:.4f} m  "
@@ -156,7 +163,10 @@ def main() -> int:
     # told apart from "nothing falls in this scene".
     palm_now = robot.data.body_pos_w[0, palm_idx, :].clone()
     aside = palm_now.clone()
-    aside[0] += 0.6  # clear of the robot entirely
+    # STRAIGHT UP, into open air. An earlier version moved it 60 cm sideways, which put it inside
+    # the bench furniture: depenetration launched it upward and the control reported the bulb
+    # RISING 170 mm, which is not a gravity measurement.
+    aside[2] += 0.8
     bulb.write_root_pose_to_sim(torch.cat([aside, bulb.data.root_quat_w[0]]).unsqueeze(0))
     bulb.write_root_velocity_to_sim(zeros6)
     free_start = float(bulb.data.root_pos_w[0, 2])
@@ -183,6 +193,11 @@ def main() -> int:
     print(
         f"CONTROL   the same bulb with NO hand touching it fell {free_drop_mm:.1f} mm over the "
         f"same {args_cli.release_steps} steps",
+        flush=True,
+    )
+    print(
+        f"FINGERS   {'OPEN' if final[4] < 0.05 else 'NOT OPEN'} at the verdict "
+        f"(max|curl|={final[4]:.3f} rad). Every conclusion here depends on this.",
         flush=True,
     )
     print(
