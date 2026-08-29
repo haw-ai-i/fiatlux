@@ -423,7 +423,7 @@ def main():  # noqa: C901  (one long orchestration: env setup + settle/resettle 
     _legs = {".*_hip_pitch_joint": -0.1, ".*_knee_joint": 0.3, ".*_ankle_pitch_joint": -0.2}
     # LadderGallery is a Carry-derived task -- its IK HOLDS the spawn pose too, so it needs the same
     # natural low spawn as Carry (spawning it at Insert's 1.57 would leave the arm tucked up at 90 deg).
-    # The S01..S15 subtask teleop envs are whole-body walking tasks like Carry, so they take the
+    # The S01..S12 subtask teleop envs are whole-body walking tasks like Carry, so they take the
     # same natural low spawn (their ids carry no "Carry"/"Gallery" marker -- match "-S<NN>-").
     if "Carry" in args.task or "Gallery" in args.task or _is_subtask_task:
         # Drop the SHOULDER so the arm hangs low. The elbow drifts up to ~1.1 on its own (redundant IK),

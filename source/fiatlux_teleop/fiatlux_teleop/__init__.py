@@ -45,7 +45,7 @@ gym.register(
     kwargs={"env_cfg_entry_point": f"{__name__}.ladder_gallery_teleop_env_cfg:LadderGalleryTeleopEnvCfg"},
 )
 
-# --- teleop twins of the 15 benchmark subtasks -------------------------------------------
+# --- teleop twins of the 12 benchmark subtasks -------------------------------------------
 # Each has its own thin cfg file under `subtasks/` (matching how the benchmark writes its
 # subtasks: explicit file per task + shared behaviour in a common module -- here
 # `subtask_teleop.apply_subtask_teleop`). Registration is table-driven so ids and entry
