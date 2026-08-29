@@ -44,3 +44,20 @@ gym.register(
     disable_env_checker=True,
     kwargs={"env_cfg_entry_point": f"{__name__}.ladder_gallery_teleop_env_cfg:LadderGalleryTeleopEnvCfg"},
 )
+
+# --- teleop twins of the 12 benchmark subtasks -------------------------------------------
+# Each has its own thin cfg file under `subtasks/` (matching how the benchmark writes its
+# subtasks: explicit file per task + shared behaviour in a common module -- here
+# `subtask_teleop.apply_subtask_teleop`). Registration is table-driven so ids and entry
+# points cannot drift apart.
+from .subtask_teleop import SUBTASKS  # noqa: E402
+
+for _tid, _mod, _cls in SUBTASKS:
+    _teleop_mod = _mod.replace("_env_cfg", "_teleop_env_cfg")
+    _teleop_cls = _cls.replace("EnvCfg", "TeleopEnvCfg")
+    gym.register(
+        id=f"{_tid}-Teleop-v0",
+        entry_point="isaaclab.envs:ManagerBasedRLEnv",
+        disable_env_checker=True,
+        kwargs={"env_cfg_entry_point": f"{__name__}.subtasks.{_teleop_mod}:{_teleop_cls}"},
+    )
