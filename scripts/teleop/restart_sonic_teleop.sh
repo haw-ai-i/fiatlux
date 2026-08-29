@@ -16,11 +16,23 @@ HAND="${FIATLUX_HAND:-dex3}"                       # dex3 | inspire
 #   FIATLUX_RECORD_VIDEO=1  also render a follow-cam MP4 (implies RECORD)
 #   FIATLUX_RECORD_START=toggle   start with recording OFF (right controller B = upper button toggles)
 #   FIATLUX_RECORD_FORMAT=npz     bag as npz instead of hdf5
+#   FIATLUX_WALK_SCALE=1.2        m/s at full left-stick deflection (default 1.0)
+#   FIATLUX_LAYOUT_SEED=42        room layout: an integer reproduces that exact room,
+#                                 'random' draws one. The seed in use is always printed
+#                                 and stored in the demo bag's meta.json.
 RECORD_ARGS=()
 [ "${FIATLUX_RECORD:-0}" = 1 ] && RECORD_ARGS+=(--record bag)
 [ "${FIATLUX_RECORD_VIDEO:-0}" = 1 ] && RECORD_ARGS+=(--record-video)
 [ -n "${FIATLUX_RECORD_START:-}" ] && RECORD_ARGS+=(--record-start "$FIATLUX_RECORD_START")
 [ -n "${FIATLUX_RECORD_FORMAT:-}" ] && RECORD_ARGS+=(--record-format "$FIATLUX_RECORD_FORMAT")
+EXTRA_ARGS=()
+[ -n "${FIATLUX_LAYOUT_SEED:-}" ] && EXTRA_ARGS+=(--layout_seed "$FIATLUX_LAYOUT_SEED")
+[ -n "${FIATLUX_WALK_SCALE:-}" ] && EXTRA_ARGS+=(--walk_scale "$FIATLUX_WALK_SCALE")
+[ -n "${FIATLUX_CAMERA:-}" ] && EXTRA_ARGS+=(--camera "$FIATLUX_CAMERA")
+[ "${FIATLUX_LOCK_BASE:-0}" = 1 ] && EXTRA_ARGS+=(--lock-base)
+[ "${FIATLUX_RECORD_SETTLE:-0}" = 1 ] && EXTRA_ARGS+=(--record-settle)
+[ "${FIATLUX_NO_ARM_PIN:-0}" = 1 ] && EXTRA_ARGS+=(--no-arm-pin)
+[ -n "${FIATLUX_OUT:-}" ] && EXTRA_ARGS+=(--out "$FIATLUX_OUT")
 REPO="${FIATLUX_REPO:-$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)}"
 LOGDIR="/tmp/fiatlux-xr"; mkdir -p "$LOGDIR"
 source ~/miniconda3/etc/profile.d/conda.sh
@@ -67,9 +79,15 @@ source ~/.cloudxr/run/cloudxr.env
 cd "$REPO"
 export PYTHONPATH="$REPO/source/fiatlux_task:$REPO/source/fiatlux_teleop"
 export DISPLAY="${DISPLAY:-:1001}"
+# Kit prompts for the EULA on stdin, and this launches under nohup with no tty -- the prompt then
+# fails with "Unable to bootstrap inner kit kernel: EOF when reading a line" and the only symptom
+# upstairs is "sim not ready yet". Passed through if the caller already set it; the default
+# matches what setup_sim_teleop.sh in this same directory already uses.
+export OMNI_KIT_ACCEPT_EULA="${OMNI_KIT_ACCEPT_EULA:-YES}"
 echo "   task=$TASK hand=$HAND"
 nohup "$SIM_PY" -u scripts/teleop/sonic_teleop.py --task "$TASK" --hand "$HAND" \
-    ${RECORD_ARGS[@]+"${RECORD_ARGS[@]}"} > "$LOGDIR/sonic_teleop.log" 2>&1 &
+    ${RECORD_ARGS[@]+"${RECORD_ARGS[@]}"} ${EXTRA_ARGS[@]+"${EXTRA_ARGS[@]}"} \
+    > "$LOGDIR/sonic_teleop.log" 2>&1 &
 for _ in $(seq 1 150); do grep -q "Teleop ready" "$LOGDIR/sonic_teleop.log" 2>/dev/null && break; sleep 2; done
 if grep -q "Teleop ready" "$LOGDIR/sonic_teleop.log"; then echo "   sim ready"; else
   echo "   sim not ready yet -- watch: tail -f $LOGDIR/sonic_teleop.log"; fi
