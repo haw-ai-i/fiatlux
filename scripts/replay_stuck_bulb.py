@@ -40,6 +40,14 @@ parser.add_argument("--variant", type=str, default="dex3", choices=["dex3", "ins
 parser.add_argument("--start", type=int, default=1520, help="Bag step to seed from (hand still closed).")
 parser.add_argument("--steps", type=int, default=58, help="Bag steps to replay forward.")
 parser.add_argument("--free-bulb", action="store_true", help="Seed the bulb once, then let physics own it.")
+parser.add_argument(
+    "--bare",
+    action="store_true",
+    help="Drop the scene furniture and pin the robot's root. The bag came from a different task, so "
+    "its table, socket and crate sit elsewhere -- the recorded bulb pose lands INSIDE this task's "
+    "table and is ejected at 2 m/s before the hand is ever involved. Only the hand matters here.",
+)
+parser.add_argument("--render", type=str, default=None, help="Write a PNG of the seeded grasp to this path.")
 AppLauncher.add_app_launcher_args(parser)
 args_cli = parser.parse_args()
 args_cli.headless = True
@@ -59,6 +67,7 @@ import torch  # noqa: E402
 from fiatlux_task.robots.g1 import swap_robot_variant  # noqa: E402
 from fiatlux_task.tasks.manager_based.fiatlux_task.mdp import observations as _obs  # noqa: E402
 from fiatlux_task.tasks.manager_based.fiatlux_task.scene_cfg import set_layout_seed  # noqa: E402
+from fiatlux_task.viz import make_video_camera_cfg  # noqa: E402
 
 from isaaclab.utils.math import quat_apply, quat_inv, quat_mul  # noqa: E402
 
@@ -66,6 +75,7 @@ from isaaclab_tasks.utils import parse_env_cfg  # noqa: E402
 
 
 def main() -> int:
+
     with open(args_cli.meta) as meta_file:
         meta = json.load(meta_file)
     bag_joint_names = meta["joint_names"]
@@ -80,6 +90,15 @@ def main() -> int:
     cfg = parse_env_cfg(args_cli.task, device=args_cli.device, num_envs=1)
     if args_cli.variant != "inspire":
         swap_robot_variant(cfg, args_cli.variant)
+    if args_cli.bare:
+        # Nothing but the robot and the bulb. A free base with zero actions also sags, and a
+        # sagging robot tilts the bag->sim transform, so pin the root as well.
+        for entity in ("table", "bin", "ladder", "socket", "pendant", "fixture"):
+            if getattr(cfg.scene, entity, None) is not None:
+                setattr(cfg.scene, entity, None)
+        cfg.scene.robot.spawn.articulation_props.fix_root_link = True
+    if args_cli.render:
+        cfg.scene.video_cam = make_video_camera_cfg()
     env = gym.make(args_cli.task, cfg=cfg).unwrapped
     env.reset()
 
@@ -129,6 +148,31 @@ def main() -> int:
     p0, q0 = to_sim(bulb_pos[args_cli.start], bulb_quat[args_cli.start])
     bulb.write_root_pose_to_sim(torch.cat([p0, q0], dim=-1))
     bulb.write_root_velocity_to_sim(zeros6)
+
+    if args_cli.render:
+        # Look at the seeded grasp from close range, from three sides. One picture settles whether
+        # the bulb is buried in the palm, which no amount of force arithmetic has managed to.
+        import imageio.v2 as imageio
+
+        cam = env.scene["video_cam"]
+        target = tuple(float(v) for v in p0[0])
+        for tag, offset in (
+            ("side", (0.30, -0.02, 0.04)),
+            ("front", (0.02, -0.30, 0.04)),
+            ("top", (0.02, -0.04, 0.30)),
+        ):
+            eye = tuple(t + o for t, o in zip(target, offset))
+            cam.set_world_poses_from_view(
+                torch.tensor(eye, dtype=torch.float32, device=dev).expand(env.num_envs, 3),
+                torch.tensor(target, dtype=torch.float32, device=dev).expand(env.num_envs, 3),
+            )
+            for _ in range(3):
+                env.sim.render()
+            cam.update(0.0)
+            frame = cam.data.output["rgb"][0, ..., :3].detach().cpu().numpy().astype(np.uint8)
+            path = args_cli.render.rsplit(".", 1)[0] + f"_{tag}.png"
+            imageio.imwrite(path, frame)
+            print(f"RENDER  wrote {path}", flush=True)
 
     sensors = [n for n in ("hand_contact", "left_hand_contact") if n in env.scene.sensors]
     weight = 0.035 * 9.81
