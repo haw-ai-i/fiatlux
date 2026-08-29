@@ -148,6 +148,10 @@ def main() -> int:
                 flush=True,
             )
 
+    # Read the release outcome BEFORE the control runs. The control teleports the bulb, so a
+    # measurement taken after it reports where the control put it, not where the hand left it.
+    final = report()
+
     # Control: the same bulb, same physics, no hand. Without this, "it did not fall" cannot be
     # told apart from "nothing falls in this scene".
     palm_now = robot.data.body_pos_w[0, palm_idx, :].clone()
@@ -160,7 +164,6 @@ def main() -> int:
         env.step(action)
     free_drop_mm = (free_start - float(bulb.data.root_pos_w[0, 2])) * 1000.0
 
-    final = report()
     dropped_mm = (grasped[1] - final[1]) * 1000.0
     moved_mm = final[0] - grasped[0]
     # Three outcomes, not two. An earlier version scored "moved far from the palm" as RELEASED,
