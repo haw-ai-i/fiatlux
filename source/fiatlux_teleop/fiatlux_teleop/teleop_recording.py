@@ -102,6 +102,85 @@ def _embed_score(out_dir) -> dict | None:
         return None
 
 
+def _write_score_report(out_dir, info: dict, gate_seconds: float) -> None:
+    """Explain the take's score in plain text, next to the bag.
+
+    A bare 0.00 tells the operator nothing about WHY. This reconstructs the verdict from the
+    recorded gate columns: which conjunct held, for how long, which one broke the sustained run
+    and how often, and what the penalties did to the final number.
+    """
+    import glob
+    try:
+        import h5py
+    except ImportError:
+        return
+    bags = glob.glob(os.path.join(out_dir, "run.h5")) + glob.glob(os.path.join(out_dir, "run.npz"))
+    if not bags or not bags[0].endswith(".h5"):
+        return
+    sc = info.get("score") or {}
+    cfg = sc.get("score_config") or {}
+    lines = []
+    try:
+        with h5py.File(bags[0], "r") as f:
+            demos = sorted(f["data"].keys())
+            need = max(1, round(gate_seconds / 0.02)) if gate_seconds else 0
+            lines.append(f"score: {sc.get('mean_score')}   success_rate: {sc.get('success_rate')}"
+                         f"   episodes: {len(demos)}")
+            lines.append("")
+            for k in demos:
+                ep = f["data"][k]
+                n = len(np.array(ep["success_term"]))
+                succ = bool(np.array(ep["success_term"]).any())
+                lines.append(f"--- {k}: {n} steps ({n * 0.02:.1f}s) -> "
+                             f"{'SUCCESS' if succ else 'no success'}")
+                cols = sorted(c for c in ep if c.startswith("gate_"))
+                if not cols:
+                    lines.append("    (no gate columns recorded)")
+                    continue
+                vals = {c: np.array(ep[c]).astype(bool) for c in cols}
+                allc = np.ones(n, dtype=bool)
+                for c in cols:
+                    allc &= vals[c]
+                for c in cols:
+                    a = vals[c]
+                    idx = np.flatnonzero(np.diff(np.r_[0, a.astype(np.int8), 0]))
+                    runs = (idx[1::2] - idx[::2]) if len(idx) else np.array([0])
+                    lines.append(f"    {c.replace('gate_', ''):26s} held {100.0 * a.sum() / n:5.1f}%"
+                                 f"   longest {runs.max() * 0.02:5.2f}s")
+                idx = np.flatnonzero(np.diff(np.r_[0, allc.astype(np.int8), 0]))
+                runs = (idx[1::2] - idx[::2]) if len(idx) else np.array([0])
+                lines.append(f"    ALL TOGETHER               longest {runs.max() * 0.02:5.2f}s"
+                             f"   (needs {gate_seconds:.2f}s)")
+                if not succ and need:
+                    breaks = np.flatnonzero(allc[:-1] & ~allc[1:]) + 1
+                    who = {c: sum(1 for b in breaks if not vals[c][b]) for c in cols}
+                    worst = [f"{c.replace('gate_', '')} ({k2}x)"
+                             for c, k2 in sorted(who.items(), key=lambda x: -x[1]) if k2]
+                    if worst:
+                        lines.append(f"    WHY NOT: the run was broken {len(breaks)} time(s) by "
+                                     + ", ".join(worst))
+                    elif runs.max() == 0:
+                        never = [c.replace("gate_", "") for c in cols if not vals[c].any()]
+                        lines.append("    WHY NOT: never satisfied at once; never true at all: "
+                                     + (", ".join(never) if never else "(all held at some point)"))
+            lines.append("")
+            pen = []
+            if sc.get("broken_rate"):
+                pen.append(f"BROKEN  -{cfg.get('broken_penalty', 1.0)} "
+                           f"(peak contact {sc.get('peak_contact_force', 0):.1f} N > "
+                           f"{cfg.get('fragility_threshold', 50)} N)")
+            if sc.get("dropped_rate"):
+                pen.append(f"DROPPED -{cfg.get('dropped_penalty', 1.0)} "
+                           f"(payload below {cfg.get('drop_min_height', 0.4)} m)")
+            lines.append("penalties: " + ("; ".join(pen) if pen else "none"))
+            lines.append(f"arithmetic: 1.0 per successful episode, minus penalties, floored at "
+                         f"{cfg.get('min_score', 0.0)}, averaged over {len(demos)} episode(s)"
+                         f"  ->  {sc.get('mean_score')}")
+    except Exception as e:  # noqa: BLE001
+        lines.append(f"(report incomplete: {e!r})")
+    Path(out_dir, "score_report.txt").write_text("\n".join(lines) + "\n")
+
+
 class ImageCapture:
     """Optional per-camera frame capture for image-based training (ACT and friends).
 
@@ -161,6 +240,60 @@ class TeleopTrajectoryRecorder(TrajectoryRecorder):
 
         self._has_insert = _has("bulb") and _has("socket")
         self._has_contact = "hand_contact" in getattr(env.scene, "sensors", {})
+        # Track EVERY rigid object in the scene, not just bulb+socket. The hardcoded pair meant
+        # the ladder -- the whole point of S01-MoveLadder -- was absent from its own bag, so a
+        # failed take could not be diagnosed against the task's own success conditions (all four
+        # of which are about the ladder). An env cfg may curate the list with a `record_objects`
+        # tuple; unknown names are skipped rather than fatal.
+        _declared = getattr(getattr(env, "cfg", None), "record_objects", None)
+        _names = list(_declared) if _declared is not None else list(
+            getattr(env.scene, "rigid_objects", {}).keys())
+        self._tracked_objects = [n for n in _names if _has(n)]
+        # EVERY contact sensor, discovered rather than listed. A hardcoded list missed
+        # `release_contact` (S06's object_released gate) -- the same failure mode as hardcoding
+        # bulb+socket and losing the ladder. hand_contact is excluded only because it is already
+        # recorded above as `contact_force`.
+        # discover the success gate's conjunct list, if the task expresses it as data
+        self._gate_conjuncts = []
+        try:
+            _cfg = getattr(env, "cfg", None)
+            # the driver stashes this before clearing the termination (so a success cannot reset
+            # the scene); fall back to the live term for callers that keep it
+            _params = getattr(_cfg, "teleop_success_spec", None)
+            _fn = getattr(_cfg, "teleop_success_fn", None)
+            if _params is None:
+                _succ = getattr(getattr(_cfg, "terminations", None), "success", None)
+                _params = (_succ.params or {}) if _succ else {}
+                _fn = getattr(_succ, "func", None) if _succ else None
+            # Use the benchmark's own unwrapper: gates come in two shapes -- `sustained`
+            # (predicates nested under predicate_params, plus a hold window) and a bare `all_of`
+            # (predicates at the top level, fires on the first frame they all hold). Hand-rolling
+            # the first shape silently skipped every task built on the second.
+            from fiatlux_task.tasks.manager_based.fiatlux_task.mdp.gates import conjuncts_of
+            self._gate_conjuncts = list(conjuncts_of(_fn, _params))
+            self._gate_seconds = float(_params.get("seconds") or 0.0)
+        except Exception:                                         # noqa: BLE001
+            self._gate_conjuncts = []
+            self._gate_seconds = 0.0
+        # The gate is evaluated HERE rather than by the termination manager, so a success does not
+        # reset the scene mid-take: the operator decides when an episode ends. Mirrors
+        # mdp.gates.sustained (consecutive steps, reset by a single false frame), then LATCHES --
+        # scripts/score.py reads success_term on the episode's LAST step, and without the latch a
+        # demo that achieved the task and kept going would score 0.
+        self._gate_hold = 0
+        self._gate_fired = False
+        self._gate_need = (max(1, round(self._gate_seconds / float(getattr(env, "step_dt", 0.02))))
+                           if self._gate_seconds else (1 if self._gate_conjuncts else 0))
+        if self._gate_conjuncts:
+            print("[teleop_recording] recording gate conjuncts: "
+                  + ", ".join(getattr(f, "__name__", "?") for f, _ in self._gate_conjuncts),
+                  flush=True)
+        else:
+            print("[teleop_recording] WARNING: no success gate found -- takes cannot score",
+                  flush=True)
+        _sensors = getattr(env.scene, "sensors", {})
+        self._extra_contacts = [s for s in _sensors
+                                if s.endswith("_contact") and s != "hand_contact"]
 
         # The parent's meta hardcodes action_joint_order from the benchmark's STATIC constants
         # (Inspire hand names) -- wrong whenever the operator picked the other hand (--hand
@@ -217,23 +350,82 @@ class TeleopTrajectoryRecorder(TrajectoryRecorder):
                 "pos_error": _rec._rewards._bulb_socket_pos_error(env),
                 "ori_error": _rec._rewards._bulb_socket_ori_error(env),
             })
+        # The ROBOT's own root pose. Every subtask's success conjunction reads it -- robot_standing
+        # (pelvis height + tilt), base_near / base_facing (arrival tasks), climbed_to_ladder_top and
+        # descended_from_ladder (height) -- and none of it was recoverable from a bag: joint_pos is
+        # joints only, eef_pose is the hand. Without these columns a failed take cannot be checked
+        # against the very conditions that failed it.
+        # The success gate's OWN conjuncts, evaluated live and recorded one column each. Without
+        # this a failed take only says "success_term False" and the operator is left reconstructing
+        # the predicates by hand -- which is guesswork the moment a reimplementation differs from
+        # the benchmark's (different reference points, a missed velocity channel, a stale seed).
+        _all_true = None
+        for _fn, _params in self._gate_conjuncts:
+            try:
+                _val = _fn(env, **(_params or {}))
+                step[f"gate_{getattr(_fn, '__name__', 'conjunct')}"] = _val
+                _b = bool(_val.reshape(-1)[0])
+                _all_true = _b if _all_true is None else (_all_true and _b)
+            except Exception:                                     # noqa: BLE001
+                pass
+        if self._gate_need and _all_true is not None:
+            self._gate_hold = self._gate_hold + 1 if _all_true else 0
+            if self._gate_hold >= self._gate_need:
+                self._gate_fired = True
+            step["success_term"] = np.full((self.n,), self._gate_fired, dtype=bool)
+        _rb = env.scene["robot"]
+        step.update({
+            "robot_root_pos": _rb.data.root_pos_w,
+            "robot_root_quat": _rb.data.root_quat_w,
+            "robot_root_lin_vel": _rb.data.root_lin_vel_w,
+            "robot_root_ang_vel": _rb.data.root_ang_vel_w,
+        })
+        for _name in self._tracked_objects:
+            _obj = env.scene[_name]
+            step.update({
+                f"{_name}_pos": _obj.data.root_pos_w,
+                f"{_name}_quat": _obj.data.root_quat_w,
+                f"{_name}_lin_vel": _obj.data.root_lin_vel_w,
+                # ANGULAR velocity too: place_terms.object_at_rest gates on BOTH, so without this
+                # a "settled" object that is still rocking looks like a passing conjunct in the
+                # bag while the real gate stays shut -- exactly the S01 case that could not be
+                # explained from a recording.
+                f"{_name}_ang_vel": _obj.data.root_ang_vel_w,
+            })
         if self._has_contact:
             step["contact_force"] = _rec._obs.object_contact_forces(env.scene.sensors["hand_contact"])
+        # The gates read grip_contact (payload_held) and grasp_contact (hand_bodies_in_contact,
+        # grasp_force_within); hand_contact alone is filtered to the Bulb prim, so on a ladder task
+        # it reads a flat zero and tells you nothing about whether the ladder was actually held.
+        for _sname in self._extra_contacts:
+            step[f"{_sname}_force"] = _rec._obs.object_contact_forces(env.scene.sensors[_sname])
         if extras:
             # Driver-supplied operator/policy signals (loco_cmd, SONIC leg action, ...). Tensors or
             # numpy accepted; each must already carry the (N, ...) leading env axis.
             step.update(extras)
 
         for key, value in step.items():
-            self._buf.setdefault(key, []).append(
-                _rec._np(value) if hasattr(value, "detach") else _np_asarray(value))
+            arr = _rec._np(value) if hasattr(value, "detach") else _np_asarray(value)
+            # Force a real copy. On a CPU-device env (the XR path falls back to CPU physics)
+            # tensor.to("cpu") is a no-op and .numpy() ALIASES the source buffer, so a field backed
+            # by a persistent in-place-updated tensor records the flush-time value on EVERY row --
+            # which is why the ladder's velocity columns read identically zero while the live gate
+            # saw it moving.
+            self._buf.setdefault(key, []).append(np.array(arr, copy=True))
 
     def write(self, out_dir, *, fmt: str = "hdf5") -> dict:
         info = super().write(out_dir, fmt=fmt)
         score = _embed_score(out_dir)
         if score is not None:
             info["score"] = score
+        _write_score_report(out_dir, info, getattr(self, "_gate_seconds", 0.0))
         return info
+
+    def reset_gate(self) -> None:
+        """Clear the sustain counter and latch. Called when a take ends, so the next take is judged
+        on its own, not on a success carried over from the previous one."""
+        self._gate_hold = 0
+        self._gate_fired = False
 
     def reset_buffers(self) -> None:
         """Drop everything buffered.

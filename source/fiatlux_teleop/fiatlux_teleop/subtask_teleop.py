@@ -25,6 +25,7 @@ from __future__ import annotations
 
 import os
 
+from fiatlux_task.tasks.manager_based.fiatlux_task.scene_cfg import add_ego_camera
 from fiatlux_task.robots.g1 import (
     swap_robot_variant,
     G1_ARM_JOINTS,
@@ -141,6 +142,21 @@ def apply_subtask_teleop(cfg) -> None:
     if hand != native:
         swap_robot_variant(cfg, hand)
     cfg.scene.robot.spawn.articulation_props.enabled_self_collisions = False
+
+    # Head camera on EVERY subtask. The benchmark only adds it in the balance tier
+    # (climb / descend / mate), so six of the twelve had no robot-mounted view at all -- and the
+    # ego view is the one a policy has to act from, so a dataset that carries it on half the
+    # chain is awkward to train from. Added here rather than in the tiers to keep the benchmark
+    # untouched; if the RL envs should carry it too, that is a benchmark decision.
+    if getattr(cfg.scene, "ego_camera", None) is None:
+        add_ego_camera(cfg.scene)
+    # 512x512 rather than the sensor module's 256: the ego view doubles as the operator's
+    # review footage, and 256 is unreadable for that. Kept an exact 2x of GR00T's expected
+    # shortest_image_edge=256, so a recorded demo downsamples to the checkpoint's input size
+    # without resampling artefacts. Overridden HERE, not in fiatlux_task.sensors -- the RL envs
+    # and GR00T inference keep the 256 the checkpoint was trained against.
+    cfg.scene.ego_camera.height = 512
+    cfg.scene.ego_camera.width = 512
 
     cfg.actions = _make_actions_cfg(hand)
 

@@ -19,6 +19,7 @@ the walk part to SONIC.
 """
 import argparse
 import contextlib
+import math
 import os
 import random
 import re
@@ -38,6 +39,29 @@ parser.add_argument("--layout_seed", default="random",
                          "(default) draws one; 'none' leaves the layout unseeded. The seed in "
                          "use is ALWAYS printed and stored in the demo bag's meta, so any "
                          "session -- including a bad draw -- can be reproduced later.")
+parser.add_argument("--stop-on-success", dest="stop_on_success",
+                    action=argparse.BooleanOptionalAction, default=True,
+                    help="close the take automatically the moment the success gate fires "
+                         "(default on). Keeps a take to ONE episode: the scene no longer resets "
+                         "on success, so recording past it would append a second, failed episode "
+                         "and halve the take's score. --no-stop-on-success to keep rolling.")
+parser.add_argument("--lock-base", dest="lock_base", action="store_true",
+                    help="bolt the pelvis to the world and stop driving the legs. For testing the "
+                         "MANIPULATION half of an on-ladder task while the spawn settle is losing "
+                         "height (the robot slides ~0.9 m off its staged tread): a bolted base "
+                         "holds the staged pose exactly, so the arms can be exercised against the "
+                         "fixture. NOT for collecting demos -- the legs are inert and the base "
+                         "cannot fall, so the trajectory is not a real attempt.")
+parser.add_argument("--camera", choices=["follow", "static"], default="follow",
+                    help="follow = over-the-shoulder chase cam that orbits with the robot. "
+                         "static = one fixed wide shot, placed once from the scene layout so the "
+                         "robot, the whole ladder and the fixture all stay in frame (better for "
+                         "tasks where the action moves between two fixed places, e.g. S01).")
+parser.add_argument("--walk_scale", type=float, default=1.0,
+                    help="metres/second at full LEFT-stick deflection (default 1.0). The SONIC "
+                         "command clamp allows 1.0 forward / 0.5 lateral, so the previous 0.5 "
+                         "reached only half the available speed. Raise for faster traverses, "
+                         "lower for fine positioning.")
 parser.add_argument("--teleop_device", default="controller_rel")
 parser.add_argument("--hand", default="dex3", choices=["dex3", "inspire"])
 parser.add_argument("--walk_onnx", default=f"{_POLICY_DIR}/GR00T-WholeBodyControl-Walk.onnx")
@@ -185,7 +209,7 @@ class WalkRetargeter(RetargeterBase):
 
 @dataclass
 class WalkRetargeterCfg(RetargeterCfg):
-    movement_scale: float = 0.5
+    movement_scale: float = 1.0        # m/s at full stick; --walk_scale overrides
     deadzone: float = 0.12
     retargeter_type: type = WalkRetargeter
 
@@ -195,7 +219,8 @@ def main():  # noqa: C901  (one long orchestration: env setup + settle/resettle 
     # Subtask teleop envs read the hand from the environment (the swap has to happen inside the
     # cfg's __post_init__, before its action terms are built). Insert/Carry keep their own
     # post-parse patches below.
-    if re.search(r"-S\d\d-", args.task):
+    _is_subtask_task = re.search(r"-S\d\d-", args.task) is not None
+    if _is_subtask_task:
         os.environ["FIATLUX_TELEOP_HAND"] = args.hand.lower()
 
     # Room layout seed. Drawn here rather than left to the scene module's unseeded default so
@@ -221,19 +246,30 @@ def main():  # noqa: C901  (one long orchestration: env setup + settle/resettle 
         raise ValueError("expected a ManagerBasedRLEnv task")
     # Insert-Teleop defaults to Inspire (swap to Dex3 on request); Carry-Teleop is Dex3-native
     # (swap to Inspire on request). Each env's patch handles the robot + hand-action repoint.
-    if args.hand.lower() == "dex3" and "Insert" in args.task:
-        from fiatlux_teleop.insert_teleop_env_cfg import apply_dex3_hands
-        apply_dex3_hands(env_cfg)
-    elif args.hand.lower() == "inspire" and "Carry" in args.task:
-        from fiatlux_teleop.carry_teleop_env_cfg import apply_inspire_hands
-        apply_inspire_hands(env_cfg)
+    #
+    # SUBTASKS ARE EXCLUDED. These are substring matches on the task id, and the subtask ids
+    # S05-CarryBulbToDisposal / S09-CarryBulbToLadder contain "Carry" -- so `--hand inspire`
+    # applied the legacy Carry patch to an already-Inspire-native subtask and swap_robot_variant
+    # raised "don't know how to remap joint_names=['R_index_proximal_joint', ...]". The subtask
+    # twins pick their own hand inside apply_subtask_teleop via FIATLUX_TELEOP_HAND, set above.
+    if not _is_subtask_task:
+        if args.hand.lower() == "dex3" and "Insert" in args.task:
+            from fiatlux_teleop.insert_teleop_env_cfg import apply_dex3_hands
+            apply_dex3_hands(env_cfg)
+        elif args.hand.lower() == "inspire" and "Carry" in args.task:
+            from fiatlux_teleop.carry_teleop_env_cfg import apply_inspire_hands
+            apply_inspire_hands(env_cfg)
 
     env_cfg.sim.dt = 0.005                      # 200 Hz (SONIC's rate)
     env_cfg.decimation = 4                      # -> 50 Hz control
     env_cfg.sim.render_interval = 4
     env_cfg.terminations.time_out = None
     # FREE the base so SONIC can balance + walk (the teleop env bolts it down for stationary insert)
-    env_cfg.scene.robot.spawn.articulation_props.fix_root_link = False
+    env_cfg.scene.robot.spawn.articulation_props.fix_root_link = bool(args.lock_base)
+    if args.lock_base:
+        print("[sonic] LOCK-BASE: pelvis bolted to the world, legs not driven. The robot cannot "
+              "fall or slide -- use for exercising the arms against the scene, NOT for demos.",
+              flush=True)
     # Harden the spawn against the intermittent PhysX launch: cap depenetration velocity (a bad
     # contact can't fling the free base metres up) and drop the random joint-offset reset (it
     # perturbs the free-base start pose out of SONIC's balance basin). Keep the bulb reset.
@@ -241,7 +277,23 @@ def main():  # noqa: C901  (one long orchestration: env setup + settle/resettle 
     for _ev in ("reset_robot_joints", "reset_robot", "randomize_robot_root", "push_robot"):
         if getattr(env_cfg.events, _ev, None) is not None:
             setattr(env_cfg.events, _ev, None)
-    # operator-paced: no automatic terminations (a "fall" term would auto-reset mid-instability)
+    # Operator-paced: clear the FAILURE terminations (a "fall" term would auto-reset mid-
+    # instability). KEEP `success` -- it is the only place a task's success predicate is
+    # evaluated, and `recording.term_flag` records it as the `success_term` column that
+    # `scripts/score.py` reads. Clearing it does not disable scoring; term_flag falls back to an
+    # all-False vector, so every recorded demo silently scores 0.0 however well it was performed.
+    # (subtask_teleop.apply_subtask_teleop keeps it for the same reason; this loop used to undo
+    # that a few lines later.)
+    # Stash the success gate BEFORE clearing it: the recorder evaluates the same conjuncts itself
+    # (see teleop_recording), and once the termination is None its spec is gone from the cfg.
+    _succ_cfg = getattr(env_cfg.terminations, "success", None)
+    if _succ_cfg is not None:
+        env_cfg.teleop_success_spec = dict(_succ_cfg.params or {})
+        env_cfg.teleop_success_fn = _succ_cfg.func
+    # `success` included: as a TERMINATION it resets the scene the instant the gate fires, which
+    # yanks the episode away from the operator mid-take. The recorder evaluates the same gate
+    # itself and records `success_term`, so takes still score -- and an episode ends only when the
+    # operator ends it.
     for _t in ("time_out", "success", "object_dropped", "robot_fell", "fall_terminated",
                "bad_orientation", "base_contact", "illegal_contact"):
         if getattr(env_cfg.terminations, _t, None) is not None:
@@ -261,8 +313,7 @@ def main():  # noqa: C901  (one long orchestration: env setup + settle/resettle 
     # natural low spawn as Carry (spawning it at Insert's 1.57 would leave the arm tucked up at 90 deg).
     # The S01..S15 subtask teleop envs are whole-body walking tasks like Carry, so they take the
     # same natural low spawn (their ids carry no "Carry"/"Gallery" marker -- match "-S<NN>-").
-    _is_subtask = re.search(r"-S\d\d-", args.task) is not None
-    if "Carry" in args.task or "Gallery" in args.task or _is_subtask:
+    if "Carry" in args.task or "Gallery" in args.task or _is_subtask_task:
         # Drop the SHOULDER so the arm hangs low. The elbow drifts up to ~1.1 on its own (redundant IK),
         # so we don't fight it -- a low/back shoulder points the upper arm down so the bent forearm sits
         # low instead of up at the chest. (Per operator: change the joint above the 90-deg elbow.)
@@ -348,7 +399,8 @@ def main():  # noqa: C901  (one long orchestration: env setup + settle/resettle 
         dev_cfg = env_cfg.teleop_devices.devices[args.teleop_device]
         for rt in dev_cfg.retargeters:
             rt.sim_device = str(dev)
-        dev_cfg.retargeters = list(dev_cfg.retargeters) + [WalkRetargeterCfg(sim_device=str(dev))]
+        dev_cfg.retargeters = list(dev_cfg.retargeters) + [
+            WalkRetargeterCfg(sim_device=str(dev), movement_scale=args.walk_scale)]
         teleop = create_teleop_device(args.teleop_device, env_cfg.teleop_devices.devices,
                                       {"R": _reset, "RESET": _reset})
         print(f"[sonic] VR teleop device: {args.teleop_device} (+walk)", flush=True)
@@ -391,11 +443,13 @@ def main():  # noqa: C901  (one long orchestration: env setup + settle/resettle 
 
     env.reset()
 
+
     # Optional demo recording: the benchmark's bag writer, made teleop-safe (task-field guards +
     # operator-driven episode boundaries). Created BEFORE the settle so it exists for the loop,
     # but record_step only runs inside the main loop -- settle/resettle steps are never recorded.
     recorder = None
     video = None
+    ego_video = None
     images = None
     recording_on = False
     if args.record == "bag":
@@ -463,23 +517,39 @@ def main():  # noqa: C901  (one long orchestration: env setup + settle/resettle 
                 return _ep_dir
 
         def _open_take_capture(_ep_dir):
-            """Per-take video/image writers, opened at record-ON and closed at record-OFF."""
+            """Per-take writers, opened at record-ON and closed at record-OFF.
+
+            Two videos, because one angle cannot serve both purposes: `video.mp4` is the
+            third-person follow cam (what happened in the room) and `ego.mp4` is the robot's own
+            head camera (what the robot could see). The follow cam's offset is fixed in WORLD
+            space, so the robot can turn its back on it -- the ego view is the one that always
+            shows the manipulation.
+            """
             _v = (StreamingVideoRecorder(env, env.scene["video_cam"],
                                          os.path.join(_ep_dir, "video.mp4"), fps=50)
                   if args.record_video else None)
+            _ego = None
+            if args.record_video and "ego_camera" in getattr(env.scene, "sensors", {}):
+                _ego = StreamingVideoRecorder(env, env.scene["ego_camera"],
+                                              os.path.join(_ep_dir, "ego.mp4"), fps=50)
             _im = (ImageCapture(env, os.path.join(_ep_dir, "images"), stride=args.images_stride)
                    if args.record_images else None)
-            return _v, _im
+            return _v, _ego, _im
 
         recording_on = args.record_start == "auto"
         if recording_on:
-            video, images = _open_take_capture(os.path.join(args.out, "ep00"))
+            video, ego_video, images = _open_take_capture(os.path.join(args.out, "ep00"))
         _state = "ON from start" if recording_on else "OFF -- press [C] / right ctrl B (upper) to start"
         print(f"[sonic] recording demos -> {args.out} ({_state}; "
               "one epNN/ folder -- bag + meta + video -- per record-on..off take)", flush=True)
 
     # true world spawn (to re-home on reset) + the position-hold target.
     spawn_root = robot.data.root_state_w[:, 0:7].clone()
+    # The cfg-STAGED pose, kept before the settle overwrites spawn_root below. Reset re-homes to
+    # THIS, not to where the settle happened to leave the robot: on the on-ladder subtasks the
+    # settle loses height (staged 1.97 m tread -> observed 0.86-1.86 m), so re-homing to the
+    # settled pose made every reset inherit the loss and drift lower again on each one.
+    staged_root = spawn_root.clone()
     home_xy = spawn_root[0, 0:2].cpu().numpy().copy()
     HOLD_KP, HOLD_VMAX, WALK_TH, HOLD_DB, WARMUP = 0.8, 0.25, 0.06, 0.10, 100
 
@@ -534,6 +604,23 @@ def main():  # noqa: C901  (one long orchestration: env setup + settle/resettle 
     home_xy = spawn_root[0, 0:2].cpu().numpy().copy()
     # Capture the hold-arms IK target ONCE, now, after the settle -- re-solving it every main-loop
     # frame lets the redundant null-space drift the arm; one fixed target keeps it steady.
+    # The settle plants the FEET, but it also lets the arm sag: SONIC drives the legs while the
+    # arm merely holds whatever IK target it had, and the redundant null-space bows the shoulder
+    # (measured ~0.4 rad of droop at the right shoulder on the carry tasks). That moves the open
+    # palm the payload is staged to rest on. Put the arm back on the pose the task authored, then
+    # capture the IK target FROM that pose so the hold does not pull it back down.
+    _arm_idx = torch.tensor([i for i, n in enumerate(robot.joint_names)
+                             if any(k in n for k in ("shoulder", "elbow", "wrist"))], device=dev)
+    _staged_arm = robot.data.default_joint_pos[:, _arm_idx].clone()
+    _jp = robot.data.joint_pos.clone()
+    _jp[:, _arm_idx] = _staged_arm
+    robot.write_joint_state_to_sim(_jp, torch.zeros_like(robot.data.joint_vel))
+    env.scene.write_data_to_sim()
+    env.sim.forward()
+    print(f"[sonic] arm restored to the staged pose (settle droop removed: "
+          f"{float((robot.data.default_joint_pos[:, _arm_idx] - _staged_arm).abs().max()):.3f} rad)",
+          flush=True)
+
     rest_arm = rest_arm_action()
     # Even with a fixed EE target the redundant IK's null-space slowly bows the elbow away from the
     # settle pose (UP in Carry, down in Insert). Capture the settle JOINT pose so we can pin the arm
@@ -572,7 +659,6 @@ def main():  # noqa: C901  (one long orchestration: env setup + settle/resettle 
     # rotation + grip), walk, and lean. TAB switches which arm the manipulation keys drive. ----
     kb = None
     if args.input == "keyboard":
-        import math  # noqa: E402
         _pressed = collections.deque()
         try:
             import carb  # noqa: E402
@@ -663,6 +749,10 @@ def main():  # noqa: C901  (one long orchestration: env setup + settle/resettle 
               ",/. strafe, T/Y lean, SPACE stop.  R reset, C record on/off, ESC quit.", flush=True)
 
     _elb_i = robot.joint_names.index("right_elbow_joint")
+    if abs(float(spawn_root[0, 2]) - float(staged_root[0, 2])) > 0.05:
+        print(f"[sonic] NOTE: settled {float(staged_root[0,2]) - float(spawn_root[0,2]):.2f} m below "
+              f"the staged pose ({float(staged_root[0,2]):.2f} m); [R] re-homes to the STAGED pose",
+              flush=True)
     print(f"[sonic] settled+centered at pelvis=({spawn_root[0,0]:.2f},{spawn_root[0,1]:.2f},"
           f"{spawn_root[0,2]:.2f}) right_elbow={float(robot.data.joint_pos[0, _elb_i]):.2f}rad "
           f"(target 1.57 = 90deg)", flush=True)
@@ -689,12 +779,12 @@ def main():  # noqa: C901  (one long orchestration: env setup + settle/resettle 
         balance a level, still robot -- the same reason startup settles before "Teleop ready"."""
         nonlocal obs_hist, last_action, home_xy, last_arm
         last_action = np.zeros(N_ACT, dtype=np.float32)  # start SONIC's action history clean, like startup
-        pin = spawn_root.clone()
+        pin = staged_root.clone()
         # Pin the pelvis at the RAISED spawn height (>=0.80), not the settled ~0.74, so the feet
         # re-plant WITH clearance -- exactly what startup does (init_state z is raised to 0.80). Pinning
         # at the settled height drops the feet onto/through the floor and the depenetration kick, plus a
         # cold SONIC catch, is what tipped the robot over "randomly" on reset.
-        pin[:, 2] = max(float(spawn_root[0, 2]), 0.80)
+        pin[:, 2] = max(float(staged_root[0, 2]), 0.80)
         zv = torch.zeros((env.num_envs, 6), device=dev)
         ld = torch.as_tensor(DEFAULT_15, device=dev).unsqueeze(0)
         robot.write_joint_state_to_sim(
@@ -727,9 +817,66 @@ def main():  # noqa: C901  (one long orchestration: env setup + settle/resettle 
     from fiatlux_task.tasks.manager_based.fiatlux_task.scene_cfg import (
         ROOM_FLOOR_MIN as _RMIN,
     )
+    # Follow-cam offset expressed in the ROBOT's frame, not the world's: (behind, right, up).
+    # A world-fixed offset means a 180 deg turn shows the camera the robot's back, which is
+    # exactly when a manipulation demo becomes unreviewable. Rotating the offset by the robot's
+    # yaw keeps the same over-the-shoulder angle whichever way it faces.
+    _CAM_BEHIND, _CAM_RIGHT, _CAM_UP = -2.0, -1.6, 0.9
+    # SONIC sways continuously, so raw yaw would jitter the camera every frame. Track it with a
+    # first-order filter instead; 0.04 settles a 180 deg turn in about a second at 50 Hz.
+    _CAM_YAW_GAIN = 0.04
+    _cam_yaw = [None]        # filtered camera yaw, seeded on the first captured frame
+    # The thing the robot is working toward, if this scene has one (socket = the ceiling/wall
+    # fixture). Used only to frame the follow-cam; absent on scenes without it.
+    # Points the shot must contain: the robot, whatever it is manipulating, and the fixture it is
+    # working toward. Framing only the robot loses the fixture; framing robot+fixture crops the
+    # ladder, which is the thing the operator is actually steering.
+    _rigids = getattr(env.scene, "rigid_objects", {})
+    _frame_names = [n for n in ("ladder", "socket") if n in _rigids]
+
+    def _frame_points():
+        pts = []
+        for _n in _frame_names:
+            _o = env.scene[_n]
+            _pp = _o.data.root_pos_w[0].cpu().numpy()
+            pts.append(_pp)
+            if _n == "ladder":       # its TOP, not just the base -- that is what gets cropped
+                _q = _o.data.root_quat_w[0].cpu().numpy()
+                _up = np.array([
+                    2.0 * (_q[1] * _q[3] + _q[0] * _q[2]),
+                    2.0 * (_q[2] * _q[3] - _q[0] * _q[1]),
+                    1.0 - 2.0 * (_q[1] ** 2 + _q[2] ** 2)])
+                pts.append(_pp + 1.18 * _up)
+        return pts
     _CAM_INSET = 0.4
+    _static_pose = None
     _CAM_MIN = (_RMIN[0] + _CAM_INSET, _RMIN[1] + _CAM_INSET)
     _CAM_MAX = (_RMAX[0] - _CAM_INSET, _RMAX[1] - _CAM_INSET)
+    if args.camera == "static":
+        # One fixed shot, chosen once from the layout: centre on everything that matters, then
+        # search the azimuths for the viewpoint that both fits inside the room and stands furthest
+        # off the walls -- a fixed camera that clips a wall renders the flat grey the follow-cam
+        # clamp exists to avoid.
+        _pts = [robot.data.root_pos_w[0].cpu().numpy()] + _frame_points()
+        _c = np.mean(_pts, axis=0)
+        _rad = max(float(np.linalg.norm(np.asarray(_p) - _c)) for _p in _pts)
+        _dist = 3.0 + 1.1 * _rad
+        _best, _best_margin = None, -1e9
+        for _k in range(24):
+            _th = 2.0 * math.pi * _k / 24.0
+            _cx = float(_c[0] + _dist * math.cos(_th))
+            _cy = float(_c[1] + _dist * math.sin(_th))
+            _margin = min(_cx - _CAM_MIN[0], _CAM_MAX[0] - _cx,
+                          _cy - _CAM_MIN[1], _CAM_MAX[1] - _cy)
+            if _margin > _best_margin:
+                _best, _best_margin = (_cx, _cy), _margin
+        _cx = min(max(_best[0], _CAM_MIN[0]), _CAM_MAX[0])
+        _cy = min(max(_best[1], _CAM_MIN[1]), _CAM_MAX[1])
+        _cz = float(max(2.2, _c[2] + 0.6 * _rad))      # above the fixture, looking down at it
+        _static_pose = ((_cx, _cy, _cz), (float(_c[0]), float(_c[1]), float(_c[2])))
+        print(f"[sonic] static camera at ({_cx:.2f},{_cy:.2f},{_cz:.2f}) "
+              f"looking at ({_c[0]:.2f},{_c[1]:.2f},{_c[2]:.2f})  wall margin {_best_margin:.2f} m",
+              flush=True)
 
     n_walk = 6
     vr_rec_prev = False   # rising-edge detect for the VR record-toggle button
@@ -744,8 +891,14 @@ def main():  # noqa: C901  (one long orchestration: env setup + settle/resettle 
                         _ep_dir = os.path.join(args.out, f"ep{ep_idx:02d}")
                         if recording_on:
                             if video is None and images is None:
-                                video, images = _open_take_capture(_ep_dir)
-                            print(f"[sonic] RECORDING ON -> {_ep_dir}", flush=True)
+                                try:
+                                    video, ego_video, images = _open_take_capture(_ep_dir)
+                                except Exception as _e:      # noqa: BLE001
+                                    print(f"[sonic] !! take writers FAILED to open: {_e!r}",
+                                          flush=True)
+                            print(f"[sonic] RECORDING ON -> {_ep_dir} "
+                                  f"(video={'yes' if video is not None else 'NO'}, "
+                                  f"ego={'yes' if ego_video is not None else 'NO'})", flush=True)
                         else:
                             # OFF closes the take: its own folder gets the bag, meta and a
                             # finalized video; buffers reset so the next take starts fresh.
@@ -754,14 +907,22 @@ def main():  # noqa: C901  (one long orchestration: env setup + settle/resettle 
                             if _took:
                                 _info = recorder.write(_ep_dir, fmt=args.record_format)
                                 recorder.reset_buffers()
+                                recorder.reset_gate()
                                 _sc = _info.get("score") or {}
                                 if _sc.get("mean_score") is not None:
                                     ep_scores.append(_sc["mean_score"])
                             # close the writers BEFORE sealing -- the rename moves the folder
                             if video is not None:
+                                print(f"[sonic] take had {len(video)} follow-cam frames", flush=True)
                                 if len(video):
                                     video.write()
                                 video = None
+                            else:
+                                print("[sonic] !! no follow-cam writer for this take", flush=True)
+                            if ego_video is not None:
+                                if len(ego_video):
+                                    ego_video.write()
+                                ego_video = None
                             if images is not None:
                                 images = None
                             if _took:
@@ -780,23 +941,26 @@ def main():  # noqa: C901  (one long orchestration: env setup + settle/resettle 
                         _ep_dir = os.path.join(args.out, f"ep{ep_idx:02d}")
                         _info = recorder.write(_ep_dir, fmt=args.record_format)
                         recorder.reset_buffers()
+                        recorder.reset_gate()
                         _sc = _info.get("score") or {}
                         if _sc.get("mean_score") is not None:
                             ep_scores.append(_sc["mean_score"])
                         if video is not None and len(video):
                             video.write()                     # close before the seal renames
+                        if ego_video is not None and len(ego_video):
+                            ego_video.write()
                         _sealed = _seal_take(_ep_dir, _info)
                         print(f"[sonic] take saved on reset: {_sealed}", flush=True)
                         print(f"[sonic] {_score_line(_info)}", flush=True)
                         ep_idx += 1
                         # recording stays ON across the reset -> next take gets fresh writers
-                        video, images = _open_take_capture(os.path.join(args.out, f"ep{ep_idx:02d}"))
+                        video, ego_video, images = _open_take_capture(os.path.join(args.out, f"ep{ep_idx:02d}"))
                     env.reset()                              # reset the task (bulb/socket, episode buffers)
                     # A FREE base isn't re-homed by env.reset() -> teleport the root back to the good
                     # centered spawn (zero velocity), THEN re-plant with the same pin + SONIC settle-in
                     # as startup. Handing a cold/zeroed-history robot straight to SONIC made it lurch
                     # and fly; resettle() lands it level, still, and balanced before control resumes.
-                    robot.write_root_pose_to_sim(spawn_root)
+                    robot.write_root_pose_to_sim(staged_root)
                     robot.write_root_velocity_to_sim(torch.zeros((env.num_envs, 6), device=dev))
                     resettle()
                     if args.input == "vr":
@@ -875,6 +1039,9 @@ def main():  # noqa: C901  (one long orchestration: env setup + settle/resettle 
                 sess = walk_sess if np.linalg.norm(loco_cmd) > 0.05 else bal_sess
                 last_action = sess.run(None, {in_name: flat})[0][0]
                 leg_target = torch.as_tensor(last_action * ACTION_SCALE + DEFAULT_15, device=dev)
+                if args.lock_base:
+                    # hold the staged stance; SONIC's balance output means nothing on a fixed root
+                    leg_target = torch.as_tensor(DEFAULT_15, device=dev)
                 robot.set_joint_position_target(leg_target.unsqueeze(0), joint_ids=act_idx)
                 arm_action = last_arm.repeat(env.num_envs, 1)
                 step_out = env.step(arm_action)              # arms via the real env action manager
@@ -889,17 +1056,48 @@ def main():  # noqa: C901  (one long orchestration: env setup + settle/resettle 
                         "sonic_action": np.asarray(last_action, dtype=np.float32)[None],
                     }
                     recorder.record_step(_obs_t, arm_action, _rew_t, _term_t, _trunc_t, extras=_extras)
-                    if video is not None:
-                        # follow-cam: shoulder-height orbit point tracking the (possibly walking)
-                        # base, CLAMPED INSIDE THE ROOM. The fixed (+1.8, -2.4) offset puts the eye
-                        # outside the walls whenever the robot works near an edge (subtask scenes
-                        # spawn it all around the room), and a camera outside the room renders FLAT
-                        # GREY -- see viz.py's `_radius_inside`. Clamp, then re-aim at the robot.
+                    if args.stop_on_success and getattr(recorder, "_gate_fired", False):
+                        # The gate latched: end the take here. The scene does NOT reset (the
+                        # success termination is cleared), so without this the operator keeps
+                        # recording a second episode into the same take and the score is averaged
+                        # down -- exactly the 0.50 that a clean success produced before.
+                        print("[sonic] *** SUCCESS -- gate satisfied; closing the take ***",
+                              flush=True)
+                        rec_flag["toggle"] = True
+                    if video is not None and _static_pose is not None:
+                        video.capture(pose=_static_pose)          # fixed wide shot, computed once
+                    elif video is not None:
+                        # Follow-cam: an over-the-shoulder orbit point that TURNS WITH the robot,
+                        # then CLAMPED INSIDE THE ROOM -- a camera outside the walls renders flat
+                        # grey (see viz.py's `_radius_inside`), and subtask scenes put the robot
+                        # anywhere in the room. Clamp, then re-aim at the robot.
                         _b = robot.data.root_pos_w[0].cpu().numpy()
-                        _ex = min(max(float(_b[0] + 1.8), _CAM_MIN[0]), _CAM_MAX[0])
-                        _ey = min(max(float(_b[1] - 2.4), _CAM_MIN[1]), _CAM_MAX[1])
-                        video.capture(pose=((_ex, _ey, float(_b[2] + 0.9)),
-                                            (float(_b[0]), float(_b[1]), float(_b[2] + 0.2))))
+                        _q = robot.data.root_quat_w[0].cpu().numpy()          # wxyz
+                        _yaw = math.atan2(2.0 * (_q[0] * _q[3] + _q[1] * _q[2]),
+                                          1.0 - 2.0 * (_q[2] ** 2 + _q[3] ** 2))
+                        if _cam_yaw[0] is None:
+                            _cam_yaw[0] = _yaw
+                        else:                                                  # filter, shortest way round
+                            _d = (_yaw - _cam_yaw[0] + math.pi) % (2 * math.pi) - math.pi
+                            _cam_yaw[0] += _CAM_YAW_GAIN * _d
+                        # Frame the robot AND the fixture it is working toward. Aiming at the
+                        # robot alone puts a 2.2 m ceiling fixture out of shot, which loses the
+                        # very relationship the ladder tasks are about; aim at their midpoint and
+                        # pull back in proportion to how far apart they are.
+                        _pts = [_b] + _frame_points()
+                        _c = np.mean(_pts, axis=0)
+                        _rad = max(float(np.linalg.norm(np.asarray(_p) - _c)) for _p in _pts)
+                        _tx, _ty, _tz = float(_c[0]), float(_c[1]), float(_c[2])
+                        _pull = 1.0 + 0.55 * _rad          # widen until every point is held
+                        _cy, _sy = math.cos(_cam_yaw[0]), math.sin(_cam_yaw[0])
+                        _ox = (_CAM_BEHIND * _pull) * _cy - (_CAM_RIGHT * _pull) * _sy
+                        _oy = (_CAM_BEHIND * _pull) * _sy + (_CAM_RIGHT * _pull) * _cy
+                        _ex = min(max(float(_b[0] + _ox), _CAM_MIN[0]), _CAM_MAX[0])
+                        _ey = min(max(float(_b[1] + _oy), _CAM_MIN[1]), _CAM_MAX[1])
+                        video.capture(pose=((_ex, _ey, float(_b[2] + _CAM_UP * _pull)),
+                                            (_tx, _ty, _tz)))
+                    if ego_video is not None:
+                        ego_video.capture()          # head-mounted: pose comes from the robot
                     if images is not None:
                         images.maybe_capture(len(recorder._buf["done"]) - 1)  # flat recorded-step index
                 # Pin the arm at its settle joints whenever it isn't being actively moved -- i.e. when the
@@ -937,6 +1135,8 @@ def main():  # noqa: C901  (one long orchestration: env setup + settle/resettle 
                 ep_scores.append(_sc["mean_score"])
         if video is not None and len(video):
             video.write()                        # close the stream BEFORE the seal renames
+        if ego_video is not None and len(ego_video):
+            ego_video.write()
         if images is not None and len(images):
             print(f"[sonic] trailing take images: {len(images)} sets", flush=True)
         if _trailing is not None:

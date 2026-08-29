@@ -229,24 +229,3 @@ binary (1.0 or 0.0, minus penalties for a crushed or dropped payload); continuou
 Every take is kept and scored, including accidental ones. One step is 20 ms at the 50 Hz
 control rate, so a double-press writes a real folder with a one-frame bag — visible by its
 `_score0.00` suffix and by `episode_lengths` in its meta.
-
-## Known issues
-
-**Payloads are not attached.** The carrying tasks stage their payload unsecured — the bulb
-rests on an open palm (`settle_carried_payload_live`, friction only), and the ladder is a free
-rigid body positioned in the grip. Close the grip immediately on spawn or the payload drops.
-
-**A fall becomes a launch.** SONIC has no fall recovery. Once the pelvis is down the policy is
-out of distribution and its output is still applied as joint position targets, so the robot is
-driven across the room at 4–8 m/s. The same tasks in the RL env peak at 0.5–2 m/s. Freezing the
-legs at the default stance below 0.45 m cuts peak speed by about 55% in testing; not applied,
-because the threshold would also fire during a legitimate deep crouch.
-
-**Bad draws happen.** Some layouts collapse before the operator has control — the robot is
-placed 2 m up on a free-standing ladder, and if that perch does not settle, both go down. The
-benchmark models this: `ladder_tipped` is both a −200 reward and a termination. Relaunching
-redraws; resetting does not. With the seed printed, a bad draw is reproducible.
-
-**Hands-off sweeps mislead on carrying tasks.** With no operator, grips never close, so the
-payload drops and the robot trips on it. A "fell" verdict there measures the dropped payload,
-not the task.
