@@ -127,6 +127,41 @@ else
     echo "(skip scene dressing — pass --scene-dressing to include)"
 fi
 
+# Re-author the ladder colliders and their rigid overlays, in that order, BEFORE the platform box
+# below (the collision pass rewrites <name>_collision.usd, which would drop the box).
+#
+# The bucket ships colliders authored as SDF. SDF is a signed distance field: its sign is the
+# inside/outside of a CLOSED surface, and 92 of the 98 collected designs are open meshes, so the
+# field is undefined wherever a hole is -- on AlumStep_D01 the holes cluster in the bottom 24 cm,
+# the legs. omniverse_ladder_collision.py now measures that (_has_open_mesh) and routes an open
+# design to convexDecomposition, which ignores topology; the 6 genuinely watertight designs keep
+# SDF. Doing it here rather than re-baking the bucket keeps the synced asset as the vendor
+# shipped it, and keeps a re-sync from silently reinstating the SDF colliders.
+LADDER_DIR="${TARGET_DIR}/omniverse_ladder"
+# The task ladder's real mass. Werner P400-4 catalogue net weight (24 lb); AlumStep_D01 matches
+# that ladder on all four defining dimensions. Keep in sync with LADDER_MASS_KG in scene_cfg.py --
+# the rigid overlay authors an inertia tensor for THIS mass, and PhysX does not rescale an
+# authored inertia when a code-side override changes the mass.
+TASK_LADDER_COLLISION="${LADDER_DIR}/AlumStep_D/AluminumStepLadder_D01_PR_NVD_01_collision.usd"
+TASK_LADDER_MASS=10.9
+if [[ -d "$LADDER_DIR" ]]; then
+    echo "Authoring ladder colliders (open meshes -> convex, watertight -> SDF) ..."
+    if ! (cd "${TARGET_DIR}/.." \
+            && uv run python scripts/omniverse/omniverse_ladder_collision.py "$LADDER_DIR" \
+            && uv run python scripts/omniverse/omniverse_ladder_rigid.py "$LADDER_DIR" \
+            && uv run python scripts/omniverse/omniverse_ladder_rigid.py \
+                "$TASK_LADDER_COLLISION" --mass "$TASK_LADDER_MASS"); then
+        echo "  WARNING: could not author the ladder colliders. Until they are, the ladders keep" >&2
+        echo "  the bucket's SDF colliders, whose fields are undefined where the meshes are open," >&2
+        echo "  and their mass properties stay derived from collider volume." >&2
+        echo "  Re-run by hand from the repo root:" >&2
+        echo "    uv run python scripts/omniverse/omniverse_ladder_collision.py $LADDER_DIR" >&2
+        echo "    uv run python scripts/omniverse/omniverse_ladder_rigid.py $LADDER_DIR" >&2
+        echo "    uv run python scripts/omniverse/omniverse_ladder_rigid.py \\" >&2
+        echo "        $TASK_LADDER_COLLISION --mass $TASK_LADDER_MASS" >&2
+    fi
+fi
+
 # The step ladder's standing platform exists in its render mesh but not in its collider: the
 # collision overlay's convexDecomposition leaves open air where the tread is, and a robot placed
 # on it falls through the ladder. Author the box collider that fixes it here rather than baking

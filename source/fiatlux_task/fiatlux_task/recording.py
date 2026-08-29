@@ -115,10 +115,51 @@ class TrajectoryRecorder:
         # bulb -- but fixing it needs the task to DECLARE its manipuland, which is #76 Step 3.
         self._bulb_entity = "fresh_bulb" if "fresh_bulb" in env.scene.rigid_objects else "old_bulb"
 
+        # Ladder + grip channels (issue #107, issue #106). Both are optional: the tabletop
+        # presets build no ladder, and only the legs that hold something wire ``grip_contact``.
+        # Resolved once for the same reason the bulb is -- a key that appeared midway through the
+        # run would give the buffers ragged lengths.
+        self._ladder_entity = "ladder" if "ladder" in env.scene.rigid_objects else None
+        self._grip_sensor = "grip_contact" if "grip_contact" in env.scene.sensors else None
+
         self._buf: dict[str, list[np.ndarray]] = {}
         self._meta = self._build_meta(policy_spec=policy_spec, seed=seed, checkpoint=checkpoint, ee_name=ee_names[0])
 
     # -- capture ---------------------------------------------------------------
+    def world_state_fields(self) -> dict:
+        """Root pose/velocity channels every task shares (issue #107).
+
+        The robot's root pose and the ladder's were both missing from the bag, which left an S01
+        evaluation with none of the quantities its success conditions are written in -- every one
+        of them is about where the ladder ended up. The joint vector alone does not give it: a
+        floating-base robot's root pose is not derivable from ``joint_pos``.
+
+        ``grip_force`` is the ladder-or-payload grip channel (issue #106). The shared
+        ``hand_contact`` sensor filters the bulbs the preset built, so on a ladder leg it reads a
+        flat 0.0 N -- indistinguishable from a dead sensor. ``grip_contact`` is filtered to ONE
+        target, so its column is attributable; recording it is what makes "was the ladder actually
+        gripped" answerable offline.
+        """
+        env = self.env
+        robot = env.scene["robot"]
+        fields = {
+            "robot_root_pos": robot.data.root_pos_w,
+            "robot_root_quat": robot.data.root_quat_w,
+            "robot_root_lin_vel": robot.data.root_lin_vel_w,
+            "robot_root_ang_vel": robot.data.root_ang_vel_w,
+        }
+        if self._ladder_entity is not None:
+            ladder = env.scene[self._ladder_entity]
+            fields.update({
+                "ladder_pos": ladder.data.root_pos_w,
+                "ladder_quat": ladder.data.root_quat_w,
+                "ladder_lin_vel": ladder.data.root_lin_vel_w,
+                "ladder_ang_vel": ladder.data.root_ang_vel_w,
+            })
+        if self._grip_sensor is not None:
+            fields["grip_force"] = _obs.object_contact_forces(env.scene.sensors[self._grip_sensor])
+        return fields
+
     def record_step(self, obs, actions, reward, terminated, truncated) -> None:
         env = self.env
         robot = env.scene["robot"]
@@ -153,6 +194,7 @@ class TrajectoryRecorder:
             "dropped_term": term_flag(env, "bulb_dropped", self.n, self.device),
             "timeout_term": term_flag(env, "time_out", self.n, self.device),
         }
+        step.update(self.world_state_fields())
         # Bayonet lock state (issue #77). Only tasks that wire mdp.bulb_attachment have it.
         if self._attachment is not None:
             step.update(_attach.bulb_lock_telemetry(env))

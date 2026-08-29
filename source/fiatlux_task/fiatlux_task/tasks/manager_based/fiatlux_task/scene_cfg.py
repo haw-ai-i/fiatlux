@@ -256,8 +256,19 @@ if LADDER_FIXTURE_STANDOFF <= LADDER_FIXTURE_MIN_STANDOFF:
 LADDER_ANCHOR_HALF_SIZE = 0.18
 
 # Ladder mass, every preset. Without an authored MassAPI PhysX derives mass from collider
-# volume at 1000 kg/m^3, which lands a hollow ladder at tens of kg. UNVERIFIED.
-LADDER_MASS_KG = 7.58
+# volume at 1000 kg/m^3, which lands a hollow ladder at tens of kg.
+#
+# MEASURED, not guessed: AlumStep_D01 is a 4-step aluminium platform stepladder, and its four
+# defining dimensions match Werner's P400-4 to within an inch -- platform height 1.18 m vs 4 ft,
+# overall 1.861 m vs 6 ft, base width 0.608 m vs 24.5 in, platform depth 0.40 m vs 15 in. That
+# ladder's catalogue net weight is 24 lb = 10.9 kg. The previous 7.58 came from
+# ``omniverse_ladder_rigid.mass_for``'s shape-blind ``2 + 3*height`` heuristic and was ~30% light.
+#
+# MUST match the mass authored into the asset's rigid overlay (``omniverse_ladder_rigid.py
+# --mass``): that overlay also authors a centre of mass and an inertia tensor, and PhysX does NOT
+# rescale an authored inertia when a code-side override changes the mass -- mismatch here gives
+# the body one object's mass and another's inertia.
+LADDER_MASS_KG = 10.9
 
 # -- prop masses. Without an authored MassAPI PhysX derives mass from collider volume at
 #    1000 kg/m^3, which lands a hollow crate at tens of kg. --
@@ -1293,10 +1304,26 @@ def apply_replace_preset(
     scene.ladder.init_state.pos = (ladder_center[0], ladder_center[1], LADDER_POSITION[2])
     scene.ladder.init_state.rot = _quat_z_deg(ladder_yaw)
     # Dynamic ladder (this preset only): tipping/falling is a scored physical event.
+    #
+    # Spawn the ``_collision_rigid`` variant, the same one ``apply_position_preset`` uses, rather
+    # than promoting the static ``_collision`` one at spawn. Only the rigid overlay carries the
+    # authored ``centerOfMass`` / ``diagonalInertia`` / ``principalAxes``; referencing the static
+    # file instead leaves PhysX deriving them from collider VOLUME, which models this ladder as a
+    # solid block and counts the collision-only PlatformCollider box as material. Both dynamic
+    # presets now agree on the asset, and the frictional spawner binds the grip material this
+    # leg needs to hold a rail.
+    scene.ladder.spawn.usd_path = STEP_LADDER_RIGID_USD
+    scene.ladder.spawn.func = _spawn_usd_as_rigid_body_frictional
     scene.ladder.spawn.rigid_props = sim_utils.RigidBodyPropertiesCfg(
         kinematic_enabled=False,
         solver_position_iteration_count=16,
-        solver_velocity_iteration_count=8,
+        # 1, not 8, and 1 is what every other dynamic prop in the family uses. Under TGS the
+        # position loop already does most of the velocity correction, so the velocity pass is a
+        # small correction on top; running many of them over-corrects and can add energy rather
+        # than remove it. PhysX says so directly at spawn -- "Detected a rigid at .../Ladder with
+        # more than 4 velocity iterations being added to a TGS scene" -- and this ladder was the
+        # only body in the scene raising it.
+        solver_velocity_iteration_count=1,
         max_depenetration_velocity=1.0,
     )
     scene.ladder.spawn.mass_props = sim_utils.MassPropertiesCfg(mass=LADDER_MASS_KG)
