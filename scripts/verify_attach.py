@@ -760,8 +760,7 @@ def main() -> int:
             # The phase conjunct is load-bearing. Without it this passes whenever the bulb never
             # engaged at all -- nothing constrains a FREE bulb, so its twist is trivially retained.
             fresh_phase() == task_attach._AXIAL and abs(retained_clock - expected_clock) < 0.02,
-            f"entered at {expected_clock:+.3f} rad, retained {retained_clock:+.3f} rad "
-            f"(phase={fresh_phase()})",
+            f"entered at {expected_clock:+.3f} rad, retained {retained_clock:+.3f} rad (phase={fresh_phase()})",
         )
 
         # A lock, driven all the way through from that non-zero entry angle. Entry preservation
@@ -773,9 +772,7 @@ def main() -> int:
         locked_from_entry = fresh_phase() == task_attach._ROTATING
         theta_from_entry = fresh_theta()
         twist_from_entry = bulb_twist(fresh_bulb)
-        expected_twist = task_attach._wrap_to_pi(
-            torch.tensor([manager_sign * (entry_clock + angle)])
-        )[0].item()
+        expected_twist = task_attach._wrap_to_pi(torch.tensor([manager_sign * (entry_clock + angle)]))[0].item()
         record(
             "bayonet:locks_from_a_non_zero_entry_angle",
             locked_from_entry
@@ -808,9 +805,7 @@ def main() -> int:
         full_twisted = task_rewards.object_socket_orientation_tanh(env, std=0.3)[0].item()
         record(
             "bayonet:axis_alignment_is_twist_invariant",
-            free_for_reward
-            and abs(axis_twisted - axis_untwisted) < 0.01
-            and (full_untwisted - full_twisted) > 0.1,
+            free_for_reward and abs(axis_twisted - axis_untwisted) < 0.01 and (full_untwisted - full_twisted) > 0.1,
             f"axis-only {axis_untwisted:.3f} -> {axis_twisted:.3f} over a {angle:.3f} rad turn; "
             f"full-frame falls {full_untwisted:.3f} -> {full_twisted:.3f} (free={free_for_reward})",
         )
