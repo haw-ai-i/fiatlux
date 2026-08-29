@@ -27,8 +27,8 @@ import json
 import os
 from pathlib import Path
 
+import fiatlux_task.recording as _rec
 import numpy as np
-from fiatlux_task import recording as _rec
 from fiatlux_task.recording import TrajectoryRecorder, term_flag
 from fiatlux_task.viz import VideoRecorder, _draw_overlay
 
@@ -88,6 +88,8 @@ def _embed_score(out_dir) -> dict | None:
 
         score_py = Path(__file__).resolve().parents[3] / "scripts" / "score.py"
         spec = importlib.util.spec_from_file_location("_fiatlux_score", score_py)
+        if spec is None or spec.loader is None:
+            raise ImportError(f"could not load score spec from {score_py}")
         mod = importlib.util.module_from_spec(spec)
         # Must be registered BEFORE exec: score.py's @dataclass resolves types through
         # sys.modules[cls.__module__], which is None for an unregistered manual load.
