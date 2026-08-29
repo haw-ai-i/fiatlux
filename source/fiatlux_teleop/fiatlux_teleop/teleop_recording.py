@@ -240,6 +240,32 @@ class TeleopTrajectoryRecorder(TrajectoryRecorder):
 
         self._has_insert = _has("bulb") and _has("socket")
         self._has_contact = "hand_contact" in getattr(env.scene, "sensors", {})
+        # Both hands (#89). Teleop is where this matters most: an operator uses whichever hand is
+        # convenient, and the 2026-08-21 session drove the old bulb left-handed, which the bags
+        # recorded as 0.0 N of contact throughout.
+        self._has_left_contact = "left_hand_contact" in getattr(env.scene, "sensors", {})
+
+        # The parent's meta hardcodes action_joint_order from the benchmark's STATIC constants
+        # (Inspire hand names) -- wrong whenever the operator picked the other hand (--hand
+        # dex3|inspire swaps the actions/robot at cfg time). Rebuild it from the LIVE action
+        # manager so the meta always matches the robot that actually ran, and keep the per-term
+        # breakdown too. Best-effort: meta polish must never take a session down.
+        try:
+            am = env.action_manager
+            terms: dict[str, list[str]] = {}
+            for name in am.active_terms:
+                term = am.get_term(name) if hasattr(am, "get_term") else am._terms[name]
+                terms[name] = list(getattr(term, "_joint_names", []) or [])
+            if terms:
+                self._meta["action_terms"] = terms
+                self._meta["action_joint_order"] = [j for names in terms.values() for j in names]
+        except Exception as e:  # noqa: BLE001
+            print(f"[teleop_recording] WARNING: could not resolve live action joints ({e}); "
+                  "meta keeps the parent's static action_joint_order", flush=True)
+
+        # Columns this layer adds on top of the parent recorder. Kept at the END of
+        # __init__, away from the hand/bulb flags above: main edits those same lines, and
+        # a block butted straight up against them turns every such edit into a conflict.
         # Track EVERY rigid object in the scene, not just bulb+socket. The hardcoded pair meant
         # the ladder -- the whole point of S01-MoveLadder -- was absent from its own bag, so a
         # failed take could not be diagnosed against the task's own success conditions (all four
@@ -249,10 +275,6 @@ class TeleopTrajectoryRecorder(TrajectoryRecorder):
         _names = list(_declared) if _declared is not None else list(
             getattr(env.scene, "rigid_objects", {}).keys())
         self._tracked_objects = [n for n in _names if _has(n)]
-        # EVERY contact sensor, discovered rather than listed. A hardcoded list missed
-        # `release_contact` (S06's object_released gate) -- the same failure mode as hardcoding
-        # bulb+socket and losing the ladder. hand_contact is excluded only because it is already
-        # recorded above as `contact_force`.
         # discover the success gate's conjunct list, if the task expresses it as data
         self._gate_conjuncts = []
         try:
@@ -292,26 +314,14 @@ class TeleopTrajectoryRecorder(TrajectoryRecorder):
             print("[teleop_recording] WARNING: no success gate found -- takes cannot score",
                   flush=True)
         _sensors = getattr(env.scene, "sensors", {})
+        # EVERY contact sensor, discovered rather than listed. A hardcoded list missed
+        # `release_contact` (S06's object_released gate) -- the same failure mode as hardcoding
+        # bulb+socket and losing the ladder. The two hand sensors are excluded because each has
+        # its own named column: hand_contact as `contact_force`, and left_hand_contact as
+        # `contact_force_left` (#89) -- discovering them here too would write one sensor twice.
         self._extra_contacts = [s for s in _sensors
-                                if s.endswith("_contact") and s != "hand_contact"]
-
-        # The parent's meta hardcodes action_joint_order from the benchmark's STATIC constants
-        # (Inspire hand names) -- wrong whenever the operator picked the other hand (--hand
-        # dex3|inspire swaps the actions/robot at cfg time). Rebuild it from the LIVE action
-        # manager so the meta always matches the robot that actually ran, and keep the per-term
-        # breakdown too. Best-effort: meta polish must never take a session down.
-        try:
-            am = env.action_manager
-            terms: dict[str, list[str]] = {}
-            for name in am.active_terms:
-                term = am.get_term(name) if hasattr(am, "get_term") else am._terms[name]
-                terms[name] = list(getattr(term, "_joint_names", []) or [])
-            if terms:
-                self._meta["action_terms"] = terms
-                self._meta["action_joint_order"] = [j for names in terms.values() for j in names]
-        except Exception as e:  # noqa: BLE001
-            print(f"[teleop_recording] WARNING: could not resolve live action joints ({e}); "
-                  "meta keeps the parent's static action_joint_order", flush=True)
+                                if s.endswith("_contact")
+                                and s not in ("hand_contact", "left_hand_contact")]
 
     def record_step(self, obs, actions, reward, terminated, truncated, extras=None) -> None:
         env = self.env
@@ -392,13 +402,17 @@ class TeleopTrajectoryRecorder(TrajectoryRecorder):
                 # explained from a recording.
                 f"{_name}_ang_vel": _obj.data.root_ang_vel_w,
             })
-        if self._has_contact:
-            step["contact_force"] = _rec._obs.object_contact_forces(env.scene.sensors["hand_contact"])
         # The gates read grip_contact (payload_held) and grasp_contact (hand_bodies_in_contact,
         # grasp_force_within); hand_contact alone is filtered to the Bulb prim, so on a ladder task
         # it reads a flat zero and tells you nothing about whether the ladder was actually held.
         for _sname in self._extra_contacts:
             step[f"{_sname}_force"] = _rec._obs.object_contact_forces(env.scene.sensors[_sname])
+        if self._has_contact:
+            step["contact_force"] = _rec._obs.object_contact_forces(env.scene.sensors["hand_contact"])
+        if self._has_left_contact:
+            step["contact_force_left"] = _rec._obs.object_contact_forces(
+                env.scene.sensors["left_hand_contact"]
+            )
         if extras:
             # Driver-supplied operator/policy signals (loco_cmd, SONIC leg action, ...). Tensors or
             # numpy accepted; each must already carry the (N, ...) leading env axis.
