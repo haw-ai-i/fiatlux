@@ -255,7 +255,9 @@ class TeleopTrajectoryRecorder(TrajectoryRecorder):
             except Exception:  # noqa: BLE001 - scene raises KeyError/ValueError depending on version
                 return False
 
-        self._has_insert = _has("bulb") and _has("socket")
+        # Bulbs are named by placement since #76 Step 1. The parent resolved which one this task
+        # manipulates; reuse that rather than guessing a second time.
+        self._has_insert = _has(self._bulb_entity) and _has("socket")
         self._has_contact = "hand_contact" in getattr(env.scene, "sensors", {})
         # Both hands (#89). Teleop is where this matters most: an operator uses whichever hand is
         # convenient, and the 2026-08-21 session drove the old bulb left-handed, which the bags
@@ -363,6 +365,11 @@ class TeleopTrajectoryRecorder(TrajectoryRecorder):
             "joint_vel": robot.data.joint_vel,
             "joint_acc": robot.data.joint_acc,
             "eef_pose": body_state,
+            **(
+                {"eef_pose_left": robot.data.body_state_w[:, self._left_ee_id, :7]}
+                if getattr(self, "_left_ee_id", None) is not None
+                else {}
+            ),
             "policy_obs": obs["policy"] if isinstance(obs, dict) else obs,
             "reward": reward,
             "step_in_episode": env.episode_length_buf.clone(),
@@ -374,7 +381,7 @@ class TeleopTrajectoryRecorder(TrajectoryRecorder):
             "timeout_term": term_flag(env, "time_out", self.n, self.device),
         }
         if self._has_insert:
-            bulb, socket = env.scene["bulb"], env.scene["socket"]
+            bulb, socket = env.scene[self._bulb_entity], env.scene["socket"]
             step.update(
                 {
                     "bulb_pos": bulb.data.root_pos_w,
@@ -382,8 +389,8 @@ class TeleopTrajectoryRecorder(TrajectoryRecorder):
                     "bulb_lin_vel": bulb.data.root_lin_vel_w,
                     "socket_pos": socket.data.root_pos_w,
                     "socket_quat": socket.data.root_quat_w,
-                    "pos_error": _rec._rewards._bulb_socket_pos_error(env),
-                    "ori_error": _rec._rewards._bulb_socket_ori_error(env),
+                    "pos_error": _rec._rewards._bulb_socket_pos_error(env, self._bulb_entity),
+                    "ori_error": _rec._rewards._bulb_socket_ori_error(env, self._bulb_entity),
                 }
             )
         # The ROBOT's own root pose. Every subtask's success conjunction reads it -- robot_standing

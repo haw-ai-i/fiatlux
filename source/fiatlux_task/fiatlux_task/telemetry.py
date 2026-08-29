@@ -188,10 +188,14 @@ class ScoreLogger:
         if self._max_episode_length_s is None:
             self._max_episode_length_s = float(getattr(env, "max_episode_length_s", 0.0)) or None
             self._step_dt = float(getattr(env, "step_dt", 0.0)) or None
-        if "hand_contact" in env.scene.sensors:
-            # Force on the OBJECT, matching the recorded contact_force channel and the
+        # BOTH hands, matching the recorded channels and the scorer (issue #89). Watching the
+        # right hand alone reported a left-handed crush as clean.
+        for sensor_name in ("hand_contact", "left_hand_contact"):
+            if sensor_name not in env.scene.sensors:
+                continue
+            # Force on the OBJECT, matching the recorded contact_force channels and the
             # scorer. The sensor's net force also carries scenery and self-contact.
-            forces = _obs.object_contact_forces(env.scene.sensors["hand_contact"])
+            forces = _obs.object_contact_forces(env.scene.sensors[sensor_name])
             self.peak_contact_force = max(self.peak_contact_force, float(torch.norm(forces, dim=-1).max()))
 
         done_ids = torch.nonzero(done, as_tuple=False).flatten()

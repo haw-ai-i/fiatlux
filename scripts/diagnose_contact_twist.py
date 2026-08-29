@@ -136,7 +136,7 @@ def build_cfg():
         if getattr(cfg.terminations, term, None) is not None:
             setattr(cfg.terminations, term, None)
     cfg.scene.robot.spawn.articulation_props.fix_root_link = True
-    for bulb_cfg in (cfg.scene.bulb, cfg.scene.old_bulb):
+    for bulb_cfg in (cfg.scene.fresh_bulb, cfg.scene.old_bulb):
         if DISABLE_GRAVITY and getattr(bulb_cfg.spawn, "rigid_props", None) is not None:
             bulb_cfg.spawn.rigid_props.disable_gravity = True
         if DISABLE_COLLISION:

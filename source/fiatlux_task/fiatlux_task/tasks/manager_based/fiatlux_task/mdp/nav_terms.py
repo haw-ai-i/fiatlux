@@ -247,7 +247,7 @@ def base_disposal_distance(env: ManagerBasedRLEnv) -> torch.Tensor:
 def base_bulb_distance(env: ManagerBasedRLEnv) -> torch.Tensor:
     """Horizontal distance (m) from the robot's root to the fresh bulb's root (on the table)."""
     robot: Articulation = env.scene["robot"]
-    bulb: RigidObject = env.scene["bulb"]
+    bulb: RigidObject = env.scene["fresh_bulb"]
     return torch.norm((robot.data.root_pos_w - bulb.data.root_pos_w)[:, :2], dim=1)
 
 

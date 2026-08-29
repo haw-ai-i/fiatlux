@@ -31,6 +31,9 @@ from fiatlux_task.robots.g1 import (
     G1_LEFT_HAND_JOINTS,
     swap_robot_variant,
 )
+from fiatlux_task.robots.g1 import (
+    G1_LEFT_EE_BODY as _G1_LEFT_EE_BODY,
+)
 from fiatlux_task.tasks.manager_based.fiatlux_task.g1_bulb_env_cfg import G1BulbInsertEnvCfg
 from fiatlux_task.tasks.manager_based.fiatlux_task.scene_cfg import _quat_x_deg, _spawn_usd_as_rigid_body
 
@@ -60,7 +63,8 @@ from .xr_controller_retargeters import (
 # add optional bimanual control: the left controller drives the left arm + grip. The left hand joints
 # come from g1.py (G1_LEFT_HAND_JOINTS) so swap_robot_variant's Dex3 remap stays in sync with them.
 G1_LEFT_ARM_JOINTS = [j.replace("right_", "left_", 1) for j in G1_ARM_JOINTS]
-G1_LEFT_EE_BODY = "left_wrist_yaw_link"
+# Re-exported: the constant now lives beside its right-hand twin in robots/g1.py (#89).
+G1_LEFT_EE_BODY = _G1_LEFT_EE_BODY
 G1_LEFT_HAND_OPEN = dict.fromkeys(G1_LEFT_HAND_JOINTS, 0.0)
 G1_LEFT_HAND_GRASP = {k.replace("R_", "L_", 1): v for k, v in G1_HAND_GRASP.items()}
 
@@ -162,7 +166,7 @@ class G1BulbInsertTeleopEnvCfg(G1BulbInsertEnvCfg):
         self.scene.socket.init_state.pos = (0.51, 0.35, 0.80)  # centered between the two hands, at arm's length,
         # lowered to ~hand-rest height (right x~0.38, left x~0.64) -- reachable by either arm, clear of rest zone
         self.scene.socket.init_state.rot = upright
-        self.scene.bulb.spawn = sim_utils.UsdFileCfg(
+        self.scene.fresh_bulb.spawn = sim_utils.UsdFileCfg(
             usd_path=OMNI_BULB_USD,
             func=_spawn_omni_rigid,
             # Bulb at the socket's 1:1 scale (0.007, matching the socket spawn above). The collision
@@ -189,8 +193,8 @@ class G1BulbInsertTeleopEnvCfg(G1BulbInsertEnvCfg):
         # base has a thin collider that can TUNNEL through the kinematic table if dropped from a
         # height (verified: a 5 cm spawn drop fell through on some resets), so keep the drop tiny.
         # y kept inside the table's near edge (y=0.281) so it rests on the surface, not teetering off.
-        self.scene.bulb.init_state.pos = (0.34, 0.24, 0.89)
-        self.scene.bulb.init_state.rot = upright
+        self.scene.fresh_bulb.init_state.pos = (0.34, 0.24, 0.89)
+        self.scene.fresh_bulb.init_state.rot = upright
 
         # NOTE: use the robot's tuned per-joint arm gains (_ARM_STIFFNESS/_ARM_DAMPING/_ARM_ARMATURE
         # from robots/g1.py). A previous blanket override (stiffness=2000, damping=100) replaced those

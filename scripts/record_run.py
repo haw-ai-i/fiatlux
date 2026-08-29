@@ -92,9 +92,11 @@ args_cli = parser.parse_args()
 
 want_video = args_cli.record in ("video", "both")
 want_bag = args_cli.record in ("bag", "both")
-# Cameras are required to render video frames.
-if want_video:
-    args_cli.enable_cameras = True
+# Cameras are required to render video frames -- and to build the env at all. EVERY FIATLUX task
+# calls `add_ego_camera`, and Isaac Lab raises at startup for a camera spawned without the flag.
+# Gating this on `want_video` meant `--record bag` died before the first step on every task, with
+# an error about rendering that reads like a video problem rather than a missing flag.
+args_cli.enable_cameras = True
 # Always headless (video still renders via enable_cameras). AppLauncher's --headless is
 # store_true default False -- never None -- so the old None-guard was dead code and a
 # displayless machine wedged in GUI mode; use --livestream for interactive viewing.

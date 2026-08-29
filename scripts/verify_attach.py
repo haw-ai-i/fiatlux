@@ -80,6 +80,8 @@ import gymnasium as gym
 import torch
 from fiatlux_task.assets import BULB_PLUG_OFFSET, SOCKET_SEAT_AXIS, SOCKET_SEAT_OFFSET
 from fiatlux_task.tasks.manager_based.fiatlux_task.mdp import attach as task_attach
+from fiatlux_task.tasks.manager_based.fiatlux_task.mdp import mate_terms as task_mate
+from fiatlux_task.tasks.manager_based.fiatlux_task.mdp import rewards as task_rewards
 from fiatlux_task.tasks.manager_based.fiatlux_task.replace_env_cfg import (
     BAYONET_INSERTION_DEPTH,
     BAYONET_ROTATION_ANGLE,
@@ -149,7 +151,7 @@ def build_replace_cfg(num_envs: int = 1):
             if group is not None and getattr(group, term, None) is not None:
                 setattr(group, term, None)
     cfg.scene.robot.spawn.articulation_props.fix_root_link = True
-    for bulb_cfg in (cfg.scene.bulb, cfg.scene.old_bulb):
+    for bulb_cfg in (cfg.scene.fresh_bulb, cfg.scene.old_bulb):
         if getattr(bulb_cfg.spawn, "rigid_props", None) is not None:
             bulb_cfg.spawn.rigid_props.disable_gravity = True
         bulb_cfg.spawn.collision_props = sim_utils.CollisionPropertiesCfg(collision_enabled=False)
@@ -539,7 +541,7 @@ def main() -> int:
         robot = env.scene["robot"]
         socket = env.scene["socket"]
         old_bulb = env.scene["old_bulb"]
-        fresh_bulb = env.scene["bulb"]
+        fresh_bulb = env.scene["fresh_bulb"]
         manager = getattr(env, task_attach._ENV_ATTR, None)
         if manager is None:
             record("bayonet:manager_present", False, "no bulb_attachment term wired on FIATLUX-Replace-v0")
@@ -733,6 +735,84 @@ def main() -> int:
             f"3 cm lateral offset stays FREE (phase={fresh_phase()})",
         )
 
+        # --- issue #90: the clock angle a bayonet enters at is free -------------------------
+        # A cap goes into the bore at whatever angle the operator's wrist happens to be at and
+        # turns from there. The gate used to read FULL-frame orientation error, so any entry
+        # twist past the tolerance was rejected -- 326 of 358 blocked steps in the 2026-08-21
+        # bags had their tilt within tolerance and were refused on twist alone.
+        entry_clock = 0.40  # rad, twice the tolerance the full-frame gate allowed
+        place_bulb(fresh_bulb, 0.5 * depth, entry_clock)
+        step()
+        record(
+            "bayonet:enters_at_any_clock_angle",
+            fresh_phase() == task_attach._AXIAL,
+            f"entered at {entry_clock:.3f} rad of twist (phase={fresh_phase()})",
+        )
+
+        # ...and the mechanic keeps that angle instead of teleporting the bulb onto the socket's
+        # own. The projection used to write `socket_quat` outright, which moved a gripped bulb
+        # 0.155 rad in one 20 ms step.
+        retained_clock = bulb_twist(fresh_bulb)
+        manager_sign = task_attach.attachment_manager(env).rotation_sign
+        expected_clock = manager_sign * entry_clock
+        record(
+            "bayonet:entry_clock_angle_preserved",
+            # The phase conjunct is load-bearing. Without it this passes whenever the bulb never
+            # engaged at all -- nothing constrains a FREE bulb, so its twist is trivially retained.
+            fresh_phase() == task_attach._AXIAL and abs(retained_clock - expected_clock) < 0.02,
+            f"entered at {expected_clock:+.3f} rad, retained {retained_clock:+.3f} rad (phase={fresh_phase()})",
+        )
+
+        # A lock, driven all the way through from that non-zero entry angle. Entry preservation
+        # on its own is not enough: the projection could keep the clock angle at engage and then
+        # quietly rotate the bulb relative to the socket's own zero once theta starts moving.
+        # This is the behaviour the whole entry-twist change exists to produce.
+        drive_pose(fresh_bulb, 0.5 * depth, -0.002, entry_clock, entry_clock, 18)
+        drive_pose(fresh_bulb, -0.002, -0.002, entry_clock, entry_clock + angle, 24)
+        locked_from_entry = fresh_phase() == task_attach._ROTATING
+        theta_from_entry = fresh_theta()
+        twist_from_entry = bulb_twist(fresh_bulb)
+        expected_twist = task_attach._wrap_to_pi(torch.tensor([manager_sign * (entry_clock + angle)]))[0].item()
+        record(
+            "bayonet:locks_from_a_non_zero_entry_angle",
+            locked_from_entry
+            and abs(theta_from_entry - angle) < 0.02
+            and abs(task_attach._wrap_to_pi(torch.tensor([twist_from_entry - expected_twist]))[0].item()) < 0.03
+            and abs(axial_distance(fresh_bulb)) < 0.003
+            and bool(task_attach.fresh_bulb_attached(env)[0].item()),
+            f"phase={fresh_phase()}, theta={theta_from_entry:.3f}/{angle:.3f} rad, "
+            f"twist={twist_from_entry:+.3f} rad (want {expected_twist:+.3f}), "
+            f"axial={axial_distance(fresh_bulb) * 1000:.1f} mm",
+        )
+
+        # The dense alignment reward must not fall as the bulb turns toward the lock. This pins the
+        # PROPERTY the two reward helpers have. It is why a task whose bulb the FSM turns must
+        # score the axis-only one -- Install cannot until #76 Step 2 ports the FSM and makes its
+        # success attach-aware, because its success predicate is still full-frame.
+        #
+        # It has to run on a FREE bulb. A constrained one is pose-written every step, so both
+        # readings land on the same projected pose, the full-frame term does not move either, and
+        # the check reports a difference that is really leftover FSM state.
+        drive_pose(fresh_bulb, 0.5 * depth, 1.6 * depth, 0.0, 0.0, 12)  # travel out -> FREE
+        place_bulb(fresh_bulb, 2.0 * depth, 0.0, lateral_distance=0.05)
+        step()
+        free_for_reward = fresh_phase() == task_attach._FREE
+        axis_untwisted = task_mate.bulb_axis_alignment_tanh(env, std=0.3)[0].item()
+        full_untwisted = task_rewards.object_socket_orientation_tanh(env, std=0.3)[0].item()
+        place_bulb(fresh_bulb, 0.5 * depth, angle, lateral_distance=0.05)
+        step()
+        axis_twisted = task_mate.bulb_axis_alignment_tanh(env, std=0.3)[0].item()
+        full_twisted = task_rewards.object_socket_orientation_tanh(env, std=0.3)[0].item()
+        record(
+            "bayonet:axis_alignment_is_twist_invariant",
+            free_for_reward and abs(axis_twisted - axis_untwisted) < 0.01 and (full_untwisted - full_twisted) > 0.1,
+            f"axis-only {axis_untwisted:.3f} -> {axis_twisted:.3f} over a {angle:.3f} rad turn; "
+            f"full-frame falls {full_untwisted:.3f} -> {full_twisted:.3f} (free={free_for_reward})",
+        )
+
+        place_bulb(fresh_bulb, 1.15 * depth, 0.0)
+        step()
+
         drive_pose(fresh_bulb, 1.15 * depth, 0.75 * depth, 0.0, 0.0, 18)
         fresh_axial = fresh_phase() == task_attach._AXIAL
         record(
@@ -851,6 +931,14 @@ if __name__ == "__main__":
     exit_code = 1
     try:
         exit_code = main()
+    except BaseException:
+        # os._exit below skips the interpreter's own traceback printing, so a crash inside
+        # main() would otherwise leave nothing but exit code 1 -- the log simply stops after
+        # the last check that passed. Same fix demo_bulb_removal.py carries.
+        import traceback
+
+        traceback.print_exc()
+        raise
     finally:
         sys.stdout.flush()
         sys.stderr.flush()

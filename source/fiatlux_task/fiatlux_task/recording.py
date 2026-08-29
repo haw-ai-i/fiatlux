@@ -96,12 +96,30 @@ class TrajectoryRecorder:
         robot = env.scene["robot"]
         self._ee_ids, ee_names = robot.find_bodies(_ee_body_name(env))
         self._ee_id = self._ee_ids[0]
+        # Both arms (issue #89). Recording the right one alone hid every left-handed event: a
+        # bulb carried in the left hand read as a bulb nobody was holding.
+        left_ids, left_names = robot.find_bodies(_left_ee_body_name(env))
+        self._left_ee_id = left_ids[0] if left_ids else None
+        self._left_ee_name = left_names[0] if left_names else None
+        self._left_contact = env.scene.sensors.get("left_hand_contact")
 
         # Resolve the bayonet manager once, not per step: whether a task wires
         # mdp.bulb_attachment is fixed for the whole run, and a key that appeared midway
         # through would give the buffers ragged lengths. Tasks without the term (Remove,
         # Install, Carry today) simply record no lock columns.
         self._attachment = _attach.attachment_manager(env)
+
+        # Which bulb this task manipulates, resolved once (issue #76 Step 1). Bulbs are named by
+        # placement: a bulb seated in the socket is ``old_bulb``, one anywhere else is
+        # ``fresh_bulb``. Remove and Carry build only the seated one, so a hardcoded lookup
+        # raised KeyError for them. The serialized keys stay ``bulb_*`` so old bags still parse.
+        #
+        # KNOWN LIMIT, carried over from the `scene["bulb"]` lookup this replaces: presence
+        # cannot disambiguate a two-bulb scene. S06-S09 run the Replace scene and manipulate the
+        # OLD bulb, and this picks the fresh one for them, so their bags record a parked bulb.
+        # The behaviour is unchanged by the rename -- the old lookup resolved to the same fresh
+        # bulb -- but fixing it needs the task to DECLARE its manipuland, which is #76 Step 3.
+        self._bulb_entity = "fresh_bulb" if "fresh_bulb" in env.scene.rigid_objects else "old_bulb"
 
         self._buf: dict[str, list[np.ndarray]] = {}
         self._meta = self._build_meta(policy_spec=policy_spec, seed=seed, checkpoint=checkpoint, ee_name=ee_names[0])
@@ -110,7 +128,7 @@ class TrajectoryRecorder:
     def record_step(self, obs, actions, reward, terminated, truncated) -> None:
         env = self.env
         robot = env.scene["robot"]
-        bulb = env.scene["bulb"]
+        bulb = env.scene[self._bulb_entity]
         socket = env.scene["socket"]
         contact = env.scene.sensors["hand_contact"]
 
@@ -123,16 +141,26 @@ class TrajectoryRecorder:
             "joint_vel": robot.data.joint_vel,
             "joint_acc": robot.data.joint_acc,
             "eef_pose": body_state,
+            **(
+                {"eef_pose_left": robot.data.body_state_w[:, self._left_ee_id, :7]}
+                if self._left_ee_id is not None
+                else {}
+            ),
             "bulb_pos": bulb.data.root_pos_w,
             "bulb_quat": bulb.data.root_quat_w,
             "bulb_lin_vel": bulb.data.root_lin_vel_w,
             "socket_pos": socket.data.root_pos_w,
             "socket_quat": socket.data.root_quat_w,
             "contact_force": _obs.object_contact_forces(contact),  # (N, B, 3), objects only
+            **(
+                {"contact_force_left": _obs.object_contact_forces(self._left_contact)}
+                if self._left_contact is not None
+                else {}
+            ),
             "policy_obs": obs["policy"] if isinstance(obs, dict) else obs,
             "reward": reward,
-            "pos_error": _rewards._bulb_socket_pos_error(env),
-            "ori_error": _rewards._bulb_socket_ori_error(env),
+            "pos_error": _rewards._bulb_socket_pos_error(env, self._bulb_entity),
+            "ori_error": _rewards._bulb_socket_ori_error(env, self._bulb_entity),
             "step_in_episode": env.episode_length_buf.clone(),
             "terminated": terminated,
             "truncated": truncated,
@@ -246,6 +274,8 @@ class TrajectoryRecorder:
             "joint_names": list(robot.joint_names),
             "ee_body": ee_name,
             "contact_bodies": list(getattr(contact, "body_names", []) or []),
+            "contact_bodies_left": list(getattr(self._left_contact, "body_names", []) or []),
+            "ee_body_left": self._left_ee_name,
             "policy_obs_dim": _policy_obs_dim(env),
             "success_pos_threshold": float(success_params.get("pos_threshold", 0.015)),
             "success_ori_threshold": float(success_params.get("ori_threshold", 0.2)),
@@ -262,6 +292,13 @@ def _ee_body_name(env) -> str:
     from .robots.g1 import G1_EE_BODY
 
     return G1_EE_BODY
+
+
+def _left_ee_body_name(env) -> str:
+    """The left arm's end-effector body (issue #89)."""
+    from .robots.g1 import G1_LEFT_EE_BODY
+
+    return G1_LEFT_EE_BODY
 
 
 def _policy_obs_dim(env) -> int | None:
