@@ -52,10 +52,11 @@ class StreamingVideoRecorder(VideoRecorder):
             rgb = _draw_overlay(rgb, overlay)
         if self._writer is None:
             import imageio.v2 as imageio
+
             os.makedirs(os.path.dirname(self._out_path) or ".", exist_ok=True)
             self._writer = imageio.get_writer(self._out_path, fps=self._fps, codec="libx264", quality=8)
         self._writer.append_data(rgb)
-        if self._n == 100 or self._poster is None:   # a settled early frame; frame 0 as fallback
+        if self._n == 100 or self._poster is None:  # a settled early frame; frame 0 as fallback
             self._poster = rgb
         self._n += 1
 
@@ -67,6 +68,7 @@ class StreamingVideoRecorder(VideoRecorder):
             return ""
         self._writer.close()
         import imageio.v2 as imageio
+
         poster = self._out_path.rsplit(".", 1)[0] + "_poster.png"
         imageio.imwrite(poster, self._poster)
         return self._out_path
@@ -83,6 +85,7 @@ def _embed_score(out_dir) -> dict | None:
     try:
         import importlib.util
         import sys
+
         score_py = Path(__file__).resolve().parents[3] / "scripts" / "score.py"
         spec = importlib.util.spec_from_file_location("_fiatlux_score", score_py)
         mod = importlib.util.module_from_spec(spec)
@@ -110,6 +113,7 @@ def _write_score_report(out_dir, info: dict, gate_seconds: float) -> None:
     and how often, and what the penalties did to the final number.
     """
     import glob
+
     try:
         import h5py
     except ImportError:
@@ -124,15 +128,15 @@ def _write_score_report(out_dir, info: dict, gate_seconds: float) -> None:
         with h5py.File(bags[0], "r") as f:
             demos = sorted(f["data"].keys())
             need = max(1, round(gate_seconds / 0.02)) if gate_seconds else 0
-            lines.append(f"score: {sc.get('mean_score')}   success_rate: {sc.get('success_rate')}"
-                         f"   episodes: {len(demos)}")
+            lines.append(
+                f"score: {sc.get('mean_score')}   success_rate: {sc.get('success_rate')}   episodes: {len(demos)}"
+            )
             lines.append("")
             for k in demos:
                 ep = f["data"][k]
                 n = len(np.array(ep["success_term"]))
                 succ = bool(np.array(ep["success_term"]).any())
-                lines.append(f"--- {k}: {n} steps ({n * 0.02:.1f}s) -> "
-                             f"{'SUCCESS' if succ else 'no success'}")
+                lines.append(f"--- {k}: {n} steps ({n * 0.02:.1f}s) -> {'SUCCESS' if succ else 'no success'}")
                 cols = sorted(c for c in ep if c.startswith("gate_"))
                 if not cols:
                     lines.append("    (no gate columns recorded)")
@@ -145,37 +149,47 @@ def _write_score_report(out_dir, info: dict, gate_seconds: float) -> None:
                     a = vals[c]
                     idx = np.flatnonzero(np.diff(np.r_[0, a.astype(np.int8), 0]))
                     runs = (idx[1::2] - idx[::2]) if len(idx) else np.array([0])
-                    lines.append(f"    {c.replace('gate_', ''):26s} held {100.0 * a.sum() / n:5.1f}%"
-                                 f"   longest {runs.max() * 0.02:5.2f}s")
+                    lines.append(
+                        f"    {c.replace('gate_', ''):26s} held {100.0 * a.sum() / n:5.1f}%"
+                        f"   longest {runs.max() * 0.02:5.2f}s"
+                    )
                 idx = np.flatnonzero(np.diff(np.r_[0, allc.astype(np.int8), 0]))
                 runs = (idx[1::2] - idx[::2]) if len(idx) else np.array([0])
-                lines.append(f"    ALL TOGETHER               longest {runs.max() * 0.02:5.2f}s"
-                             f"   (needs {gate_seconds:.2f}s)")
+                lines.append(
+                    f"    ALL TOGETHER               longest {runs.max() * 0.02:5.2f}s   (needs {gate_seconds:.2f}s)"
+                )
                 if not succ and need:
                     breaks = np.flatnonzero(allc[:-1] & ~allc[1:]) + 1
                     who = {c: sum(1 for b in breaks if not vals[c][b]) for c in cols}
-                    worst = [f"{c.replace('gate_', '')} ({k2}x)"
-                             for c, k2 in sorted(who.items(), key=lambda x: -x[1]) if k2]
+                    worst = [
+                        f"{c.replace('gate_', '')} ({k2}x)" for c, k2 in sorted(who.items(), key=lambda x: -x[1]) if k2
+                    ]
                     if worst:
-                        lines.append(f"    WHY NOT: the run was broken {len(breaks)} time(s) by "
-                                     + ", ".join(worst))
+                        lines.append(f"    WHY NOT: the run was broken {len(breaks)} time(s) by " + ", ".join(worst))
                     elif runs.max() == 0:
                         never = [c.replace("gate_", "") for c in cols if not vals[c].any()]
-                        lines.append("    WHY NOT: never satisfied at once; never true at all: "
-                                     + (", ".join(never) if never else "(all held at some point)"))
+                        lines.append(
+                            "    WHY NOT: never satisfied at once; never true at all: "
+                            + (", ".join(never) if never else "(all held at some point)")
+                        )
             lines.append("")
             pen = []
             if sc.get("broken_rate"):
-                pen.append(f"BROKEN  -{cfg.get('broken_penalty', 1.0)} "
-                           f"(peak contact {sc.get('peak_contact_force', 0):.1f} N > "
-                           f"{cfg.get('fragility_threshold', 50)} N)")
+                pen.append(
+                    f"BROKEN  -{cfg.get('broken_penalty', 1.0)} "
+                    f"(peak contact {sc.get('peak_contact_force', 0):.1f} N > "
+                    f"{cfg.get('fragility_threshold', 50)} N)"
+                )
             if sc.get("dropped_rate"):
-                pen.append(f"DROPPED -{cfg.get('dropped_penalty', 1.0)} "
-                           f"(payload below {cfg.get('drop_min_height', 0.4)} m)")
+                pen.append(
+                    f"DROPPED -{cfg.get('dropped_penalty', 1.0)} (payload below {cfg.get('drop_min_height', 0.4)} m)"
+                )
             lines.append("penalties: " + ("; ".join(pen) if pen else "none"))
-            lines.append(f"arithmetic: 1.0 per successful episode, minus penalties, floored at "
-                         f"{cfg.get('min_score', 0.0)}, averaged over {len(demos)} episode(s)"
-                         f"  ->  {sc.get('mean_score')}")
+            lines.append(
+                f"arithmetic: 1.0 per successful episode, minus penalties, floored at "
+                f"{cfg.get('min_score', 0.0)}, averaged over {len(demos)} episode(s)"
+                f"  ->  {sc.get('mean_score')}"
+            )
     except Exception as e:  # noqa: BLE001
         lines.append(f"(report incomplete: {e!r})")
     Path(out_dir, "score_report.txt").write_text("\n".join(lines) + "\n")
@@ -219,6 +233,7 @@ class ImageCapture:
         if not self._cams or step_index % self._stride:
             return
         import imageio.v2 as imageio
+
         for name, cam in self._cams.items():
             rgb = cam.data.output["rgb"][0, ..., :3].detach().cpu().numpy().astype(np.uint8)
             imageio.imwrite(os.path.join(self._dir, name, f"f{step_index:06d}.jpg"), rgb, quality=90)
@@ -260,8 +275,11 @@ class TeleopTrajectoryRecorder(TrajectoryRecorder):
                 self._meta["action_terms"] = terms
                 self._meta["action_joint_order"] = [j for names in terms.values() for j in names]
         except Exception as e:  # noqa: BLE001
-            print(f"[teleop_recording] WARNING: could not resolve live action joints ({e}); "
-                  "meta keeps the parent's static action_joint_order", flush=True)
+            print(
+                f"[teleop_recording] WARNING: could not resolve live action joints ({e}); "
+                "meta keeps the parent's static action_joint_order",
+                flush=True,
+            )
 
         # Columns this layer adds on top of the parent recorder. Kept at the END of
         # __init__, away from the hand/bulb flags above: main edits those same lines, and
@@ -272,8 +290,7 @@ class TeleopTrajectoryRecorder(TrajectoryRecorder):
         # of which are about the ladder). An env cfg may curate the list with a `record_objects`
         # tuple; unknown names are skipped rather than fatal.
         _declared = getattr(getattr(env, "cfg", None), "record_objects", None)
-        _names = list(_declared) if _declared is not None else list(
-            getattr(env.scene, "rigid_objects", {}).keys())
+        _names = list(_declared) if _declared is not None else list(getattr(env.scene, "rigid_objects", {}).keys())
         self._tracked_objects = [n for n in _names if _has(n)]
         # discover the success gate's conjunct list, if the task expresses it as data
         self._gate_conjuncts = []
@@ -292,9 +309,10 @@ class TeleopTrajectoryRecorder(TrajectoryRecorder):
             # (predicates at the top level, fires on the first frame they all hold). Hand-rolling
             # the first shape silently skipped every task built on the second.
             from fiatlux_task.tasks.manager_based.fiatlux_task.mdp.gates import conjuncts_of
+
             self._gate_conjuncts = list(conjuncts_of(_fn, _params))
             self._gate_seconds = float(_params.get("seconds") or 0.0)
-        except Exception:                                         # noqa: BLE001
+        except Exception:  # noqa: BLE001
             self._gate_conjuncts = []
             self._gate_seconds = 0.0
         # The gate is evaluated HERE rather than by the termination manager, so a success does not
@@ -304,24 +322,28 @@ class TeleopTrajectoryRecorder(TrajectoryRecorder):
         # demo that achieved the task and kept going would score 0.
         self._gate_hold = 0
         self._gate_fired = False
-        self._gate_need = (max(1, round(self._gate_seconds / float(getattr(env, "step_dt", 0.02))))
-                           if self._gate_seconds else (1 if self._gate_conjuncts else 0))
+        self._gate_need = (
+            max(1, round(self._gate_seconds / float(getattr(env, "step_dt", 0.02))))
+            if self._gate_seconds
+            else (1 if self._gate_conjuncts else 0)
+        )
         if self._gate_conjuncts:
-            print("[teleop_recording] recording gate conjuncts: "
-                  + ", ".join(getattr(f, "__name__", "?") for f, _ in self._gate_conjuncts),
-                  flush=True)
+            print(
+                "[teleop_recording] recording gate conjuncts: "
+                + ", ".join(getattr(f, "__name__", "?") for f, _ in self._gate_conjuncts),
+                flush=True,
+            )
         else:
-            print("[teleop_recording] WARNING: no success gate found -- takes cannot score",
-                  flush=True)
+            print("[teleop_recording] WARNING: no success gate found -- takes cannot score", flush=True)
         _sensors = getattr(env.scene, "sensors", {})
         # EVERY contact sensor, discovered rather than listed. A hardcoded list missed
         # `release_contact` (S06's object_released gate) -- the same failure mode as hardcoding
         # bulb+socket and losing the ladder. The two hand sensors are excluded because each has
         # its own named column: hand_contact as `contact_force`, and left_hand_contact as
         # `contact_force_left` (#89) -- discovering them here too would write one sensor twice.
-        self._extra_contacts = [s for s in _sensors
-                                if s.endswith("_contact")
-                                and s not in ("hand_contact", "left_hand_contact")]
+        self._extra_contacts = [
+            s for s in _sensors if s.endswith("_contact") and s not in ("hand_contact", "left_hand_contact")
+        ]
 
     def record_step(self, obs, actions, reward, terminated, truncated, extras=None) -> None:
         env = self.env
@@ -351,15 +373,17 @@ class TeleopTrajectoryRecorder(TrajectoryRecorder):
         }
         if self._has_insert:
             bulb, socket = env.scene["bulb"], env.scene["socket"]
-            step.update({
-                "bulb_pos": bulb.data.root_pos_w,
-                "bulb_quat": bulb.data.root_quat_w,
-                "bulb_lin_vel": bulb.data.root_lin_vel_w,
-                "socket_pos": socket.data.root_pos_w,
-                "socket_quat": socket.data.root_quat_w,
-                "pos_error": _rec._rewards._bulb_socket_pos_error(env),
-                "ori_error": _rec._rewards._bulb_socket_ori_error(env),
-            })
+            step.update(
+                {
+                    "bulb_pos": bulb.data.root_pos_w,
+                    "bulb_quat": bulb.data.root_quat_w,
+                    "bulb_lin_vel": bulb.data.root_lin_vel_w,
+                    "socket_pos": socket.data.root_pos_w,
+                    "socket_quat": socket.data.root_quat_w,
+                    "pos_error": _rec._rewards._bulb_socket_pos_error(env),
+                    "ori_error": _rec._rewards._bulb_socket_ori_error(env),
+                }
+            )
         # The ROBOT's own root pose. Every subtask's success conjunction reads it -- robot_standing
         # (pelvis height + tilt), base_near / base_facing (arrival tasks), climbed_to_ladder_top and
         # descended_from_ladder (height) -- and none of it was recoverable from a bag: joint_pos is
@@ -376,7 +400,7 @@ class TeleopTrajectoryRecorder(TrajectoryRecorder):
                 step[f"gate_{getattr(_fn, '__name__', 'conjunct')}"] = _val
                 _b = bool(_val.reshape(-1)[0])
                 _all_true = _b if _all_true is None else (_all_true and _b)
-            except Exception:                                     # noqa: BLE001
+            except Exception:  # noqa: BLE001
                 pass
         if self._gate_need and _all_true is not None:
             self._gate_hold = self._gate_hold + 1 if _all_true else 0
@@ -384,24 +408,28 @@ class TeleopTrajectoryRecorder(TrajectoryRecorder):
                 self._gate_fired = True
             step["success_term"] = np.full((self.n,), self._gate_fired, dtype=bool)
         _rb = env.scene["robot"]
-        step.update({
-            "robot_root_pos": _rb.data.root_pos_w,
-            "robot_root_quat": _rb.data.root_quat_w,
-            "robot_root_lin_vel": _rb.data.root_lin_vel_w,
-            "robot_root_ang_vel": _rb.data.root_ang_vel_w,
-        })
+        step.update(
+            {
+                "robot_root_pos": _rb.data.root_pos_w,
+                "robot_root_quat": _rb.data.root_quat_w,
+                "robot_root_lin_vel": _rb.data.root_lin_vel_w,
+                "robot_root_ang_vel": _rb.data.root_ang_vel_w,
+            }
+        )
         for _name in self._tracked_objects:
             _obj = env.scene[_name]
-            step.update({
-                f"{_name}_pos": _obj.data.root_pos_w,
-                f"{_name}_quat": _obj.data.root_quat_w,
-                f"{_name}_lin_vel": _obj.data.root_lin_vel_w,
-                # ANGULAR velocity too: place_terms.object_at_rest gates on BOTH, so without this
-                # a "settled" object that is still rocking looks like a passing conjunct in the
-                # bag while the real gate stays shut -- exactly the S01 case that could not be
-                # explained from a recording.
-                f"{_name}_ang_vel": _obj.data.root_ang_vel_w,
-            })
+            step.update(
+                {
+                    f"{_name}_pos": _obj.data.root_pos_w,
+                    f"{_name}_quat": _obj.data.root_quat_w,
+                    f"{_name}_lin_vel": _obj.data.root_lin_vel_w,
+                    # ANGULAR velocity too: place_terms.object_at_rest gates on BOTH, so without this
+                    # a "settled" object that is still rocking looks like a passing conjunct in the
+                    # bag while the real gate stays shut -- exactly the S01 case that could not be
+                    # explained from a recording.
+                    f"{_name}_ang_vel": _obj.data.root_ang_vel_w,
+                }
+            )
         # The gates read grip_contact (payload_held) and grasp_contact (hand_bodies_in_contact,
         # grasp_force_within); hand_contact alone is filtered to the Bulb prim, so on a ladder task
         # it reads a flat zero and tells you nothing about whether the ladder was actually held.
@@ -410,9 +438,7 @@ class TeleopTrajectoryRecorder(TrajectoryRecorder):
         if self._has_contact:
             step["contact_force"] = _rec._obs.object_contact_forces(env.scene.sensors["hand_contact"])
         if self._has_left_contact:
-            step["contact_force_left"] = _rec._obs.object_contact_forces(
-                env.scene.sensors["left_hand_contact"]
-            )
+            step["contact_force_left"] = _rec._obs.object_contact_forces(env.scene.sensors["left_hand_contact"])
         if extras:
             # Driver-supplied operator/policy signals (loco_cmd, SONIC leg action, ...). Tensors or
             # numpy accepted; each must already carry the (N, ...) leading env axis.

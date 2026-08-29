@@ -70,20 +70,20 @@ SUBTASKS: tuple[tuple[str, str, str], ...] = (
     ("FIATLUX-S02-ClimbLadder", "s02_climb_ladder_env_cfg", "S02ClimbLadderEnvCfg"),
     ("FIATLUX-S03-RemoveOldBulb", "s03_remove_old_bulb_env_cfg", "S03RemoveOldBulbEnvCfg"),
     ("FIATLUX-S04-DescendWithBulb", "s04_descend_with_bulb_env_cfg", "S04DescendWithBulbEnvCfg"),
-    ("FIATLUX-S05-CarryBulbToDisposal", "s05_carry_bulb_to_disposal_env_cfg",
-     "S05CarryBulbToDisposalEnvCfg"),
+    ("FIATLUX-S05-CarryBulbToDisposal", "s05_carry_bulb_to_disposal_env_cfg", "S05CarryBulbToDisposalEnvCfg"),
     ("FIATLUX-S06-DisposeBulb", "s06_dispose_bulb_env_cfg", "S06DisposeBulbEnvCfg"),
     ("FIATLUX-S07-ApproachNewBulb", "s07_approach_new_bulb_env_cfg", "S07ApproachNewBulbEnvCfg"),
     ("FIATLUX-S08-GrabNewBulb", "s08_grab_new_bulb_env_cfg", "S08GrabNewBulbEnvCfg"),
-    ("FIATLUX-S09-CarryBulbToLadder", "s09_carry_bulb_to_ladder_env_cfg",
-     "S09CarryBulbToLadderEnvCfg"),
+    ("FIATLUX-S09-CarryBulbToLadder", "s09_carry_bulb_to_ladder_env_cfg", "S09CarryBulbToLadderEnvCfg"),
     ("FIATLUX-S10-ClimbWithBulb", "s10_climb_with_bulb_env_cfg", "S10ClimbWithBulbEnvCfg"),
     ("FIATLUX-S11-ScrewInBulb", "s11_screw_in_bulb_env_cfg", "S11ScrewInBulbEnvCfg"),
     ("FIATLUX-S12-ClimbDown", "s12_climb_down_env_cfg", "S12ClimbDownEnvCfg"),
 )
 
 _IK = DifferentialIKControllerCfg(
-    command_type="pose", use_relative_mode=False, ik_method="dls",
+    command_type="pose",
+    use_relative_mode=False,
+    ik_method="dls",
     # heavier DLS damping so the arm relaxes to a natural rest instead of holding the elbow
     # tucked at 90 deg (matches Insert/Carry teleop)
     ik_params={"lambda_val": 0.05},
@@ -92,10 +92,22 @@ _IK = DifferentialIKControllerCfg(
 
 # Grip joint sets per hand variant. The subtask's OWN hand is kept -- see apply_subtask_teleop.
 _GRIPS = {
-    "inspire": (G1_HAND_JOINTS, G1_HAND_OPEN, G1_HAND_GRASP,
-                G1_LEFT_HAND_JOINTS, G1_LEFT_HAND_OPEN, G1_LEFT_HAND_GRASP),
-    "dex3": (G1_DEX3_RIGHT_HAND_JOINTS, G1_DEX3_HAND_OPEN, G1_DEX3_HAND_GRASP,
-             G1_DEX3_LEFT_HAND_JOINTS, G1_DEX3_LEFT_HAND_OPEN, G1_DEX3_LEFT_HAND_GRASP),
+    "inspire": (
+        G1_HAND_JOINTS,
+        G1_HAND_OPEN,
+        G1_HAND_GRASP,
+        G1_LEFT_HAND_JOINTS,
+        G1_LEFT_HAND_OPEN,
+        G1_LEFT_HAND_GRASP,
+    ),
+    "dex3": (
+        G1_DEX3_RIGHT_HAND_JOINTS,
+        G1_DEX3_HAND_OPEN,
+        G1_DEX3_HAND_GRASP,
+        G1_DEX3_LEFT_HAND_JOINTS,
+        G1_DEX3_LEFT_HAND_OPEN,
+        G1_DEX3_LEFT_HAND_GRASP,
+    ),
 }
 
 
@@ -106,20 +118,30 @@ def _make_actions_cfg(hand: str):
     @configclass
     class _Cfg:
         arm_action = DifferentialInverseKinematicsActionCfg(
-            asset_name="robot", joint_names=G1_ARM_JOINTS, body_name=G1_EE_BODY,
-            controller=_IK, scale=1.0,
+            asset_name="robot",
+            joint_names=G1_ARM_JOINTS,
+            body_name=G1_EE_BODY,
+            controller=_IK,
+            scale=1.0,
         )
         hand_action = BinaryJointPositionActionCfg(
-            asset_name="robot", joint_names=list(rj),
-            open_command_expr=dict(ro), close_command_expr=dict(rg),
+            asset_name="robot",
+            joint_names=list(rj),
+            open_command_expr=dict(ro),
+            close_command_expr=dict(rg),
         )
         left_arm_action = DifferentialInverseKinematicsActionCfg(
-            asset_name="robot", joint_names=G1_LEFT_ARM_JOINTS, body_name=G1_LEFT_EE_BODY,
-            controller=_IK, scale=1.0,
+            asset_name="robot",
+            joint_names=G1_LEFT_ARM_JOINTS,
+            body_name=G1_LEFT_EE_BODY,
+            controller=_IK,
+            scale=1.0,
         )
         left_hand_action = BinaryJointPositionActionCfg(
-            asset_name="robot", joint_names=list(lj),
-            open_command_expr=dict(lo), close_command_expr=dict(lg),
+            asset_name="robot",
+            joint_names=list(lj),
+            open_command_expr=dict(lo),
+            close_command_expr=dict(lg),
         )
 
     return _Cfg()
@@ -188,21 +210,29 @@ def apply_subtask_teleop(cfg) -> None:
     )
 
     rp = cfg.scene.robot.init_state.pos
-    cfg.teleop_devices = DevicesCfg(devices={
-        "controller_rel": OpenXRDeviceCfg(
-            retargeters=[
-                Se3RelControllerRetargeterCfg(
-                    bound_hand=DeviceBase.TrackingTarget.HAND_RIGHT,
-                    root_pos=(rp[0], rp[1], rp[2] - 0.05), sim_device=cfg.sim.device),
-                ControllerGripperRetargeterCfg(
-                    bound_hand=DeviceBase.TrackingTarget.HAND_RIGHT, sim_device=cfg.sim.device),
-                Se3RelControllerRetargeterCfg(
-                    bound_hand=DeviceBase.TrackingTarget.HAND_LEFT,
-                    root_pos=(rp[0], rp[1], rp[2] - 0.05), sim_device=cfg.sim.device),
-                ControllerGripperRetargeterCfg(
-                    bound_hand=DeviceBase.TrackingTarget.HAND_LEFT, sim_device=cfg.sim.device),
-            ],
-            sim_device=cfg.sim.device, xr_cfg=cfg.xr,
-        ),
-    })
-
+    cfg.teleop_devices = DevicesCfg(
+        devices={
+            "controller_rel": OpenXRDeviceCfg(
+                retargeters=[
+                    Se3RelControllerRetargeterCfg(
+                        bound_hand=DeviceBase.TrackingTarget.HAND_RIGHT,
+                        root_pos=(rp[0], rp[1], rp[2] - 0.05),
+                        sim_device=cfg.sim.device,
+                    ),
+                    ControllerGripperRetargeterCfg(
+                        bound_hand=DeviceBase.TrackingTarget.HAND_RIGHT, sim_device=cfg.sim.device
+                    ),
+                    Se3RelControllerRetargeterCfg(
+                        bound_hand=DeviceBase.TrackingTarget.HAND_LEFT,
+                        root_pos=(rp[0], rp[1], rp[2] - 0.05),
+                        sim_device=cfg.sim.device,
+                    ),
+                    ControllerGripperRetargeterCfg(
+                        bound_hand=DeviceBase.TrackingTarget.HAND_LEFT, sim_device=cfg.sim.device
+                    ),
+                ],
+                sim_device=cfg.sim.device,
+                xr_cfg=cfg.xr,
+            ),
+        }
+    )
