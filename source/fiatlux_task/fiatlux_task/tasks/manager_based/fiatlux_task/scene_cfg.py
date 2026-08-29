@@ -255,6 +255,10 @@ if LADDER_FIXTURE_STANDOFF <= LADDER_FIXTURE_MIN_STANDOFF:
 # so, which is why the difference is safe rather than merely small.
 LADDER_ANCHOR_HALF_SIZE = 0.18
 
+# Quarter turn between the on-tread stance and the ladder's own frame; the coupled draw below
+# turns the ladder back by the same amount. See ``subtask_tiers.balance.stand_robot_on_ladder_top``.
+TOP_STANCE_YAW_OFFSET_DEG = 90.0
+
 # Ladder mass, every preset. Without an authored MassAPI PhysX derives mass from collider
 # volume at 1000 kg/m^3, which lands a hollow ladder at tens of kg. UNVERIFIED.
 LADDER_MASS_KG = 7.58
@@ -1216,7 +1220,9 @@ def _sample_replace_layout(
         if couple_ladder_to_fixture:
             # Turn the ladder back down its own standoff bearing, so the stance on its tread
             # faces the fixture. Both mount kinds, since both stand off.
-            ladder_yaw = math.degrees(math.atan2(-anchor_bearing[1], -anchor_bearing[0]))
+            # Less the stance's own quarter turn, so it is the ROBOT that ends up pointing down
+            # the bearing. Carries the step side, and so the climb approach, round with it.
+            ladder_yaw = math.degrees(math.atan2(-anchor_bearing[1], -anchor_bearing[0])) - TOP_STANCE_YAW_OFFSET_DEG
 
         half_sizes = [
             ROBOT_ZONE_HALF_SIZE,

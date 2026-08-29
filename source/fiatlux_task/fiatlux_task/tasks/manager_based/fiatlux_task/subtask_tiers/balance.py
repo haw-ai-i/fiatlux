@@ -39,7 +39,10 @@ from ..replace_env_cfg import (
 from ..scene_cfg import (
     CLIMB_ROBOT_POSITION,
     LADDER_POSITION,
+    TOP_STANCE_YAW_OFFSET_DEG,
     G1ReplaceSceneCfg,
+    _quat_mul,
+    _quat_z_deg,
     add_ego_camera,
     add_ladder_contact_sensor,
     add_mid360_lidar,
@@ -110,16 +113,28 @@ def stand_robot_at_ladder_base(scene: G1ReplaceSceneCfg) -> None:
     _stance_on_step_side(scene, MOUNT_STANCE_STANDOFF, CLIMB_ROBOT_POSITION[2])
 
 
+# Reset jitter for the on-ladder tier, against the family's +/-0.05 m / +/-0.1 rad / +/-0.05 rad.
+ON_LADDER_RESET_JITTER_M = 0.02
+ON_LADDER_RESET_JITTER_RAD = 0.05
+ON_LADDER_JOINT_JITTER_RAD = 0.02
+
+
 def stand_robot_on_ladder_top(scene: G1ReplaceSceneCfg) -> None:
-    """Pelvis over the tread, robot yaw matched to the ladder's (the tread is axis-aligned to
-    the ladder's own frame, not to the fixture)."""
+    """Pelvis over the tread's centre, turned a quarter turn from the ladder's own frame.
+
+    Square to the ladder the feet straddle the tread's shallow axis and the right one hung off the
+    front edge entirely (issue #103); turned, they straddle the wide axis and both sit on. The
+    layout turns the ladder back the same amount, so the robot still faces the fixture.
+    """
     ladder_x, ladder_y = scene.ladder.init_state.pos[:2]
     yaw = yaw_from_quat(scene.ladder.init_state.rot)
     local_x, local_y, platform_z = STEP_LADDER_TOP_OFFSET
     dx = local_x * math.cos(yaw) - local_y * math.sin(yaw)
     dy = local_x * math.sin(yaw) + local_y * math.cos(yaw)
     scene.robot.init_state.pos = (ladder_x + dx, ladder_y + dy, platform_z + TOP_STANCE_PELVIS_OFFSET)
-    scene.robot.init_state.rot = scene.ladder.init_state.rot
+    scene.robot.init_state.rot = _quat_mul(
+        scene.ladder.init_state.rot, _quat_z_deg(TOP_STANCE_YAW_OFFSET_DEG)
+    )
 
 
 @configclass
@@ -175,6 +190,21 @@ class BalanceSubtaskCfg(SubtaskEnvCfg):
         add_ego_camera(self.scene)
         add_mid360_lidar(self.scene)
         frame_viewer_on(self.viewer, self.scene.ladder.init_state.pos)
+        # The family's jitter is sized for a robot on an open floor, where it is small against the
+        # room. On the tread it is the same order as the clearance to the edge, so it alone could
+        # put a foot back off -- randomizing a start state should not decide whether the robot
+        # starts supported.
+        self.events.reset_robot_root.params["pose_range"] = {
+            "x": (-ON_LADDER_RESET_JITTER_M, ON_LADDER_RESET_JITTER_M),
+            "y": (-ON_LADDER_RESET_JITTER_M, ON_LADDER_RESET_JITTER_M),
+            "yaw": (-ON_LADDER_RESET_JITTER_RAD, ON_LADDER_RESET_JITTER_RAD),
+        }
+        # Same for the joint offsets, which reach the feet through the hips and moved them further
+        # than the root jitter did.
+        self.events.reset_robot_joints.params["position_range"] = (
+            -ON_LADDER_JOINT_JITTER_RAD,
+            ON_LADDER_JOINT_JITTER_RAD,
+        )
 
 
 @configclass
