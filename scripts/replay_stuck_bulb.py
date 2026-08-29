@@ -91,11 +91,16 @@ def main() -> int:
     if args_cli.variant != "inspire":
         swap_robot_variant(cfg, args_cli.variant)
     if args_cli.bare:
-        # Nothing but the robot and the bulb. A free base with zero actions also sags, and a
-        # sagging robot tilts the bag->sim transform, so pin the root as well.
+        # MOVE the furniture aside rather than deleting it. Event and observation terms reference
+        # these entities by name -- `reset_socket` and `privileged/socket_pose` both take the
+        # socket -- so removing one makes the env fail to build. 20 m away is out of the way.
         for entity in ("table", "bin", "ladder", "socket", "pendant", "fixture"):
-            if getattr(cfg.scene, entity, None) is not None:
-                setattr(cfg.scene, entity, None)
+            item = getattr(cfg.scene, entity, None)
+            if item is not None and getattr(item, "init_state", None) is not None:
+                pos = item.init_state.pos
+                item.init_state.pos = (pos[0] + 20.0, pos[1] + 20.0, pos[2])
+        # A free base under zero actions sags, and the bag->sim transform IS the root difference
+        # between the two robots -- a sagging root tilts it, and with it the direction of "up".
         cfg.scene.robot.spawn.articulation_props.fix_root_link = True
     if args_cli.render:
         cfg.scene.video_cam = make_video_camera_cfg()
