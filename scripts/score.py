@@ -92,11 +92,23 @@ def _load_npz(path: Path) -> list[dict[str, np.ndarray]]:
 # Scoring                                                                      #
 # --------------------------------------------------------------------------- #
 def _peak_contact_force(ep: dict[str, np.ndarray]) -> float:
-    """Max contact-force magnitude over steps and hand bodies (N)."""
-    f = ep.get("contact_force")  # (T, B, 3)
-    if f is None or not getattr(f, "size", 0):
-        return 0.0
-    return float(np.linalg.norm(f, axis=-1).max())
+    """Max contact-force magnitude over steps and hand bodies, BOTH hands (N).
+
+    Reading the right hand alone scored a left-handed crush as clean (issue #89): the operator
+    uses whichever hand is convenient, and the 2026-08-21 session drove the old bulb left-handed
+    throughout. A missed break inflates ``clean_success_rate``, which is the wrong direction for
+    a fragility channel to be wrong in.
+
+    Bags recorded before both hands existed carry no ``contact_force_left`` and fall back to the
+    right-hand peak, so their scores do not move.
+    """
+    peak = 0.0
+    for key in ("contact_force", "contact_force_left"):  # (T, B, 3) each
+        f = ep.get(key)
+        if f is None or not getattr(f, "size", 0):
+            continue
+        peak = max(peak, float(np.linalg.norm(f, axis=-1).max()))
+    return peak
 
 
 def score_episode(ep: dict[str, np.ndarray], cfg: ScoreConfig) -> dict:

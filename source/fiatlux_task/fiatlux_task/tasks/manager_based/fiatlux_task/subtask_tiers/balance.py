@@ -30,7 +30,12 @@ from fiatlux_task.robots.g1 import G1_DEX3_PALM_BODIES, G1_FOOT_BODIES, G1_PALM_
 
 from .. import mdp
 from ..mdp.place_terms import step_face_dir_from_yaw, yaw_from_quat
-from ..replace_env_cfg import BAYONET_INSERTION_DEPTH, BAYONET_ROTATION_ANGLE, SEAT_ORI_THRESHOLD, SEAT_POS_THRESHOLD
+from ..replace_env_cfg import (
+    BAYONET_ENTRY_TILT,
+    BAYONET_INSERTION_DEPTH,
+    BAYONET_ROTATION_ANGLE,
+    SEAT_POS_THRESHOLD,
+)
 from ..scene_cfg import (
     CLIMB_ROBOT_POSITION,
     LADDER_POSITION,
@@ -58,7 +63,7 @@ class BalanceEventCfg(SubtaskEventCfg):
             "rotation_angle": BAYONET_ROTATION_ANGLE,
             "rotation_sign": -1.0,
             "radial_tolerance": SEAT_POS_THRESHOLD,
-            "orientation_tolerance": SEAT_ORI_THRESHOLD,
+            "tilt_tolerance": BAYONET_ENTRY_TILT,
         },
     )
 

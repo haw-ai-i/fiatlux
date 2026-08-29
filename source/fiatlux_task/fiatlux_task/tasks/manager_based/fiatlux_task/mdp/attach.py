@@ -108,9 +108,31 @@ def _signed_twist(socket_quat: torch.Tensor, bulb_quat: torch.Tensor, local_axis
 
 
 def _orientation_error(socket_quat: torch.Tensor, bulb_quat: torch.Tensor) -> torch.Tensor:
-    """Full-frame rotation angle between socket and bulb (bounds both tilt and twist)."""
+    """Full-frame rotation angle between socket and bulb (bounds both tilt and twist).
+
+    NOT the entry gate. Twist about the seat axis IS the screwing motion, so a full-frame
+    comparison reads the very pose the mechanic asks for as misalignment -- see ``_tilt_error``
+    and issue #90. This stays for callers that genuinely want both components bounded.
+    """
     relative = quat_mul(quat_inv(socket_quat), bulb_quat)
     return 2.0 * torch.acos(relative[:, 0].abs().clamp(max=1.0))
+
+
+def _tilt_error(socket_quat: torch.Tensor, bulb_quat: torch.Tensor, local_axis: torch.Tensor) -> torch.Tensor:
+    """Angle between the bulb's plug axis and the socket's seat axis, ignoring twist (issue #90).
+
+    This is what an entry gate should measure. A bayonet cap enters at any clock angle -- the
+    operator holds it wherever their wrist happens to be and turns from there -- so the only
+    orientation that can block entry is the bulb pointing the wrong way.
+
+    Measured in the teleop bags of 2026-08-21: of the steps where the operator held the bulb in
+    the socket and it did not capture, the tilt was within tolerance on 326 of 358, and the twist
+    alone was rejecting them. One hold lasted 0.92 s at 25 degrees of twist.
+    """
+    plug = quat_apply(bulb_quat, local_axis.expand(bulb_quat.shape[0], 3))
+    seat = quat_apply(socket_quat, local_axis.expand(socket_quat.shape[0], 3))
+    cos = (plug * seat).sum(dim=1) / (plug.norm(dim=1) * seat.norm(dim=1)).clamp(min=1e-9)
+    return torch.acos(cos.clamp(-1.0, 1.0))
 
 
 def _seated_bulb_root_pose_w(env: ManagerBasedEnv) -> tuple[torch.Tensor, torch.Tensor]:
@@ -141,6 +163,12 @@ class bulb_attachment(ManagerTermBase):
         # Twist of each bulb's pose as we last wrote (or spawned) it: theta integrates
         # against this, so transition and reset steps need no special-casing.
         self._prev_twist = torch.zeros(2, n, device=dev)
+        # Clock angle each bulb entered the channel at (issue #90). The mechanic used to force
+        # every engaged bulb to the socket's own clock angle, which teleported a gripped bulb by
+        # up to a fifth of a radian in one step. `theta` is measured FROM this, so a lock is a
+        # quarter turn from wherever the operator entered. The final roll varies and is invisible:
+        # the bulb is a surface of revolution.
+        self._entry_twist = torch.zeros(2, n, device=dev)
         self._depth = torch.zeros(n, device=dev)
         self._angle = torch.zeros(n, device=dev)
         self._axis_l = torch.tensor(SOCKET_SEAT_AXIS, device=dev).expand(n, 3)
@@ -189,6 +217,9 @@ class bulb_attachment(ManagerTermBase):
         # Both bulbs spawn untwisted relative to the socket (the old bulb's init rot IS
         # the fixture rot), so the first step's twist delta reads as ~0, not as -angle.
         self._prev_twist[:, ids] = 0.0
+        # The old bulb spawns AT the socket's rotation, so entry twist zero reproduces the
+        # pre-#90 seated pose exactly.
+        self._entry_twist[:, ids] = 0.0
 
     def __call__(
         self,
@@ -198,7 +229,7 @@ class bulb_attachment(ManagerTermBase):
         rotation_angle: ParameterSpec = 0.5 * math.pi,
         rotation_sign: float = -1.0,
         radial_tolerance: float = 0.015,
-        orientation_tolerance: float = 0.2,
+        tilt_tolerance: float = 0.2,
         seat_tolerance: float = 0.004,
     ) -> None:
         # insertion_depth / rotation_angle / rotation_sign are consumed from cfg.params
@@ -212,7 +243,7 @@ class bulb_attachment(ManagerTermBase):
             _OLD,
             socket_empty=self._phase[_FRESH] == _FREE,
             radial_tolerance=radial_tolerance,
-            orientation_tolerance=orientation_tolerance,
+            tilt_tolerance=tilt_tolerance,
             seat_tolerance=seat_tolerance,
         )
         self._advance(
@@ -220,7 +251,7 @@ class bulb_attachment(ManagerTermBase):
             _FRESH,
             socket_empty=self._phase[_OLD] == _FREE,
             radial_tolerance=radial_tolerance,
-            orientation_tolerance=orientation_tolerance,
+            tilt_tolerance=tilt_tolerance,
             seat_tolerance=seat_tolerance,
         )
         self._take_snapshot()
@@ -231,7 +262,7 @@ class bulb_attachment(ManagerTermBase):
         row: int,
         socket_empty: torch.Tensor,
         radial_tolerance: float,
-        orientation_tolerance: float,
+        tilt_tolerance: float,
         seat_tolerance: float,
     ) -> None:
         sign = self._rotation_sign
@@ -246,7 +277,7 @@ class bulb_attachment(ManagerTermBase):
         lateral = torch.norm(displacement - axial.unsqueeze(1) * axis_w, dim=1)
         twist = _signed_twist(socket_quat, bulb_quat, self._axis_l)
 
-        phase, theta = self._phase[row], self._theta[row]
+        phase, theta, entry = self._phase[row], self._theta[row], self._entry_twist[row]
         # Lock-positive twist change since the pose we last wrote (or the spawn pose).
         delta = sign * _wrap_to_pi(twist - self._prev_twist[row])
 
@@ -254,13 +285,17 @@ class bulb_attachment(ManagerTermBase):
         was_free = phase == _FREE
         was_axial = phase == _AXIAL
         was_rotating = phase == _ROTATING
+        # `axial >= -seat_tolerance`, not `>= 0`: `lock` already accepts the bulb sitting that
+        # far past the seat, because contact geometry stops it slightly short of the exact plane.
+        # An entry gate that demands `>= 0` exactly rejects an operator who pushes a millimetre
+        # too far -- the same overshoot the next transition forgives (issue #90).
         engage = (
             was_free
             & socket_empty
-            & (axial >= 0.0)
+            & (axial >= -seat_tolerance)
             & (axial <= self._depth)
             & (lateral < radial_tolerance)
-            & (_orientation_error(socket_quat, bulb_quat) < orientation_tolerance)
+            & (_tilt_error(socket_quat, bulb_quat, self._axis_l) < tilt_tolerance)
         )
         eject = was_axial & (axial > self._depth)
         # Bottomed within seat_tolerance: contact geometry stops the bulb slightly short
@@ -271,6 +306,10 @@ class bulb_attachment(ManagerTermBase):
 
         phase[engage] = _AXIAL
         theta[engage] = 0.0
+        # Keep the clock angle the bulb arrived at. Without this the projection below writes
+        # `socket_quat` outright, which teleports a gripped bulb onto the socket's own clock
+        # angle in a single step -- measured at 0.155 rad in the 2026-08-21 bags (issue #90).
+        entry[engage] = twist[engage]
         phase[eject] = _FREE
         phase[lock] = _ROTATING
         theta[lock] = torch.minimum(delta, self._angle)[lock]
@@ -288,8 +327,10 @@ class bulb_attachment(ManagerTermBase):
         axial_travel = in_axial & ~unlock
         ids = (in_axial | in_rotating).nonzero(as_tuple=False).squeeze(-1)
         if ids.numel() > 0:
-            # theta == 0 throughout AXIAL, so one expression covers both phases.
-            proj_quat = quat_mul(socket_quat, _axis_angle_quat(self._axis_l, sign * theta))
+            # theta == 0 throughout AXIAL, so one expression covers both phases. The written
+            # twist is the ENTRY clock angle plus theta: a lock is a quarter turn from wherever
+            # the bulb went in, not a turn onto the socket's own angle.
+            proj_quat = quat_mul(socket_quat, _axis_angle_quat(self._axis_l, entry + sign * theta))
             proj_axial = torch.where(
                 axial_travel,
                 torch.minimum(axial.clamp(min=0.0), self._depth),
@@ -308,7 +349,7 @@ class bulb_attachment(ManagerTermBase):
             bulb.write_root_velocity_to_sim(torch.cat([proj_lin[ids], proj_ang[ids]], dim=-1), env_ids=ids)
 
         # A constrained bulb now sits at the twist we wrote; a free bulb keeps its own.
-        self._prev_twist[row] = torch.where(in_axial | in_rotating, sign * theta, twist)
+        self._prev_twist[row] = torch.where(in_axial | in_rotating, entry + sign * theta, twist)
 
 
 def _attachment(env: ManagerBasedRLEnv) -> bulb_attachment:

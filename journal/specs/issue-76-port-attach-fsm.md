@@ -282,6 +282,15 @@ dynamic before wiring the term.
       #54 added `old_bulb_disposal_distance_pinned` for exactly this reason. `removal_progress`
       (L165) and `disposal_progress` (L174) must move to Replace's attach-aware
       `old_bulb_release_clearance` (L267) and `old_bulb_disposal_distance_pinned` (L274).
+- [ ] ⚠️ **Switch Install's `align_orientation` to axis-only alignment IN THIS STEP.** It reads
+      full-frame quaternion error, so once the FSM turns Install's bulb the channel pays the
+      policy to hold `theta = 0` and resist the quarter turn. #90 tried to fix it ahead of the
+      port and reverted: with no FSM wired nothing turns the bulb, while `seated_bonus` and the
+      success DoneTerm both gate on `bulb_seated`, whose threshold is full-frame — axis-only
+      alignment would pay a bulb at any clock angle in full while success stayed unreachable.
+      The reward, the FSM and an attach-aware success move together, or not at all. Use
+      `mate_terms.bulb_axis_alignment_tanh`; `verify_attach.py`'s
+      `bayonet:axis_alignment_is_twist_invariant` pins why.
 - [ ] **Install has three seating outputs, and all three need a decision.** "Gate seating on
       `fresh_bulb_attached`" names none of them individually:
 

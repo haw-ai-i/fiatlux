@@ -593,6 +593,25 @@ class G1ReplaceSceneCfg(DressedSceneCfg):
         track_air_time=False,
     )
 
+    # -- The same channel for the LEFT hand, for recording only (issue #89).
+    #
+    # A SEPARATE sensor, not an extension of the one above, and the distinction is deliberate.
+    # ``hand_contact`` feeds the fragility scoring through ``score.py``'s peak-force channel, and
+    # it has eleven consumers. Widening its body match would silently change what
+    # ``peak_contact_force`` measures and therefore what ``broken_rate`` reports, while #93 is
+    # open about that score being wrong already. Whether the score should count both hands is
+    # #93's decision to make, not a side effect of making the left hand visible.
+    #
+    # Visible it must be: the robot is two-armed and operators use both hands. Recording one arm
+    # is why a bulb carried in the left hand read as a bulb nobody was holding, and why every
+    # old-bulb contact in the 2026-08-21 bags reads 0.0 N -- not "no contact", but "not measured".
+    left_hand_contact: ContactSensorCfg = ContactSensorCfg(
+        prim_path="{ENV_REGEX_NS}/Robot/(left_hand_.*|left_wrist_.*|L_.*)",
+        filter_prim_paths_expr=[],
+        history_length=1,
+        track_air_time=False,
+    )
+
     # ------------------------------------------------------------------ randomized dressing
     # Each cloned env spawns one randomly chosen fixture from FIXTURE_USDS. AssetBaseCfg keeps
     # it out of physics entirely and collisions are disabled. Heterogeneous per-env assets
@@ -628,9 +647,11 @@ def _sync_bulb_contact_filters(scene: G1ReplaceSceneCfg) -> None:
     This fails SILENTLY when it is wrong, which is why it is centralized: the sensor reports zero
     force for an unfiltered body, and zero force reads as "not touching".
     """
-    scene.hand_contact.filter_prim_paths_expr = [
-        bulb.prim_path for bulb in (scene.fresh_bulb, scene.old_bulb) if bulb is not None
-    ]
+    paths = [bulb.prim_path for bulb in (scene.fresh_bulb, scene.old_bulb) if bulb is not None]
+    scene.hand_contact.filter_prim_paths_expr = paths
+    # The left hand filters the same bulbs. Its sensor exists to record, not to score (#89).
+    if scene.left_hand_contact is not None:
+        scene.left_hand_contact.filter_prim_paths_expr = list(paths)
 
 
 def apply_workshop_preset(scene: G1ReplaceSceneCfg) -> None:
