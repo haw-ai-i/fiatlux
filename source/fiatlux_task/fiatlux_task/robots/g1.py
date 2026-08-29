@@ -465,9 +465,8 @@ def swap_robot_variant(env_cfg, variant: str) -> None:
         it looking for ``right_hand_base_link`` on a Dex3 robot -- a hard failure inside the
         event, not a silent no-op.
         """
-        params = getattr(term, "params", None)
         func = getattr(term, "func", None)
-        if not isinstance(params, dict) or func is None:
+        if func is None:
             return
         try:
             accepts = "hand_variant" in inspect.signature(func).parameters
@@ -476,7 +475,10 @@ def swap_robot_variant(env_cfg, variant: str) -> None:
         if accepts:
             # Set rather than only-update: tasks leave this at the function's ``"inspire"``
             # default, so there is usually no key here to rewrite.
-            params["hand_variant"] = variant
+            if getattr(term, "params", None) is None:
+                term.params = {}
+            if isinstance(term.params, dict):
+                term.params["hand_variant"] = variant
 
     for manager_name in ("rewards", "terminations", "events"):
         manager = getattr(env_cfg, manager_name, None)
