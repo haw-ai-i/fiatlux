@@ -9,7 +9,10 @@ Per-task teleop tweaks (camera height, arm spawn, staged object poses) belong HE
 shared recipe -- keep :func:`~fiatlux_teleop.subtask_teleop.apply_subtask_teleop` generic.
 """
 
-from fiatlux_task.tasks.manager_based.fiatlux_task.subtasks.s09_carry_bulb_to_ladder_env_cfg import S09CarryBulbToLadderEnvCfg
+from fiatlux_task.tasks.manager_based.fiatlux_task.subtasks.s09_carry_bulb_to_ladder_env_cfg import (
+    S09CarryBulbToLadderEnvCfg,
+)
+
 from isaaclab.utils import configclass
 
 from ..subtask_teleop import apply_subtask_teleop

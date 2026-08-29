@@ -130,6 +130,9 @@ import gymnasium as gym  # noqa: E402
 import numpy as np  # noqa: E402
 import onnxruntime as ort  # noqa: E402
 import torch  # noqa: E402
+from fiatlux_task.tasks.manager_based.fiatlux_task.scene_cfg import (  # noqa: E402
+    set_layout_seed,
+)
 
 from isaaclab.devices.device_base import DeviceBase  # noqa: E402
 from isaaclab.devices.retargeter_base import RetargeterBase, RetargeterCfg  # noqa: E402
@@ -139,10 +142,6 @@ from isaaclab.utils.math import subtract_frame_transforms  # noqa: E402
 
 import isaaclab_tasks  # noqa: F401,E402
 from isaaclab_tasks.utils import parse_env_cfg  # noqa: E402
-
-from fiatlux_task.tasks.manager_based.fiatlux_task.scene_cfg import (  # noqa: E402
-    set_layout_seed,
-)
 
 # ---------------------------------------------------------------------------
 # SONIC contract (29-joint obs / 15-action legs+waist; from NVIDIA's GR00T-WholeBodyControl)

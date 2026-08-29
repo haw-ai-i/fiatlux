@@ -25,9 +25,7 @@ from __future__ import annotations
 
 import os
 
-from fiatlux_task.tasks.manager_based.fiatlux_task.scene_cfg import add_ego_camera
 from fiatlux_task.robots.g1 import (
-    swap_robot_variant,
     G1_ARM_JOINTS,
     G1_DEX3_HAND_GRASP,
     G1_DEX3_HAND_OPEN,
@@ -40,7 +38,10 @@ from fiatlux_task.robots.g1 import (
     G1_HAND_JOINTS,
     G1_HAND_OPEN,
     G1_LEFT_HAND_JOINTS,
+    swap_robot_variant,
 )
+from fiatlux_task.tasks.manager_based.fiatlux_task.scene_cfg import add_ego_camera
+
 from isaaclab.controllers.differential_ik_cfg import DifferentialIKControllerCfg
 from isaaclab.devices.device_base import DeviceBase, DevicesCfg
 from isaaclab.devices.openxr import XrAnchorRotationMode, XrCfg

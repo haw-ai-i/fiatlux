@@ -23,6 +23,7 @@ are only unambiguous when the sensor carries a single filter pattern.
 
 from __future__ import annotations
 
+import contextlib
 from typing import TYPE_CHECKING
 
 import torch
@@ -54,10 +55,9 @@ def _right_palm_body_id(robot: Articulation) -> int:
     for name in G1_PALM_BODY_BY_VARIANT.values():
         if name in robot.body_names:
             body_id = robot.find_bodies(name)[0][0]
-            try:
+            # not cacheable on every object; resolving per call is still correct
+            with contextlib.suppress(AttributeError):
                 setattr(robot, _PALM_ID_CACHE_ATTR, body_id)
-            except AttributeError:
-                pass  # not cacheable on this object; resolving per call is still correct
             return body_id
     raise ValueError(
         "no known G1 right-palm body on the attached robot (looked for "

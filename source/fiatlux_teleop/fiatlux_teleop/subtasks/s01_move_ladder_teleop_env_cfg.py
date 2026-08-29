@@ -14,6 +14,7 @@ shared recipe -- keep :func:`~fiatlux_teleop.subtask_teleop.apply_subtask_teleop
 """
 
 from fiatlux_task.tasks.manager_based.fiatlux_task.subtasks.s01_move_ladder_env_cfg import S01MoveLadderEnvCfg
+
 from isaaclab.utils import configclass
 
 from ..subtask_teleop import apply_subtask_teleop
