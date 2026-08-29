@@ -126,6 +126,11 @@ G1_HAND_GRASP = {
 # End-effector body the wrist camera mounts on / eef pose is read from (exists in
 # all G1 variants). The Inspire hand links hang off this via right_hand_palm_link.
 G1_EE_BODY = "right_wrist_yaw_link"
+# The left arm's equivalent. This is a two-armed robot and operators use both hands, so
+# recording only the right one hides half of every session (issue #89): a bulb carried in the
+# left hand reads as a bulb nobody is holding. The teleop package defined this constant for
+# its own bimanual cfgs; it belongs beside its right-hand twin.
+G1_LEFT_EE_BODY = "left_wrist_yaw_link"
 
 # Climb-family limbs and joint groups.
 G1_FOOT_BODIES = ["left_ankle_roll_link", "right_ankle_roll_link"]

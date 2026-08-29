@@ -96,6 +96,12 @@ class TrajectoryRecorder:
         robot = env.scene["robot"]
         self._ee_ids, ee_names = robot.find_bodies(_ee_body_name(env))
         self._ee_id = self._ee_ids[0]
+        # Both arms (issue #89). Recording the right one alone hid every left-handed event: a
+        # bulb carried in the left hand read as a bulb nobody was holding.
+        left_ids, left_names = robot.find_bodies(_left_ee_body_name(env))
+        self._left_ee_id = left_ids[0] if left_ids else None
+        self._left_ee_name = left_names[0] if left_names else None
+        self._left_contact = env.scene.sensors.get("left_hand_contact")
 
         # Resolve the bayonet manager once, not per step: whether a task wires
         # mdp.bulb_attachment is fixed for the whole run, and a key that appeared midway
@@ -135,12 +141,22 @@ class TrajectoryRecorder:
             "joint_vel": robot.data.joint_vel,
             "joint_acc": robot.data.joint_acc,
             "eef_pose": body_state,
+            **(
+                {"eef_pose_left": robot.data.body_state_w[:, self._left_ee_id, :7]}
+                if self._left_ee_id is not None
+                else {}
+            ),
             "bulb_pos": bulb.data.root_pos_w,
             "bulb_quat": bulb.data.root_quat_w,
             "bulb_lin_vel": bulb.data.root_lin_vel_w,
             "socket_pos": socket.data.root_pos_w,
             "socket_quat": socket.data.root_quat_w,
             "contact_force": _obs.object_contact_forces(contact),  # (N, B, 3), objects only
+            **(
+                {"contact_force_left": _obs.object_contact_forces(self._left_contact)}
+                if self._left_contact is not None
+                else {}
+            ),
             "policy_obs": obs["policy"] if isinstance(obs, dict) else obs,
             "reward": reward,
             "pos_error": _rewards._bulb_socket_pos_error(env, self._bulb_entity),
@@ -258,6 +274,8 @@ class TrajectoryRecorder:
             "joint_names": list(robot.joint_names),
             "ee_body": ee_name,
             "contact_bodies": list(getattr(contact, "body_names", []) or []),
+            "contact_bodies_left": list(getattr(self._left_contact, "body_names", []) or []),
+            "ee_body_left": self._left_ee_name,
             "policy_obs_dim": _policy_obs_dim(env),
             "success_pos_threshold": float(success_params.get("pos_threshold", 0.015)),
             "success_ori_threshold": float(success_params.get("ori_threshold", 0.2)),
@@ -274,6 +292,13 @@ def _ee_body_name(env) -> str:
     from .robots.g1 import G1_EE_BODY
 
     return G1_EE_BODY
+
+
+def _left_ee_body_name(env) -> str:
+    """The left arm's end-effector body (issue #89)."""
+    from .robots.g1 import G1_LEFT_EE_BODY
+
+    return G1_LEFT_EE_BODY
 
 
 def _policy_obs_dim(env) -> int | None:
