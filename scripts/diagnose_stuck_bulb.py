@@ -148,6 +148,18 @@ def main() -> int:
                 flush=True,
             )
 
+    # Control: the same bulb, same physics, no hand. Without this, "it did not fall" cannot be
+    # told apart from "nothing falls in this scene".
+    palm_now = robot.data.body_pos_w[0, palm_idx, :].clone()
+    aside = palm_now.clone()
+    aside[0] += 0.6  # clear of the robot entirely
+    bulb.write_root_pose_to_sim(torch.cat([aside, bulb.data.root_quat_w[0]]).unsqueeze(0))
+    bulb.write_root_velocity_to_sim(zeros6)
+    free_start = float(bulb.data.root_pos_w[0, 2])
+    for _ in range(args_cli.release_steps):
+        env.step(action)
+    free_drop_mm = (free_start - float(bulb.data.root_pos_w[0, 2])) * 1000.0
+
     final = report()
     dropped_mm = (grasped[1] - final[1]) * 1000.0
     moved_mm = final[0] - grasped[0]
@@ -159,9 +171,20 @@ def main() -> int:
         verdict = "EJECTED (left the hand without falling -- flung, not dropped)"
     else:
         verdict = "STUCK"
+    weight_n = 0.035 * 9.81
     print(
         f"\nVERDICT {verdict} -- dropped {dropped_mm:+.1f} mm, moved {moved_mm:+.1f} mm from the "
         f"palm, fingers at max|curl|={final[4]:.3f} rad (0 = fully open)",
+        flush=True,
+    )
+    print(
+        f"CONTROL   the same bulb with NO hand touching it fell {free_drop_mm:.1f} mm over the "
+        f"same {args_cli.release_steps} steps",
+        flush=True,
+    )
+    print(
+        f"FORCE     {final[3]:.2f} N on a {weight_n:.3f} N bulb = {final[3] / weight_n:.0f}x its "
+        f"own weight, with the fingers open",
         flush=True,
     )
     env.close()
