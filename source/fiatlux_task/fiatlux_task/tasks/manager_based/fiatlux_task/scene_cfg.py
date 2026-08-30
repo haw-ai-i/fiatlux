@@ -198,21 +198,8 @@ PENDANT_RADIUS = 0.012  # the rod a ceiling fixture hangs from
 # BEHAVIOR-1K assets.
 FIXTURE_POSITION = (0.0, 0.0, ROOM_CEILING_Z)
 
-# Nothing the benchmark scores is allowed to sleep. PhysX stops integrating a body whose kinetic
-# energy stays under the threshold; gravity cannot restart it, only a contact can, so a body that
-# sleeps mid-fall holds that pose until something touches it.
-#
-# From the VR take on issue #121: the ladder reported exactly zero velocity and a bit-identical
-# pose for 78% of the run, including 2.8 s held at 8.9 deg on two feet, which read as balancing.
-# Replayed from that exact pose and velocity the ladder rocks back in ~2 s, so the pose is not an
-# equilibrium -- something stopped integrating it. Sleep is the hypothesis, unconfirmed: it needs
-# a VR take to reproduce, hands-off runs never reach the state.
-#
-# Applies to the ladder, both bulbs and the robot -- every dynamic body whose pose or rest state
-# a gate reads. ``gate_object_at_rest`` is the sharpest case: a sleeping bulb satisfies "at rest"
-# for free, wherever it happens to be. The presets disagreed about this before -- the position
-# preset set a threshold and the replace preset rebuilt the props without one -- which is a defect
-# on its own, whatever turns out to have frozen the ladder.
+# A sleeping body stops being integrated and only a contact can restart it, so nothing whose pose
+# or rest state is scored may sleep: the ladder, both bulbs, the robot (#121).
 SCORED_BODY_SLEEP_THRESHOLD = 0.0
 
 # Zone half-sizes (m): each occupant's "safe square" half-extent, footprint plus working
