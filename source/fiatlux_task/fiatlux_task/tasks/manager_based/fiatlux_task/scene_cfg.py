@@ -200,9 +200,10 @@ FIXTURE_POSITION = (0.0, 0.0, ROOM_CEILING_Z)
 
 SCORED_BODY_SLEEP_THRESHOLD = 0.0  # #121
 
+TABLE_COLLISION_HALF_EXTENT = (1.24, 0.38)
+
 # Zone half-sizes (m): each occupant's "safe square" half-extent, footprint plus working
-# clearance. The table's is a square bound around its elongated footprint (collision volume
-# x[-0.82,1.62] x y[-0.48,0.28], centered on TABLE_POSITION).
+# clearance. The table's is a square bound around its elongated footprint.
 ROBOT_ZONE_HALF_SIZE = 0.6
 TABLE_ZONE_HALF_SIZE = 1.5
 LADDER_ZONE_HALF_SIZE = 1.0

@@ -28,9 +28,9 @@ from fiatlux_task.poses import ARM_CRADLE, HAND_CUP
 
 from .. import mdp
 from ..mdp.nav_terms import (
-    BULB_APPROACH_OFFSET,
     GRIP_FORCE_THRESHOLD_N,
     LADDER_MOUNT_RADIUS,
+    TABLE_CARRY_OFFSET,
     add_grip_contact_sensor,
     base_calm,
     base_facing,
@@ -130,10 +130,7 @@ class S09CarryBulbToLadderEnvCfg(NavigateSubtaskCfg):
         apply_replace_preset(self.scene, couple_ladder_to_fixture=True)
         # The old bulb was disposed of back in S06; the fixture is empty from here on.
         park_old_bulb_in_crate(self.scene)
-        # S08's end state: the robot is at the table where it picked the bulb up. Capture that
-        # before the carried pose overwrites the bulb's init_state, or the robot spawns in its
-        # independently-sampled zone and the held bulb teleports there with it.
-        stand_robot_at_offset(self.scene, self.scene.fresh_bulb.init_state.pos[:2], BULB_APPROACH_OFFSET)
+        stand_robot_at_offset(self.scene, self.scene.table.init_state.pos[:2], TABLE_CARRY_OFFSET)
         # This leg's target is the ladder S01 placed, not the table apply_replace_preset aims at.
         face_robot_at(self.scene, self.scene.ladder.init_state.pos[:2])
         # S08's end state: the fresh bulb starts already held, at the carry offset from the
