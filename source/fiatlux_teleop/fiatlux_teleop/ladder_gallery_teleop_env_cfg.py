@@ -24,7 +24,7 @@ import os
 
 from fiatlux_task.assets import FIATLUX_ASSETS_DIR
 from fiatlux_task.tasks.manager_based.fiatlux_task.scene_cfg import (
-    LADDER_SLEEP_THRESHOLD,
+    SCORED_BODY_SLEEP_THRESHOLD,
     _quat_z_deg,
     _spawn_usd_as_rigid_body_frictional,
 )
@@ -113,7 +113,7 @@ class LadderGalleryTeleopEnvCfg(CarryTeleopEnvCfg):
                             solver_position_iteration_count=16,
                             solver_velocity_iteration_count=1,
                             max_depenetration_velocity=1.0,
-                            sleep_threshold=LADDER_SLEEP_THRESHOLD,
+                            sleep_threshold=SCORED_BODY_SLEEP_THRESHOLD,
                             stabilization_threshold=0.001,
                         ),
                         mass_props=sim_utils.MassPropertiesCfg(mass=3.0),

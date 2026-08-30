@@ -198,12 +198,22 @@ PENDANT_RADIUS = 0.012  # the rod a ceiling fixture hangs from
 # BEHAVIOR-1K assets.
 FIXTURE_POSITION = (0.0, 0.0, ROOM_CEILING_Z)
 
-# The ladder never sleeps. PhysX parks a rigid body whose kinetic energy stays under the
-# threshold for a moment and then stops integrating it -- gravity cannot wake it, only a contact
-# can. MEASURED in the VR take on issue #121: the ladder was asleep for 78% of the run, and one
-# of those naps caught it mid-fall and held it at 8.9 deg on two feet for 2.8 s, which read as
-# balancing. Its pose is a scored outcome here, so the CPU saved is not worth a frozen one.
-LADDER_SLEEP_THRESHOLD = 0.0
+# Nothing the benchmark scores is allowed to sleep. PhysX stops integrating a body whose kinetic
+# energy stays under the threshold; gravity cannot restart it, only a contact can, so a body that
+# sleeps mid-fall holds that pose until something touches it.
+#
+# From the VR take on issue #121: the ladder reported exactly zero velocity and a bit-identical
+# pose for 78% of the run, including 2.8 s held at 8.9 deg on two feet, which read as balancing.
+# Replayed from that exact pose and velocity the ladder rocks back in ~2 s, so the pose is not an
+# equilibrium -- something stopped integrating it. Sleep is the hypothesis, unconfirmed: it needs
+# a VR take to reproduce, hands-off runs never reach the state.
+#
+# Applies to the ladder, both bulbs and the robot -- every dynamic body whose pose or rest state
+# a gate reads. ``gate_object_at_rest`` is the sharpest case: a sleeping bulb satisfies "at rest"
+# for free, wherever it happens to be. The presets disagreed about this before -- the position
+# preset set a threshold and the replace preset rebuilt the props without one -- which is a defect
+# on its own, whatever turns out to have frozen the ladder.
+SCORED_BODY_SLEEP_THRESHOLD = 0.0
 
 # Zone half-sizes (m): each occupant's "safe square" half-extent, footprint plus working
 # clearance. The table's is a square bound around its elongated footprint (collision volume
@@ -481,6 +491,8 @@ def _make_bulb_cfg(prim_path: str, pos: Vec3, rot: Quat | None = None, *, kinema
                 solver_velocity_iteration_count=1,
                 max_depenetration_velocity=1.0,
                 enable_gyroscopic_forces=True,
+                sleep_threshold=SCORED_BODY_SLEEP_THRESHOLD,
+                stabilization_threshold=0.001,
             ),
             collision_props=sim_utils.CollisionPropertiesCfg(
                 contact_offset=0.005, rest_offset=0.0, torsional_patch_radius=0.005
@@ -702,7 +714,7 @@ def apply_position_preset(scene: G1ReplaceSceneCfg) -> None:
             solver_position_iteration_count=16,
             solver_velocity_iteration_count=1,
             max_depenetration_velocity=1.0,
-            sleep_threshold=LADDER_SLEEP_THRESHOLD,
+            sleep_threshold=SCORED_BODY_SLEEP_THRESHOLD,
             stabilization_threshold=0.001,
         ),
         mass_props=sim_utils.MassPropertiesCfg(mass=LADDER_MASS_KG),
@@ -1326,7 +1338,7 @@ def apply_replace_preset(
         solver_position_iteration_count=16,
         solver_velocity_iteration_count=8,
         max_depenetration_velocity=1.0,
-        sleep_threshold=LADDER_SLEEP_THRESHOLD,
+        sleep_threshold=SCORED_BODY_SLEEP_THRESHOLD,
         stabilization_threshold=0.001,
     )
     scene.ladder.spawn.mass_props = sim_utils.MassPropertiesCfg(mass=LADDER_MASS_KG)
