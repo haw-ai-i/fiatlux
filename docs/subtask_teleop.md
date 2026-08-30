@@ -1,0 +1,231 @@
+# Subtask teleoperation
+
+Every benchmark subtask `FIATLUX-SNN-<Name>-v0` has a teleop twin
+`FIATLUX-SNN-<Name>-Teleop-v0`. The twin subclasses the RL cfg and swaps only the action
+interface, so changes to a subtask flow through to its twin automatically.
+
+- Recipe: `source/fiatlux_teleop/fiatlux_teleop/subtask_teleop.py`
+- Per-task cfgs: `source/fiatlux_teleop/fiatlux_teleop/subtasks/`
+- Driver: `scripts/teleop/sonic_teleop.py`
+- VR launcher: `scripts/teleop/restart_sonic_teleop.sh`
+
+## What the twin changes
+
+| | RL env | Teleop twin |
+|---|---|---|
+| Actions | `joint_pos`, all joints | bimanual IK (`arm_action`, `left_arm_action`) + binary grips |
+| Terminations | task's own set | failures and timeout cleared; `success` kept |
+| Legs | policy | SONIC walk/balance ONNX, driven outside the action manager |
+| Camera | task viewer | pelvis-anchored `XrCfg` follow camera |
+
+Scene, assets, events, `sim.dt` and decimation are untouched.
+
+`success` is kept deliberately. It is the only place a subtask's success predicate is
+evaluated, and `recording.term_flag` records it per step as `success_term` — which is what
+`scripts/score.py` reads. Clearing it does not disable scoring; `term_flag` falls back to an
+all-False vector, so every recorded demo silently scores `success_rate 0.0`.
+
+## Running
+
+```bash
+# keyboard, no headset
+python scripts/teleop/sonic_teleop.py --task FIATLUX-S03-RemoveOldBulb-Teleop-v0 --input keyboard
+
+# VR over CloudXR
+NV_CXR_ENDPOINT_IP=<ip> FIATLUX_TASK=FIATLUX-S03-RemoveOldBulb-Teleop-v0 \
+  bash scripts/teleop/restart_sonic_teleop.sh
+```
+
+Always use `restart_sonic_teleop.sh` for VR. It restarts the CloudXR runtime and clears its
+state files. Reusing a runtime across Isaac restarts leaves signalling working while media
+negotiation fails — the client connects, looks healthy, and drops after about 30 seconds.
+
+Keyboard: arrows walk, `SPACE` stops, `TAB` switches arm, `W/S A/D Q/E` move the end effector,
+`U/O I/K J/L` rotate the wrist, `G` grips, `C` toggles recording, `R` resets. Forward reach
+saturates around 0.35 m from the pelvis — past that the arm is at its kinematic limit.
+
+## The 12 subtasks
+
+The four ladder legs were folded into `S01-MoveLadder`; everything after it shifted down by
+three. On-ladder tasks are staged at the tread (1.18 m) plus `TOP_STANCE_PELVIS_OFFSET`
+(0.787 m) = **1.97 m** nominal.
+
+| | Task | Start | Holding at spawn | On reset |
+|---|---|---|---|---|
+| S01 | MoveLadder | floor, own zone | — | robot ±5 cm |
+| S02 | ClimbLadder | floor, at the steps | — | robot ±5 cm |
+| S03 | RemoveOldBulb | ladder, 1.97 | — | robot ±5 cm |
+| S04 | DescendWithBulb | ladder, 1.97 | old bulb, on open palm | **pinned** |
+| S05 | CarryBulbToDisposal | floor | old bulb, on open palm | **pinned** |
+| S06 | DisposeBulb | floor, at the crate | old bulb, on open palm | robot ±5 cm |
+| S07 | ApproachNewBulb | floor | — | robot ±5 cm |
+| S08 | GrabNewBulb | floor, at the bench | — | robot ±5 cm |
+| S09 | CarryBulbToLadder | floor | fresh bulb, on open palm | **pinned** |
+| S10 | ClimbWithBulb | floor, at the steps | fresh bulb, on open palm | **pinned** |
+| S11 | ScrewInBulb | ladder, 1.97 | fresh bulb, on open palm | **pinned** |
+| S12 | ClimbDown | ladder, 1.97 | — | robot ±5 cm |
+
+**S01-MoveLadder** is the longest to teleoperate: one episode covers walking to the ladder,
+taking it, moving it, and standing it under the fixture. It is also the only leaf that leaves
+`couple_ladder_to_fixture` off — positioning the ladder is the task, so the ladder gets its own
+independently-sampled zone rather than the fixture's anchor.
+
+**Pinned** tasks set both `position_range` and `pose_range` to `(0.0, 0.0)`, so reset returns
+the robot to exactly its staged pose. The open-palm payload staging is too fragile to survive
+the noise.
+
+## The objects
+
+Five things exist in every subtask scene. The names in brackets are the scene asset names, which
+are what appear in a bag's columns and in error messages.
+
+| What you see | Asset | Notes |
+|---|---|---|
+| Step ladder | `ladder` | A **free rigid body** — nothing bolts it down. It can tip, and `ladder_tipped` is a real termination. |
+| Ceiling/wall fixture | `socket` | Where bulbs go. Mounted at **2.2 m**, ceiling- or wall-mounted per draw. |
+| Old bulb | `old_bulb` | Starts **locked in the fixture** (bayonet). The one you remove and throw away. |
+| Fresh bulb | `bulb` | Starts **on the bench**. The one you install. |
+| Disposal crate | `bin` | The **only** container in the scene. The old bulb goes in here. Not the bench. |
+| Bench | `table` | Holds the fresh bulb. Not a target for anything. |
+
+There is one crate and one bench, so "the crate" is never ambiguous — but note the two bulbs are
+distinct assets with opposite jobs: `old_bulb` comes **out** of the fixture and goes **into** the
+crate; `bulb` comes **off** the bench and goes **into** the fixture.
+
+## What counts as complete
+
+Each subtask's `success` termination is a conjunction — **every** row must hold at the same
+instant. Tasks marked *sustained* additionally require the whole conjunction to hold
+continuously for `GRASP_SUSTAIN_SECONDS` (0.5 s), so a momentary brush does not score.
+
+Shared thresholds: **robot standing** = pelvis above 0.35 m and tilt under 1.0 rad;
+**ladder near-vertical** = tilt under 0.6 rad; **at rest** = under 0.05 m/s and 0.10 rad/s;
+**held** = grip contact force over 1.0 N; **released** = under 1.0 N.
+
+| | Task | Gate | Complete when |
+|---|---|---|---|
+| S01 | MoveLadder | sustained | ladder within **0.67 m** of the fixture, upright · feet down within **2 cm** of the floor · ladder at rest · robot standing |
+| S02 | ClimbLadder | all_of | pelvis within **0.15 m** of the top stance height · within **0.6 m** of the ladder in xy · moving under **1.5 m/s** · standing · ladder vertical |
+| S03 | RemoveOldBulb | sustained | old bulb **0.10 m** clear of the fixture after release · held (>1 N) · lifted above **0.15 m** · standing · ladder vertical |
+| S04 | DescendWithBulb | all_of | pelvis below the floor-stance height, within **0.6 m** of the ladder, under **1.5 m/s** · bulb held · lifted · standing · ladder vertical |
+| S05 | CarryBulbToDisposal | all_of | within **0.5 m** of the disposal crate (`bin`) · facing it within **0.5 rad** · moving under **1.0 m/s** · bulb still held |
+| S06 | DisposeBulb | sustained | old bulb inside the disposal crate (`bin`) · at rest · **released** (<1 N) · standing |
+| S07 | ApproachNewBulb | all_of | within reach of the fresh bulb (`bulb`, on the bench) · facing it within **0.5 rad** · under **1.0 m/s** |
+| S08 | GrabNewBulb | sustained | fresh bulb lifted **3 cm** off the bench · **≥2 hand bodies** in contact (>1 N each) · total grip force under **50 N** · standing |
+| S09 | CarryBulbToLadder | all_of | within mounting range of the ladder · facing it within **0.5 rad** · under **1.0 m/s** · bulb held · ladder upright |
+| S10 | ClimbWithBulb | all_of | at top stance (as S02) · bulb held · lifted · standing · ladder vertical |
+| S11 | ScrewInBulb | sustained | fresh bulb **attached** in the fixture's bayonet · at rest · **released** (grip <1 N) · standing · ladder vertical |
+| S12 | ClimbDown | all_of | descended to floor stance (as S04) · **fresh bulb still seated** in the fixture · standing · ladder vertical |
+
+Three patterns worth internalising before operating:
+
+**You have to let go.** S06, S11 and S08's release-adjacent checks require grip force *below*
+1 N. Holding the bulb in the bin is not disposal; holding it in the socket is not seating.
+
+**Speed gates exist.** Arrival tasks reject a score while the robot is still moving faster than
+1.0 m/s (1.5 m/s on the ladder), so charging at the target and stopping short of settled will
+not fire.
+
+**S08 is the only task with an upper force bound.** Over 50 N total contact and the glass is
+counted as crushed — that is also the `broken` penalty in the score, so a take can complete the
+motion and still score 0.00.
+
+## Randomization: two levels
+
+Layout and reset randomization are separate, and confusing them wastes time.
+
+### Per process launch — the room
+
+`apply_replace_preset` runs inside the cfg's `__post_init__`, so this is drawn **once per
+scene build**:
+
+- fixture mount, ceiling or wall, sampled first so its ladder anchor can be reserved
+- ladder yaw, uniform 0–360°
+- four non-overlapping zone centres — robot, table, ladder, disposal — inside
+  `ROOM_FLOOR_MIN (-4.0, -3.0)` to `ROOM_FLOOR_MAX (4.0, 4.2)`, retried up to 64 times
+
+The function's own docstring states the consequence: *"one layout serves every env and every
+episode of a run, and varying it is a between-runs affair."* This is intended. It also means
+every env in a parallel run shares one room — verified with `num_envs=3`, where all three had
+an identical ladder position and differed only by the robot's reset jitter.
+
+### Per reset — the robot and the lights
+
+- robot root: x, y ±5 cm, yaw ±0.1 rad (about ±6°) — zero on the pinned tasks
+- robot joints: ±0.05 rad — zero on the same tasks
+- dome light 600–1400 and key light 800–2200, both re-aimed; room tint; hand grip material
+
+**`R` does not give you a new room.** Verified by resetting four times and reading back every
+asset position: identical to three decimals. To change the layout, relaunch.
+
+## Layout seed
+
+The room is drawn from OS entropy unless seeded, which makes a bad draw impossible to hand to
+anyone else. The driver therefore always seeds, and always prints what it used:
+
+```bash
+--layout_seed 42       # that exact room, every time
+--layout_seed random   # draw one (default); the drawn seed is printed
+--layout_seed none     # unseeded, as before
+```
+
+`FIATLUX_LAYOUT_SEED` passes the same value through `restart_sonic_teleop.sh`.
+
+The seed is stored in each demo bag's `meta.json`, so a recorded demo carries the room it was
+collected in. It was previously hardcoded to `0`.
+
+Seeding must happen before `parse_env_cfg` — the layout is sampled during `__post_init__`, so
+seeding afterwards silently does nothing.
+
+## Hand variants
+
+Both G1 hands work on every subtask: `--hand inspire` or `--hand dex3`. The swap happens inside
+the recipe before the action terms are built, so grips are authored against the target hand.
+
+Two benchmark-side fixes were needed, both because `swap_robot_variant` rewrites **joint**
+names only — never body names, never variant-valued parameters:
+
+- `mdp/grasp_terms.py` held the right palm in a module constant. It now resolves the palm from
+  the mounted articulation, mirroring the `G1_PALM_BODY_BY_VARIANT` pattern used elsewhere.
+- `swap_robot_variant` now retargets terms that select bodies through a `hand_variant`
+  parameter, by inspecting each term's signature.
+
+Without those, the grasp-tier subtasks failed at env creation under Dex3 with
+`Not all regular expressions are matched: right_hand_base_link`.
+
+## Recording and scoring
+
+A take is bounded by the record toggle: press to start, press again to stop. Each take gets its
+own folder, sealed with its own score once the bag and video are closed:
+
+```
+teleop-captures/<task>/<hand>/hdf5/vr/2026-08-27/143052/
+  ep00_score1.00/    run.h5   meta.json   video.mp4   video_poster.png
+  ep01_score0.00/    ...
+  ep02_score1.00/    ...
+```
+
+The session folder keeps its plain timestamp — the score belongs on the take, and a session
+average is dragged down by a single mis-press. Each `meta.json` carries that take's own score
+(`episodes: 1`), the layout seed, joint order and action terms, so a demo can be replayed into
+the room it came from.
+
+The score is also printed the moment you stop, so a take's result is known without opening
+anything:
+
+```
+[sonic] RECORDING OFF -- take saved: .../ep01_score0.00
+[sonic]   score: success 0/1 (0%)  mean_score=0.00  clean=0%  broken=0%  dropped=0%
+```
+
+Takes are flushed at record-off, at `R`, and at exit — never held until the end, since Kit's
+SIGINT handler exits past `finally`/`atexit`.
+
+`score.py` reads the **last step** of each episode, which is why `success` must remain a
+termination: it puts the success flag exactly where the scorer looks. The per-episode score is
+binary (1.0 or 0.0, minus penalties for a crushed or dropped payload); continuous signal —
+`reward`, `pos_error`, `contact_force` — is recorded per step in the bag alongside it.
+
+Every take is kept and scored, including accidental ones. One step is 20 ms at the 50 Hz
+control rate, so a double-press writes a real folder with a one-frame bag — visible by its
+`_score0.00` suffix and by `episode_lengths` in its meta.
