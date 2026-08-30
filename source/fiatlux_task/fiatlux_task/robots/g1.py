@@ -217,7 +217,7 @@ G1_INSPIRE_CFG = ArticulationCfg(
             enabled_self_collisions=True,
             solver_position_iteration_count=16,
             solver_velocity_iteration_count=8,
-            sleep_threshold=0.0,  # articulations sleep too (#121)
+            sleep_threshold=0.0,
             stabilization_threshold=0.001,
         ),
         activate_contact_sensors=True,

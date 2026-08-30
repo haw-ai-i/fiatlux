@@ -198,9 +198,7 @@ PENDANT_RADIUS = 0.012  # the rod a ceiling fixture hangs from
 # BEHAVIOR-1K assets.
 FIXTURE_POSITION = (0.0, 0.0, ROOM_CEILING_Z)
 
-# A sleeping body stops being integrated and only a contact can restart it, so nothing whose pose
-# or rest state is scored may sleep: the ladder, both bulbs, the robot (#121).
-SCORED_BODY_SLEEP_THRESHOLD = 0.0
+SCORED_BODY_SLEEP_THRESHOLD = 0.0  # #121
 
 # Zone half-sizes (m): each occupant's "safe square" half-extent, footprint plus working
 # clearance. The table's is a square bound around its elongated footprint (collision volume
