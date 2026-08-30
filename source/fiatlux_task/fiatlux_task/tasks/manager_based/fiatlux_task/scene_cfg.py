@@ -198,6 +198,13 @@ PENDANT_RADIUS = 0.012  # the rod a ceiling fixture hangs from
 # BEHAVIOR-1K assets.
 FIXTURE_POSITION = (0.0, 0.0, ROOM_CEILING_Z)
 
+# The ladder never sleeps. PhysX parks a rigid body whose kinetic energy stays under the
+# threshold for a moment and then stops integrating it -- gravity cannot wake it, only a contact
+# can. MEASURED in the VR take on issue #121: the ladder was asleep for 78% of the run, and one
+# of those naps caught it mid-fall and held it at 8.9 deg on two feet for 2.8 s, which read as
+# balancing. Its pose is a scored outcome here, so the CPU saved is not worth a frozen one.
+LADDER_SLEEP_THRESHOLD = 0.0
+
 # Zone half-sizes (m): each occupant's "safe square" half-extent, footprint plus working
 # clearance. The table's is a square bound around its elongated footprint (collision volume
 # x[-0.82,1.62] x y[-0.48,0.28], centered on TABLE_POSITION).
@@ -695,7 +702,7 @@ def apply_position_preset(scene: G1ReplaceSceneCfg) -> None:
             solver_position_iteration_count=16,
             solver_velocity_iteration_count=1,
             max_depenetration_velocity=1.0,
-            sleep_threshold=0.005,
+            sleep_threshold=LADDER_SLEEP_THRESHOLD,
             stabilization_threshold=0.001,
         ),
         mass_props=sim_utils.MassPropertiesCfg(mass=LADDER_MASS_KG),
@@ -1319,6 +1326,8 @@ def apply_replace_preset(
         solver_position_iteration_count=16,
         solver_velocity_iteration_count=8,
         max_depenetration_velocity=1.0,
+        sleep_threshold=LADDER_SLEEP_THRESHOLD,
+        stabilization_threshold=0.001,
     )
     scene.ladder.spawn.mass_props = sim_utils.MassPropertiesCfg(mass=LADDER_MASS_KG)
 
