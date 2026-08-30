@@ -34,6 +34,7 @@ from ..scene_cfg import (
     stand_robot_near,
 )
 from ..subtask_env_cfg import FALL_MIN_HEIGHT, FALL_TILT_LIMIT, SubtaskEventCfg
+from ..subtask_tiers.carrying import add_bulb_crush_gate
 from ..subtask_tiers.place import (
     AT_REST_ANG_VEL_LIMIT,
     AT_REST_LIN_VEL_LIMIT,
@@ -119,5 +120,6 @@ class S06DisposeBulbEnvCfg(PlaceSubtaskCfg):
         add_ego_camera(self.scene)
         add_mid360_lidar(self.scene)
         add_release_contact_sensor(self.scene, self.scene.old_bulb.prim_path)
+        add_bulb_crush_gate(self, "release_contact")
         self.episode_length_s = 20.0
         frame_viewer_on(self.viewer, self.scene.robot.init_state.pos)
