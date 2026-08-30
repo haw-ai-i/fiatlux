@@ -133,7 +133,13 @@ trailing unclosed episode can be lost; use `--max_steps N` for clean scripted en
 **Options** (each is a flag; see `--help`):
 - `--record-start auto|toggle` -- record from launch, or start OFF until the operator toggles.
 - `--record-format hdf5|npz` -- robomimic-style HDF5 (default) or flat npz.
-- `--record-video` -- follow-cam MP4 + poster PNG, streamed to disk (review footage).
+- `--record-video` -- `video.mp4` (third-person) + `ego.mp4` (head camera) + poster PNGs, streamed
+  to disk (review footage). `--camera auto|follow|static|fixture|bench|crate` picks the third-person
+  shot; `auto` (default) chooses per task so the robot and the task's own objects stay in frame.
+- `--record-settle` -- include the ~90-step startup settle in the take (spawn-time failures happen
+  there; a take that starts at the main loop only shows the aftermath).
+- `--no-arm-pin` -- don't pin the idle arm at its settle joints; the pin makes a hands-off robot
+  fall at ~3 s, so use this when the robot must still be standing when you connect.
 - `--record-images --images-stride N` -- the env's own `wrist_camera`/`ego_camera` as JPEGs in
   `<session>/images/<camera>/f<step>.jpg` (default every 5th step = 10 Hz). The filename index is
   the bag's flat row number, so each frame pairs 1:1 with that row's `policy_obs`/`actions`; the

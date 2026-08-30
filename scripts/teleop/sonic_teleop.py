@@ -91,9 +91,16 @@ parser.add_argument(
 )
 parser.add_argument(
     "--camera",
-    choices=["follow", "static", "fixture"],
-    default="follow",
-    help="fixture = one fixed shot of the socket from the SIDE (off the robot->socket "
+    choices=["auto", "follow", "static", "fixture", "bench", "crate"],
+    default="auto",
+    help="auto (default) = pick per task so the video keeps the robot AND what the task is "
+    "about in frame: a side view of the socket on the mate legs (S03/S11), of the bench on "
+    "the grasp legs (S07/S08), of the crate on S06, and the chase cam framing the task's own "
+    "objects elsewhere (ladder+fixture, ladder+crate on S05, bench+ladder on S09). "
+    "crate = one fixed shot of the robot and the disposal crate from the side. "
+    "bench = one fixed shot of the robot and the fresh bulb on the bench, from the side of "
+    "the robot->bulb line, for the tabletop legs (S07/S08/S09). "
+    "fixture = one fixed shot of the socket from the SIDE (off the robot->socket "
     "line, so neither robot nor ladder hides it), level at 1.5 m: the socket sits "
     "in the upper third of frame and the floor beneath it in the lower -- for "
     "evidence of anything that falls out of, or snaps into, the socket. "
@@ -319,8 +326,11 @@ def main():  # noqa: C901  (one long orchestration: env setup + settle/resettle 
     # cfg's __post_init__, before its action terms are built). Insert/Carry keep their own
     # post-parse patches below.
     _is_subtask_task = re.search(r"-S\d\d-", args.task) is not None
-    if _is_subtask_task:
-        os.environ["FIATLUX_TELEOP_HAND"] = args.hand.lower()
+    # Every env built on the subtask recipe reads its hand from this variable -- the S01..S12
+    # twins and any env derived from them. Only the legacy Insert/Carry patches below ignore
+    # it, and they are harmless with it set. It used to be set only for "-S<NN>-" ids, so a
+    # derived env silently came up with Inspire while the launcher reported dex3.
+    os.environ["FIATLUX_TELEOP_HAND"] = args.hand.lower()
 
     # Room layout seed. Drawn here rather than left to the scene module's unseeded default so
     # the value is KNOWN: an unreproducible bad draw (robot spawned collapsed, ladder tipped at
@@ -421,11 +431,12 @@ def main():  # noqa: C901  (one long orchestration: env setup + settle/resettle 
     # Carry must spawn directly in the natural pose or it stays tucked at the spawn angle. Keep Insert's
     # spawn exactly as it was so its settled pose is unchanged.
     _legs = {".*_hip_pitch_joint": -0.1, ".*_knee_joint": 0.3, ".*_ankle_pitch_joint": -0.2}
-    # LadderGallery is a Carry-derived task -- its IK HOLDS the spawn pose too, so it needs the same
-    # natural low spawn as Carry (spawning it at Insert's 1.57 would leave the arm tucked up at 90 deg).
-    # The S01..S12 subtask teleop envs are whole-body walking tasks like Carry, so they take the
-    # same natural low spawn (their ids carry no "Carry"/"Gallery" marker -- match "-S<NN>-").
-    if "Carry" in args.task or "Gallery" in args.task or _is_subtask_task:
+    # Insert is the ONE env whose IK relaxes the 1.57 spawn on its own. Everything else -- Carry,
+    # LadderGallery, the S01..S12 subtask twins, and any env derived from them -- holds whatever
+    # it spawns in, so all of them take the natural low spawn. Matching the exception rather than
+    # listing the rule: a new env used to fall through to Insert's pose by default and come up
+    # with its arm tucked at the chest.
+    if "Insert" not in args.task:
         # Drop the SHOULDER so the arm hangs low. The elbow drifts up to ~1.1 on its own (redundant IK),
         # so we don't fight it -- a low/back shoulder points the upper arm down so the bent forearm sits
         # low instead of up at the chest. (Per operator: change the joint above the 90-deg elbow.)
@@ -477,9 +488,25 @@ def main():  # noqa: C901  (one long orchestration: env setup + settle/resettle 
         from fiatlux_task.viz import make_video_camera_cfg
 
         env_cfg.scene.video_cam = make_video_camera_cfg(960, 544)  # height % 16 == 0: no ffmpeg resize
+        # Wider lens for the review footage. The 20 mm default is a 33 deg vertical field, and a
+        # robot, a ladder 2 m away and a 2.2 m fixture do not fit that from inside an 8 m room --
+        # the chase cam either clipped the fixture or lost the robot. 12 mm on the 20.955 mm
+        # aperture is ~82 x 53 deg, which frames all three from ~4 m. Video only; the ego camera
+        # and the RL observation cameras are untouched.
+        env_cfg.scene.video_cam.spawn.focal_length = 12.0
 
     env = gym.make(args.task, cfg=env_cfg).unwrapped
     robot = env.scene["robot"]
+    # Say which hand was actually BUILT, not which was requested: the two have disagreed silently
+    # before (an env came up Inspire under "hand=dex3"). Joint names are the ground truth --
+    # Dex3 fingers are right_hand_*_N_joint, Inspire's are R_*_joint.
+    _jn = list(robot.joint_names)
+    _built = ("dex3" if any("right_hand_" in n for n in _jn)
+              else "inspire" if any(n.startswith("R_") for n in _jn) else "no hand joints found")
+    print(f"[sonic] robot built with {len(_jn)} joints -- hand: {_built} (requested {args.hand.lower()})",
+          flush=True)
+    if _built not in (args.hand.lower(), "no hand joints found"):
+        print(f"[sonic] WARNING: hand mismatch -- the env ignored --hand {args.hand}", flush=True)
     dev = env.device
 
     reset_flag = {"do": False}
@@ -745,11 +772,28 @@ def main():  # noqa: C901  (one long orchestration: env setup + settle/resettle 
     # working toward. Framing only the robot loses the fixture; framing robot+fixture crops the
     # ladder, which is the thing the operator is actually steering.
     _rigids = getattr(env.scene, "rigid_objects", {})
-    _frame_names = [n for n in ("ladder", "socket") if n in _rigids]
+    # What the video must keep in frame besides the robot: the task's own objects, not a fixed
+    # ladder+fixture pair. The chase cam frames the robot plus these; the side-view modes below
+    # are picked for the legs where a shot from beside the robot->target line reads better.
+    _sid = re.search(r"-S(\d\d)-", args.task)
+    _sid = _sid.group(1) if _sid else None
+    _TASK_FRAME = {
+        "05": ("ladder", "bin"), "06": ("bin",), "07": ("table", "fresh_bulb"),
+        "08": ("table", "fresh_bulb"), "09": ("table", "ladder"),
+    }
+    _TASK_MODE = {"03": "fixture", "11": "fixture", "07": "bench", "08": "bench", "06": "crate"}
+    _want = _TASK_FRAME.get(_sid, ("ladder", "socket"))
+    _table_pos = getattr(getattr(getattr(env.cfg.scene, "table", None), "init_state", None), "pos", None)
+    _frame_names = [n for n in _want if n in _rigids or (n == "table" and _table_pos is not None)]
+    _cam_mode = args.camera if args.camera != "auto" else _TASK_MODE.get(_sid, "follow")
+    print(f"[sonic] video camera: {_cam_mode} (task S{_sid or '??'}), framing robot + {list(_frame_names)}", flush=True)
 
     def _frame_points():
         pts = []
         for _n in _frame_names:
+            if _n == "table":                      # static asset, no live pose: use the cfg
+                pts.append(np.array([_table_pos[0], _table_pos[1], 0.9]))
+                continue
             _o = env.scene[_n]
             _pp = _o.data.root_pos_w[0].cpu().numpy()
             pts.append(_pp)
@@ -769,7 +813,7 @@ def main():  # noqa: C901  (one long orchestration: env setup + settle/resettle 
     _static_pose = None
     _CAM_MIN = (_RMIN[0] + _CAM_INSET, _RMIN[1] + _CAM_INSET)
     _CAM_MAX = (_RMAX[0] - _CAM_INSET, _RMAX[1] - _CAM_INSET)
-    if args.camera == "static":
+    if _cam_mode == "static":
         # One fixed shot, chosen once from the layout: centre on everything that matters, then
         # search the azimuths for the viewpoint that both fits inside the room and stands furthest
         # off the walls -- a fixed camera that clips a wall renders the flat grey the follow-cam
@@ -795,7 +839,7 @@ def main():  # noqa: C901  (one long orchestration: env setup + settle/resettle 
             f"looking at ({_c[0]:.2f},{_c[1]:.2f},{_c[2]:.2f})  wall margin {_best_margin:.2f} m",
             flush=True,
         )
-    elif args.camera == "fixture":
+    elif _cam_mode == "fixture":
         # Side view of the socket. Standing on the ROBOT's side of the socket put the robot and
         # the ladder in the line of sight (S10: socket hidden behind both), and aiming at the
         # mid-drop height left the socket clipped at the top edge. So: stand off to the SIDE of
@@ -823,34 +867,86 @@ def main():  # noqa: C901  (one long orchestration: env setup + settle/resettle 
             flush=True,
         )
 
-    def _follow_pose():
-        """Over-the-shoulder orbit point that TURNS WITH the robot, clamped inside the room.
+    def _side_pose(entity, aim_z, eye_z, dist=3.2):
+        """Fixed shot of the robot and ``entity`` from the side of the line between them, aimed at
+        their midpoint, so neither hides the other. Side chosen for wall clearance."""
+        _tp = env.scene[entity].data.root_pos_w[0].cpu().numpy()
+        _rb = robot.data.root_pos_w[0].cpu().numpy()
+        _mid = (_rb + _tp) / 2.0
+        _dir = _tp[:2] - _rb[:2]
+        _dir = _dir / (np.linalg.norm(_dir) + 1e-6)
+        _best, _best_m = None, -1e9
+        for _sgn in (1.0, -1.0):
+            _px, _py = -_dir[1] * _sgn, _dir[0] * _sgn
+            _cx = float(_mid[0] + dist * _px)
+            _cy = float(_mid[1] + dist * _py)
+            _m = min(_cx - _CAM_MIN[0], _CAM_MAX[0] - _cx, _cy - _CAM_MIN[1], _CAM_MAX[1] - _cy)
+            if _m > _best_m:
+                _best, _best_m = (_cx, _cy), _m
+        _cx = min(max(_best[0], _CAM_MIN[0]), _CAM_MAX[0])
+        _cy = min(max(_best[1], _CAM_MIN[1]), _CAM_MAX[1])
+        print(f"[sonic] side camera at ({_cx:.2f},{_cy:.2f},{eye_z}) on robot->{entity}, "
+              f"aimed at ({_mid[0]:.2f},{_mid[1]:.2f},{aim_z}), wall margin {_best_m:.2f} m", flush=True)
+        return ((_cx, _cy, eye_z), (float(_mid[0]), float(_mid[1]), aim_z))
 
-        A camera outside the walls renders flat grey (see viz.py's `_radius_inside`), and subtask
-        scenes put the robot anywhere in the room -- so clamp, then re-aim. Frames the robot AND
-        the fixture it is working toward: aiming at the robot alone puts a 2.2 m ceiling fixture
-        out of shot, which loses the very relationship the ladder tasks are about. Called for
-        every captured frame, settle included -- the settle is where spawn failures happen, and
-        an unposed camera there recorded 1.8 s of grey.
+    if _cam_mode == "bench":
+        # Robot + bulb + bench: the bench is under the bulb, so aiming at tabletop height frames it.
+        _static_pose = _side_pose("fresh_bulb" if "fresh_bulb" in _rigids else "bulb", 0.85, 1.45)
+    elif _cam_mode == "crate":
+        _static_pose = _side_pose("bin", 0.45, 1.3)
+
+    _follow_dir = [None]    # camera direction from the objects' centre, kept until a point leaves frame
+    _HFOV, _VFOV = 41.0 * 0.9, 26.5 * 0.9   # 12 mm lens, half-angles, used at 90 %
+
+    def _view_margin(eye, c, pts):
+        """Smallest angular margin (deg) by which every point sits inside the frame; <0 = cut."""
+        fwd = c - eye
+        fwd = fwd / (np.linalg.norm(fwd) + 1e-6)
+        right = np.cross(fwd, [0.0, 0.0, 1.0])
+        right = right / (np.linalg.norm(right) + 1e-6)
+        up = np.cross(right, fwd)
+        m = 1e9
+        for p in pts:
+            v = np.asarray(p) - eye
+            az = math.degrees(math.atan2(float(v @ right), float(v @ fwd)))
+            el = math.degrees(math.atan2(float(v @ up), float(v @ fwd)))
+            m = min(m, _HFOV - abs(az), _VFOV - abs(el))
+        return m
+
+    def _follow_pose():
+        """Third-person shot that keeps the robot AND the task's objects in frame.
+
+        The room, not the geometry, decides where a camera can stand: a fixed rule (behind the
+        robot, or beside the robot->objects line) gets clamped by a wall and cuts something off.
+        So search: 24 directions around the objects' centre, each at the longest distance the
+        room allows, scored by the smallest angular margin any point has inside the 12 mm lens's
+        field. The winning direction is kept frame to frame and only re-searched when a point
+        actually leaves the frame, so the shot does not swing as the robot moves.
         """
         _b = robot.data.root_pos_w[0].cpu().numpy()
-        _q = robot.data.root_quat_w[0].cpu().numpy()  # wxyz
-        _yaw = math.atan2(2.0 * (_q[0] * _q[3] + _q[1] * _q[2]), 1.0 - 2.0 * (_q[2] ** 2 + _q[3] ** 2))
-        if _cam_yaw[0] is None:
-            _cam_yaw[0] = _yaw
-        else:  # filter, shortest way round
-            _d = (_yaw - _cam_yaw[0] + math.pi) % (2 * math.pi) - math.pi
-            _cam_yaw[0] += _CAM_YAW_GAIN * _d
         _pts = [_b] + _frame_points()
         _c = np.mean(_pts, axis=0)
         _rad = max(float(np.linalg.norm(np.asarray(_p) - _c)) for _p in _pts)
-        _pull = 1.0 + 0.55 * _rad  # widen until every point is held
-        _cy, _sy = math.cos(_cam_yaw[0]), math.sin(_cam_yaw[0])
-        _ox = (_CAM_BEHIND * _pull) * _cy - (_CAM_RIGHT * _pull) * _sy
-        _oy = (_CAM_BEHIND * _pull) * _sy + (_CAM_RIGHT * _pull) * _cy
-        _ex = min(max(float(_b[0] + _ox), _CAM_MIN[0]), _CAM_MAX[0])
-        _ey = min(max(float(_b[1] + _oy), _CAM_MIN[1]), _CAM_MAX[1])
-        return ((_ex, _ey, float(_b[2] + _CAM_UP * _pull)), (float(_c[0]), float(_c[1]), float(_c[2])))
+        _ez = float(_c[2] + 0.6)
+
+        def _eye_for(_th, _dist):
+            _ex = min(max(float(_c[0] + math.cos(_th) * _dist), _CAM_MIN[0]), _CAM_MAX[0])
+            _ey = min(max(float(_c[1] + math.sin(_th) * _dist), _CAM_MIN[1]), _CAM_MAX[1])
+            return np.array([_ex, _ey, _ez])
+
+        _want = max(3.0, _rad / 0.70 + 0.5)
+        if _follow_dir[0] is not None and _view_margin(_eye_for(_follow_dir[0], _want), _c, _pts) > 0.0:
+            _eye = _eye_for(_follow_dir[0], _want)
+        else:
+            _best, _best_m = 0.0, -1e9
+            for _k in range(24):
+                _th = 2.0 * math.pi * _k / 24.0
+                _m = _view_margin(_eye_for(_th, _want), _c, _pts)
+                if _m > _best_m:
+                    _best, _best_m = _th, _m
+            _follow_dir[0] = _best
+            _eye = _eye_for(_best, _want)
+        return ((float(_eye[0]), float(_eye[1]), _ez), (float(_c[0]), float(_c[1]), float(_c[2])))
 
     def _video_pose():
         """The pose to capture the third-person video from this frame, whatever --camera says."""
