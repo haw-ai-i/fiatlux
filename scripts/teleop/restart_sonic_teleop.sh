@@ -31,7 +31,6 @@ EXTRA_ARGS=()
 [ -n "${FIATLUX_CAMERA:-}" ] && EXTRA_ARGS+=(--camera "$FIATLUX_CAMERA")
 [ "${FIATLUX_LOCK_BASE:-0}" = 1 ] && EXTRA_ARGS+=(--lock-base)
 [ "${FIATLUX_RECORD_SETTLE:-0}" = 1 ] && EXTRA_ARGS+=(--record-settle)
-[ "${FIATLUX_NO_ARM_PIN:-0}" = 1 ] && EXTRA_ARGS+=(--no-arm-pin)
 [ -n "${FIATLUX_OUT:-}" ] && EXTRA_ARGS+=(--out "$FIATLUX_OUT")
 REPO="${FIATLUX_REPO:-$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)}"
 LOGDIR="/tmp/fiatlux-xr"; mkdir -p "$LOGDIR"

@@ -80,16 +80,6 @@ parser.add_argument(
     "loop only ever shows it already on the floor. Requires --record.",
 )
 parser.add_argument(
-    "--no-arm-pin",
-    dest="no_arm_pin",
-    action="store_true",
-    help="do not pin the idle arm at its settle joints. The pin (a joint-state write "
-    "every idle step) stops IK null-space droop, but it also makes a hands-off "
-    "robot lean forward and fall at ~3 s on any floor task -- S07 with no payload "
-    "falls at 3.5 s with it and stands indefinitely without it. Use this for any "
-    "session where the robot must still be standing when the operator connects.",
-)
-parser.add_argument(
     "--camera",
     choices=["follow", "static", "fixture"],
     default="follow",
@@ -973,14 +963,6 @@ def main():  # noqa: C901  (one long orchestration: env setup + settle/resettle 
     )
 
     rest_arm = rest_arm_action()
-    # Even with a fixed EE target the redundant IK's null-space slowly bows the elbow away from the
-    # settle pose (UP in Carry, down in Insert). Capture the settle JOINT pose so we can pin the arm
-    # there each IDLE frame (released the instant the controller streams), stopping that drift.
-    _hold_idx = torch.tensor(
-        [i for i, n in enumerate(robot.joint_names) if any(k in n for k in ("shoulder", "elbow", "wrist"))], device=dev
-    )
-    _hold_pose = robot.data.joint_pos[:, _hold_idx].clone()
-    _hold_zero = torch.zeros_like(_hold_pose)
 
     # OPERATOR GRASP (Inspire on the thumb-fix asset): the env's close preset is the settle-time
     # support curl (fingers ~0.3 rad) that keeps the seated bulb from being squeezed while SONIC
@@ -1541,13 +1523,6 @@ def main():  # noqa: C901  (one long orchestration: env setup + settle/resettle 
                         ego_video.capture()  # head-mounted: pose comes from the robot
                     if images is not None:
                         images.maybe_capture(len(recorder._buf["done"]) - 1)  # flat recorded-step index
-                # Pin the arm at its settle joints whenever it isn't being actively moved -- i.e. when the
-                # commanded arm EE is still ~at the rest target. (The retargeters return HELD, non-None
-                # values even with the headset off, so gating on `out is None` never fired.) This stops the
-                # redundant IK's slow null-space drift; the instant the operator moves the arm it releases.
-                if not args.no_arm_pin and bool(torch.allclose(last_arm, rest_arm, atol=0.05)):
-                    robot.write_joint_state_to_sim(_hold_pose, _hold_zero, joint_ids=_hold_idx)
-
                 step_i += 1
                 if args.max_steps and step_i >= args.max_steps:
                     print(f"[sonic] --max_steps {args.max_steps} reached; ending session.", flush=True)
