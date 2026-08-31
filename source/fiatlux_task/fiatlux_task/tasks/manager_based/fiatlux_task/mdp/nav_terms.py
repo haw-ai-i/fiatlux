@@ -167,18 +167,24 @@ def settle_carried_payload_live(
     payload_cfg: SceneEntityCfg,
     hand_variant: str = "inspire",
 ) -> None:
-    """Rest a carried payload directly ON the hand's LIVE, actually-simulated open palm.
+    """Seat a carried payload directly ON the hand's LIVE, actually-simulated palm surface.
 
-    Open palm (``HAND_FLAT``), facing up (``ARM_CRADLE``'s wrist roll), bulb laying in it --
-    not a closing-fingers pinch. The pinch version (``palm_grasp_pose``-style: seat the cap
-    ``BULB_CAP_RADIUS_M`` off the palm face, ``PALM_GRASP_FORWARD_M`` along the fingers,
-    ``BULB_CAP_CENTRE_M`` across) needed the fingertips to converge on the bulb from several
-    directions at once; visually, both this and the pre-existing (7/7-passing)
-    ``verify_interactions.py`` calibration rig showed the cap simply buried in the palm mesh
-    with no visible surface -- the "contact" was interpenetration force, not a clean grip, and
-    the pass/fail checks (force-threshold only) never caught it. Resting the bulb on an open,
-    uncurled palm is a strictly easier placement problem: one surface, one contact, the same
-    geometry ``assets.BULB_LIE_Z_OFFSET`` already validates for a bulb resting on a tabletop.
+    Bulb lying across the palm (``ARM_CRADLE``'s wrist roll turns the palm up), glass over the
+    finger bases, for the hand to close on. Two things this seat is NOT, both measured
+    (issue #105):
+
+    * Not a pinch seated relative to the palm body's origin: that origin is several cm off the
+      visible mesh, and the finger-base centroid used instead sits on the knuckle axes INSIDE
+      the hand -- the bulb started 1-2 cm deep in the collider on both hands, the solver threw
+      it out at 3-6 m/s, and the 65-2366 N "grip" readings were that push. The seat now lifts
+      the centroid to the measured surface (``G1_PALM_SURFACE_OFFSET_M``).
+    * Not a rest on an open, uncurled palm: in the staged carry pose the palm is ~20 deg off
+      level and a free bulb rolls off it within 0.5 s even with the robot pinned in place. What
+      keeps it in the hand is fingers closing on it AFTER it is seated (teleop closes the grip
+      from open at rest and holds at ~55 N on Dex3). Fingers already curled when the seat
+      fires land inside or outside the bulb instead of around it, and ``poses.HAND_CUP``'s
+      0.5 rad does not retain a surface-seated bulb under a held pose -- how the RL legs stage
+      the hold is an open benchmark decision, not something this seat can settle.
 
     Wired as an ``interval`` event (``interval_range_s=(0.0, 0.0)``, fires every step) gated on
     ``episode_length_buf == 1``, not a ``reset``-mode event: reset-mode events fire before any
@@ -199,7 +205,13 @@ def settle_carried_payload_live(
 
     from fiatlux_task.assets import BULB_LIE_Z_OFFSET
     from fiatlux_task.grasp_poses import BULB_GLASS_CENTRE_M
-    from fiatlux_task.robots.g1 import G1_FINGER_BASE_BODIES_BY_VARIANT, G1_PALM_BODY_BY_VARIANT, G1_PALM_LOCAL_AXES
+    from fiatlux_task.robots.g1 import (
+        G1_FINGER_BASE_BODIES_BY_VARIANT,
+        G1_PALM_BODY_BY_VARIANT,
+        G1_PALM_CAP_SIDE,
+        G1_PALM_LOCAL_AXES,
+        G1_PALM_SURFACE_OFFSET_M,
+    )
 
     robot: Articulation = env.scene["robot"]
     payload: RigidObject = env.scene[payload_cfg.name]
@@ -210,6 +222,8 @@ def settle_carried_payload_live(
     # Anchor POSITION on the finger-base centroid, not the palm body's own origin -- the latter
     # renders several cm off the visible mesh, toward the wrist, so a payload placed relative to
     # it hangs over empty air with nothing underneath and falls/rolls off within a few steps.
+    # The centroid itself lies on the knuckle axes inside the hand, so lift it to the measured
+    # surface (``G1_PALM_SURFACE_OFFSET_M``) before stacking the bulb's own radius on top.
     base_idx = [robot.find_bodies(n)[0][0] for n in G1_FINGER_BASE_BODIES_BY_VARIANT[hand_variant]]
     palm_pos = robot.data.body_pos_w[ids][:, base_idx].mean(dim=1)
 
@@ -220,13 +234,17 @@ def settle_carried_payload_live(
     # The bulb's ROOT sits at the tip end (outside its own geometry, per grasp_poses.py), with
     # the entire body extending along its local +z from there -- placing the root itself at the
     # anchor left the cap balanced on the fingers and the whole glass body (the bigger, heavier
-    # part) cantilevered off past the edge of the hand, unsupported. Local +z maps to world
-    # "across" in this basis, so shift the root back along -across by BULB_GLASS_CENTRE_M
-    # (root-to-glass-centre) to land the glass's centre -- not the root -- over the palm.
-    pos = palm_pos + normal * BULB_LIE_Z_OFFSET - across * BULB_GLASS_CENTRE_M
-    # Lying on its side, long axis along "across" (spans the palm, the low/stable resting
+    # part) cantilevered off past the edge of the hand, unsupported. Local +z lies along the
+    # palm's "across" axis, pointing from the cap side (G1_PALM_CAP_SIDE, chosen per hand so the
+    # neck runs away from the thumb) toward the glass; shift the root back along -axis by
+    # BULB_GLASS_CENTRE_M (root-to-glass-centre) to land the glass's centre, not the root, over
+    # the palm.
+    axis = -across * G1_PALM_CAP_SIDE[hand_variant]  # bulb +z runs root->glass, so the cap sits at +side
+    lift = G1_PALM_SURFACE_OFFSET_M[hand_variant] + BULB_LIE_Z_OFFSET
+    pos = palm_pos + normal * lift - axis * BULB_GLASS_CENTRE_M
+    # Lying on its side, long axis across the palm (spans the palm, the low/stable resting
     # orientation) -- same basis convention as the pinch version, just a different seat.
-    basis = torch.stack([normal, torch.linalg.cross(across, normal), across], dim=-1)
+    basis = torch.stack([normal, torch.linalg.cross(axis, normal), axis], dim=-1)
     quat = quat_from_matrix(basis)
 
     payload.write_root_pose_to_sim(torch.cat([pos, quat], dim=-1), env_ids=ids)

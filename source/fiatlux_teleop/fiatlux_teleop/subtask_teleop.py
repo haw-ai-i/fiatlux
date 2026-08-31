@@ -164,7 +164,36 @@ def apply_subtask_teleop(cfg) -> None:
         raise ValueError(f"FIATLUX_TELEOP_HAND must be 'inspire' or 'dex3', got {hand!r}")
     if hand != native:
         swap_robot_variant(cfg, hand)
-    cfg.scene.robot.spawn.articulation_props.enabled_self_collisions = False
+    # Self-collisions stay as the benchmark authors them (True in robots/g1.py): with them off,
+    # the fingers close through the thumb, and the teleop twin's physics diverges from the RL
+    # env it mirrors. The original teleop env disabled them to calm Dex3 finger self-contact
+    # jitter; re-check there if it resurfaces.
+
+    # ROBOT USD OVERRIDE (teleop only): FIATLUX_TELEOP_ROBOT_USD swaps in an alternative robot
+    # asset, e.g. the Inspire variant with the re-authored thumb yaw frame
+    # (``scripts/omniverse/inspire_thumb_frame.py``). The benchmark envs never see this.
+    robot_usd = os.environ.get("FIATLUX_TELEOP_ROBOT_USD")
+    if robot_usd:
+        if not os.path.isfile(robot_usd):
+            raise FileNotFoundError(f"FIATLUX_TELEOP_ROBOT_USD={robot_usd!r} does not exist")
+        cfg.scene.robot.spawn.usd_path = robot_usd
+        # With a thumb that can stand perpendicular to the palm (the re-authored frame; the
+        # stock model tops out at 55 deg and leans over the palm), the in-hand legs stage the
+        # Inspire hand OPEN with the thumb raised: the bulb is seated on the flat fingers, then
+        # the driver's closed rest grip brings the thumb down over it. Staged pre-curled
+        # (``poses.HAND_CUP``) the proximal links start inside the glass and the thumb pins the
+        # bulb on release.
+        # FIATLUX_TELEOP_INHAND_THUMB_YAW (rad, default 1.0 = the grasp preset's yaw, so the
+        # close does not swing the thumb) sets the staged thumb rotation; "cup" keeps the task's
+        # own HAND_CUP staging for A/B runs.
+        staged_yaw = os.environ.get("FIATLUX_TELEOP_INHAND_THUMB_YAW", "1.0")
+        if hand == "inspire" and getattr(cfg.events, "settle_bulb", None) is not None and staged_yaw != "cup":
+            cfg.scene.robot.init_state.joint_pos = {
+                **cfg.scene.robot.init_state.joint_pos,
+                **G1_HAND_OPEN,
+                # 1.3 rad is the joint limit and Isaac Lab rejects a default position AT a limit
+                "R_thumb_proximal_yaw_joint": min(float(staged_yaw), 1.29),
+            }
 
     # Head camera on EVERY subtask. The benchmark only adds it in the balance tier
     # (climb / descend / mate), so six of the twelve had no robot-mounted view at all -- and the
@@ -182,6 +211,21 @@ def apply_subtask_teleop(cfg) -> None:
     cfg.scene.ego_camera.width = 512
 
     cfg.actions = _make_actions_cfg(hand)
+    # In-hand legs on the re-authored Inspire thumb: FIATLUX_TELEOP_INHAND_CLOSE="<fingers>:<thumb>"
+    # scales the CLOSE preset's finger curl and thumb curl (thumb yaw untouched) for the settle:
+    # the fingers only need to support the seated glass while the thumb opposes it. Default
+    # 0.2:1.0 = fingers stop at 0.30 rad, thumb full; "1:1" restores the full preset. This is
+    # the settle-time grip only -- the driver swaps the operator's close back to the full grasp
+    # preset at "Teleop ready".
+    close_scale = os.environ.get("FIATLUX_TELEOP_INHAND_CLOSE", "0.2:1.0")
+    if robot_usd and hand == "inspire" and getattr(cfg.events, "settle_bulb", None) is not None:
+        f_scale, t_scale = (float(v) for v in close_scale.split(":"))
+        close = dict(cfg.actions.hand_action.close_command_expr)
+        for name in close:
+            if name.startswith("R_thumb_proximal_yaw"):
+                continue
+            close[name] = round(close[name] * (t_scale if name.startswith("R_thumb") else f_scale), 3)
+        cfg.actions.hand_action.close_command_expr = close
 
     # Operator-paced: disable the FAILURE and timeout terms (falls, drops, tipped ladders,
     # time_out) so a recoverable mistake does not end the take. Subtasks each declare their own
@@ -210,6 +254,9 @@ def apply_subtask_teleop(cfg) -> None:
     )
 
     rp = cfg.scene.robot.init_state.pos
+    # Legs that start with the bulb already in the right hand (they re-seat it on the live palm
+    # via ``settle_bulb``) begin with that grip closed on it; the trigger takes over once pulled.
+    right_starts_closed = getattr(cfg.events, "settle_bulb", None) is not None
     cfg.teleop_devices = DevicesCfg(
         devices={
             "controller_rel": OpenXRDeviceCfg(
@@ -220,7 +267,9 @@ def apply_subtask_teleop(cfg) -> None:
                         sim_device=cfg.sim.device,
                     ),
                     ControllerGripperRetargeterCfg(
-                        bound_hand=DeviceBase.TrackingTarget.HAND_RIGHT, sim_device=cfg.sim.device
+                        bound_hand=DeviceBase.TrackingTarget.HAND_RIGHT,
+                        sim_device=cfg.sim.device,
+                        start_closed=right_starts_closed,
                     ),
                     Se3RelControllerRetargeterCfg(
                         bound_hand=DeviceBase.TrackingTarget.HAND_LEFT,
