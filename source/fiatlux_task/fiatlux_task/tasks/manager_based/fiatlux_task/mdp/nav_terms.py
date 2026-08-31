@@ -34,10 +34,14 @@ from isaaclab.assets import Articulation, RigidObject
 from isaaclab.managers import SceneEntityCfg
 from isaaclab.sensors import ContactSensor, ContactSensorCfg
 
+from fiatlux_task.grasp_poses import BULB_GLASS_RADIUS_M, BULB_IN_ROOT_STANDING
+
 from ..scene_cfg import (
     CLIMB_ROBOT_POSITION,
     DISPOSAL_ZONE_HALF_SIZE,
     LADDER_POSITION,
+    STANCE_RESET_JITTER,
+    TABLE_COLLISION_HALF_EXTENT,
     TABLETOP_BULB_POSITION,
     TABLETOP_ROBOT_POSITION,
     G1ReplaceSceneCfg,
@@ -82,6 +86,26 @@ BULB_APPROACH_RADIUS = math.dist(TABLETOP_ROBOT_POSITION[:2], TABLETOP_BULB_POSI
 _TABLETOP_APPROACH_DX = TABLETOP_ROBOT_POSITION[0] - TABLETOP_BULB_POSITION[0]
 _TABLETOP_APPROACH_DY = TABLETOP_ROBOT_POSITION[1] - TABLETOP_BULB_POSITION[1]
 BULB_APPROACH_OFFSET = (_TABLETOP_APPROACH_DX, _TABLETOP_APPROACH_DY)
+
+_TABLETOP_APPROACH_DIST = math.hypot(_TABLETOP_APPROACH_DX, _TABLETOP_APPROACH_DY)
+_APPROACH_UX = _TABLETOP_APPROACH_DX / _TABLETOP_APPROACH_DIST
+_APPROACH_UY = _TABLETOP_APPROACH_DY / _TABLETOP_APPROACH_DIST
+CARRY_SWEEP_RADIUS = math.hypot(*BULB_IN_ROOT_STANDING[0][:2]) + BULB_GLASS_RADIUS_M
+_CARRY_CLEARANCE = CARRY_SWEEP_RADIUS + STANCE_RESET_JITTER
+
+_EXIT_AXIS = (
+    0 if TABLE_COLLISION_HALF_EXTENT[0] / abs(_APPROACH_UX) < TABLE_COLLISION_HALF_EXTENT[1] / abs(_APPROACH_UY) else 1
+)
+_EXIT_U = (_APPROACH_UX, _APPROACH_UY)[_EXIT_AXIS]
+CARRY_CLEARANCE_STANDOFF = (TABLE_COLLISION_HALF_EXTENT[_EXIT_AXIS] + _CARRY_CLEARANCE) / abs(_EXIT_U)
+TABLE_CARRY_OFFSET = (_APPROACH_UX * CARRY_CLEARANCE_STANDOFF, _APPROACH_UY * CARRY_CLEARANCE_STANDOFF)
+
+_OTHER_AXIS = 1 - _EXIT_AXIS
+if abs((_APPROACH_UX, _APPROACH_UY)[_OTHER_AXIS] * CARRY_CLEARANCE_STANDOFF) > TABLE_COLLISION_HALF_EXTENT[_OTHER_AXIS]:
+    raise ValueError(
+        "The carry standoff clears a corner of the bench, not a face, so the clearance it computes "
+        "is optimistic. Solve the box distance directly instead of assuming a face."
+    )
 
 # "Close enough to be standing at the crate." PROVISIONAL: the crate's own layout zone
 # half-extent (footprint + working clearance); no authored robot-relative standoff exists.
