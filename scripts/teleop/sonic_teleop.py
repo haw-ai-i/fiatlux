@@ -697,7 +697,17 @@ def main():  # noqa: C901  (one long orchestration: env setup + settle/resettle 
     # settled pose made every reset inherit the loss and drift lower again on each one.
     staged_root = spawn_root.clone()
     home_xy = spawn_root[0, 0:2].cpu().numpy().copy()
-    HOLD_KP, HOLD_VMAX, WALK_TH, HOLD_DB, WARMUP = 0.8, 0.25, 0.06, 0.10, 100
+    HOLD_KP, HOLD_VMAX, WALK_TH, WARMUP = 0.8, 0.25, 0.06, 100
+    # Hold hysteresis: engage past 0.20 m from home, walk back until within 0.06 m, and never
+    # command less than 0.12 m/s while engaged. A single deadband with an unbounded-small
+    # command left the robot marching in place at the deadband edge -- SONIC walks at roughly
+    # half the commanded speed, so a 0.08 m/s correction can never close the error.
+    # HOLD_ANCHOR_V: home keeps following the robot until the base has actually stopped
+    # (speed under this), not just until the stick is released -- SONIC glides a few steps
+    # decelerating, and anchoring at the release point made the hold march it BACK the way it
+    # came after every walk. Released stick = "stop here", not "return to where I let go".
+    HOLD_ENGAGE, HOLD_RELEASE, HOLD_VMIN, HOLD_ANCHOR_V = 0.20, 0.06, 0.12, 0.15
+    _hold_on = False
 
     # "hold current pose" arm action (root-frame EE pose + open grip, per arm), so the arm doesn't
     # fling before the controller streams. Order matches the action manager: R_arm(7), R_grip(1),
@@ -1462,19 +1472,26 @@ def main():  # noqa: C901  (one long orchestration: env setup + settle/resettle 
                 # glides the base away. Steer a gentle velocity back to home -- but only AFTER a warmup so
                 # it doesn't fight the fragile settle; while walking, home follows the robot.
                 base_xy = robot.data.root_pos_w[0, 0:2].cpu().numpy()
-                if step_i < WARMUP or np.linalg.norm(loco_cmd) > WALK_TH:
+                _base_speed = float(torch.linalg.norm(robot.data.root_lin_vel_w[0, 0:2]))
+                if step_i < WARMUP or np.linalg.norm(loco_cmd) > WALK_TH or _base_speed > HOLD_ANCHOR_V:
                     home_xy = base_xy.copy()
+                    _hold_on = False
                 else:
                     e = home_xy - base_xy
-                    if float(np.linalg.norm(e)) > HOLD_DB:
+                    _en = float(np.linalg.norm(e))
+                    if not _hold_on and _en > HOLD_ENGAGE:
+                        _hold_on = True
+                    elif _hold_on and _en < HOLD_RELEASE:
+                        _hold_on = False
+                    if _hold_on:
                         q = robot.data.root_quat_w[0].cpu().numpy()
                         yaw = np.arctan2(2 * (q[0] * q[3] + q[1] * q[2]), 1 - 2 * (q[2] ** 2 + q[3] ** 2))
-                        loco_cmd[0] = float(
-                            np.clip(HOLD_KP * (np.cos(yaw) * e[0] + np.sin(yaw) * e[1]), -HOLD_VMAX, HOLD_VMAX)
-                        )
-                        loco_cmd[1] = float(
-                            np.clip(HOLD_KP * (-np.sin(yaw) * e[0] + np.cos(yaw) * e[1]), -HOLD_VMAX, HOLD_VMAX)
-                        )
+                        _cx = HOLD_KP * (np.cos(yaw) * e[0] + np.sin(yaw) * e[1])
+                        _cy = HOLD_KP * (-np.sin(yaw) * e[0] + np.cos(yaw) * e[1])
+                        _cm = float(np.hypot(_cx, _cy))
+                        _scale = np.clip(_cm, HOLD_VMIN, HOLD_VMAX) / max(_cm, 1e-6)
+                        loco_cmd[0] = float(_cx * _scale)
+                        loco_cmd[1] = float(_cy * _scale)
 
                 # SONIC runs EVERY frame -- balance is not optional. (Gating this on `out` made the
                 # free-base robot collapse whenever the headset wasn't streaming.)
