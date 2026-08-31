@@ -15,6 +15,8 @@ The cfg deliberately leaves ``prim_path`` unset (``MISSING``); each scene suppli
 it via ``.replace(prim_path=...)`` so the same robot can be reused across tasks.
 """
 
+import inspect
+
 import isaaclab.sim as sim_utils
 from isaaclab.actuators import ImplicitActuatorCfg
 from isaaclab.assets import ArticulationCfg
@@ -215,6 +217,8 @@ G1_INSPIRE_CFG = ArticulationCfg(
             enabled_self_collisions=True,
             solver_position_iteration_count=16,
             solver_velocity_iteration_count=8,
+            sleep_threshold=0.0,
+            stabilization_threshold=0.001,
         ),
         activate_contact_sensors=True,
     ),
@@ -460,6 +464,29 @@ def swap_robot_variant(env_cfg, variant: str) -> None:
             if remapped is not None:
                 asset_cfg.joint_names = remapped
 
+    def repoint_hand_variant(term) -> None:
+        """Retarget a term that selects BODY names by variant (``hand_variant=...``).
+
+        Joint-name remapping above cannot reach these: the term resolves the body itself at
+        runtime from the variant string it was configured with, so a stale ``"inspire"`` sends
+        it looking for ``right_hand_base_link`` on a Dex3 robot -- a hard failure inside the
+        event, not a silent no-op.
+        """
+        func = getattr(term, "func", None)
+        if func is None:
+            return
+        try:
+            accepts = "hand_variant" in inspect.signature(func).parameters
+        except (TypeError, ValueError):
+            return
+        if accepts:
+            # Set rather than only-update: tasks leave this at the function's ``"inspire"``
+            # default, so there is usually no key here to rewrite.
+            if getattr(term, "params", None) is None:
+                term.params = {}
+            if isinstance(term.params, dict):
+                term.params["hand_variant"] = variant
+
     for manager_name in ("rewards", "terminations", "events"):
         manager = getattr(env_cfg, manager_name, None)
         if manager is None:
@@ -467,7 +494,9 @@ def swap_robot_variant(env_cfg, variant: str) -> None:
         for term_name in dir(manager):
             if term_name.startswith("_"):
                 continue
-            remap_asset_cfg(getattr(manager, term_name))
+            term = getattr(manager, term_name)
+            remap_asset_cfg(term)
+            repoint_hand_variant(term)
 
     actions = getattr(env_cfg, "actions", None)
     if actions is not None:

@@ -14,7 +14,7 @@ own zone with both hands free, and the ladder in its own, independently-sampled 
 
 **Success is the ladder standing at the fixture, and nothing about how it got there.** Carrying,
 dragging, shouldering, pushing along the floor and nudging it a foot at a time all count the same:
-this leaf adds no contact sensor, so no gate can tell them apart. The gate is the deliverable
+no gate conjunct reads contact, so none of them can tell those apart. The gate is the deliverable
 itself, held for ``PLACE_SUSTAIN_SECONDS``:
 
 * ``ladder_ready`` -- the ladder's top is horizontally within ``LADDER_READY_XY_RADIUS`` of the
@@ -40,6 +40,7 @@ from isaaclab.utils import configclass
 
 from .. import mdp
 from ..mdp import place_terms
+from ..mdp.nav_terms import add_grip_contact_sensor
 from ..scene_cfg import (
     LADDER_READY_XY_RADIUS,
     add_ego_camera,
@@ -125,6 +126,13 @@ class S01MoveLadderEnvCfg(PlaceSubtaskCfg):
         face_robot_at(self.scene, self.scene.ladder.init_state.pos[:2])
         add_ego_camera(self.scene)
         add_mid360_lidar(self.scene)
+        # Ladder grip force, MEASUREMENT ONLY -- no gate conjunct reads it, so success still says
+        # nothing about how the ladder travelled (see the module docstring). Issue #106: the
+        # shared ``hand_contact`` filters whichever bulbs the preset built, so on this leg -- where
+        # the ladder is the manipuland and the bulbs are scenery -- it reads a flat 0.0 N, which
+        # is indistinguishable from a dead sensor. Filtered to the ladder alone, this column is
+        # attributable, and ``recording.py`` writes it into the bag as ``grip_force``.
+        add_grip_contact_sensor(self.scene, self.scene.ladder.prim_path)
         # The three retired horizons summed (20 s approach + 45 s loaded traverse + 20 s
         # placement), rounded up. PROVISIONAL: no rollout has set it.
         self.episode_length_s = 90.0

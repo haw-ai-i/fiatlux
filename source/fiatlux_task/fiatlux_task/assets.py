@@ -65,14 +65,13 @@ STEP_LADDER_RIGID_USD = os.path.join(
 
 # The standing point on the platform, in the ladder's base_link frame (metres, after the 0.01
 # spawn scale). The tread is 48 x 40 cm, spanning x=[-0.24,0.24], y=[-0.10,0.30], topping out at
-# z=1.18; steps ascend below it on local -y (z=0.47 / 0.71 / 0.94). The stance sits at y=0, in
-# the strip in FRONT of the guardrail (which occupies y=[0.11,0.27] from z=1.46 up) -- centred
-# on the tread instead, the rail passes through the robot's thighs.
+# z=1.18; steps ascend below it on local -y (z=0.47 / 0.71 / 0.94). The standing point is the
+# tread's centre; the robot stands turned a quarter turn from it (``stand_robot_on_ladder_top``).
 #
 # The tread exists in the render mesh but NOT in the convex-decomposed collider, so
 # scripts/omniverse/omniverse_ladder_platform.py authors an explicit box collider for it into
 # the ``_collision`` overlay. Without that box a robot placed here falls through the ladder.
-STEP_LADDER_TOP_OFFSET = (0.0, 0.00, 1.18)
+STEP_LADDER_TOP_OFFSET = (0.0, 0.10, 1.18)
 
 # Fingertip height above the surface the feet are on, arm raised straight up.
 G1_OVERHEAD_REACH = 1.3738
