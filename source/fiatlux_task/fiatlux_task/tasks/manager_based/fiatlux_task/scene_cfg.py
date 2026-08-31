@@ -198,6 +198,8 @@ PENDANT_RADIUS = 0.012  # the rod a ceiling fixture hangs from
 # BEHAVIOR-1K assets.
 FIXTURE_POSITION = (0.0, 0.0, ROOM_CEILING_Z)
 
+SCORED_BODY_SLEEP_THRESHOLD = 0.0  # #121
+
 # Zone half-sizes (m): each occupant's "safe square" half-extent, footprint plus working
 # clearance. The table's is a square bound around its elongated footprint (collision volume
 # x[-0.82,1.62] x y[-0.48,0.28], centered on TABLE_POSITION).
@@ -474,6 +476,8 @@ def _make_bulb_cfg(prim_path: str, pos: Vec3, rot: Quat | None = None, *, kinema
                 solver_velocity_iteration_count=1,
                 max_depenetration_velocity=1.0,
                 enable_gyroscopic_forces=True,
+                sleep_threshold=SCORED_BODY_SLEEP_THRESHOLD,
+                stabilization_threshold=0.001,
             ),
             collision_props=sim_utils.CollisionPropertiesCfg(
                 contact_offset=0.005, rest_offset=0.0, torsional_patch_radius=0.005
@@ -695,7 +699,7 @@ def apply_position_preset(scene: G1ReplaceSceneCfg) -> None:
             solver_position_iteration_count=16,
             solver_velocity_iteration_count=1,
             max_depenetration_velocity=1.0,
-            sleep_threshold=0.005,
+            sleep_threshold=SCORED_BODY_SLEEP_THRESHOLD,
             stabilization_threshold=0.001,
         ),
         mass_props=sim_utils.MassPropertiesCfg(mass=LADDER_MASS_KG),
@@ -1319,6 +1323,8 @@ def apply_replace_preset(
         solver_position_iteration_count=16,
         solver_velocity_iteration_count=8,
         max_depenetration_velocity=1.0,
+        sleep_threshold=SCORED_BODY_SLEEP_THRESHOLD,
+        stabilization_threshold=0.001,
     )
     scene.ladder.spawn.mass_props = sim_utils.MassPropertiesCfg(mass=LADDER_MASS_KG)
 
