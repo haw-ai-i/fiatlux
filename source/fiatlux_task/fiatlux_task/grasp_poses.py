@@ -41,12 +41,15 @@ PALM_GRASP_FORWARD_M_BY_VARIANT: dict[str, float] = {"dex3": 0.045, "inspire": -
 # ---------------------------------------------------------------------------
 
 # Produced by S08, consumed by S04/S05/S09/S10/S11.
-# CALIBRATED 2026-08-23 against ``poses.ARM_CRADLE`` + ``poses.HAND_CUP`` -- the pose its
-# consumers actually spawn, not the closed ``HAND_CRADLE`` the previous value was derived
-# against. Settled hold: 108 N on the cap, 1.5 cm of slip, contact in 150/150 steps.
+# RE-CALIBRATED 2026-08-31 to the ``settle_carried_payload_live`` seat destination (surface
+# seat, cap to the pinky side -- issue #105), measured in the root frame on the settled staged
+# pose (stable to ~2 cm across tasks/seeds). The event still performs the authoritative
+# live-palm seat at episode step 1; this spawn puts the bulb on the palm from the FIRST frame,
+# where the 2026-08-23 value (calibrated against the pre-#105 ``HAND_CUP`` interpenetration
+# hold) spawned it 0.20 m away and the bulb visibly teleported into the hand one step in.
 BULB_IN_ROOT_STANDING: tuple[Vec3, Quat] = (
-    (0.5556, -0.2051, 0.2879),
-    (-0.393290, 0.473585, 0.619048, 0.487667),
+    (0.5538, -0.0195, 0.3497),
+    (0.522871, 0.394796, -0.500945, 0.565506),
 )
 
 # Consumed by S04 (old bulb) and S11 (fresh bulb). Kept as a separate name because those two
