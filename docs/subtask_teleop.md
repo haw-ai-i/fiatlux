@@ -44,6 +44,35 @@ Keyboard: arrows walk, `SPACE` stops, `TAB` switches arm, `W/S A/D Q/E` move the
 `U/O I/K J/L` rotate the wrist, `G` grips, `C` toggles recording, `R` resets. Forward reach
 saturates around 0.35 m from the pelvis — past that the arm is at its kinematic limit.
 
+### Driver flags
+
+`sonic_teleop.py --help` is the reference; this is the map. Defaults in bold.
+
+| flag | values | what it does |
+|---|---|---|
+| `--task` | env id | which twin to drive (**`FIATLUX-Insert-Teleop-v0`**) |
+| `--input` | **`vr`** / `keyboard` | headset over CloudXR, or the desktop keys above |
+| `--hand` | **`dex3`** / `inspire` | which G1 hand the env is built with; the driver prints the one it actually got |
+| `--layout_seed` | int / **`random`** | the room layout; the seed in use is printed and stored in `meta.json` |
+| `--walk_scale` | m/s, **1.0** | walking speed at full stick |
+| `--record` | **`none`** / `bag` | write a demo bag per take |
+| `--record-video` | | also write `video.mp4` (third-person) and `ego.mp4` (head camera) |
+| `--record-start` | **`auto`** / `toggle` | record from launch, or start off until B / `C` |
+| `--record-settle` | | include the ~90-step startup settle in the take, so spawn-time failures are in the footage |
+| `--record-format` | **`hdf5`** / `npz` | bag format |
+| `--record-images`, `--images-stride` | , **5** | the env's own cameras as JPEGs, every Nth step |
+| `--out` | path | where takes go; default is the `teleop-captures/` layout below |
+| `--camera` | **`auto`** / `follow` / `static` / `fixture` / `bench` / `crate` | the third-person shot. `auto` picks per task: socket side view on S03/S11, bench side view on S07/S08, crate side view on S06, chase cam framing the task's objects elsewhere |
+| `--stop-on-success` / `--no-stop-on-success` | **on** | close the take the moment the success gate latches |
+| `--no-arm-pin` | | do not pin the idle arm at its settle joints. The pin stops IK droop but makes a hands-off robot fall at ~3 s; use this whenever the robot must still be standing when you connect |
+| `--lock-base` | | bolt the pelvis to the world (legs inert) — testing the manipulation half of an on-ladder task only, not demo-valid |
+| `--max_steps` | int, **0** = run until quit | stop after N loop steps |
+| `--teleop_device` | **`controller_rel`** | which XR device config to drive the arms with |
+| `--walk_onnx`, `--balance_onnx` | paths | the SONIC policies (`$SONIC_POLICY_DIR`) |
+| `--num_envs` | **1** | |
+
+`restart_sonic_teleop.sh` forwards these as `FIATLUX_*` environment variables — see its header.
+
 ## The 12 subtasks
 
 The four ladder legs were folded into `S01-MoveLadder`; everything after it shifted down by
@@ -200,7 +229,7 @@ own folder, sealed with its own score once the bag and video are closed:
 
 ```
 teleop-captures/<task>/<hand>/hdf5/vr/2026-08-27/143052/
-  ep00_score1.00/    run.h5   meta.json   video.mp4   video_poster.png
+  ep00_score1.00/    run.h5   meta.json   score_report.txt   video.mp4   ego.mp4   (+ poster PNGs)
   ep01_score0.00/    ...
   ep02_score1.00/    ...
 ```
