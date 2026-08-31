@@ -57,6 +57,7 @@ from ..subtask_env_cfg import (
     SubtaskEventCfg,
     SubtaskTerminationsCfg,
 )
+from ..subtask_tiers.carrying import add_bulb_crush_gate
 
 # The success gate as data (mdp.all_of): an omitted conjunct in a hand-written conjunction is a
 # gate that passes vacuously.
@@ -145,6 +146,7 @@ class S09CarryBulbToLadderEnvCfg(NavigateSubtaskCfg):
             **HAND_CUP,
         }
         add_grip_contact_sensor(self.scene, self.scene.fresh_bulb.prim_path)
+        add_bulb_crush_gate(self)
         add_ego_camera(self.scene)
         add_mid360_lidar(self.scene)
         # Worst-case room-diagonal traverse (~10.8 m) at the ~0.5 m/s reference speed, 2x margin;
