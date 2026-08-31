@@ -448,6 +448,10 @@ class TeleopTrajectoryRecorder(TrajectoryRecorder):
             step["contact_force"] = _rec._obs.object_contact_forces(env.scene.sensors["hand_contact"])
         if self._has_left_contact:
             step["contact_force_left"] = _rec._obs.object_contact_forces(env.scene.sensors["left_hand_contact"])
+        # Robot root + ladder pose + grip force, shared with the RL recorder (issues #107, #106).
+        # This class builds its own step dict rather than extending the parent's, so the parent's
+        # fields have to be merged in explicitly -- they do not arrive by inheritance.
+        step.update(self.world_state_fields())
         if extras:
             # Driver-supplied operator/policy signals (loco_cmd, SONIC leg action, ...). Tensors or
             # numpy accepted; each must already carry the (N, ...) leading env axis.

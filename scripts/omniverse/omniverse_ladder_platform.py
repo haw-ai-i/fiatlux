@@ -21,12 +21,12 @@ import os
 import sys
 
 try:
-    from pxr import Gf, Usd, UsdGeom, UsdPhysics, UsdShade
+    from pxr import Gf, Sdf, Usd, UsdGeom, UsdPhysics, UsdShade
 except ModuleNotFoundError:  # pxr only resolves once Kit has been bootstrapped
     from isaaclab.app import AppLauncher
 
     _APP = AppLauncher(headless=True).app
-    from pxr import Gf, Usd, UsdGeom, UsdPhysics, UsdShade
+    from pxr import Gf, Sdf, Usd, UsdGeom, UsdPhysics, UsdShade
 
 PLATFORM_PRIM = "PlatformCollider"
 
@@ -105,6 +105,13 @@ def author(path, centre, half, visible=False):
     prim = box.GetPrim()
     UsdPhysics.CollisionAPI.Apply(prim)
     UsdPhysics.MeshCollisionAPI.Apply(prim).CreateApproximationAttr(UsdPhysics.Tokens.convexHull)
+    # The same ~6 mm contact offset the frame's colliders carry (omniverse_ladder_collision.py).
+    # Without it this shape alone keeps PhysX's ~2 cm default skin, so a foot on the tread
+    # contacts 2 cm above where the tread renders while the rest of the same body contacts at
+    # 6 mm -- one rigid body with two different notions of where its surface is.
+    prim.AddAppliedSchema("PhysxCollisionAPI")
+    prim.CreateAttribute("physxCollision:contactOffset", Sdf.ValueTypeNames.Float).Set(0.006)
+    prim.CreateAttribute("physxCollision:restOffset", Sdf.ValueTypeNames.Float).Set(0.0)
     mat_path = default.GetPath().AppendChild("PhysicsMaterials").AppendChild("HighFriction")
     mat = UsdShade.Material.Get(stage, mat_path)
     if mat:

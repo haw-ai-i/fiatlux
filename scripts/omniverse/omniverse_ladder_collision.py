@@ -89,6 +89,52 @@ def _has_inverted_mesh(stage):
         return False
     max_abs = max(abs(v) for v in vols)
     return any(v < 0 and abs(v) > 0.01 * max_abs for v in vols)
+
+
+def _has_open_mesh(stage):
+    """True if ANY mesh is an open surface -- has boundary or non-manifold edges.
+
+    SDF is a *volumetric* representation: its sign is the inside/outside of a CLOSED surface. On a
+    mesh with holes there is no inside, so PhysX cooks a field that is wrong wherever the hole is --
+    contacts pass through it and are then resolved toward whatever the field does call solid. This
+    is a harder requirement than ``_has_inverted_mesh``'s (which only needs consistent winding), and
+    the collected ladders fail it: every AlumStep / AlumMultiPurpose / stepstand design is open, and
+    on AlumStep_D01 the holes cluster in the bottom 24 cm -- the legs, i.e. exactly what has to hold
+    the ladder up. Such a design gets convexDecomposition, which ignores topology entirely.
+
+    Vertices are welded positionally first: exporters split vertices at UV/normal seams, and
+    unwelded every seam edge counts as a boundary, which would fail every asset. The weld tolerance
+    is relative to the design's own bbox, so cm- and metre-authored assets behave alike.
+    """
+    import numpy as np
+
+    for prim in stage.Traverse():
+        if prim.GetTypeName() != "Mesh":
+            continue
+        mesh = UsdGeom.Mesh(prim)
+        pts = mesh.GetPointsAttr().Get()
+        idx = mesh.GetFaceVertexIndicesAttr().Get()
+        cnts = mesh.GetFaceVertexCountsAttr().Get()
+        if not pts or not idx or not cnts:
+            continue
+        pts = np.asarray(pts, dtype=np.float64)
+        idx = np.asarray(idx, dtype=np.int64)
+        cnts = np.asarray(cnts, dtype=np.int64)
+        span = float(np.max(pts.max(0) - pts.min(0)))
+        if span <= 0.0:
+            continue
+        _, welded = np.unique(np.round(pts / (span * 1e-6)).astype(np.int64), axis=0, return_inverse=True)
+        v = welded[idx]
+        # Each face's edges are (v[i], v[i+1]), with the last one wrapping to the face's first
+        # vertex -- so `nxt` is "the next index", patched at each face's last slot.
+        starts = np.concatenate([[0], np.cumsum(cnts)[:-1]])
+        nxt = np.arange(len(v)) + 1
+        nxt[starts + cnts - 1] = starts
+        edges = np.sort(np.stack([v, v[nxt]], axis=1), axis=1)
+        _, counts = np.unique(edges, axis=0, return_counts=True)
+        if np.any(counts != 2):  # 1 = hole in the surface, >2 = non-manifold junction
+            return True
+    return False
 # The collision authoring below is universal (every mesh -> convex collider, any up-axis/unit);
 # only this file *selection* is convention-based. These suffixes are the SimReady sublayer parts
 # (_base/_inst/_inst_base, skipped so we author on the entry file, not its pieces) and our own
@@ -154,6 +200,8 @@ def author(src):
     approx = _approximation_for(src)
     if approx == "sdf" and _has_inverted_mesh(stage):
         approx = "convex"  # an inverted mesh -> SDF would be inside-out; convex ignores winding
+    elif approx == "sdf" and _has_open_mesh(stage):
+        approx = "convex"  # an open mesh has no inside -> SDF leaks; convex ignores topology
     nmesh = 0
     for p in stage.Traverse():
         if p.GetTypeName() != "Mesh":
