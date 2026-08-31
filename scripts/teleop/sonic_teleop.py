@@ -183,6 +183,13 @@ parser.add_argument(
     "instead (SIGINT) is NOT clean, Kit's own signal handler fast-exits and "
     "skips the final bag write; only episodes already closed by [R] survive.",
 )
+parser.add_argument(
+    "--keys",
+    default="",
+    help="scripted keyboard input for hands-off tests: comma-separated NAME@SECONDS pairs "
+    "(teleop time, so 0 = 'Teleop ready'), e.g. \"G@4,R@8,G@12,ESCAPE@15\". Injected into the "
+    "same queue as real key presses; keyboard input only.",
+)
 AppLauncher.add_app_launcher_args(parser)
 args = parser.parse_args()
 if args.record_video or args.record_images:
@@ -215,7 +222,7 @@ from isaaclab.devices.device_base import DeviceBase  # noqa: E402
 from isaaclab.devices.retargeter_base import RetargeterBase, RetargeterCfg  # noqa: E402
 from isaaclab.devices.teleop_device_factory import create_teleop_device  # noqa: E402
 from isaaclab.envs import ManagerBasedRLEnvCfg  # noqa: E402
-from isaaclab.utils.math import subtract_frame_transforms  # noqa: E402
+from isaaclab.utils.math import combine_frame_transforms, subtract_frame_transforms  # noqa: E402
 
 import isaaclab_tasks  # noqa: F401,E402
 from isaaclab_tasks.utils import parse_env_cfg  # noqa: E402
@@ -695,6 +702,39 @@ def main():  # noqa: C901  (one long orchestration: env setup + settle/resettle 
     # "hold current pose" arm action (root-frame EE pose + open grip, per arm), so the arm doesn't
     # fling before the controller streams. Order matches the action manager: R_arm(7), R_grip(1),
     # L_arm(7), L_grip(1).
+    # Legs that begin with the bulb already in the right hand (the env re-seats it on the live
+    # palm through its ``settle_bulb`` event) hold that grip CLOSED at rest: an open palm loses
+    # the bulb during the settle, before anyone is in control (#102).
+    _right_starts_closed = getattr(getattr(env_cfg, "events", None), "settle_bulb", None) is not None
+    _rest_grip = {"right_wrist_yaw_link": -1.0 if _right_starts_closed else 1.0, "left_wrist_yaw_link": 1.0}
+    # That payload is held by finger contact alone, so a joint/root STATE write that moves the
+    # wrist -- the post-settle arm restore, the [R] re-home -- teleports the hand out from under
+    # it (0.13 m in one step, measured) and it is left behind. Carry it along, rigid to the wrist.
+    _payload_name = env_cfg.events.settle_bulb.params["payload_cfg"].name if _right_starts_closed else None
+    _ee_bid = robot.body_names.index("right_wrist_yaw_link")
+
+    def _carry_payload(write_fn):
+        """Run ``write_fn`` (state writes that move the wrist) keeping the in-hand payload with it."""
+        if _payload_name is None:
+            write_fn()
+            env.scene.write_data_to_sim()
+            env.sim.forward()
+            return
+        payload = env.scene[_payload_name]
+        ee = robot.data.body_state_w[:, _ee_bid, 0:7].clone()
+        p_rel, q_rel = subtract_frame_transforms(
+            ee[:, 0:3], ee[:, 3:7], payload.data.root_pos_w.clone(), payload.data.root_quat_w.clone()
+        )
+        write_fn()
+        env.scene.write_data_to_sim()
+        env.sim.forward()
+        ee = robot.data.body_state_w[:, _ee_bid, 0:7]
+        p_new, q_new = combine_frame_transforms(ee[:, 0:3], ee[:, 3:7], p_rel, q_rel)
+        payload.write_root_pose_to_sim(torch.cat([p_new, q_new], dim=-1))
+        payload.write_root_velocity_to_sim(torch.zeros((env.num_envs, 6), device=dev))
+        env.scene.write_data_to_sim()
+        env.sim.forward()
+
     def rest_arm_action():
         parts = []
         for ee_name in ("right_wrist_yaw_link", "left_wrist_yaw_link"):
@@ -703,7 +743,7 @@ def main():  # noqa: C901  (one long orchestration: env setup + settle/resettle 
             p_b, q_b = subtract_frame_transforms(
                 robot.data.root_pos_w, robot.data.root_quat_w, ee_w[:, 0:3], ee_w[:, 3:7]
             )
-            parts += [p_b[0], q_b[0], torch.ones(1, device=dev)]
+            parts += [p_b[0], q_b[0], torch.full((1,), _rest_grip[ee_name], device=dev)]
         return torch.cat(parts)
 
     # Capture the "hold arms still" IK target ONCE, here at spawn, while the elbows are at the
@@ -865,10 +905,17 @@ def main():  # noqa: C901  (one long orchestration: env setup + settle/resettle 
         """
         _out = env.step(_arm)
         if args.record_settle and recorder is not None and recording_on:
-            # No extras: the recorder pads a column that is absent on some rows rather than
-            # aligning it, so a settle-only tag ends up 90 rows long against a 340-row bag. Settle
-            # rows are simply the first ones -- 40 pin + 50 SONIC warm = 90 -- before the main loop.
-            recorder.record_step(_out[0], _arm, _out[1], _out[2], _out[3])
+            # Same extras as the main loop, on every row: a column present on some rows only is
+            # stored shorter than the state columns, not padded, so reading it by row index puts
+            # it 90 rows early. Settle rows are simply the first ones -- 40 pin + 50 SONIC warm =
+            # 90 -- before the main loop; cmds are zero and sonic_action is whatever SONIC last
+            # produced (zeros during the pin).
+            _settle_extras = {
+                "loco_cmd": np.asarray(loco_cmd, dtype=np.float32)[None],
+                "rpy_cmd": np.asarray(rpy_cmd, dtype=np.float32)[None],
+                "sonic_action": np.asarray(last_action, dtype=np.float32)[None],
+            }
+            recorder.record_step(_out[0], _arm, _out[1], _out[2], _out[3], extras=_settle_extras)
             if video is not None:
                 video.capture(pose=_video_pose())
             if ego_video is not None:
@@ -908,9 +955,7 @@ def main():  # noqa: C901  (one long orchestration: env setup + settle/resettle 
     _staged_arm = robot.data.default_joint_pos[:, _arm_idx].clone()
     _jp = robot.data.joint_pos.clone()
     _jp[:, _arm_idx] = _staged_arm
-    robot.write_joint_state_to_sim(_jp, torch.zeros_like(robot.data.joint_vel))
-    env.scene.write_data_to_sim()
-    env.sim.forward()
+    _carry_payload(lambda: robot.write_joint_state_to_sim(_jp, torch.zeros_like(robot.data.joint_vel)))
     print(
         f"[sonic] arm restored to the staged pose (settle droop removed: "
         f"{float((robot.data.default_joint_pos[:, _arm_idx] - _staged_arm).abs().max()):.3f} rad)",
@@ -926,6 +971,86 @@ def main():  # noqa: C901  (one long orchestration: env setup + settle/resettle 
     )
     _hold_pose = robot.data.joint_pos[:, _hold_idx].clone()
     _hold_zero = torch.zeros_like(_hold_pose)
+
+    # OPERATOR GRASP (Inspire on the thumb-fix asset): the env's close preset is the settle-time
+    # support curl (fingers ~0.3 rad) that keeps the seated bulb from being squeezed while SONIC
+    # settles in. From "Teleop ready" the operator's close is the NORMAL full grasp preset, same
+    # as the left hand -- the fingers simply stop where the bulb stops them.
+    if _right_starts_closed and args.hand == "inspire" and os.environ.get("FIATLUX_TELEOP_ROBOT_USD"):
+        from fiatlux_task.robots.g1 import G1_HAND_GRASP  # noqa: E402
+
+        # Thumb bend joints go to their full range instead of the preset's partial curl: with the
+        # re-authored rotation the thumb stands over the palm at the preset yaw, and the partial
+        # bend left it visibly half-closed on an empty close. Full bend keeps the same opposed
+        # rotation and simply curls all the way (or stops on the bulb).
+        _thumb_full = {
+            "R_thumb_proximal_pitch_joint": 0.6,
+            "R_thumb_intermediate_joint": 0.8,
+            "R_thumb_distal_joint": 1.2,
+        }
+        _hterm = env.action_manager.get_term("hand_action")
+        for _k, _n in enumerate(robot.joint_names[i] for i in _hterm._joint_ids):
+            _hterm._close_command[_k] = _thumb_full.get(_n, G1_HAND_GRASP[_n])
+        # Same full thumb bend on the LEFT close (its limits: pitch 0.5, intermediate 0.8,
+        # distal 1.2), so both hands close alike.
+        _lthumb_full = {
+            "L_thumb_proximal_pitch_joint": 0.5,
+            "L_thumb_intermediate_joint": 0.8,
+            "L_thumb_distal_joint": 1.2,
+        }
+        _lterm = env.action_manager.get_term("left_hand_action")
+        for _k, _n in enumerate(robot.joint_names[i] for i in _lterm._joint_ids):
+            if _n in _lthumb_full:
+                _lterm._close_command[_k] = _lthumb_full[_n]
+        print("[sonic] full grasp restored for the operator (settle used the support curl)", flush=True)
+
+    # STAGED CLOSE (Inspire): with self-collisions on, driving the fingers and the thumb to the
+    # fist preset simultaneously wedges the fingertips on the thumb tip mid-flight -- the close
+    # jams into a hollow "beak" (thumb shoved off its pose) and a tabletop bulb is squeezed out
+    # instead of enveloped. Close the way a hand actually makes a fist: one group leads, the
+    # other folds in against it once it has landed. A close ON the bulb is unaffected -- the
+    # leading group simply stops on the glass and the trailing group clamps.
+    # Sim steps (20 ms each) the trailing group waits after the leading one starts. 2 = 40 ms:
+    # enough head start that the tips don't meet edge-on mid-flight, short enough that the close
+    # feels like one motion in VR.
+    _STAGE_STEPS = max(1, int(os.environ.get("FIATLUX_TELEOP_STAGE_STEPS", "2")))
+    _staged_close = None
+    if args.hand == "inspire":
+        _lead_thumb = os.environ.get("FIATLUX_TELEOP_STAGE", "fingers") == "thumb"
+        _staged_close = []
+        for _term_name, _grip_col, _closed0 in (
+            ("hand_action", 7, _right_starts_closed),
+            ("left_hand_action", 15, False),
+        ):
+            _term = env.action_manager.get_term(_term_name)
+            _full = _term._close_command.clone()
+            _lead = _term._close_command.clone()
+            for _k, _n in enumerate(robot.joint_names[i] for i in _term._joint_ids):
+                _is_thumb_bend = "thumb" in _n and "yaw" not in _n
+                if _is_thumb_bend != _lead_thumb:  # the trailing group waits at its open pose
+                    _lead[_k] = _term._open_command[_k]
+            _staged_close.append(
+                {"term": _term, "col": _grip_col, "full": _full, "lead": _lead, "closed": _closed0, "since": 10**6}
+            )
+        print(
+            f"[sonic] staged close armed ({'thumb' if _lead_thumb else 'fingers'} lead, "
+            f"{_STAGE_STEPS * 20} ms stagger)",
+            flush=True,
+        )
+
+        # REAL-HAND TORQUE CAP: the RH56DFTP's fingertips top out around 10 N (~0.3-0.5 N.m at
+        # the joint); the cfg's 2.0 N.m ceiling lets every blocked joint press with 4x that.
+        # With self-collisions on, a held bulb closes a finger->bulb->thumb->palm force loop of
+        # saturated PD torques and the vibration tips SONIC (2 of 3 hands-off settles fell).
+        # Cap the finger joints at the hardware figure so a blocked close rests instead of
+        # grinding -- the same force-bounded stop the real hand's FORCE_SET gives.
+        _hand_eff = os.environ.get("FIATLUX_TELEOP_HAND_EFFORT", "0.6")
+        if _hand_eff != "off":
+            _hand_ids = [i for i, n in enumerate(robot.joint_names) if n[:2] in ("R_", "L_")]
+            robot.write_joint_effort_limit_to_sim(
+                torch.full((1, len(_hand_ids)), float(_hand_eff), device=dev), joint_ids=_hand_ids
+            )
+            print(f"[sonic] hand effort limit capped at {_hand_eff} N.m ({len(_hand_ids)} joints)", flush=True)
 
     if args.input == "vr":
         # Re-anchor the controller_rel arm retargeters to THIS scene's live robot. They default to the
@@ -952,12 +1077,25 @@ def main():  # noqa: C901  (one long orchestration: env setup + settle/resettle 
             _rt._hi = _ee + np.array([0.45, 0.45, 0.45], dtype=np.float32)
             _rt._prev = None
             _rt._smooth = None
+            # Orientation too: the cfg's initial_orientation is the Insert-table rest quat, so the
+            # first clutch snapped the wrist there (e.g. off the carry staging's palm-up pose --
+            # keyboard, which holds the captured settle pose, never did this). Start the rotation
+            # ratchet from the LIVE wrist orientation instead, root frame like the command.
+            _ee_q = robot.data.body_state_w[0, _eeb, 3:7].cpu().numpy()  # w, x, y, z
+            _live_R = _R.inv() * _Rot.from_quat([_ee_q[1], _ee_q[2], _ee_q[3], _ee_q[0]])
+            _rt._init_R = _live_R
+            _rt._quat_R = _live_R
 
     # ---- keyboard input (desktop, no headset): full VR parity -- BOTH arms (position + wrist
     # rotation + grip), walk, and lean. TAB switches which arm the manipulation keys drive. ----
     kb = None
     if args.input == "keyboard":
         _pressed = collections.deque()
+        _scripted_keys = sorted(
+            (float(spec.split("@")[1]), spec.split("@")[0].strip().upper())
+            for spec in args.keys.split(",")
+            if spec.strip()
+        )
         try:
             import carb  # noqa: E402
             import omni.appwindow  # noqa: E402
@@ -983,7 +1121,7 @@ def main():  # noqa: C901  (one long orchestration: env setup + settle/resettle 
             "R_hi": rest_arm[0:3] + _box,
             "L_lo": rest_arm[8:11] - _box,
             "L_hi": rest_arm[8:11] + _box,
-            "R_grip_open": True,
+            "R_grip_open": not _right_starts_closed,
             "L_grip_open": True,
             "lean": 0.0,
             "quit": False,
@@ -1141,9 +1279,15 @@ def main():  # noqa: C901  (one long orchestration: env setup + settle/resettle 
         pin[:, 2] = max(float(staged_root[0, 2]), 0.80)
         zv = torch.zeros((env.num_envs, 6), device=dev)
         ld = torch.as_tensor(DEFAULT_15, device=dev).unsqueeze(0)
-        robot.write_joint_state_to_sim(
-            robot.data.default_joint_pos.clone(), torch.zeros_like(robot.data.default_joint_vel)
-        )
+
+        def _rehome_writes():
+            robot.write_joint_state_to_sim(
+                robot.data.default_joint_pos.clone(), torch.zeros_like(robot.data.default_joint_vel)
+            )
+            robot.write_root_pose_to_sim(pin)
+            robot.write_root_velocity_to_sim(zv)
+
+        _carry_payload(_rehome_writes)  # joints AND root move the wrist: the payload rides along
         for _ in range(40):  # pin level while feet plant
             robot.set_joint_position_target(ld, joint_ids=act_idx)
             robot.write_root_pose_to_sim(pin)
@@ -1258,10 +1402,13 @@ def main():  # noqa: C901  (one long orchestration: env setup + settle/resettle 
                         for _rt in getattr(teleop, "_retargeters", None) or []:
                             if hasattr(_rt, "reset"):
                                 _rt.reset()  # re-reference arm targets to the re-homed robot
+                            if hasattr(_rt, "relatch"):
+                                _rt.relatch()  # in-hand legs: grip closed again until the trigger is pulled
                     elif kb is not None:  # re-home both keyboard EE targets + grips
                         kb["R_ee"] = rest_arm[0:7].clone()
                         kb["L_ee"] = rest_arm[8:15].clone()
-                        kb["R_grip_open"] = kb["L_grip_open"] = True
+                        kb["R_grip_open"] = not _right_starts_closed
+                        kb["L_grip_open"] = True
                         kb["lean"] = 0.0
                     loco_cmd[:] = 0.0
                     rpy_cmd[:] = 0.0
@@ -1302,6 +1449,10 @@ def main():  # noqa: C901  (one long orchestration: env setup + settle/resettle 
                         loco_cmd[:] = 0.0
                         rpy_cmd[:] = 0.0
                 else:  # keyboard: keys persist loco_cmd + move the arm EE target
+                    while _scripted_keys and step_i / 50.0 >= _scripted_keys[0][0]:
+                        _t, _name = _scripted_keys.pop(0)
+                        _pressed.append(_name)
+                        print(f"[sonic] scripted key {_name} at t={_t:.1f}s", flush=True)
                     kb_drain()
                     if kb["quit"]:
                         break
@@ -1336,6 +1487,17 @@ def main():  # noqa: C901  (one long orchestration: env setup + settle/resettle 
                     # hold the staged stance; SONIC's balance output means nothing on a fixed root
                     leg_target = torch.as_tensor(DEFAULT_15, device=dev)
                 robot.set_joint_position_target(leg_target.unsqueeze(0), joint_ids=act_idx)
+                if _staged_close is not None:
+                    for _sc in _staged_close:
+                        _now_closed = float(last_arm.reshape(-1)[_sc["col"]]) < 0
+                        if _now_closed and not _sc["closed"]:
+                            _sc["term"]._close_command.copy_(_sc["lead"])
+                            _sc["since"] = 0
+                        elif _now_closed and _sc["since"] < _STAGE_STEPS:
+                            _sc["since"] += 1
+                            if _sc["since"] == _STAGE_STEPS:
+                                _sc["term"]._close_command.copy_(_sc["full"])
+                        _sc["closed"] = _now_closed
                 arm_action = last_arm.repeat(env.num_envs, 1)
                 step_out = env.step(arm_action)  # arms via the real env action manager
                 if recorder is not None and recording_on:

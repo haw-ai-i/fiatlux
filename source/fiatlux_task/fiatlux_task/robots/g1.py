@@ -341,11 +341,22 @@ G1_PALM_BODY_BY_VARIANT: dict[str, str] = {
 # The palm body's own origin is NOT near the visible palm surface (several cm off the mesh,
 # toward the wrist). For placing something ON the palm, anchor position on the centroid of these
 # finger-BASE (proximal) bodies and use the palm body only for orientation.
-# Dex3: unverified placeholder.
 G1_FINGER_BASE_BODIES_BY_VARIANT: dict[str, list[str]] = {
     "inspire": ["R_index_proximal", "R_middle_proximal", "R_ring_proximal"],
     "dex3": ["right_hand_index_0_link", "right_hand_middle_0_link"],
 }
+# That centroid sits on the knuckle joint axes, INSIDE the hand's thickness, not on its face.
+# Measured against the hand meshes in the staged carry pose (issue #105): the surface a payload
+# can rest on is this far above the centroid along the palm normal -- Dex3's palm face and
+# finger bases, Inspire's proximal fingers. Seated on the bare centroid the bulb starts 1-2 cm
+# inside the collider (a convex hull of the visual mesh) and the solver throws it out.
+G1_PALM_SURFACE_OFFSET_M: dict[str, float] = {"inspire": 0.012, "dex3": 0.019}
+# Side of the palm (a sign on the "across" axis) the bulb's cap points to when it lies across it.
+# The glass sits over the finger bases; the neck runs off to this side. Inspire's thumb rests
+# at across -0.065..-0.081 in the staged pose, exactly where a -across neck lies (measured: the
+# thumb's intermediate/distal links inside the neck at seat time, kicking the bulb out at
+# 1-2 m/s), so its cap goes to the pinky side. Dex3's thumb is on the along axis, clear of both.
+G1_PALM_CAP_SIDE: dict[str, float] = {"inspire": 1.0, "dex3": -1.0}
 
 # Palm-link local axes as ``(axis_index, sign)`` -- (outward normal, along fingers, across
 # palm). Dex3: +y is the face the digits close onto, +x runs out toward the tips, +z spans the

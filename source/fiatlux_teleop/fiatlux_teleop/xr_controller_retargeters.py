@@ -105,7 +105,13 @@ class ControllerGripperRetargeter(RetargeterBase):
         super().__init__(cfg)
         self._target = _controller_target(cfg.bound_hand)
         self._threshold = cfg.trigger_threshold
-        self._closed = False
+        self._start_closed = cfg.start_closed
+        self.relatch()
+
+    def relatch(self) -> None:
+        """Re-arm ``start_closed``: hold the grip closed until the trigger is next pulled."""
+        self._closed = self._start_closed
+        self._latched = self._start_closed
 
     def get_requirements(self) -> list[RetargeterBase.Requirement]:
         return [RetargeterBase.Requirement.MOTION_CONTROLLER]
@@ -114,7 +120,10 @@ class ControllerGripperRetargeter(RetargeterBase):
         arr = data.get(self._target)
         if arr is not None and np.size(arr) >= _CTRL_ELEMS:
             trigger = float(np.asarray(arr, dtype=np.float32).reshape(2, 7)[1, _TRIGGER_IDX])
-            self._closed = trigger > self._threshold
+            pulled = trigger > self._threshold
+            if self._latched and pulled:
+                self._latched = False  # operator has taken the grip; trigger semantics from here
+            self._closed = True if self._latched else pulled
         gripper_value = -1.0 if self._closed else 1.0
         return torch.tensor([gripper_value], dtype=torch.float32, device=self._sim_device)
 
@@ -125,6 +134,11 @@ class ControllerGripperRetargeterCfg(RetargeterCfg):
 
     bound_hand: DeviceBase.TrackingTarget = DeviceBase.TrackingTarget.HAND_RIGHT
     trigger_threshold: float = 0.5
+    # Start with the grip CLOSED and keep it closed until the trigger is first pulled; after that
+    # the trigger drives it as usual. For legs that begin with the payload already in the hand:
+    # the plain hold-to-close mapping opens the hand the instant the controller streams with the
+    # trigger at rest, and the payload is dropped before the operator has done anything.
+    start_closed: bool = False
     retargeter_type: type[RetargeterBase] = ControllerGripperRetargeter
 
 

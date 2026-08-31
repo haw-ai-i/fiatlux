@@ -64,6 +64,33 @@ That one command starts **both** processes (CloudXR runtime in `vr_teleop` + the
 
 - `FIATLUX_TASK` — which teleop task id to run.
 - `FIATLUX_HAND` — `dex3` or `inspire`.
+- `FIATLUX_TELEOP_ROBOT_USD` — optional path to an alternative robot USD, teleop only (the benchmark
+  envs never see it). Used for the Inspire thumb fix: `python scripts/omniverse/inspire_thumb_frame.py
+  assets/unitree_g1/wholebody_inspire/g1_29dof_with_inspire_rev_1_0.usd` writes a `_thumbfix.usd`
+  wrapper next to the vendor file whose thumb rotation (both hands) lifts the thumb off the palm (the stock joint
+  frame tops out 55° above the palm plane; the RH56DFTP manual gives 90°). With it set, the in-hand
+  legs (S04/S05/S06/S09/S10/S11) on Inspire are staged open with the thumb raised and the close
+  preset only supports the glass with the fingers during the settle (`FIATLUX_TELEOP_INHAND_CLOSE`,
+  default `0.2:1.0`; `FIATLUX_TELEOP_INHAND_THUMB_YAW`, default `1.0`, or `cup` to keep the task's
+  own staging). At "Teleop ready" the driver restores the normal full
+  grasp preset for the operator — the support curl exists only inside the settle; the operator's
+  hand closes like the left one and stops where the bulb stops it. The wrapper *references* the vendor USD and overrides only that one joint's
+  two frame quaternions (rest pose and limits unchanged) — the vendor file itself is never edited,
+  both files stay gitignored, and re-running the script after an asset re-sync reproduces the
+  wrapper. Verify against a physical RH56DFTP (sweep thumb-rotation `ANGLE_SET(5)` and watch the
+  tip rise over its base) before adopting it as the default asset.
+- Inspire close behaviour (active whenever `--hand inspire`; the teleop twins run with the robot's
+  self-collisions ON, as the benchmark authors them in `robots/g1.py`):
+  - **Staged close** — driving the fingers and the thumb to the fist preset simultaneously wedges
+    the fingertips on the thumb tip mid-flight (the close jams into a hollow "beak" and a tabletop
+    bulb is squeezed out instead of enveloped). The driver closes the way a hand makes a fist: the
+    fingers lead, the thumb bend follows `FIATLUX_TELEOP_STAGE_STEPS` sim steps later (20 ms each,
+    default `2` = 40 ms). `FIATLUX_TELEOP_STAGE=thumb` flips the order. A close ON the bulb is
+    unaffected — the leading group stops on the glass and the trailing group clamps.
+  - **Hand torque cap** — `FIATLUX_TELEOP_HAND_EFFORT` (N·m per finger joint, default `0.6`, `off`
+    to disable) caps the hand actuators at the physical RH56DFTP's fingertip force (~10 N). Without
+    it, a blocked close grinds saturated PD torques through the bulb→thumb→palm loop and the
+    vibration can tip SONIC (2 of 3 hands-off in-hand settles fell before the cap; 0 after).
 - `NV_CXR_ENDPOINT_IP` — **required** for the VR launchers (your GPU box's tailnet IP); they exit with
   a clear error if it's unset. e.g. `NV_CXR_ENDPOINT_IP=100.x.y.z FIATLUX_TASK=… bash …restart_sonic_teleop.sh`.
 
@@ -78,6 +105,10 @@ Click the Isaac Sim viewport to focus it. **Bimanual** — **Tab** switches the 
 - active arm: **W/S A/D Q/E** move X/Y/Z, **U/O I/K J/L** roll/pitch/yaw, **G** toggles grip
 - walk: **arrows** (↑↓ forward/back, ←→ turn), **, / .** strafe, **T/Y** lean, **Space** stop
 - **R** reset, **Esc** quit
+
+On the six in-hand legs the right grip **starts closed** on the seated bulb, so the first **G**
+releases it. For hands-off tests, `--keys "G@4,R@8,ESCAPE@15"` injects timed key presses
+(seconds of teleop time) into the same queue as real ones.
 
 ### Activate XR (in the headset)
 Once `[5/5] READY` prints, the launcher echoes these — in order:
