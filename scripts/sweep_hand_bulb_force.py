@@ -143,7 +143,7 @@ def main() -> int:
         flush=True,
     )
     print(f"      offset direction (world, away from the root): {[round(float(v), 3) for v in away]}", flush=True)
-    print("  offset   held force   freed force   fell     to palm      speed      outcome", flush=True)
+    print("  offset   held force   freed force    moved  dir   to palm      speed      outcome", flush=True)
 
     def peak_force() -> float:
         return max(float(torch.norm(_obs.object_contact_forces(env.scene.sensors[s]), dim=-1).max()) for s in sensors)
@@ -176,11 +176,28 @@ def main() -> int:
         palm_now = robot.data.body_pos_w[0, palm_idx, :]
         dist_mm = float(torch.norm(bulb.data.root_pos_w[0] - palm_now)) * 1000.0
 
+        # Classify by whether the bulb LEFT THE HAND, not by which way it went. An earlier version
+        # tested downward motion only, so a bulb ejected upward -- which is a release, however
+        # ugly -- was labelled "stayed". That hid the friction=0 result, whose released force is
+        # 0.18-1.53 N, essentially no contact at all.
+        #
+        # Two facts decide it: is the bulb still near the hand, and is it still being pushed. The
+        # hand's contact reaches about 40-60 mm from the palm origin, so 150 mm is clear of it.
         results.append((offset, held, freed, fell_mm, dist_mm))
-        outcome = "fell" if fell_mm > 50.0 else "stayed"
+        gone = dist_mm > 150.0
+        pushed = freed > 5.0 * weight
+        if gone and not pushed:
+            outcome = "released"
+        elif not gone and pushed:
+            outcome = "STUCK"
+        elif gone and pushed:
+            outcome = "left, still pushed"
+        else:
+            outcome = "near hand, no force"
+        went = "down" if fell_mm > 5.0 else ("up" if fell_mm < -5.0 else "--")
         print(
-            f"  {offset * 1000:5.0f} mm  {held:9.2f} N  {freed:9.2f} N  {fell_mm:+8.1f} mm  "
-            f"{dist_mm:7.1f} mm  {speed:8.1f} mm/s  {outcome}",
+            f"  {offset * 1000:5.0f} mm  {held:9.2f} N  {freed:9.2f} N  {fell_mm:+8.1f} mm "
+            f"{went:4s} {dist_mm:7.1f} mm  {speed:8.1f} mm/s  {outcome}",
             flush=True,
         )
 
@@ -218,13 +235,16 @@ def main() -> int:
     # it. Held readings are confounded -- see below -- but a bulb that will not fall when nothing
     # is touching it cannot be blamed on the measurement.
     in_contact = [(off, freed, fell, dist) for off, held, freed, fell, dist in results if held > 1.0]
-    stayed = [(off, freed, fell, dist) for off, freed, fell, dist in in_contact if fell <= 50.0]
+    # Stuck means near the hand AND still being pushed. Not merely 'did not move downward'.
+    stayed = [
+        (off, freed, fell, dist) for off, freed, fell, dist in in_contact if dist <= 150.0 and freed > 5.0 * weight
+    ]
     print("\n  ON RELEASE, at the offsets that were in contact:", flush=True)
     if not in_contact:
         print("    nothing was in contact, so there was nothing to release.", flush=True)
     elif not stayed:
         print(
-            f"    all {len(in_contact)} fell once released. The hand does not hold a bulb it is not\n"
+            f"    all {len(in_contact)} left the hand once released. The hand does not hold a bulb it is\n"
             "    gripping, so the large held readings above are the pose-write confound and not a\n"
             "    property of the hand. The scripted stuck-bulb result is an artifact of placement.",
             flush=True,
@@ -232,7 +252,8 @@ def main() -> int:
     else:
         worst_off, worst_force, worst_fell, worst_dist = max(stayed, key=lambda r: r[1])
         print(
-            f"    {len(stayed)}/{len(in_contact)} did NOT fall. Worst at {worst_off * 1000:.0f} mm: "
+            f"    {len(stayed)}/{len(in_contact)} stayed STUCK -- near the hand and still pushed. "
+            f"Worst at {worst_off * 1000:.0f} mm: "
             f"moved {worst_fell:+.1f} mm with {worst_force:.2f} N = {worst_force / weight:.0f}x its\n"
             f"    weight, and nothing writing its pose. It ended {worst_dist:.0f} mm from the palm.",
             flush=True,
