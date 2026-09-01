@@ -42,12 +42,27 @@ _G1_DEX3_FILTERED_PAIRS = {
 }
 
 
-def _make_filtered_hand_mount_spawner(pairs: dict[str, tuple[str, ...]]):
-    """Build a spawner that filters ``pairs`` (formatted per side) after loading the USD."""
+# The real RH56DFTP hand weighs 790 +/- 10 g (vendor datasheet), but the Unitree-authored
+# USD carries only ~0.19 kg of hand links per side -- the CAD shells, without the palm's
+# linear actuators. The robot must be simulated at the mass it will deploy with: SONIC's
+# balance feels the distal mass, and at the authored value it settles ~2x more pitched and
+# falls off ladder treads (issue #127). The correction below tops the palm (base link) up
+# to the hardware total at spawn, since that is where the actuators sit on the real hand.
+# The Dex3 USD needs no entry: its authored ~0.81 kg/side already matches its hardware.
+INSPIRE_HAND_UNIT_MASS_KG = 0.790
+
+
+def _make_filtered_hand_mount_spawner(pairs: dict[str, tuple[str, ...]], hand_unit_mass_kg: float | None = None):
+    """Build a spawner that filters ``pairs`` (formatted per side) after loading the USD.
+
+    If ``hand_unit_mass_kg`` is given, each hand unit (base link + finger links; the camera
+    mount is separate hardware and left alone) is brought to that total by topping up the
+    base link -- see the note on ``INSPIRE_HAND_UNIT_MASS_KG``.
+    """
 
     @clone
     def _spawn(prim_path, cfg, translation=None, orientation=None):
-        from pxr import UsdPhysics
+        from pxr import Usd, UsdPhysics
 
         prim = _spawn_from_usd_file(prim_path, cfg.usd_path, cfg, translation, orientation)
         stage = prim.GetStage()
@@ -58,12 +73,27 @@ def _make_filtered_hand_mount_spawner(pairs: dict[str, tuple[str, ...]]):
                 rel = api.GetFilteredPairsRel()
                 for target in targets:
                     rel.AddTarget(f"{prim_path}/{target.format(**fmt)}")
+            if hand_unit_mass_kg is not None:
+                base_attr = None
+                unit_total = 0.0
+                for p in Usd.PrimRange(stage.GetPrimAtPath(prim_path)):
+                    name = p.GetName()
+                    if not (name.startswith(f"{fmt['S']}_") or name == f"{side}_hand_base_link"):
+                        continue
+                    attr = UsdPhysics.MassAPI(p).GetMassAttr()
+                    if attr and attr.HasAuthoredValue():
+                        unit_total += attr.Get()
+                        if name == f"{side}_hand_base_link":
+                            base_attr = attr
+                base_attr.Set(base_attr.Get() + hand_unit_mass_kg - unit_total)
         return prim
 
     return _spawn
 
 
-_spawn_g1_with_filtered_hand_mounts = _make_filtered_hand_mount_spawner(_G1_INSPIRE_FILTERED_PAIRS)
+_spawn_g1_with_filtered_hand_mounts = _make_filtered_hand_mount_spawner(
+    _G1_INSPIRE_FILTERED_PAIRS, hand_unit_mass_kg=INSPIRE_HAND_UNIT_MASS_KG
+)
 _spawn_g1_dex3_with_filtered_hand_mounts = _make_filtered_hand_mount_spawner(_G1_DEX3_FILTERED_PAIRS)
 
 
