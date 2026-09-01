@@ -45,6 +45,14 @@ parser.add_argument("--contact-offset", type=float, default=None, help="Override
 parser.add_argument("--rest-offset", type=float, default=None, help="Override the bulb's rest_offset (m).")
 parser.add_argument("--solver-iters", type=int, default=None, help="Override the bulb's position iteration count.")
 parser.add_argument(
+    "--mass",
+    type=float,
+    default=None,
+    help="Override the bulb's mass (kg). The default 0.035 kg against a ~35 kg articulation is a "
+    "mass ratio near 1000:1, which PhysX handles poorly. Every force here is reported against the "
+    "OVERRIDDEN weight, so the ratios stay comparable across masses.",
+)
+parser.add_argument(
     "--release",
     type=int,
     default=90,
@@ -110,6 +118,9 @@ def main() -> int:
     if args_cli.solver_iters is not None:
         bulb_cfg.spawn.rigid_props.solver_position_iteration_count = args_cli.solver_iters
         tweaks.append(f"solver_iters={args_cli.solver_iters}")
+    if args_cli.mass is not None:
+        bulb_cfg.spawn.mass_props.mass = args_cli.mass
+        tweaks.append(f"mass={args_cli.mass}")
 
     env = gym.make(args_cli.task, cfg=cfg).unwrapped
     env.reset()
@@ -122,7 +133,11 @@ def main() -> int:
 
     action = torch.zeros(env.action_space.shape, device=env.device)
     zeros6 = torch.zeros((1, 6), device=env.device)
-    weight = BULB_MASS_KG * 9.81
+    # Against the OVERRIDDEN mass, not the default. Every ratio below and the STUCK threshold are
+    # multiples of the bulb's own weight, so holding this at 0.343 N while --mass changes the bulb
+    # would make a heavier bulb look better purely by arithmetic.
+    bulb_mass = args_cli.mass if args_cli.mass is not None else BULB_MASS_KG
+    weight = bulb_mass * 9.81
 
     # Offset AWAY FROM THE ROBOT, not along world up. Offsetting up from the palm walks the bulb
     # into the forearm, so a reading at 100 mm was contact with the arm rather than clearance:
