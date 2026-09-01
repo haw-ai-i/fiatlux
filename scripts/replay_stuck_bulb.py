@@ -68,11 +68,7 @@ import gymnasium as gym  # noqa: E402
 import h5py  # noqa: E402
 import numpy as np  # noqa: E402
 import torch  # noqa: E402
-from fiatlux_task.robots.g1 import (  # noqa: E402
-    G1_DEX3_HAND_GRASP,
-    G1_DEX3_LEFT_HAND_GRASP,
-    swap_robot_variant,
-)
+from fiatlux_task.robots.g1 import swap_robot_variant  # noqa: E402
 from fiatlux_task.tasks.manager_based.fiatlux_task.mdp import observations as _obs  # noqa: E402
 from fiatlux_task.tasks.manager_based.fiatlux_task.scene_cfg import set_layout_seed  # noqa: E402
 from fiatlux_task.viz import make_video_camera_cfg  # noqa: E402
@@ -80,30 +76,6 @@ from fiatlux_task.viz import make_video_camera_cfg  # noqa: E402
 from isaaclab.utils.math import quat_apply, quat_inv, quat_mul  # noqa: E402
 
 from isaaclab_tasks.utils import parse_env_cfg  # noqa: E402
-
-
-def _repoint_binary_hand_commands(cfg, variant: str) -> None:
-    """Rekey a ``BinaryJointPositionActionCfg``'s open/close dicts onto the swapped hand.
-
-    ``swap_robot_variant`` remaps a term's ``joint_names`` but not the ``open_command_expr`` and
-    ``close_command_expr`` dicts beside them, which stay keyed by the ORIGINAL hand's joint names.
-    The action term then resolves those keys against the new robot and raises. This affects any
-    task with a binary hand action, not just this replay -- the teleop benches are where it bites.
-
-    Worked around here rather than fixed in ``robots/g1.py``, because this branch is diagnostic
-    tooling and that is task code. It deserves its own issue.
-    """
-    if variant != "dex3":
-        return
-    for name in dir(cfg.actions):
-        term = getattr(cfg.actions, name, None)
-        if term is None or not hasattr(term, "open_command_expr"):
-            continue
-        joints = list(term.joint_names)
-        grasp = G1_DEX3_LEFT_HAND_GRASP if any(j.startswith("left_") for j in joints) else G1_DEX3_HAND_GRASP
-        term.open_command_expr = {j: 0.0 for j in joints}
-        term.close_command_expr = {j: float(grasp.get(j, 0.0)) for j in joints}
-        print(f"ACTION  repointed {name} onto {len(joints)} {variant} joints", flush=True)
 
 
 def main() -> int:
@@ -122,7 +94,6 @@ def main() -> int:
     cfg = parse_env_cfg(args_cli.task, device=args_cli.device, num_envs=1)
     if args_cli.variant != "inspire":
         swap_robot_variant(cfg, args_cli.variant)
-        _repoint_binary_hand_commands(cfg, args_cli.variant)
     if args_cli.bare:
         # MOVE the furniture aside rather than deleting it. Event and observation terms reference
         # these entities by name -- `reset_socket` and `privileged/socket_pose` both take the

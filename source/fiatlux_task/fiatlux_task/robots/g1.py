@@ -415,6 +415,36 @@ _HAND_NAME_MARKERS = ("R_", "L_", "_hand_")
 # prefixed, Dex3's contain ``_hand_``. Neither marker occurs in any arm/waist/leg joint name.
 _HAND_MARKERS_BY_VARIANT: dict[str, tuple[str, ...]] = {"inspire": ("R_", "L_"), "dex3": ("_hand_",)}
 
+# Open/closed finger presets per variant and side, for rewriting a binary hand action's command
+# dicts. Those dicts are keyed BY JOINT NAME, so remapping a term's ``joint_names`` alone leaves
+# them pointed at the old hand's joints and the action term raises when it resolves them. The
+# values cannot be carried across positionally either -- a grasp angle authored for Inspire's
+# proximal joints does not mean the same thing on a Dex3 knuckle -- so the target variant's own
+# preset is substituted instead.
+_INSPIRE_LEFT = lambda d: {j.replace("R_", "L_", 1): v for j, v in d.items()}  # noqa: E731
+_HAND_COMMANDS: dict[str, dict[str, tuple[dict[str, float], dict[str, float]]]] = {
+    "inspire": {
+        "right": (dict(G1_HAND_OPEN), dict(G1_HAND_GRASP)),
+        "left": (_INSPIRE_LEFT(G1_HAND_OPEN), _INSPIRE_LEFT(G1_HAND_GRASP)),
+    },
+    "dex3": {
+        "right": (dict(G1_DEX3_HAND_OPEN), dict(G1_DEX3_HAND_GRASP)),
+        "left": (dict(G1_DEX3_LEFT_HAND_OPEN), dict(G1_DEX3_LEFT_HAND_GRASP)),
+    },
+}
+
+
+def _hand_side(joint_names) -> str | None:
+    """Which hand a joint-name list belongs to, or ``None`` if it is not a hand list."""
+    names = list(joint_names or [])
+    if not names:
+        return None
+    if all(n.startswith("left_") for n in names) or all(n.startswith("L_") for n in names):
+        return "left"
+    if all(n.startswith("right_") for n in names) or all(n.startswith("R_") for n in names):
+        return "right"
+    return None
+
 
 def _drop_foreign_hand_joint_pos(joint_pos: dict[str, float], variant: str) -> dict[str, float]:
     """Strip ``init_state.joint_pos`` entries authored for a hand variant other than ``variant``.
@@ -426,6 +456,39 @@ def _drop_foreign_hand_joint_pos(joint_pos: dict[str, float], variant: str) -> d
     """
     foreign_markers = [m for v, ms in _HAND_MARKERS_BY_VARIANT.items() if v != variant for m in ms]
     return {k: v for k, v in joint_pos.items() if not any(m in k for m in foreign_markers)}
+
+
+def _remap_binary_commands(term, joint_names: list[str], variant: str) -> None:
+    """Rewrite a binary hand action's open/close dicts onto the swapped hand.
+
+    ``BinaryJointPositionActionCfg`` carries ``open_command_expr`` and ``close_command_expr``
+    beside ``joint_names``, both keyed by joint name. Remapping only ``joint_names`` leaves those
+    two keyed by the ORIGINAL hand, and the term raises ``resolve_matching_names_values`` on the
+    swapped robot -- which is a crash on env creation, not a silent no-op. Every teleop task with a
+    binary grip hits this.
+
+    Raises rather than guessing if a task authored its own values, following ``remap`` above: a
+    substituted preset would silently discard a deliberately tuned grip.
+    """
+    if not hasattr(term, "open_command_expr") or not hasattr(term, "close_command_expr"):
+        return
+    side = _hand_side(joint_names)
+    if side is None:
+        raise ValueError(
+            f"swap_robot_variant({variant!r}): cannot tell which hand {joint_names!r} belongs to, "
+            "so its binary open/close commands cannot be rewritten."
+        )
+    source = "inspire" if variant == "dex3" else "dex3"
+    expected = dict(zip(("open_command_expr", "close_command_expr"), _HAND_COMMANDS[source][side]))
+    for label, want in expected.items():
+        if dict(getattr(term, label) or {}) != want:
+            raise ValueError(
+                f"swap_robot_variant({variant!r}): {label} on this action term is not the "
+                f"{source} {side}-hand preset, so it was tuned for this task. Rewriting it onto "
+                f"{variant} would discard that tuning -- add the pairing to "
+                "robots.g1._HAND_COMMANDS, or author the command dicts for the target variant."
+            )
+    term.open_command_expr, term.close_command_expr = (dict(d) for d in _HAND_COMMANDS[variant][side])
 
 
 def swap_robot_variant(env_cfg, variant: str) -> None:
@@ -519,6 +582,7 @@ def swap_robot_variant(env_cfg, variant: str) -> None:
                 remapped = remap(term.joint_names)
                 if remapped is not None:
                     term.joint_names = remapped
+                    _remap_binary_commands(term, remapped, variant)
 
     observations = getattr(env_cfg, "observations", None)
     if observations is not None:
