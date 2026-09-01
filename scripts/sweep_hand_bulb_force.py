@@ -75,6 +75,17 @@ parser.add_argument(
     "pathology. Nothing writes the bulb during these steps.",
 )
 parser.add_argument(
+    "--placement",
+    choices=["seat", "ray"],
+    default="seat",
+    help="Where the bulb starts. 'seat' uses the task's own calibrated palm seat "
+    "(mdp.nav_terms.settle_carried_payload_live) and sweeps the offset along the palm NORMAL, "
+    "lifting the bulb off the surface it rests on. 'ray' is the original: offset along a "
+    "horizontal ray from the robot root, anchored on the palm BODY ORIGIN -- which issue #105 "
+    "measured as several cm off the visible mesh, so the bulb starts 1-2 cm inside the collider "
+    "and the solver throws it out. Kept only to reproduce the superseded numbers.",
+)
+parser.add_argument(
     "--grasp",
     action="store_true",
     help="Close the fingers on the bulb before letting go, and OPEN them to release. Without this "
@@ -100,12 +111,16 @@ from fiatlux_task.robots.g1 import (  # noqa: E402
     G1_DEX3_PALM_BODIES,
     G1_HAND_GRASP,
     G1_PALM_BODIES,
+    G1_PALM_LOCAL_AXES,
     swap_robot_variant,
 )
 from fiatlux_task.tasks.manager_based.fiatlux_task.mdp import observations as _obs  # noqa: E402
+from fiatlux_task.tasks.manager_based.fiatlux_task.mdp.nav_terms import settle_carried_payload_live  # noqa: E402
 from fiatlux_task.tasks.manager_based.fiatlux_task.scene_cfg import BULB_MASS_KG, set_layout_seed  # noqa: E402
 
 import isaaclab.sim as sim_utils  # noqa: E402
+from isaaclab.managers import SceneEntityCfg  # noqa: E402
+from isaaclab.utils.math import matrix_from_quat, quat_apply, quat_inv, quat_mul  # noqa: E402
 
 from isaaclab_tasks.utils import parse_env_cfg  # noqa: E402
 
@@ -169,7 +184,9 @@ def main() -> int:
     env.reset()
 
     robot = env.scene["robot"]
-    bulb = env.scene["old_bulb" if "old_bulb" in env.scene.rigid_objects else "fresh_bulb"]
+    bulb_name = "old_bulb" if "old_bulb" in env.scene.rigid_objects else "fresh_bulb"
+    bulb = env.scene[bulb_name]
+    bulb_cfg_entity = SceneEntityCfg(bulb_name)
     palms = G1_DEX3_PALM_BODIES if args_cli.variant == "dex3" else G1_PALM_BODIES
     palm_idx = robot.find_bodies(palms[_LEFT if args_cli.hand == "left" else _RIGHT])[0][0]
     sensors = [n for n in ("hand_contact", "left_hand_contact") if n in env.scene.sensors]
@@ -185,11 +202,66 @@ def main() -> int:
     # Offset AWAY FROM THE ROBOT, not along world up. Offsetting up from the palm walks the bulb
     # into the forearm, so a reading at 100 mm was contact with the arm rather than clearance:
     # the same commanded position read 0.00 N in one run and 236 N in another.
-    root = robot.data.root_pos_w[0]
-    palm0 = robot.data.body_pos_w[0, palm_idx, :]
-    away = palm0 - root
-    away[2] = 0.0  # horizontal: straight up or down still meets the arm or the floor
-    away = away / torch.norm(away).clamp(min=1e-6)
+    if args_cli.placement == "seat":
+        # Use the task's OWN calibrated seat rather than a placement invented here. Issue #105
+        # measured what the invented one costs: the palm body origin sits several cm off the
+        # visible mesh, so a bulb anchored to it starts 1-2 cm inside the collider and the solver
+        # throws it out at 3-6 m/s -- which is what the 65-2366 N "grip" readings in #105, and the
+        # 100-285 N readings this script used to report, actually were.
+        #
+        # Calling the event term rather than copying its arithmetic. It is gated on
+        # episode_length_buf == 1, the step at which the arm has been simulated into its target
+        # pose, so the counter is set to that value here for the same reason.
+        if args_cli.hand != "right":
+            raise SystemExit(
+                "--placement seat is right-hand only: G1_FINGER_BASE_BODIES_BY_VARIANT and "
+                "G1_PALM_BODY_BY_VARIANT both name right-hand bodies. Use --hand right, or "
+                "--placement ray to sweep the left hand with the superseded placement."
+            )
+        env.episode_length_buf[:] = 1
+        settle_carried_payload_live(
+            env, torch.arange(env.num_envs, device=env.device), bulb_cfg_entity, args_cli.variant
+        )
+        env.sim.step(render=False)
+        robot.update(env.physics_dt)
+        bulb.update(env.physics_dt)
+        # Offsets lift the bulb off the surface it rests on, along the palm's outward normal.
+        (_seat_n_idx, _seat_n_sign), _, _ = G1_PALM_LOCAL_AXES[args_cli.variant]
+        away = matrix_from_quat(robot.data.body_quat_w[0:1, palm_idx])[0, :, _seat_n_idx] * _seat_n_sign
+        # Store the seat IN THE PALM FRAME, not as a fixed world point. The arm is commanded to
+        # hold still but does not hold perfectly, and a seat pinned to world coordinates leaves
+        # the bulb hanging in space as soon as the palm drifts -- which reads as 0.00 N at every
+        # offset, the bulb having never been near the hand at all.
+        palm_pos0 = robot.data.body_pos_w[0:1, palm_idx]
+        palm_quat0 = robot.data.body_quat_w[0:1, palm_idx]
+        seat_pos = quat_apply(quat_inv(palm_quat0), bulb.data.root_pos_w[0:1] - palm_pos0)
+        seat_quat = quat_mul(quat_inv(palm_quat0), bulb.data.root_quat_w[0:1])
+    else:
+        # Offset AWAY FROM THE ROBOT, not along world up. Offsetting up from the palm walks the
+        # bulb into the forearm, so a reading at 100 mm was contact with the arm rather than
+        # clearance: the same commanded position read 0.00 N in one run and 236 N in another.
+        root = robot.data.root_pos_w[0]
+        palm0 = robot.data.body_pos_w[0, palm_idx, :]
+        away = palm0 - root
+        away[2] = 0.0  # horizontal: straight up or down still meets the arm or the floor
+        away = away / torch.norm(away).clamp(min=1e-6)
+        seat_pos = seat_quat = None
+        _seat_n_idx, _seat_n_sign = 0, 1.0
+
+    def _target_pose(offset: float):
+        """Where the bulb is held at this offset, and at what orientation.
+
+        Seat mode lifts the calibrated seat along the palm normal and keeps the seat's own
+        orientation -- the bulb lies across the palm, which is the pose the hand closes on. Ray
+        mode reproduces the superseded placement.
+        """
+        palm_p = robot.data.body_pos_w[:, palm_idx, :]
+        if seat_pos is None:
+            return palm_p + offset * away, init_bulb_quat
+        # Rebuild from the LIVE palm each step, so the seat rides the hand.
+        palm_q = robot.data.body_quat_w[:, palm_idx]
+        normal = matrix_from_quat(palm_q)[:, :, _seat_n_idx] * _seat_n_sign
+        return palm_p + quat_apply(palm_q, seat_pos) + offset * normal, quat_mul(palm_q, seat_quat)
 
     # Hold the arm where it starts. Only the root is pinned, so under zero actions the arm sags,
     # and an arm that drifts between offsets changes the geometry being swept.
@@ -248,8 +320,8 @@ def main() -> int:
         bulb.write_root_velocity_to_sim(zeros6)
         for _ in range(args_cli.quiet):
             drive(closed_cmd)
-            target = robot.data.body_pos_w[:, palm_idx, :] + offset * away
-            bulb.write_root_pose_to_sim(torch.cat([target, init_bulb_quat], dim=-1))
+            target, quat = _target_pose(offset)
+            bulb.write_root_pose_to_sim(torch.cat([target, quat], dim=-1))
             bulb.write_root_velocity_to_sim(zeros6)
             env.step(action)
 
@@ -258,8 +330,8 @@ def main() -> int:
             # Hold the bulb at the offset every step. This half is confounded -- see the caveat at
             # the end -- and exists to say whether the bulb is in contact at this separation.
             drive(closed_cmd)
-            target = robot.data.body_pos_w[:, palm_idx, :] + offset * away
-            bulb.write_root_pose_to_sim(torch.cat([target, init_bulb_quat], dim=-1))
+            target, quat = _target_pose(offset)
+            bulb.write_root_pose_to_sim(torch.cat([target, quat], dim=-1))
             bulb.write_root_velocity_to_sim(zeros6)
             env.step(action)
             held = max(held, peak_force())
