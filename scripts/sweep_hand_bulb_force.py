@@ -40,6 +40,10 @@ parser.add_argument(
     help="Metres from the palm body origin. 0 is where diagnose_stuck_bulb.py parks it.",
 )
 parser.add_argument("--settle", type=int, default=20, help="Steps to hold at each offset before reading.")
+parser.add_argument("--friction", type=float, default=None, help="Override the bulb's static+dynamic friction.")
+parser.add_argument("--contact-offset", type=float, default=None, help="Override the bulb's contact_offset (m).")
+parser.add_argument("--rest-offset", type=float, default=None, help="Override the bulb's rest_offset (m).")
+parser.add_argument("--solver-iters", type=int, default=None, help="Override the bulb's position iteration count.")
 parser.add_argument(
     "--release",
     type=int,
@@ -64,6 +68,8 @@ from fiatlux_task.robots.g1 import G1_DEX3_PALM_BODIES, G1_PALM_BODIES, swap_rob
 from fiatlux_task.tasks.manager_based.fiatlux_task.mdp import observations as _obs  # noqa: E402
 from fiatlux_task.tasks.manager_based.fiatlux_task.scene_cfg import BULB_MASS_KG, set_layout_seed  # noqa: E402
 
+import isaaclab.sim as sim_utils  # noqa: E402
+
 from isaaclab_tasks.utils import parse_env_cfg  # noqa: E402
 
 _LEFT, _RIGHT = 0, 1
@@ -83,6 +89,27 @@ def main() -> int:
             pos = item.init_state.pos
             item.init_state.pos = (pos[0] + 20.0, pos[1] + 20.0, pos[2])
     cfg.scene.robot.spawn.articulation_props.fix_root_link = True
+
+    # Physics overrides, so each candidate cause in #92 can be tested against the same measurement
+    # rather than argued about. The bulb's authored material is staticFriction 1.2 / dynamicFriction
+    # 1.0 (LightBulb_collision.usda), which #77 task 6 named as a candidate and never tested.
+    bulb_cfg = cfg.scene.old_bulb if getattr(cfg.scene, "old_bulb", None) is not None else cfg.scene.fresh_bulb
+    tweaks = []
+    if args_cli.friction is not None:
+        bulb_cfg.spawn.physics_material = sim_utils.RigidBodyMaterialCfg(
+            static_friction=args_cli.friction, dynamic_friction=args_cli.friction, restitution=0.0
+        )
+        bulb_cfg.spawn.physics_material_prim_path = "/PhysicsMaterials/HighFriction"
+        tweaks.append(f"friction={args_cli.friction}")
+    if args_cli.contact_offset is not None:
+        bulb_cfg.spawn.collision_props.contact_offset = args_cli.contact_offset
+        tweaks.append(f"contact_offset={args_cli.contact_offset}")
+    if args_cli.rest_offset is not None:
+        bulb_cfg.spawn.collision_props.rest_offset = args_cli.rest_offset
+        tweaks.append(f"rest_offset={args_cli.rest_offset}")
+    if args_cli.solver_iters is not None:
+        bulb_cfg.spawn.rigid_props.solver_position_iteration_count = args_cli.solver_iters
+        tweaks.append(f"solver_iters={args_cli.solver_iters}")
 
     env = gym.make(args_cli.task, cfg=cfg).unwrapped
     env.reset()
@@ -110,7 +137,11 @@ def main() -> int:
     # and an arm that drifts between offsets changes the geometry being swept.
     arm_target = robot.data.joint_pos.clone()
 
-    print(f"SETUP variant={args_cli.variant} hand={args_cli.hand} bulb weight={weight:.3f} N", flush=True)
+    print(
+        f"SETUP variant={args_cli.variant} hand={args_cli.hand} bulb weight={weight:.3f} N"
+        + (f"  OVERRIDES {', '.join(tweaks)}" if tweaks else "  (stock physics)"),
+        flush=True,
+    )
     print(f"      offset direction (world, away from the root): {[round(float(v), 3) for v in away]}", flush=True)
     print("  offset   held force   freed force   fell     to palm      speed      outcome", flush=True)
 
