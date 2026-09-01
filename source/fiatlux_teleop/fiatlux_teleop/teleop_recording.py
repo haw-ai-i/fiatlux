@@ -288,42 +288,6 @@ class TeleopTrajectoryRecorder(TrajectoryRecorder):
         # Columns this layer adds on top of the parent recorder. Kept at the END of
         # __init__, away from the hand/bulb flags above: main edits those same lines, and
         # a block butted straight up against them turns every such edit into a conflict.
-        # Track EVERY rigid object in the scene, not just bulb+socket. The hardcoded pair meant
-        # the ladder -- the whole point of S01-MoveLadder -- was absent from its own bag, so a
-        # failed take could not be diagnosed against the task's own success conditions (all four
-        # of which are about the ladder). An env cfg may curate the list with a `record_objects`
-        # tuple; unknown names are skipped rather than fatal.
-        _declared = getattr(getattr(env, "cfg", None), "record_objects", None)
-        _names = list(_declared) if _declared is not None else list(getattr(env.scene, "rigid_objects", {}).keys())
-        self._tracked_objects = [n for n in _names if _has(n)]
-        # discover the success gate's conjunct list, if the task expresses it as data
-        self._gate_conjuncts = []
-        try:
-            _cfg = getattr(env, "cfg", None)
-            # the driver stashes this before clearing the termination (so a success cannot reset
-            # the scene); fall back to the live term for callers that keep it
-            _params = getattr(_cfg, "teleop_success_spec", None)
-            _fn = getattr(_cfg, "teleop_success_fn", None)
-            if _params is None:
-                _succ = getattr(getattr(_cfg, "terminations", None), "success", None)
-                _params = (_succ.params or {}) if _succ else {}
-                _fn = getattr(_succ, "func", None) if _succ else None
-            # Use the benchmark's own unwrapper: gates come in two shapes -- `sustained`
-            # (predicates nested under predicate_params, plus a hold window) and a bare `all_of`
-            # (predicates at the top level, fires on the first frame they all hold). Hand-rolling
-            # the first shape silently skipped every task built on the second.
-            from fiatlux_task.tasks.manager_based.fiatlux_task.mdp.gates import conjuncts_of
-
-            self._gate_conjuncts = list(conjuncts_of(_fn, _params))
-            self._gate_seconds = float(_params.get("seconds") or 0.0)
-        except Exception:  # noqa: BLE001
-            self._gate_conjuncts = []
-            self._gate_seconds = 0.0
-        # The gate is evaluated HERE rather than by the termination manager, so a success does not
-        # reset the scene mid-take: the operator decides when an episode ends. Mirrors
-        # mdp.gates.sustained (consecutive steps, reset by a single false frame), then LATCHES --
-        # scripts/score.py reads success_term on the episode's LAST step, and without the latch a
-        # demo that achieved the task and kept going would score 0.
         self._gate_hold = 0
         self._gate_fired = False
         self._gate_need = (
@@ -348,6 +312,24 @@ class TeleopTrajectoryRecorder(TrajectoryRecorder):
         self._extra_contacts = [
             s for s in _sensors if s.endswith("_contact") and s not in ("hand_contact", "left_hand_contact")
         ]
+
+    def _resolve_gate(self, env) -> tuple[list, float]:
+        """The gate the driver stashed, falling back to the live ``success`` term.
+
+        The driver clears the termination so a success cannot reset the scene mid-take, which
+        leaves the parent's lookup with nothing to unwrap.
+        """
+        cfg = getattr(env, "cfg", None)
+        params = getattr(cfg, "teleop_success_spec", None)
+        if params is None:
+            return super()._resolve_gate(env)
+        try:
+            from fiatlux_task.tasks.manager_based.fiatlux_task.mdp.gates import conjuncts_of
+
+            fn = getattr(cfg, "teleop_success_fn", None)
+            return list(conjuncts_of(fn, params)), float(params.get("seconds") or 0.0)
+        except Exception:  # noqa: BLE001
+            return [], 0.0
 
     def record_step(self, obs, actions, reward, terminated, truncated, extras=None) -> None:
         env = self.env
@@ -393,52 +375,20 @@ class TeleopTrajectoryRecorder(TrajectoryRecorder):
                     "ori_error": _rec._rewards._bulb_socket_ori_error(env, self._bulb_entity),
                 }
             )
-        # The ROBOT's own root pose. Every subtask's success conjunction reads it -- robot_standing
-        # (pelvis height + tilt), base_near / base_facing (arrival tasks), climbed_to_ladder_top and
-        # descended_from_ladder (height) -- and none of it was recoverable from a bag: joint_pos is
-        # joints only, eef_pose is the hand. Without these columns a failed take cannot be checked
-        # against the very conditions that failed it.
-        # The success gate's OWN conjuncts, evaluated live and recorded one column each. Without
-        # this a failed take only says "success_term False" and the operator is left reconstructing
-        # the predicates by hand -- which is guesswork the moment a reimplementation differs from
-        # the benchmark's (different reference points, a missed velocity channel, a stale seed).
-        _all_true = None
-        for _fn, _params in self._gate_conjuncts:
-            try:
-                _val = _fn(env, **(_params or {}))
-                step[f"gate_{getattr(_fn, '__name__', 'conjunct')}"] = _val
-                _b = bool(_val.reshape(-1)[0])
-                _all_true = _b if _all_true is None else (_all_true and _b)
-            except Exception:  # noqa: BLE001
-                pass
-        if self._gate_need and _all_true is not None:
+        _gate = self.gate_fields()
+        step.update(_gate)
+        # The take's own success verdict. The driver clears the termination, so the manager's flag
+        # would read False forever; this sustains the parent's gate columns over the same window
+        # mdp.gates.sustained uses, then LATCHES -- scripts/score.py reads success_term on the
+        # episode's LAST step, and without the latch a demo that achieved the task and kept going
+        # would score 0.
+        if self._gate_need and _gate:
+            _all_true = all(bool(v.reshape(-1)[0]) for v in _gate.values())
             self._gate_hold = self._gate_hold + 1 if _all_true else 0
             if self._gate_hold >= self._gate_need:
                 self._gate_fired = True
             step["success_term"] = np.full((self.n,), self._gate_fired, dtype=bool)
-        _rb = env.scene["robot"]
-        step.update(
-            {
-                "robot_root_pos": _rb.data.root_pos_w,
-                "robot_root_quat": _rb.data.root_quat_w,
-                "robot_root_lin_vel": _rb.data.root_lin_vel_w,
-                "robot_root_ang_vel": _rb.data.root_ang_vel_w,
-            }
-        )
-        for _name in self._tracked_objects:
-            _obj = env.scene[_name]
-            step.update(
-                {
-                    f"{_name}_pos": _obj.data.root_pos_w,
-                    f"{_name}_quat": _obj.data.root_quat_w,
-                    f"{_name}_lin_vel": _obj.data.root_lin_vel_w,
-                    # ANGULAR velocity too: place_terms.object_at_rest gates on BOTH, so without this
-                    # a "settled" object that is still rocking looks like a passing conjunct in the
-                    # bag while the real gate stays shut -- exactly the S01 case that could not be
-                    # explained from a recording.
-                    f"{_name}_ang_vel": _obj.data.root_ang_vel_w,
-                }
-            )
+        step.update(self.object_state_fields())
         # The gates read grip_contact (payload_held) and grasp_contact (hand_bodies_in_contact,
         # grasp_force_within); hand_contact alone is filtered to the Bulb prim, so on a ladder task
         # it reads a flat zero and tells you nothing about whether the ladder was actually held.

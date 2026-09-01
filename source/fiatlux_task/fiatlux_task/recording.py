@@ -61,6 +61,20 @@ def _np(t: torch.Tensor) -> np.ndarray:
     return t.detach().to("cpu").numpy()
 
 
+def _tracked_object_names(env) -> list[str]:
+    """Every rigid object worth recording, or the cfg's curated ``record_objects`` list."""
+    declared = getattr(getattr(env, "cfg", None), "record_objects", None)
+    rigid = getattr(env.scene, "rigid_objects", {})
+    names = list(declared) if declared is not None else list(rigid.keys())
+    return [n for n in names if n in rigid]
+
+
+def _gym_task_id(env) -> str | None:
+    """The registered env id (``FIATLUX-S06-DisposeBulb-v0``), which keys the subtask weights."""
+    spec = getattr(env, "spec", None)
+    return getattr(spec, "id", None)
+
+
 def term_flag(env, name: str, n: int, device) -> torch.Tensor:
     """Read a termination term flag for the current step (False vector if absent).
 
@@ -128,10 +142,87 @@ class TrajectoryRecorder:
         self._ladder_entity = "ladder" if "ladder" in env.scene.rigid_objects else None
         self._grip_sensor = "grip_contact" if "grip_contact" in env.scene.sensors else None
 
+        # EVERY rigid object, not one guessed bulb. The `_bulb_entity` heuristic above cannot
+        # disambiguate a two-bulb scene, so S06-S09's bags recorded a parked bulb while the task
+        # was about the other one; and the crate every disposal gate reads was absent entirely.
+        # An env cfg may curate the list with a `record_objects` tuple.
+        self._tracked_objects = _tracked_object_names(env)
+        # The success gate's conjuncts, so `gate_progress` -- half of a subtask's score -- can be
+        # recomputed offline instead of only existing inside a live reward manager.
+        self._gate_conjuncts, self._gate_seconds = self._resolve_gate(env)
+        self._gate_resolved = False
+
         self._buf: dict[str, list[np.ndarray]] = {}
         self._meta = self._build_meta(policy_spec=policy_spec, seed=seed, checkpoint=checkpoint, ee_name=ee_names[0])
 
+    def _resolve_gate(self, env) -> tuple[list, float]:
+        """The ``success`` term's conjunct list and sustain window, or ``([], 0.0)``.
+
+        Gates come in two shapes -- ``sustained`` (predicates nested under ``predicate_params``,
+        plus a hold window) and a bare ``all_of`` -- so this goes through the benchmark's own
+        unwrapper rather than reaching into either shape by hand. Overridable: the teleop driver
+        clears the termination so a success cannot reset the scene mid-take, and stashes the gate
+        elsewhere.
+        """
+        try:
+            from .tasks.manager_based.fiatlux_task.mdp.gates import conjuncts_of
+
+            term = getattr(getattr(env.cfg, "terminations", None), "success", None)
+            if term is None:
+                return [], 0.0
+            params = term.params or {}
+            return list(conjuncts_of(term.func, params)), float(params.get("seconds") or 0.0)
+        except Exception:  # noqa: BLE001 - a task without a data-shaped gate records no columns
+            return [], 0.0
+
     # -- capture ---------------------------------------------------------------
+    def object_state_fields(self) -> dict:
+        """Pose and both velocities for every tracked rigid object.
+
+        Angular velocity as well as linear: ``place_terms.object_at_rest`` gates on both, so
+        without it an object that is still rocking reads as settled offline while the live gate
+        stays shut.
+        """
+        fields: dict = {}
+        for name in self._tracked_objects:
+            obj = self.env.scene[name]
+            fields[f"{name}_pos"] = obj.data.root_pos_w
+            fields[f"{name}_quat"] = obj.data.root_quat_w
+            fields[f"{name}_lin_vel"] = obj.data.root_lin_vel_w
+            fields[f"{name}_ang_vel"] = obj.data.root_ang_vel_w
+        return fields
+
+    def gate_fields(self) -> dict:
+        """One column per success-gate conjunct, evaluated live.
+
+        A bag that carries only ``success_term`` says whether the episode finished and nothing
+        about how far it got. These columns are what ``scripts/score.py`` recomputes
+        ``gate_progress`` from, and what tells an operator which condition broke a take.
+
+        The evaluable set is settled on the first recorded step and fixed from then on. The
+        recorder is built before ``env.reset``, so a conjunct reading a sensor cannot be probed
+        in ``__init__``; and a column that came and went would give the per-episode buffers
+        ragged lengths. A conjunct that cannot be evaluated is dropped, loudly, rather than
+        recorded as a silent False that would read offline as a condition genuinely unmet.
+        """
+        if not self._gate_resolved:
+            self._gate_resolved = True
+            usable, dropped = [], []
+            for fn, params in self._gate_conjuncts:
+                try:
+                    fn(self.env, **(params or {}))
+                    usable.append((fn, params))
+                except Exception as e:  # noqa: BLE001
+                    dropped.append(f"{getattr(fn, '__name__', 'conjunct')} ({e})")
+            if dropped:
+                print(f"[recording] WARNING: gate conjuncts not recordable: {', '.join(dropped)}", flush=True)
+            self._gate_conjuncts = usable
+            self._meta["gate_conjuncts"] = [getattr(fn, "__name__", "conjunct") for fn, _ in usable]
+        return {
+            f"gate_{getattr(fn, '__name__', 'conjunct')}": fn(self.env, **(params or {}))
+            for fn, params in self._gate_conjuncts
+        }
+
     def world_state_fields(self) -> dict:
         """Root pose/velocity channels every task shares (issue #107).
 
@@ -156,12 +247,14 @@ class TrajectoryRecorder:
         }
         if self._ladder_entity is not None:
             ladder = env.scene[self._ladder_entity]
-            fields.update({
-                "ladder_pos": ladder.data.root_pos_w,
-                "ladder_quat": ladder.data.root_quat_w,
-                "ladder_lin_vel": ladder.data.root_lin_vel_w,
-                "ladder_ang_vel": ladder.data.root_ang_vel_w,
-            })
+            fields.update(
+                {
+                    "ladder_pos": ladder.data.root_pos_w,
+                    "ladder_quat": ladder.data.root_quat_w,
+                    "ladder_lin_vel": ladder.data.root_lin_vel_w,
+                    "ladder_ang_vel": ladder.data.root_ang_vel_w,
+                }
+            )
         if self._grip_sensor is not None:
             fields["grip_force"] = _obs.object_contact_forces(env.scene.sensors[self._grip_sensor])
         return fields
@@ -211,6 +304,8 @@ class TrajectoryRecorder:
             "timeout_term": term_flag(env, "time_out", self.n, self.device),
         }
         step.update(self.world_state_fields())
+        step.update(self.object_state_fields())
+        step.update(self.gate_fields())
         # Bayonet lock state (issue #77). Only tasks that wire mdp.bulb_attachment have it.
         if self._attachment is not None:
             step.update(_attach.bulb_lock_telemetry(env))
@@ -299,6 +394,11 @@ class TrajectoryRecorder:
 
         return {
             "task": getattr(cfg, "task_name", None) or type(cfg).__name__,
+            # The gym id, which is what fiatlux_task.subtask_score keys its difficulty weights
+            # on. `task` above is a cfg class name, so a bag could not be scored as a subtask.
+            "task_id": _gym_task_id(env),
+            "gate_conjuncts": [getattr(fn, "__name__", "conjunct") for fn, _ in self._gate_conjuncts],
+            "gate_sustain_seconds": self._gate_seconds,
             "benchmark_version": _benchmark_version(),
             "recorder_version": RECORDER_VERSION,
             "created": datetime.datetime.now().isoformat(timespec="seconds"),
