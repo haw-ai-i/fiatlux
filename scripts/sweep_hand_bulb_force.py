@@ -40,6 +40,14 @@ parser.add_argument(
     help="Metres from the palm body origin. 0 is where diagnose_stuck_bulb.py parks it.",
 )
 parser.add_argument("--settle", type=int, default=20, help="Steps to hold at each offset before reading.")
+parser.add_argument(
+    "--release",
+    type=int,
+    default=90,
+    help="Steps to watch after letting go at each offset. This is the half that is not confounded: "
+    "holding the bulb pose-writes it, and pose-writing a body in contact is itself the #77 "
+    "pathology. Nothing writes the bulb during these steps.",
+)
 AppLauncher.add_app_launcher_args(parser)
 args_cli = parser.parse_args()
 args_cli.headless = True
@@ -91,32 +99,47 @@ def main() -> int:
     up = torch.tensor([0.0, 0.0, 1.0], device=env.device)
 
     print(f"SETUP variant={args_cli.variant} hand={args_cli.hand} bulb weight={weight:.3f} N", flush=True)
-    print("  offset   peak force      x weight   note", flush=True)
+    print("  offset   held force   freed force   fell      speed      outcome", flush=True)
+
+    def peak_force() -> float:
+        return max(float(torch.norm(_obs.object_contact_forces(env.scene.sensors[s]), dim=-1).max()) for s in sensors)
 
     results = []
     for offset in args_cli.offsets:
-        peak = 0.0
+        held = 0.0
         for _ in range(args_cli.settle):
-            # Hold the bulb at the offset every step. Measuring how hard the solver pushes at a
-            # fixed separation is the whole question, and holding is what exposes it.
+            # Hold the bulb at the offset every step. This half is confounded -- see the caveat at
+            # the end -- and exists to say whether the bulb is in contact at this separation.
             target = robot.data.body_pos_w[:, palm_idx, :] + offset * up
             bulb.write_root_pose_to_sim(torch.cat([target, bulb.data.root_quat_w], dim=-1))
             bulb.write_root_velocity_to_sim(zeros6)
             env.step(action)
-            peak = max(
-                peak,
-                max(float(torch.norm(_obs.object_contact_forces(env.scene.sensors[s]), dim=-1).max()) for s in sensors),
-            )
-        results.append((offset, peak))
-        note = "inside the palm" if offset < 0.039 else "bulb radius clears the origin"
-        print(f"  {offset * 1000:5.0f} mm  {peak:9.2f} N  {peak / weight:9.0f}x   {note}", flush=True)
+            held = max(held, peak_force())
+
+        # Now let go. Nothing writes the bulb from here, so what happens is physics alone. A bulb
+        # that is merely touching an open hand falls. A bulb the solver is fighting does not.
+        start_z = float(bulb.data.root_pos_w[0, 2])
+        freed = 0.0
+        for _ in range(args_cli.release):
+            env.step(action)
+            freed = max(freed, peak_force())
+        fell_mm = (start_z - float(bulb.data.root_pos_w[0, 2])) * 1000.0
+        speed = float(torch.norm(bulb.data.root_lin_vel_w[0])) * 1000.0
+
+        results.append((offset, held, freed, fell_mm))
+        outcome = "fell" if fell_mm > 50.0 else "stayed"
+        print(
+            f"  {offset * 1000:5.0f} mm  {held:9.2f} N  {freed:9.2f} N  {fell_mm:+8.1f} mm  "
+            f"{speed:8.1f} mm/s  {outcome}",
+            flush=True,
+        )
 
     # Report the SHAPE of the curve, not its endpoints. An earlier version compared the first and
     # last readings and printed "DECAYS" whenever the last one was small -- but the largest offset
     # is where the bulb is out of reach of the hand entirely, so its reading is zero for a reason
     # that has nothing to do with how the solver behaves in contact. That comparison called a
     # curve holding 100-330 N through 60 mm a decay.
-    touching = [(off, f) for off, f in results if f > 1.0]
+    touching = [(off, held) for off, held, _, _ in results if held > 1.0]
     print("\nVERDICT", flush=True)
     if not touching:
         print("  NO CONTACT at any offset. Nothing was measured; move the bulb closer.", flush=True)
@@ -131,20 +154,44 @@ def main() -> int:
         if gentlest < 5.0 * weight:
             print(
                 f"  There IS a gentle regime: the lightest contact reads {gentlest:.2f} N, within a "
-                "few times the bulb's weight. Contact force tracks separation, as it should.",
+                "few times the bulb's weight, so contact force tracks separation as it should.",
                 flush=True,
             )
         else:
             print(
-                f"  There is NO gentle regime: even the lightest contact reads {gentlest:.2f} N = "
-                f"{gentlest / weight:.0f}x the bulb's weight. Every touch is violent.",
+                f"  There is NO gentle regime while held: even the lightest contact reads "
+                f"{gentlest:.2f} N = {gentlest / weight:.0f}x the bulb's weight.",
                 flush=True,
             )
+
+    # The released column is the one that answers the issue, because nothing writes the bulb during
+    # it. Held readings are confounded -- see below -- but a bulb that will not fall when nothing
+    # is touching it cannot be blamed on the measurement.
+    in_contact = [(off, freed, fell) for off, held, freed, fell in results if held > 1.0]
+    stayed = [(off, freed, fell) for off, freed, fell in in_contact if fell <= 50.0]
+    print("\n  ON RELEASE, at the offsets that were in contact:", flush=True)
+    if not in_contact:
+        print("    nothing was in contact, so there was nothing to release.", flush=True)
+    elif not stayed:
+        print(
+            f"    all {len(in_contact)} fell once released. The hand does not hold a bulb it is not\n"
+            "    gripping, so the large held readings above are the pose-write confound and not a\n"
+            "    property of the hand. The scripted stuck-bulb result is an artifact of placement.",
+            flush=True,
+        )
+    else:
+        worst_off, worst_force, worst_fell = max(stayed, key=lambda r: r[1])
+        print(
+            f"    {len(stayed)}/{len(in_contact)} did NOT fall. Worst at {worst_off * 1000:.0f} mm: "
+            f"moved {worst_fell:+.1f} mm with {worst_force:.2f} N = {worst_force / weight:.0f}x its\n"
+            "    weight, and nothing writing its pose. That is a real contact pathology.",
+            flush=True,
+        )
+
     print(
-        "\n  CAVEAT this sweep HOLDS the bulb in place every step, and pose-writing a body that is\n"
-        "  already in contact is itself the pathology #77 measured at 1067 N on the socket. So a\n"
-        "  large reading here cannot be blamed on the hand alone. To separate the two, place the\n"
-        "  bulb at an offset that reads contact, then stop writing its pose and watch what happens.",
+        "\n  CAVEAT the HELD column pose-writes the bulb every step, and pose-writing a body already\n"
+        "  in contact is itself the pathology #77 measured at 1067 N on the socket. Read the RELEASED\n"
+        "  column for anything about the hand.",
         flush=True,
     )
     env.close()
