@@ -40,6 +40,13 @@ parser.add_argument(
     help="Metres from the palm body origin. 0 is where diagnose_stuck_bulb.py parks it.",
 )
 parser.add_argument("--settle", type=int, default=20, help="Steps to hold at each offset before reading.")
+parser.add_argument(
+    "--quiet",
+    type=int,
+    default=15,
+    help="Steps to run after restoring the scene, before force is read. The restore snaps the arm "
+    "back to its captured pose, and that transient would otherwise be counted as held force.",
+)
 parser.add_argument("--friction", type=float, default=None, help="Override the bulb's static+dynamic friction.")
 parser.add_argument("--contact-offset", type=float, default=None, help="Override the bulb's contact_offset (m).")
 parser.add_argument("--rest-offset", type=float, default=None, help="Override the bulb's rest_offset (m).")
@@ -152,6 +159,19 @@ def main() -> int:
     # and an arm that drifts between offsets changes the geometry being swept.
     arm_target = robot.data.joint_pos.clone()
 
+    # Captured once and restored before EVERY offset. Without the restore the six offsets are one
+    # continuous simulation: each ends with a 90-step release where the bulb is free, often ejected
+    # at over 3 m/s and sometimes lodging at hundreds of newtons, and the next offset is then
+    # measured on the scene that release just disturbed. The contamination accumulates down the
+    # sweep -- at 0.035 kg the spread in held force grew from 183 N at the first offset to 948 N at
+    # the last -- so every comparison between configurations was confounded with how violently the
+    # previous offset happened to end.
+    init_joint_pos = robot.data.joint_pos.clone()
+    init_joint_vel = robot.data.joint_vel.clone()
+    # The bulb's attitude too. A bulb that tumbled during the previous release re-enters the next
+    # offset at whatever orientation it stopped in, and the contact geometry depends on it.
+    init_bulb_quat = bulb.data.root_quat_w.clone()
+
     print(
         f"SETUP variant={args_cli.variant} hand={args_cli.hand} bulb weight={weight:.3f} N"
         + (f"  OVERRIDES {', '.join(tweaks)}" if tweaks else "  (stock physics)"),
@@ -165,13 +185,24 @@ def main() -> int:
 
     results = []
     for offset in args_cli.offsets:
+        # Restore, so this offset is independent of the ones before it.
+        robot.write_joint_state_to_sim(init_joint_pos, init_joint_vel)
+        robot.set_joint_position_target(arm_target)
+        bulb.write_root_velocity_to_sim(zeros6)
+        for _ in range(args_cli.quiet):
+            robot.set_joint_position_target(arm_target)
+            target = robot.data.body_pos_w[:, palm_idx, :] + offset * away
+            bulb.write_root_pose_to_sim(torch.cat([target, init_bulb_quat], dim=-1))
+            bulb.write_root_velocity_to_sim(zeros6)
+            env.step(action)
+
         held = 0.0
         for _ in range(args_cli.settle):
             # Hold the bulb at the offset every step. This half is confounded -- see the caveat at
             # the end -- and exists to say whether the bulb is in contact at this separation.
             robot.set_joint_position_target(arm_target)
             target = robot.data.body_pos_w[:, palm_idx, :] + offset * away
-            bulb.write_root_pose_to_sim(torch.cat([target, bulb.data.root_quat_w], dim=-1))
+            bulb.write_root_pose_to_sim(torch.cat([target, init_bulb_quat], dim=-1))
             bulb.write_root_velocity_to_sim(zeros6)
             env.step(action)
             held = max(held, peak_force())
