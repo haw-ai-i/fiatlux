@@ -57,14 +57,22 @@ simulation_app = app_launcher.app
 
 """Everything else follows."""
 
+import contextlib  # noqa: E402
 import json  # noqa: E402
 
 import fiatlux_task.tasks  # noqa: F401, E402  -- registers the FIATLUX Gym environments
+
+with contextlib.suppress(ImportError):  # the teleop benches live in a package that is not always installed
+    import fiatlux_teleop  # noqa: F401
 import gymnasium as gym  # noqa: E402
 import h5py  # noqa: E402
 import numpy as np  # noqa: E402
 import torch  # noqa: E402
-from fiatlux_task.robots.g1 import swap_robot_variant  # noqa: E402
+from fiatlux_task.robots.g1 import (  # noqa: E402
+    G1_DEX3_HAND_GRASP,
+    G1_DEX3_LEFT_HAND_GRASP,
+    swap_robot_variant,
+)
 from fiatlux_task.tasks.manager_based.fiatlux_task.mdp import observations as _obs  # noqa: E402
 from fiatlux_task.tasks.manager_based.fiatlux_task.scene_cfg import set_layout_seed  # noqa: E402
 from fiatlux_task.viz import make_video_camera_cfg  # noqa: E402
@@ -72,6 +80,30 @@ from fiatlux_task.viz import make_video_camera_cfg  # noqa: E402
 from isaaclab.utils.math import quat_apply, quat_inv, quat_mul  # noqa: E402
 
 from isaaclab_tasks.utils import parse_env_cfg  # noqa: E402
+
+
+def _repoint_binary_hand_commands(cfg, variant: str) -> None:
+    """Rekey a ``BinaryJointPositionActionCfg``'s open/close dicts onto the swapped hand.
+
+    ``swap_robot_variant`` remaps a term's ``joint_names`` but not the ``open_command_expr`` and
+    ``close_command_expr`` dicts beside them, which stay keyed by the ORIGINAL hand's joint names.
+    The action term then resolves those keys against the new robot and raises. This affects any
+    task with a binary hand action, not just this replay -- the teleop benches are where it bites.
+
+    Worked around here rather than fixed in ``robots/g1.py``, because this branch is diagnostic
+    tooling and that is task code. It deserves its own issue.
+    """
+    if variant != "dex3":
+        return
+    for name in dir(cfg.actions):
+        term = getattr(cfg.actions, name, None)
+        if term is None or not hasattr(term, "open_command_expr"):
+            continue
+        joints = list(term.joint_names)
+        grasp = G1_DEX3_LEFT_HAND_GRASP if any(j.startswith("left_") for j in joints) else G1_DEX3_HAND_GRASP
+        term.open_command_expr = {j: 0.0 for j in joints}
+        term.close_command_expr = {j: float(grasp.get(j, 0.0)) for j in joints}
+        print(f"ACTION  repointed {name} onto {len(joints)} {variant} joints", flush=True)
 
 
 def main() -> int:
@@ -90,6 +122,7 @@ def main() -> int:
     cfg = parse_env_cfg(args_cli.task, device=args_cli.device, num_envs=1)
     if args_cli.variant != "inspire":
         swap_robot_variant(cfg, args_cli.variant)
+        _repoint_binary_hand_commands(cfg, args_cli.variant)
     if args_cli.bare:
         # MOVE the furniture aside rather than deleting it. Event and observation terms reference
         # these entities by name -- `reset_socket` and `privileged/socket_pose` both take the
@@ -108,7 +141,14 @@ def main() -> int:
     env.reset()
 
     robot = env.scene["robot"]
-    bulb = env.scene["old_bulb" if "old_bulb" in env.scene.rigid_objects else "fresh_bulb"]
+    # The bulb entity is named differently across branches. #76 Step 1 renamed the scene's single
+    # `bulb` to `fresh_bulb`, and the teleop bench this bag came from predates that rename, so a
+    # replay has to accept either.
+    names = [n for n in ("old_bulb", "fresh_bulb", "bulb") if n in env.scene.rigid_objects]
+    if not names:
+        raise SystemExit(f"no bulb in the scene; rigid objects are {list(env.scene.rigid_objects)}")
+    bulb = env.scene[names[0]]
+    print(f"BULB    using scene entity {names[0]!r}", flush=True)
     dev = env.device
 
     # Bag column -> sim joint index. A name the sim does not have is skipped and reported, because
@@ -121,6 +161,13 @@ def main() -> int:
     )
     cols = torch.tensor([c for c, _ in pairs], dtype=torch.long)
     ids = torch.tensor([i for _, i in pairs], dtype=torch.long, device=dev)
+
+    # Clamp to what the bag actually holds. --steps past the end raised IndexError mid-replay and
+    # threw away the run, which is a poor trade for a diagnostic that takes minutes to reach.
+    available = int(joint_pos.shape[0]) - args_cli.start
+    if args_cli.steps > available:
+        print(f"STEPS   {args_cli.steps} requested, bag has {available} left from {args_cli.start}", flush=True)
+        args_cli.steps = available
 
     ee_ids, _ = robot.find_bodies(meta["ee_body"])
     ee_id = ee_ids[0]

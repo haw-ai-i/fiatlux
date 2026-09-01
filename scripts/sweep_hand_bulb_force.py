@@ -5,6 +5,13 @@
 
 """Contact force against bulb-to-palm distance (issue #92).
 
+Two modes. By default the fingers stay in their reset pose, which is OPEN, so this characterises
+the contact between the bulb and a stationary open hand. With ``--grasp`` the fingers close on the
+bulb first and OPEN to release it, which is the scenario #92 actually reports: a hand that opens
+and does not drop the bulb. Read the ``curl`` column in that mode -- it is the measured finger
+angle, and a bulb that "stayed" with the fingers still curled proves nothing.
+
+
 ``diagnose_stuck_bulb.py`` reports 181-223x the bulb's weight in a hand whose fingers are open. It
 also parks the bulb at the palm body's ORIGIN, and the bulb's radius is about 39 mm, so the bulb
 probably encloses the palm geometry: those forces may be the solver depenetrating an overlap the
@@ -67,6 +74,14 @@ parser.add_argument(
     "holding the bulb pose-writes it, and pose-writing a body in contact is itself the #77 "
     "pathology. Nothing writes the bulb during these steps.",
 )
+parser.add_argument(
+    "--grasp",
+    action="store_true",
+    help="Close the fingers on the bulb before letting go, and OPEN them to release. Without this "
+    "the fingers stay in their reset pose, which is open, so the sweep measures a bulb held near a "
+    "stationary open hand -- useful, but not the reported bug. #92 is specifically that OPENING "
+    "the fingers does not drop the bulb, and only this flag tests that.",
+)
 AppLauncher.add_app_launcher_args(parser)
 args_cli = parser.parse_args()
 args_cli.headless = True
@@ -79,7 +94,14 @@ simulation_app = app_launcher.app
 import fiatlux_task.tasks  # noqa: F401, E402  -- registers the FIATLUX Gym environments
 import gymnasium as gym  # noqa: E402
 import torch  # noqa: E402
-from fiatlux_task.robots.g1 import G1_DEX3_PALM_BODIES, G1_PALM_BODIES, swap_robot_variant  # noqa: E402
+from fiatlux_task.robots.g1 import (  # noqa: E402
+    G1_DEX3_HAND_GRASP,
+    G1_DEX3_LEFT_HAND_GRASP,
+    G1_DEX3_PALM_BODIES,
+    G1_HAND_GRASP,
+    G1_PALM_BODIES,
+    swap_robot_variant,
+)
 from fiatlux_task.tasks.manager_based.fiatlux_task.mdp import observations as _obs  # noqa: E402
 from fiatlux_task.tasks.manager_based.fiatlux_task.scene_cfg import BULB_MASS_KG, set_layout_seed  # noqa: E402
 
@@ -88,6 +110,20 @@ import isaaclab.sim as sim_utils  # noqa: E402
 from isaaclab_tasks.utils import parse_env_cfg  # noqa: E402
 
 _LEFT, _RIGHT = 0, 1
+
+
+def grasp_targets(variant: str, hand: str) -> dict[str, float]:
+    """The closed-hand joint preset for this variant and side.
+
+    Kept identical to ``diagnose_stuck_bulb.py``. The Dex3 presets are MIRRORED, not shared: right
+    fingers curl toward + and left toward -, so applying the right-hand preset to the left hand
+    opens it instead of closing it.
+    """
+    if variant == "dex3":
+        return dict(G1_DEX3_LEFT_HAND_GRASP if hand == "left" else G1_DEX3_HAND_GRASP)
+    if hand == "left":
+        return {j.replace("R_", "L_", 1): v for j, v in G1_HAND_GRASP.items()}
+    return dict(G1_HAND_GRASP)
 
 
 def main() -> int:
@@ -172,6 +208,27 @@ def main() -> int:
     # offset at whatever orientation it stopped in, and the contact geometry depends on it.
     init_bulb_quat = bulb.data.root_quat_w.clone()
 
+    # Finger control. Without --grasp the fingers stay wherever the reset pose left them, which is
+    # open, so the sweep characterises contact with a stationary open hand. #92 is about OPENING
+    # the fingers failing to drop the bulb, and that needs the hand closed first.
+    finger_ids: list[int] = []
+    closed_cmd = opened_cmd = None
+    if args_cli.grasp:
+        targets = grasp_targets(args_cli.variant, args_cli.hand)
+        finger_ids = [robot.find_joints(name)[0][0] for name in targets]
+        closed_cmd = torch.tensor([list(targets.values())], device=env.device)
+        opened_cmd = torch.zeros_like(closed_cmd)
+
+    def drive(fingers) -> None:
+        """Hold the arm still, and command the fingers if --grasp is on.
+
+        The arm target covers EVERY joint, so the finger command has to come after it or it is
+        overwritten.
+        """
+        robot.set_joint_position_target(arm_target)
+        if fingers is not None:
+            robot.set_joint_position_target(fingers, joint_ids=finger_ids)
+
     print(
         f"SETUP variant={args_cli.variant} hand={args_cli.hand} bulb weight={weight:.3f} N"
         + (f"  OVERRIDES {', '.join(tweaks)}" if tweaks else "  (stock physics)"),
@@ -190,7 +247,7 @@ def main() -> int:
         robot.set_joint_position_target(arm_target)
         bulb.write_root_velocity_to_sim(zeros6)
         for _ in range(args_cli.quiet):
-            robot.set_joint_position_target(arm_target)
+            drive(closed_cmd)
             target = robot.data.body_pos_w[:, palm_idx, :] + offset * away
             bulb.write_root_pose_to_sim(torch.cat([target, init_bulb_quat], dim=-1))
             bulb.write_root_velocity_to_sim(zeros6)
@@ -200,7 +257,7 @@ def main() -> int:
         for _ in range(args_cli.settle):
             # Hold the bulb at the offset every step. This half is confounded -- see the caveat at
             # the end -- and exists to say whether the bulb is in contact at this separation.
-            robot.set_joint_position_target(arm_target)
+            drive(closed_cmd)
             target = robot.data.body_pos_w[:, palm_idx, :] + offset * away
             bulb.write_root_pose_to_sim(torch.cat([target, init_bulb_quat], dim=-1))
             bulb.write_root_velocity_to_sim(zeros6)
@@ -212,7 +269,7 @@ def main() -> int:
         start_z = float(bulb.data.root_pos_w[0, 2])
         freed = 0.0
         for _ in range(args_cli.release):
-            robot.set_joint_position_target(arm_target)
+            drive(opened_cmd)
             env.step(action)
             freed = max(freed, peak_force())
         fell_mm = (start_z - float(bulb.data.root_pos_w[0, 2])) * 1000.0
@@ -241,9 +298,12 @@ def main() -> int:
         else:
             outcome = "near hand, no force"
         went = "down" if fell_mm > 5.0 else ("up" if fell_mm < -5.0 else "--")
+        # The MEASURED finger angle, not the commanded one. "The bulb did not fall" has a trivial
+        # explanation -- the fingers never opened -- and nothing else in this row rules it out.
+        curl = f"  curl {float(robot.data.joint_pos[0, finger_ids].abs().max()):.3f}" if finger_ids else ""
         print(
             f"  {offset * 1000:5.0f} mm  {held:9.2f} N  {freed:9.2f} N  {fell_mm:+8.1f} mm "
-            f"{went:4s} {dist_mm:7.1f} mm  {speed:8.1f} mm/s  {outcome}",
+            f"{went:4s} {dist_mm:7.1f} mm  {speed:8.1f} mm/s  {outcome}{curl}",
             flush=True,
         )
 
