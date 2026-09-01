@@ -102,9 +102,10 @@ class CarryTeleopEnvCfg(CarryEnvCfg):
         super().__post_init__()
 
         # Dex3 hand as the default for teleop (Unitree 3-finger). swap_robot_variant re-points the
-        # finger-scoped reward/termination terms too; calm the finger self-contact like the Insert env.
+        # finger-scoped reward/termination terms too. Self-collisions stay as the benchmark
+        # authors them (True in robots/g1.py), same as the subtask twins: the old blanket
+        # disable made the fingers close through the thumb and diverged from the RL physics.
         swap_robot_variant(self, "dex3")
-        self.scene.robot.spawn.articulation_props.enabled_self_collisions = False
 
         # Ladder placement matches the RL Carry task exactly: apply_position_preset (run by
         # super().__post_init__()) sets the ladder's start pose, and teleop does NOT override it.
@@ -178,7 +179,6 @@ def apply_inspire_hands(env_cfg) -> None:
     which the joint-name remap alone does not cover.
     """
     swap_robot_variant(env_cfg, "inspire")
-    env_cfg.scene.robot.spawn.articulation_props.enabled_self_collisions = False
     env_cfg.actions.hand_action.joint_names = list(G1_HAND_JOINTS)
     env_cfg.actions.hand_action.open_command_expr = dict(G1_HAND_OPEN)
     env_cfg.actions.hand_action.close_command_expr = dict(G1_HAND_GRASP)
