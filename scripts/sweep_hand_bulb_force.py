@@ -111,25 +111,42 @@ def main() -> int:
         note = "inside the palm" if offset < 0.039 else "bulb radius clears the origin"
         print(f"  {offset * 1000:5.0f} mm  {peak:9.2f} N  {peak / weight:9.0f}x   {note}", flush=True)
 
-    near = results[0][1]
-    far = results[-1][1]
+    # Report the SHAPE of the curve, not its endpoints. An earlier version compared the first and
+    # last readings and printed "DECAYS" whenever the last one was small -- but the largest offset
+    # is where the bulb is out of reach of the hand entirely, so its reading is zero for a reason
+    # that has nothing to do with how the solver behaves in contact. That comparison called a
+    # curve holding 100-330 N through 60 mm a decay.
+    touching = [(off, f) for off, f in results if f > 1.0]
+    print("\nVERDICT", flush=True)
+    if not touching:
+        print("  NO CONTACT at any offset. Nothing was measured; move the bulb closer.", flush=True)
+    else:
+        widest, force_at_widest = touching[-1]
+        print(
+            f"  contact at {len(touching)}/{len(results)} offsets, out to {widest * 1000:.0f} mm, "
+            f"where it reads {force_at_widest:.2f} N = {force_at_widest / weight:.0f}x the bulb's weight",
+            flush=True,
+        )
+        gentlest = min(f for _, f in touching)
+        if gentlest < 5.0 * weight:
+            print(
+                f"  There IS a gentle regime: the lightest contact reads {gentlest:.2f} N, within a "
+                "few times the bulb's weight. Contact force tracks separation, as it should.",
+                flush=True,
+            )
+        else:
+            print(
+                f"  There is NO gentle regime: even the lightest contact reads {gentlest:.2f} N = "
+                f"{gentlest / weight:.0f}x the bulb's weight. Every touch is violent.",
+                flush=True,
+            )
     print(
-        f"\nVERDICT force at {results[0][0] * 1000:.0f} mm = {near:.2f} N, at "
-        f"{results[-1][0] * 1000:.0f} mm = {far:.2f} N",
+        "\n  CAVEAT this sweep HOLDS the bulb in place every step, and pose-writing a body that is\n"
+        "  already in contact is itself the pathology #77 measured at 1067 N on the socket. So a\n"
+        "  large reading here cannot be blamed on the hand alone. To separate the two, place the\n"
+        "  bulb at an offset that reads contact, then stop writing its pose and watch what happens.",
         flush=True,
     )
-    if far < max(1.0, 0.1 * near):
-        print(
-            "  DECAYS -- the high readings are interpenetration. diagnose_stuck_bulb.py measures "
-            "its own placement, and the recording is the only evidence for the stuck bulb.",
-            flush=True,
-        )
-    else:
-        print(
-            "  PERSISTS -- the bulb is clear of the palm origin by more than its own radius and "
-            "the contact force is still large. The pathology is real.",
-            flush=True,
-        )
     env.close()
     return 0
 
