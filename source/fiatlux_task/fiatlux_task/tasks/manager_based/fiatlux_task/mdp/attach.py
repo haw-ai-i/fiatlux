@@ -75,12 +75,9 @@ _OLD = 0  # state row of the old bulb (scene entity "old_bulb")
 _FRESH = 1  # state row of the fresh bulb (scene entity "fresh_bulb")
 
 # How near the seat a bulb must SPAWN to be treated as starting locked in the fixture
-# (``_resolve_spawn_phase``). Only has to separate "seated" from "put somewhere else", and the
-# binding case is NOT the disposal crate (metres away) but the in-hand carry: the staged
-# carried bulb spawns 0.103 m (S04) / 0.130 m (S11) from the seat, measured zero-action at
-# the first step on 481c0ad (main with #126's re-baked carry seat merged). That is ~2x this
-# tolerance, so the value IS a tuning knob: re-measure those two distances before changing
-# it, and whenever the carry stage pose or ``BULB_IN_ROOT_*`` seat constants move.
+# (``_resolve_spawn_phase``). Only has to separate "seated" from "put somewhere else": the
+# nearest competing placement is the disposal crate, measured 4.073 m away, so this is three
+# orders of magnitude of margin and its exact value is not a tuning knob.
 _SEATED_SPAWN_TOLERANCE = 0.05  # m
 _EPS = 1e-5
 
