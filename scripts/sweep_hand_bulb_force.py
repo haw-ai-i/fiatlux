@@ -96,10 +96,23 @@ def main() -> int:
     action = torch.zeros(env.action_space.shape, device=env.device)
     zeros6 = torch.zeros((1, 6), device=env.device)
     weight = BULB_MASS_KG * 9.81
-    up = torch.tensor([0.0, 0.0, 1.0], device=env.device)
+
+    # Offset AWAY FROM THE ROBOT, not along world up. Offsetting up from the palm walks the bulb
+    # into the forearm, so a reading at 100 mm was contact with the arm rather than clearance:
+    # the same commanded position read 0.00 N in one run and 236 N in another.
+    root = robot.data.root_pos_w[0]
+    palm0 = robot.data.body_pos_w[0, palm_idx, :]
+    away = palm0 - root
+    away[2] = 0.0  # horizontal: straight up or down still meets the arm or the floor
+    away = away / torch.norm(away).clamp(min=1e-6)
+
+    # Hold the arm where it starts. Only the root is pinned, so under zero actions the arm sags,
+    # and an arm that drifts between offsets changes the geometry being swept.
+    arm_target = robot.data.joint_pos.clone()
 
     print(f"SETUP variant={args_cli.variant} hand={args_cli.hand} bulb weight={weight:.3f} N", flush=True)
-    print("  offset   held force   freed force   fell      speed      outcome", flush=True)
+    print(f"      offset direction (world, away from the root): {[round(float(v), 3) for v in away]}", flush=True)
+    print("  offset   held force   freed force   fell     to palm      speed      outcome", flush=True)
 
     def peak_force() -> float:
         return max(float(torch.norm(_obs.object_contact_forces(env.scene.sensors[s]), dim=-1).max()) for s in sensors)
@@ -110,7 +123,8 @@ def main() -> int:
         for _ in range(args_cli.settle):
             # Hold the bulb at the offset every step. This half is confounded -- see the caveat at
             # the end -- and exists to say whether the bulb is in contact at this separation.
-            target = robot.data.body_pos_w[:, palm_idx, :] + offset * up
+            robot.set_joint_position_target(arm_target)
+            target = robot.data.body_pos_w[:, palm_idx, :] + offset * away
             bulb.write_root_pose_to_sim(torch.cat([target, bulb.data.root_quat_w], dim=-1))
             bulb.write_root_velocity_to_sim(zeros6)
             env.step(action)
@@ -121,16 +135,21 @@ def main() -> int:
         start_z = float(bulb.data.root_pos_w[0, 2])
         freed = 0.0
         for _ in range(args_cli.release):
+            robot.set_joint_position_target(arm_target)
             env.step(action)
             freed = max(freed, peak_force())
         fell_mm = (start_z - float(bulb.data.root_pos_w[0, 2])) * 1000.0
         speed = float(torch.norm(bulb.data.root_lin_vel_w[0])) * 1000.0
+        # Distance to the palm at the end. "Stayed" near the palm is the hand holding it; "stayed"
+        # far from the palm is the bulb caught on something else, and those are different bugs.
+        palm_now = robot.data.body_pos_w[0, palm_idx, :]
+        dist_mm = float(torch.norm(bulb.data.root_pos_w[0] - palm_now)) * 1000.0
 
-        results.append((offset, held, freed, fell_mm))
+        results.append((offset, held, freed, fell_mm, dist_mm))
         outcome = "fell" if fell_mm > 50.0 else "stayed"
         print(
             f"  {offset * 1000:5.0f} mm  {held:9.2f} N  {freed:9.2f} N  {fell_mm:+8.1f} mm  "
-            f"{speed:8.1f} mm/s  {outcome}",
+            f"{dist_mm:7.1f} mm  {speed:8.1f} mm/s  {outcome}",
             flush=True,
         )
 
@@ -139,7 +158,7 @@ def main() -> int:
     # is where the bulb is out of reach of the hand entirely, so its reading is zero for a reason
     # that has nothing to do with how the solver behaves in contact. That comparison called a
     # curve holding 100-330 N through 60 mm a decay.
-    touching = [(off, held) for off, held, _, _ in results if held > 1.0]
+    touching = [(off, held) for off, held, _, _, _ in results if held > 1.0]
     print("\nVERDICT", flush=True)
     if not touching:
         print("  NO CONTACT at any offset. Nothing was measured; move the bulb closer.", flush=True)
@@ -167,8 +186,8 @@ def main() -> int:
     # The released column is the one that answers the issue, because nothing writes the bulb during
     # it. Held readings are confounded -- see below -- but a bulb that will not fall when nothing
     # is touching it cannot be blamed on the measurement.
-    in_contact = [(off, freed, fell) for off, held, freed, fell in results if held > 1.0]
-    stayed = [(off, freed, fell) for off, freed, fell in in_contact if fell <= 50.0]
+    in_contact = [(off, freed, fell, dist) for off, held, freed, fell, dist in results if held > 1.0]
+    stayed = [(off, freed, fell, dist) for off, freed, fell, dist in in_contact if fell <= 50.0]
     print("\n  ON RELEASE, at the offsets that were in contact:", flush=True)
     if not in_contact:
         print("    nothing was in contact, so there was nothing to release.", flush=True)
@@ -180,11 +199,19 @@ def main() -> int:
             flush=True,
         )
     else:
-        worst_off, worst_force, worst_fell = max(stayed, key=lambda r: r[1])
+        worst_off, worst_force, worst_fell, worst_dist = max(stayed, key=lambda r: r[1])
         print(
             f"    {len(stayed)}/{len(in_contact)} did NOT fall. Worst at {worst_off * 1000:.0f} mm: "
             f"moved {worst_fell:+.1f} mm with {worst_force:.2f} N = {worst_force / weight:.0f}x its\n"
-            "    weight, and nothing writing its pose. That is a real contact pathology.",
+            f"    weight, and nothing writing its pose. It ended {worst_dist:.0f} mm from the palm.",
+            flush=True,
+        )
+        near_palm = [r for r in stayed if r[3] < 120.0]
+        print(
+            f"    {len(near_palm)}/{len(stayed)} of those ended within 120 mm of the palm, so the "
+            "hand is what holds them."
+            if near_palm
+            else "    None ended near the palm, so whatever holds them is not the hand.",
             flush=True,
         )
 
