@@ -67,17 +67,19 @@ def object_at_rest(
     env: ManagerBasedRLEnv,
     asset_cfg: SceneEntityCfg,
     lin_vel_limit: float,
-    ang_vel_limit: float,
+    ang_vel_limit: float | None = None,
 ) -> torch.Tensor:
-    """True where the object's root is translating and rotating below both limits.
+    """True where the object's root is translating below ``lin_vel_limit``, and rotating below
+    ``ang_vel_limit`` where one is given.
 
     Placed means settled. Without this a gate passes on the pass-through frame of an object that
     is still moving through the target region.
     """
     asset: RigidObject = env.scene[asset_cfg.name]
-    slow = asset.data.root_lin_vel_w.norm(dim=-1) < lin_vel_limit
-    steady = asset.data.root_ang_vel_w.norm(dim=-1) < ang_vel_limit
-    return slow & steady
+    at_rest = asset.data.root_lin_vel_w.norm(dim=-1) < lin_vel_limit
+    if ang_vel_limit is not None:
+        at_rest = at_rest & (asset.data.root_ang_vel_w.norm(dim=-1) < ang_vel_limit)
+    return at_rest
 
 
 def object_released(

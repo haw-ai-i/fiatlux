@@ -34,7 +34,6 @@ from ..scene_cfg import (
 from ..subtask_env_cfg import FALL_MIN_HEIGHT, FALL_TILT_LIMIT, SubtaskEventCfg
 from ..subtask_tiers.carrying import add_bulb_crush_gate
 from ..subtask_tiers.place import (
-    AT_REST_ANG_VEL_LIMIT,
     AT_REST_LIN_VEL_LIMIT,
     PLACE_SUSTAIN_SECONDS,
     RELEASE_FORCE_THRESHOLD_N,
@@ -48,11 +47,7 @@ OLD_BULB_DISPOSED_CONJUNCTS = [
     (place_terms.old_bulb_in_bin, {}),
     (
         place_terms.object_at_rest,
-        {
-            "asset_cfg": SceneEntityCfg("old_bulb"),
-            "lin_vel_limit": AT_REST_LIN_VEL_LIMIT,
-            "ang_vel_limit": AT_REST_ANG_VEL_LIMIT,
-        },
+        {"asset_cfg": SceneEntityCfg("old_bulb"), "lin_vel_limit": AT_REST_LIN_VEL_LIMIT},
     ),
     (
         place_terms.object_released,
