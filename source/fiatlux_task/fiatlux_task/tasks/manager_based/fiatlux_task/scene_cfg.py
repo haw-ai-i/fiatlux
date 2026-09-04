@@ -390,6 +390,18 @@ def _spawn_bulb_socket_filtered(prim_path, cfg, translation=None, orientation=No
     time it is ``FREE``. The cost is that a free bulb passes through the fixture instead of
     bumping it. Scoring does not care -- every bulb channel reads the state machine, which still
     gates engagement on alignment, depth and orientation.
+
+    "The old bulb has left the socket by the time it is FREE" needs the attachment manager's
+    contact bounds to be true. The 2026-09-01 sessions (PR #128) showed a hand crushing a locked
+    bulb could unwind the lock through solver noise and eject the bulb at up to 5.6 m/s -- FREE
+    while still inside the fixture, sailing through this filter with nothing to stop it. The
+    ``position_slack`` / ``max_twist_rate`` / ``max_axial_rate`` bounds in ``mdp.bulb_attachment``
+    close the gap: ``position_slack`` removes the force ratchet that drove the pop-out, so contact
+    no longer pumps an unbounded spin into a seated bulb, and ``max_axial_rate`` caps the eject
+    handoff so a bulb that does leave is handed to physics at hand speed, exiting along the
+    channel. It is a large quantitative margin, not a proof: a sustained contact spin above
+    ``max_twist_rate`` would still unwind the lock, so the filter's safety rests on that force
+    ratchet staying dead, which the 2026-09-01 protocol's crush case is the validation for.
     """
     from pxr import Sdf, UsdPhysics
 
@@ -502,9 +514,7 @@ def _make_bulb_cfg(prim_path: str, pos: Vec3, rot: Quat | None = None, *, kinema
             activate_contact_sensors=True,
         ),
         init_state=(
-            RigidObjectCfg.InitialStateCfg(pos=pos)
-            if rot is None
-            else RigidObjectCfg.InitialStateCfg(pos=pos, rot=rot)
+            RigidObjectCfg.InitialStateCfg(pos=pos) if rot is None else RigidObjectCfg.InitialStateCfg(pos=pos, rot=rot)
         ),
     )
 
