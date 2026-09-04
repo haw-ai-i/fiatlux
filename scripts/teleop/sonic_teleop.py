@@ -804,12 +804,13 @@ def main():  # noqa: C901  (one long orchestration: env setup + settle/resettle 
 
     # PRE-GRASP init-state (#125): spawn the bulb already grasped instead of open-palm->close (whose
     # grip-close transient flings the wide bulb at the top). Hold a real grasp end-state through the
-    # settle -- right-hand fingers at their stalled-at-surface angles + bulb at its captured
+    # settle -- right-hand fingers at their settled grasp angles + bulb at its captured
     # wrist-relative seat -- then release: no fling, and it still lets go when opened (no jam).
-    # Pairs with the gentle finger effort in g1.py. FIATLUX_SETTLE_CARRY=0 disables it.
+    # Inspire also pairs with the gentle finger effort in g1.py. FIATLUX_SETTLE_CARRY=0 disables it.
     _settle_mode = os.environ.get("FIATLUX_SETTLE_CARRY", "pregrasp").lower()
-    _pregrasp_on = _settle_mode == "pregrasp" and _right_starts_closed and _payload_name is not None
-    _PREGRASP_JOINTS = {
+    # Per-hand pre-grasp end-state: finger angles + bulb pose relative to the wrist, each baked from
+    # a settled genuine grasp (inspire from the #125 dump; dex3 from a held S05 carry take).
+    _PREGRASP_INSPIRE = {
         "R_index_proximal_joint": 0.13,
         "R_index_intermediate_joint": 1.46,
         "R_middle_proximal_joint": 0.23,
@@ -823,8 +824,31 @@ def main():  # noqa: C901  (one long orchestration: env setup + settle/resettle 
         "R_thumb_intermediate_joint": 0.26,
         "R_thumb_distal_joint": 1.19,
     }
-    _PREGRASP_REL_POS = torch.tensor([[0.1587, 0.0227, -0.1215]], device=dev)
-    _PREGRASP_REL_QUAT = torch.tensor([[0.6748, -0.0549, 0.0751, 0.7322]], device=dev)  # wxyz
+    _PREGRASP_DEX3 = {
+        "right_hand_index_0_joint": 0.615,
+        "right_hand_index_1_joint": 1.058,
+        "right_hand_middle_0_joint": 0.759,
+        "right_hand_middle_1_joint": 1.226,
+        "right_hand_thumb_0_joint": -0.642,
+        "right_hand_thumb_1_joint": 0.285,
+        "right_hand_thumb_2_joint": -0.830,
+    }
+    _PREGRASP_REL = {
+        "inspire": ([0.1587, 0.0227, -0.1215], [0.6748, -0.0549, 0.0751, 0.7322]),  # rel pos, quat wxyz
+        "dex3": ([0.1021, 0.0239, -0.1334], [0.6536, -0.0622, 0.0843, 0.7496]),
+    }
+    _hand = args.hand.lower()
+    _PREGRASP_JOINTS = _PREGRASP_INSPIRE if _hand == "inspire" else _PREGRASP_DEX3 if _hand == "dex3" else {}
+    _pregrasp_on = (
+        _settle_mode == "pregrasp"
+        and _right_starts_closed
+        and _payload_name is not None
+        and bool(_PREGRASP_JOINTS)
+        and all(n in robot.joint_names for n in _PREGRASP_JOINTS)
+    )
+    _rp, _rq = _PREGRASP_REL.get(_hand, ([0.0, 0.0, 0.0], [1.0, 0.0, 0.0, 0.0]))
+    _PREGRASP_REL_POS = torch.tensor([_rp], device=dev)
+    _PREGRASP_REL_QUAT = torch.tensor([_rq], device=dev)  # wxyz
     if _pregrasp_on:
         _pregrasp_fidx = [robot.joint_names.index(n) for n in _PREGRASP_JOINTS]
         _pregrasp_fval = torch.tensor([[_PREGRASP_JOINTS[n] for n in _PREGRASP_JOINTS]], device=dev)
