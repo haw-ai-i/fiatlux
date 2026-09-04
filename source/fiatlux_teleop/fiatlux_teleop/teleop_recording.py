@@ -382,7 +382,7 @@ class TeleopTrajectoryRecorder(TrajectoryRecorder):
         # mdp.gates.sustained uses, then LATCHES -- scripts/score.py reads success_term on the
         # episode's LAST step, and without the latch a demo that achieved the task and kept going
         # would score 0.
-        if self._gate_need and _gate:
+        if self._gate_need:
             _all_true = all(bool(v.reshape(-1)[0]) for v in _gate.values())
             self._gate_hold = self._gate_hold + 1 if _all_true else 0
             if self._gate_hold >= self._gate_need:

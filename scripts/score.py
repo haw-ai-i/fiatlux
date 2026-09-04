@@ -144,9 +144,9 @@ def episode_gate_progress(ep: dict[str, np.ndarray]) -> float | None:
     reported as missing rather than as a zero.
     """
     cols = gate_columns(ep)
-    if not cols:
+    if not cols or len(np.asarray(ep[cols[0]])) == 0:
         return None
-    counts = np.sum([np.asarray(ep[c]).astype(bool).reshape(len(ep[c])) for c in cols], axis=0)
+    counts = np.sum([np.asarray(ep[c]).astype(bool).reshape(-1) for c in cols], axis=0)
     n, at_reset = len(cols), float(counts[0])
     if at_reset >= n:
         return 1.0
@@ -244,7 +244,9 @@ def score_bag(
 
 def _subtask_score(task: str | None, success_rate: float, gate_progress: float) -> tuple[float, float] | None:
     """``(score, difficulty weight)`` for a subtask id, or ``None`` for anything else."""
-    sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "source" / "fiatlux_task"))
+    pkg = str(Path(__file__).resolve().parents[1] / "source" / "fiatlux_task")
+    if pkg not in sys.path:
+        sys.path.insert(0, pkg)
     try:
         from fiatlux_task.subtask_score import subtask_score, subtask_weight
 

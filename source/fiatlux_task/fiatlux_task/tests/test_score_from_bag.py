@@ -95,6 +95,38 @@ def test_bag_score_carries_the_gym_id_and_the_weighted_subtask_score(score):
     assert out["subtask_weight"] == pytest.approx(1.8)
 
 
+def test_an_empty_episode_reports_missing_not_zero(score):
+    """A bag can carry the gate columns and an episode with no rows in them; reading a baseline
+    off row 0 there is an IndexError, and reporting 0.0 would be a claim about nothing."""
+    assert score.episode_gate_progress({"gate_a": np.zeros((0,), dtype=bool)}) is None
+
+
+def test_multi_dimensional_gate_columns_are_flattened(score):
+    """Columns arrive from the bag with whatever singleton dims the writer left on them."""
+    ep = {"gate_a": np.array([[False], [True]]), "gate_b": np.array([[False], [True]])}
+    assert score.episode_gate_progress(ep) == 1.0
+
+
+def test_a_teleop_bag_scores_as_the_subtask_it_is_a_take_of(score):
+    """fiatlux_teleop registers a twin per subtask and a teleop bag records the twin's id, which
+    the difficulty weights are not keyed on."""
+    episodes = [{"success_term": np.array([True]), "gate_a": np.array([False, True])}]
+    out = score.score_bag(episodes, {"task_id": "FIATLUX-S06-DisposeBulb-Teleop-v0"}, score.ScoreConfig())
+    assert out["subtask_score"] == 1.0
+    assert out["subtask_weight"] == pytest.approx(1.8)
+
+
+def test_scoring_two_bags_does_not_grow_sys_path(score):
+    """score.py resolves fiatlux_task by path; a batch driver scoring many bags in one process
+    must not append a duplicate entry per bag."""
+    meta = {"task_id": "FIATLUX-S06-DisposeBulb-v0"}
+    episodes = [{"success_term": np.array([True]), "gate_a": np.array([True])}]
+    score.score_bag(episodes, meta, score.ScoreConfig())
+    before = list(sys.path)
+    score.score_bag(episodes, meta, score.ScoreConfig())
+    assert sys.path == before
+
+
 def test_a_bag_from_a_non_subtask_gets_no_subtask_score(score):
     episodes = [{"success_term": np.array([True]), "gate_a": np.array([True])}]
     out = score.score_bag(episodes, {"task_id": "FIATLUX-Replace-v0"}, score.ScoreConfig())

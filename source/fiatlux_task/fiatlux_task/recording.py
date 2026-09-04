@@ -62,11 +62,24 @@ def _np(t: torch.Tensor) -> np.ndarray:
 
 
 def _tracked_object_names(env) -> list[str]:
-    """Every rigid object worth recording, or the cfg's curated ``record_objects`` list."""
+    """Every rigid object worth recording, or the cfg's curated ``record_objects`` list.
+
+    Rigid objects only: the columns here are a root pose and its two velocities, which is what a
+    ``RigidObject`` exposes. An articulation or a sensor named in ``record_objects`` has no such
+    single root state, so it is dropped -- but said out loud, because a silently missing column
+    reads offline as an object that never moved.
+    """
     declared = getattr(getattr(env, "cfg", None), "record_objects", None)
     rigid = getattr(env.scene, "rigid_objects", {})
     names = list(declared) if declared is not None else list(rigid.keys())
-    return [n for n in names if n in rigid]
+    tracked = [n for n in names if n in rigid]
+    missing = [n for n in names if n not in rigid]
+    if missing:
+        print(
+            f"[recording] WARNING: record_objects names not rigid objects, not recorded: {', '.join(missing)}",
+            flush=True,
+        )
+    return tracked
 
 
 def _gym_task_id(env) -> str | None:
@@ -135,11 +148,9 @@ class TrajectoryRecorder:
         # bulb -- but fixing it needs the task to DECLARE its manipuland, which is #76 Step 3.
         self._bulb_entity = "fresh_bulb" if "fresh_bulb" in env.scene.rigid_objects else "old_bulb"
 
-        # Ladder + grip channels (issue #107, issue #106). Both are optional: the tabletop
-        # presets build no ladder, and only the legs that hold something wire ``grip_contact``.
-        # Resolved once for the same reason the bulb is -- a key that appeared midway through the
-        # run would give the buffers ragged lengths.
-        self._ladder_entity = "ladder" if "ladder" in env.scene.rigid_objects else None
+        # The grip channel (issue #106), optional: only the legs that hold something wire
+        # ``grip_contact``. Resolved once for the same reason the bulb is -- a key that appeared
+        # midway through the run would give the buffers ragged lengths.
         self._grip_sensor = "grip_contact" if "grip_contact" in env.scene.sensors else None
 
         # EVERY rigid object, not one guessed bulb. The `_bulb_entity` heuristic above cannot
@@ -147,6 +158,10 @@ class TrajectoryRecorder:
         # was about the other one; and the crate every disposal gate reads was absent entirely.
         # An env cfg may curate the list with a `record_objects` tuple.
         self._tracked_objects = _tracked_object_names(env)
+        # Only when `record_objects` curated it out: otherwise `object_state_fields` writes it.
+        self._ladder_entity = (
+            "ladder" if "ladder" in env.scene.rigid_objects and "ladder" not in self._tracked_objects else None
+        )
         # The success gate's conjuncts, so `gate_progress` -- half of a subtask's score -- can be
         # recomputed offline instead of only existing inside a live reward manager.
         self._gate_conjuncts, self._gate_seconds = self._resolve_gate(env)
@@ -204,24 +219,34 @@ class TrajectoryRecorder:
         in ``__init__``; and a column that came and went would give the per-episode buffers
         ragged lengths. A conjunct that cannot be evaluated is dropped, loudly, rather than
         recorded as a silent False that would read offline as a condition genuinely unmet.
+
+        A task that declared a gate and could evaluate NONE of it raises: the alternative is a run
+        that records happily and turns out to be unscoreable only once it is over.
         """
-        if not self._gate_resolved:
-            self._gate_resolved = True
-            usable, dropped = [], []
-            for fn, params in self._gate_conjuncts:
-                try:
-                    fn(self.env, **(params or {}))
-                    usable.append((fn, params))
-                except Exception as e:  # noqa: BLE001
-                    dropped.append(f"{getattr(fn, '__name__', 'conjunct')} ({e})")
-            if dropped:
-                print(f"[recording] WARNING: gate conjuncts not recordable: {', '.join(dropped)}", flush=True)
-            self._gate_conjuncts = usable
-            self._meta["gate_conjuncts"] = [getattr(fn, "__name__", "conjunct") for fn, _ in usable]
-        return {
-            f"gate_{getattr(fn, '__name__', 'conjunct')}": fn(self.env, **(params or {}))
-            for fn, params in self._gate_conjuncts
-        }
+        if self._gate_resolved:
+            return {
+                f"gate_{getattr(fn, '__name__', 'conjunct')}": fn(self.env, **(params or {}))
+                for fn, params in self._gate_conjuncts
+            }
+
+        self._gate_resolved = True
+        had_conjuncts = bool(self._gate_conjuncts)
+        usable, dropped = [], []
+        for fn, params in self._gate_conjuncts:
+            try:
+                usable.append((fn, params, fn(self.env, **(params or {}))))
+            except Exception as e:  # noqa: BLE001
+                dropped.append(f"{getattr(fn, '__name__', 'conjunct')} ({e})")
+        if dropped:
+            print(f"[recording] WARNING: gate conjuncts not recordable: {', '.join(dropped)}", flush=True)
+        if had_conjuncts and not usable:
+            raise RuntimeError(
+                "every success-gate conjunct failed to evaluate, so this run can record no gate "
+                f"columns and cannot be scored: {'; '.join(dropped)}"
+            )
+        self._gate_conjuncts = [(fn, params) for fn, params, _ in usable]
+        self._meta["gate_conjuncts"] = [getattr(fn, "__name__", "conjunct") for fn, _, _ in usable]
+        return {f"gate_{getattr(fn, '__name__', 'conjunct')}": value for fn, _, value in usable}
 
     def world_state_fields(self) -> dict:
         """Root pose/velocity channels every task shares (issue #107).
@@ -229,7 +254,9 @@ class TrajectoryRecorder:
         The robot's root pose and the ladder's were both missing from the bag, which left an S01
         evaluation with none of the quantities its success conditions are written in -- every one
         of them is about where the ladder ended up. The joint vector alone does not give it: a
-        floating-base robot's root pose is not derivable from ``joint_pos``.
+        floating-base robot's root pose is not derivable from ``joint_pos``. The ladder block
+        stands in only for a run whose ``record_objects`` curated the ladder out of
+        ``object_state_fields``, which otherwise writes the same four columns.
 
         ``grip_force`` is the ladder-or-payload grip channel (issue #106). The shared
         ``hand_contact`` sensor filters the bulbs the preset built, so on a ladder leg it reads a
