@@ -348,6 +348,46 @@ def main():  # noqa: C901  (one long orchestration: env setup + settle/resettle 
             flush=True,
         )
 
+    # Inspire thumb-fix asset (teleop only): the stock thumb frame leans over the palm and buries
+    # itself in a held bulb; the wrapper USD (scripts/omniverse/inspire_thumb_frame.py) re-authors
+    # it to stand off and grasp cleanly. On by default for Inspire, resolved dynamically so any
+    # machine works: local copy, else GCS, else regenerate in-process. Explicit
+    # FIATLUX_TELEOP_ROBOT_USD wins; fall back to the stock hand only if all three fail.
+    if args.hand == "inspire" and not os.environ.get("FIATLUX_TELEOP_ROBOT_USD"):
+        from fiatlux_task.assets import FIATLUX_ASSETS_DIR, G1_USD
+
+        _tf = G1_USD[: -len(".usd")] + "_thumbfix.usd"
+        if not os.path.isfile(_tf) and os.path.isfile(G1_USD):
+            _gcs = "gs://fiatlux/assets/" + os.path.relpath(_tf, FIATLUX_ASSETS_DIR)
+            print(f"[sonic] Inspire thumb-fix asset missing locally; trying GCS: {_gcs}", flush=True)
+            try:
+                import subprocess
+
+                subprocess.run(["gsutil", "-q", "cp", _gcs, _tf], check=True, timeout=180)
+                print("[sonic] fetched the thumb-fix asset from GCS.", flush=True)
+            except Exception as _e:  # noqa: BLE001
+                print(f"[sonic] GCS fetch unavailable ({_e}); regenerating the thumb-fix asset...", flush=True)
+                try:
+                    import importlib.util
+
+                    _gp = os.path.join(
+                        os.path.dirname(os.path.abspath(__file__)), "..", "omniverse", "inspire_thumb_frame.py"
+                    )
+                    _spec = importlib.util.spec_from_file_location("inspire_thumb_frame", _gp)
+                    _gen = importlib.util.module_from_spec(_spec)
+                    _spec.loader.exec_module(_gen)  # module-level `from pxr import ...` is fine post-Kit
+                    _gen.generate_thumbfix(G1_USD, _tf)
+                    print("[sonic] regenerated the thumb-fix asset locally.", flush=True)
+                except Exception as _e2:  # noqa: BLE001
+                    print(
+                        f"[sonic] WARNING: could not obtain the Inspire thumb-fix asset ({_e2}); using the "
+                        "STOCK thumb -- a held bulb will show thumb interpenetration.",
+                        flush=True,
+                    )
+        if os.path.isfile(_tf):
+            os.environ["FIATLUX_TELEOP_ROBOT_USD"] = _tf
+            print(f"[sonic] Inspire thumb-fix asset active: {_tf}", flush=True)
+
     env_cfg = parse_env_cfg(args.task, device=args.device, num_envs=args.num_envs)
     if not isinstance(env_cfg, ManagerBasedRLEnvCfg):
         raise ValueError("expected a ManagerBasedRLEnv task")
@@ -762,6 +802,47 @@ def main():  # noqa: C901  (one long orchestration: env setup + settle/resettle 
         env.scene.write_data_to_sim()
         env.sim.forward()
 
+    # PRE-GRASP init-state (#125): spawn the bulb already grasped instead of open-palm->close (whose
+    # grip-close transient flings the wide bulb at the top). Hold a real grasp end-state through the
+    # settle -- right-hand fingers at their stalled-at-surface angles + bulb at its captured
+    # wrist-relative seat -- then release: no fling, and it still lets go when opened (no jam).
+    # Pairs with the gentle finger effort in g1.py. FIATLUX_SETTLE_CARRY=0 disables it.
+    _settle_mode = os.environ.get("FIATLUX_SETTLE_CARRY", "pregrasp").lower()
+    _pregrasp_on = _settle_mode == "pregrasp" and _right_starts_closed and _payload_name is not None
+    _PREGRASP_JOINTS = {
+        "R_index_proximal_joint": 0.13,
+        "R_index_intermediate_joint": 1.46,
+        "R_middle_proximal_joint": 0.23,
+        "R_middle_intermediate_joint": 1.46,
+        "R_ring_proximal_joint": 0.42,
+        "R_ring_intermediate_joint": 1.46,
+        "R_pinky_proximal_joint": 0.49,
+        "R_pinky_intermediate_joint": 1.47,
+        "R_thumb_proximal_yaw_joint": 1.16,
+        "R_thumb_proximal_pitch_joint": 0.16,
+        "R_thumb_intermediate_joint": 0.26,
+        "R_thumb_distal_joint": 1.19,
+    }
+    _PREGRASP_REL_POS = torch.tensor([[0.1587, 0.0227, -0.1215]], device=dev)
+    _PREGRASP_REL_QUAT = torch.tensor([[0.6748, -0.0549, 0.0751, 0.7322]], device=dev)  # wxyz
+    if _pregrasp_on:
+        _pregrasp_fidx = [robot.joint_names.index(n) for n in _PREGRASP_JOINTS]
+        _pregrasp_fval = torch.tensor([[_PREGRASP_JOINTS[n] for n in _PREGRASP_JOINTS]], device=dev)
+
+    def _pin_settle_bulb():
+        """Hold the pre-grasp end-state (right-hand fingers + bulb seat) through a settle step, so the
+        grasp starts already formed -- no open->close fling, no penetration jam. No-op unless on."""
+        if not _pregrasp_on:
+            return
+        payload = env.scene[_payload_name]
+        robot.write_joint_state_to_sim(_pregrasp_fval, torch.zeros_like(_pregrasp_fval), joint_ids=_pregrasp_fidx)
+        ee = robot.data.body_state_w[:, _ee_bid, 0:7]
+        p_new, q_new = combine_frame_transforms(ee[:, 0:3], ee[:, 3:7], _PREGRASP_REL_POS, _PREGRASP_REL_QUAT)
+        payload.write_root_pose_to_sim(torch.cat([p_new, q_new], dim=-1))
+        payload.write_root_velocity_to_sim(torch.zeros((env.num_envs, 6), device=dev))
+        env.scene.write_data_to_sim()
+        env.sim.forward()
+
     def rest_arm_action():
         parts = []
         for ee_name in ("right_wrist_yaw_link", "left_wrist_yaw_link"):
@@ -1023,6 +1104,7 @@ def main():  # noqa: C901  (one long orchestration: env setup + settle/resettle 
         robot.write_root_pose_to_sim(pin_pose)  # hold base upright while feet plant
         robot.write_root_velocity_to_sim(zero_vel)
         _settle_step(rest_arm_action().repeat(env.num_envs, 1))
+        _pin_settle_bulb()  # carry the seated bulb through the grip-close transient
     robot.write_root_pose_to_sim(pin_pose)  # final: level + still, then release to SONIC
     robot.write_root_velocity_to_sim(zero_vel)
     obs_hist = collections.deque([build_obs()] * HIST_LEN, maxlen=HIST_LEN)  # warm history w/ real state
@@ -1036,6 +1118,7 @@ def main():  # noqa: C901  (one long orchestration: env setup + settle/resettle 
         leg_target = torch.as_tensor(last_action * ACTION_SCALE + DEFAULT_15, device=dev)
         robot.set_joint_position_target(leg_target.unsqueeze(0), joint_ids=act_idx)
         _settle_step(rest_arm_action().repeat(env.num_envs, 1))
+        _pin_settle_bulb()  # keep carrying through SONIC settle-in, released after this loop
     spawn_root = robot.data.root_state_w[:, 0:7].clone()  # centered pose = re-home + hold target
     home_xy = spawn_root[0, 0:2].cpu().numpy().copy()
     # Capture the hold-arms IK target ONCE, now, after the settle -- re-solving it every main-loop
@@ -1376,11 +1459,13 @@ def main():  # noqa: C901  (one long orchestration: env setup + settle/resettle 
             robot.write_root_velocity_to_sim(zv)
 
         _carry_payload(_rehome_writes)  # joints AND root move the wrist: the payload rides along
+        # Reset re-settles like startup, so re-apply the pre-grasp here too (else [R]/RESET drops the bulb).
         for _ in range(40):  # pin level while feet plant
             robot.set_joint_position_target(ld, joint_ids=act_idx)
             robot.write_root_pose_to_sim(pin)
             robot.write_root_velocity_to_sim(zv)
             env.step(rest_arm_action().repeat(env.num_envs, 1))  # re-read (like startup): symmetric elbows
+            _pin_settle_bulb()  # carry the re-seated bulb through the grip-close transient
         robot.write_root_pose_to_sim(pin)
         robot.write_root_velocity_to_sim(zv)
         obs_hist = collections.deque([build_obs()] * HIST_LEN, maxlen=HIST_LEN)  # warm w/ real state
@@ -1394,6 +1479,7 @@ def main():  # noqa: C901  (one long orchestration: env setup + settle/resettle 
             lt = torch.as_tensor(last_action * ACTION_SCALE + DEFAULT_15, device=dev)
             robot.set_joint_position_target(lt.unsqueeze(0), joint_ids=act_idx)
             env.step(rest_arm_action().repeat(env.num_envs, 1))  # re-read (like startup): symmetric elbows
+            _pin_settle_bulb()  # keep carrying through the re-settle, released after this loop
         home_xy = robot.data.root_pos_w[0, 0:2].cpu().numpy().copy()  # hold where it actually stands
         last_arm = rest_arm
 
@@ -1401,6 +1487,15 @@ def main():  # noqa: C901  (one long orchestration: env setup + settle/resettle 
 
     n_walk = 6
     vr_rec_prev = False  # rising-edge detect for the VR record-toggle button
+    # Grasp-validity test hooks (default off): at FIATLUX_ROTATE_AT roll the right wrist
+    # FIATLUX_ROTATE_DEG (90) about world FIATLUX_ROTATE_AXIS (x), then at FIATLUX_UNGRASP_AT open the
+    # hand. A real grasp drops the bulb; one "held" by interpenetration stays stuck (false positive).
+    _ungrasp_at = int(os.environ["FIATLUX_UNGRASP_AT"]) if os.environ.get("FIATLUX_UNGRASP_AT") else None
+    _ungrasped = [False]
+    _rotate_at = int(os.environ["FIATLUX_ROTATE_AT"]) if os.environ.get("FIATLUX_ROTATE_AT") else None
+    _rotate_deg = float(os.environ.get("FIATLUX_ROTATE_DEG", "90"))
+    _rotate_axis = os.environ.get("FIATLUX_ROTATE_AXIS", "x")
+    _rotated = [False]
     step_i = 0
     while simulation_app.is_running():
         try:
@@ -1544,6 +1639,28 @@ def main():  # noqa: C901  (one long orchestration: env setup + settle/resettle 
                     kb_drain()
                     if kb["quit"]:
                         break
+                    if _rotate_at is not None and step_i >= _rotate_at and not _rotated[0]:
+                        from scipy.spatial.transform import Rotation as _RotK  # keyboard-path (VR imports its own)
+
+                        _q = kb["R_ee"][3:7].detach().cpu().numpy()  # w, x, y, z
+                        _Rc = _RotK.from_quat([_q[1], _q[2], _q[3], _q[0]])
+                        _Rn = _RotK.from_euler(_rotate_axis, _rotate_deg, degrees=True) * _Rc  # world-frame roll
+                        _nq = _Rn.as_quat()  # x, y, z, w
+                        kb["R_ee"][3:7] = torch.tensor(
+                            [_nq[3], _nq[0], _nq[1], _nq[2]], device=dev, dtype=kb["R_ee"].dtype
+                        )
+                        _rotated[0] = True
+                        print(
+                            f"[sonic] ROTATE hand {_rotate_deg:.0f} deg about world-{_rotate_axis} at step {step_i}",
+                            flush=True,
+                        )
+                    if _ungrasp_at is not None and step_i >= _ungrasp_at and not _ungrasped[0]:
+                        kb["R_grip_open"] = True  # open the hand: a real grasp drops the bulb now
+                        _ungrasped[0] = True
+                        print(
+                            f"[sonic] AUTO-UNGRASP step {step_i}: hand OPEN (bulb should fall if gripped)",
+                            flush=True,
+                        )
                     last_arm = kb_arm_action()
 
                 # Position hold: SONIC is a velocity policy with no position feedback, so cmd=0 slowly

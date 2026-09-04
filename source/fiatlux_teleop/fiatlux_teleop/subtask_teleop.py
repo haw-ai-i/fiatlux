@@ -86,7 +86,12 @@ _IK = DifferentialIKControllerCfg(
     ik_method="dls",
     # heavier DLS damping so the arm relaxes to a natural rest instead of holding the elbow
     # tucked at 90 deg (matches Insert/Carry teleop)
-    ik_params={"lambda_val": 0.05},
+    #
+    # IK damping (lambda). With a fixed EE target the arm still drifts -- the extra DOF of the
+    # 7-DOF arm lets the shoulder wander (up to ~2 rad) as SONIC sways the torso. A higher lambda
+    # damps that drift so the arm holds its pose, without writing joint state (which tipped the
+    # robot, #126). 0.05 is the operator default; FIATLUX_ARM_IK_LAMBDA raises it for hands-off.
+    ik_params={"lambda_val": float(os.environ.get("FIATLUX_ARM_IK_LAMBDA", "0.05"))},
 )
 
 
