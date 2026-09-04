@@ -97,39 +97,76 @@ def test_a_task_with_no_gate_records_no_columns(recording):
     assert recording.TrajectoryRecorder.gate_fields(stub) == {}
 
 
+class _Data:
+    def __init__(self, root):
+        if root:
+            self.root_pos_w = object()
+
+
+class _Entity:
+    def __init__(self, root=True):
+        self.data = _Data(root)
+
+
+class _Sensor:
+    """A contact sensor: it has ``.data``, but nothing with a root pose on it."""
+
+    def __init__(self):
+        self.data = _Data(False)
+
+
+class _Prop:
+    """An AssetBaseCfg entity, which lands in ``scene.extras`` as an XformPrimView."""
+
+
 class _Scene:
-    def __init__(self, rigid):
-        self.rigid_objects = {name: object() for name in rigid}
+    def __init__(self, rigid, articulations=(), sensors=(), extras=()):
+        self.rigid_objects = {n: _Entity() for n in rigid}
+        self.articulations = {n: _Entity() for n in articulations}
+        self.sensors = {n: _Sensor() for n in sensors}
+        self.extras = {n: _Prop() for n in extras}
+
+    def __getitem__(self, key):
+        for family in (self.articulations, self.rigid_objects, self.sensors, self.extras):
+            if key in family:
+                return family[key]
+        raise KeyError(key)
+
+
+class _SensorScene(_Scene):
+    def __init__(self, rigid, sensors):
+        super().__init__(rigid, sensors=sensors)
 
 
 class _Env:
-    def __init__(self, rigid, declared=None):
-        self.scene = _Scene(rigid)
+    def __init__(self, scene, declared=None):
+        self.scene = scene
         self.cfg = types.SimpleNamespace()
         if declared is not None:
             self.cfg.record_objects = declared
 
 
 def test_every_rigid_object_is_tracked_by_default(recording):
-    env = _Env(["old_bulb", "fresh_bulb", "ladder"])
-    assert recording._tracked_object_names(env) == ["old_bulb", "fresh_bulb", "ladder"]
+    """The default deliberately does not sweep in the articulations: the robot's root state and
+    joints already have their own columns, and recording it here would write them twice."""
+    scene = _Scene(["old_bulb", "fresh_bulb", "ladder"], articulations=["robot"])
+    assert recording._tracked_object_names(_Env(scene)) == ["old_bulb", "fresh_bulb", "ladder"]
 
 
-def test_a_curated_list_that_names_a_non_rigid_object_says_so(recording, capsys):
+def test_a_curated_list_may_name_an_articulation(recording):
+    """The columns are a root pose and its two velocities, which an Articulation serves as well as
+    a RigidObject does. Rigidity is not the thing being asked about."""
+    scene = _Scene(["old_bulb"], articulations=["robot"])
+    assert recording._tracked_object_names(_Env(scene, declared=["robot", "old_bulb"])) == ["robot", "old_bulb"]
+
+
+def test_a_curated_name_with_no_root_pose_is_skipped_and_said_out_loud(recording, capsys):
     """A silently missing column reads offline as an object that never moved."""
-    env = _Env(["old_bulb"], declared=["old_bulb", "robot"])
+    scene = _Scene(["old_bulb"], sensors=["hand_contact"], extras=["fixture"])
+    env = _Env(scene, declared=["old_bulb", "hand_contact", "fixture", "nonesuch"])
     assert recording._tracked_object_names(env) == ["old_bulb"]
-    assert "robot" in capsys.readouterr().out
-
-
-class _Sensor:
-    pass
-
-
-class _SensorScene(_Scene):
-    def __init__(self, rigid, sensors):
-        super().__init__(rigid)
-        self.sensors = {name: _Sensor() for name in sensors}
+    warning = capsys.readouterr().out
+    assert "hand_contact" in warning and "fixture" in warning and "nonesuch" in warning
 
 
 def test_every_contact_sensor_without_a_named_column_is_discovered(recording):

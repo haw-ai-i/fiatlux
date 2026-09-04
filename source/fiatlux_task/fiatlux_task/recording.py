@@ -64,20 +64,33 @@ def _np(t: torch.Tensor) -> np.ndarray:
 def _tracked_object_names(env) -> list[str]:
     """Every rigid object worth recording, or the cfg's curated ``record_objects`` list.
 
-    Rigid objects only: the columns are a root pose and its two velocities, which is what a
-    ``RigidObject`` exposes. A name that is not one is dropped, with a warning -- a silently
-    missing column reads offline as an object that never moved.
+    A curated name is kept when the entity it resolves to has a root pose, which is what the
+    columns here are: ``root_pos_w``, ``root_quat_w`` and the two velocities. Articulations serve
+    those as well as rigid objects do. Contact sensors, ``AssetBaseCfg`` props (an
+    ``XformPrimView`` under ``scene.extras``, with no ``.data``) and object collections do not,
+    and are skipped with a warning -- a silently missing column reads offline as an object that
+    never moved.
+
+    The default stays every RIGID object. Sweeping in the articulations would record the robot
+    here as well, whose root state and joints already have their own columns.
     """
     declared = getattr(getattr(env, "cfg", None), "record_objects", None)
-    rigid = getattr(env.scene, "rigid_objects", {})
-    names = list(declared) if declared is not None else list(rigid.keys())
-    tracked = [n for n in names if n in rigid]
-    missing = [n for n in names if n not in rigid]
-    if missing:
-        print(
-            f"[recording] WARNING: record_objects names not rigid objects, not recorded: {', '.join(missing)}",
-            flush=True,
-        )
+    if declared is None:
+        return list(getattr(env.scene, "rigid_objects", {}).keys())
+
+    tracked, skipped = [], []
+    for name in declared:
+        try:
+            entity = env.scene[name]
+        except KeyError:
+            skipped.append(f"{name} (not in the scene)")
+            continue
+        if hasattr(getattr(entity, "data", None), "root_pos_w"):
+            tracked.append(name)
+        else:
+            skipped.append(f"{name} ({type(entity).__name__} has no root pose)")
+    if skipped:
+        print(f"[recording] WARNING: record_objects entries not recorded: {', '.join(skipped)}", flush=True)
     return tracked
 
 
