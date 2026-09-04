@@ -58,7 +58,7 @@ from ..subtask_env_cfg import (
     SubtaskRewardsCfg,
     SubtaskTerminationsCfg,
 )
-from ..subtask_tiers.carrying import add_bulb_crush_gate
+from ..subtask_tiers.carrying import add_bulb_crush_gate, add_bulb_impact_gate
 
 # The success gate as data (mdp.all_of): an omitted conjunct in a hand-written conjunction is a
 # gate that passes vacuously.
@@ -155,6 +155,7 @@ class S09CarryBulbToLadderEnvCfg(NavigateSubtaskCfg):
         }
         add_grip_contact_sensor(self.scene, self.scene.fresh_bulb.prim_path)
         add_bulb_crush_gate(self)
+        add_bulb_impact_gate(self)
         add_ego_camera(self.scene)
         add_mid360_lidar(self.scene)
         frame_viewer_between(self.viewer, self.scene.robot.init_state.pos, self.scene.ladder.init_state.pos)
