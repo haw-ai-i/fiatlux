@@ -46,7 +46,7 @@ from ..scene_cfg import (
     stand_robot_near,
 )
 from ..subtask_env_cfg import ARRIVAL_FACING_TOLERANCE, ARRIVAL_MAX_SPEED, NavigateSubtaskCfg, SubtaskEventCfg
-from ..subtask_tiers.carrying import add_bulb_crush_gate
+from ..subtask_tiers.carrying import add_bulb_crush_gate, add_bulb_impact_gate
 
 # The success gate as data (mdp.all_of). Without the grip conjunct a thrown bulb that skids into
 # the crate's radius would score.
@@ -135,6 +135,7 @@ class S05CarryBulbToDisposalEnvCfg(NavigateSubtaskCfg):
         }
         add_grip_contact_sensor(self.scene, self.scene.old_bulb.prim_path)
         add_bulb_crush_gate(self)
+        add_bulb_impact_gate(self)
         add_ego_camera(self.scene)
         add_mid360_lidar(self.scene)
         frame_viewer_on(self.viewer, self.scene.robot.init_state.pos)
