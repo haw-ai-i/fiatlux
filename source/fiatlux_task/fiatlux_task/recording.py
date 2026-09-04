@@ -186,10 +186,6 @@ class TrajectoryRecorder:
         # was about the other one; and the crate every disposal gate reads was absent entirely.
         # An env cfg may curate the list with a `record_objects` tuple.
         self._tracked_objects = _tracked_object_names(env)
-        # Only when `record_objects` curated it out: otherwise `object_state_fields` writes it.
-        self._ladder_entity = (
-            "ladder" if "ladder" in env.scene.rigid_objects and "ladder" not in self._tracked_objects else None
-        )
         # The success gate's conjuncts, so `gate_progress` -- half of a subtask's score -- can be
         # recomputed offline instead of only existing inside a live reward manager.
         self._gate_conjuncts, self._gate_seconds = self._resolve_gate(env)
@@ -220,7 +216,7 @@ class TrajectoryRecorder:
 
     # -- capture ---------------------------------------------------------------
     def object_state_fields(self) -> dict:
-        """Pose and both velocities for every tracked rigid object.
+        """Pose and both velocities for every tracked object.
 
         Angular velocity as well as linear: ``place_terms.object_at_rest`` gates on both, so
         without it an object that is still rocking reads as settled offline while the live gate
@@ -285,12 +281,11 @@ class TrajectoryRecorder:
     def world_state_fields(self) -> dict:
         """Root pose/velocity channels every task shares (issue #107).
 
-        The robot's root pose and the ladder's were both missing from the bag, which left an S01
-        evaluation with none of the quantities its success conditions are written in -- every one
-        of them is about where the ladder ended up. The joint vector alone does not give it: a
-        floating-base robot's root pose is not derivable from ``joint_pos``. The ladder block
-        stands in only for a run whose ``record_objects`` curated the ladder out; otherwise
-        ``object_state_fields`` writes those four columns.
+        The robot's root pose was missing from the bag, which left an S01 evaluation short of the
+        quantities its success conditions are written in. The joint vector alone does not give it:
+        a floating-base robot's root pose is not derivable from ``joint_pos``. The ladder is not
+        here -- it is an ordinary tracked object, and ``object_state_fields`` writes it under the
+        same four names.
 
         ``grip_force`` is the ladder-or-payload grip channel (issue #106). The shared
         ``hand_contact`` sensor filters the bulbs the preset built, so on a ladder leg it reads a
@@ -306,16 +301,6 @@ class TrajectoryRecorder:
             "robot_root_lin_vel": robot.data.root_lin_vel_w,
             "robot_root_ang_vel": robot.data.root_ang_vel_w,
         }
-        if self._ladder_entity is not None:
-            ladder = env.scene[self._ladder_entity]
-            fields.update(
-                {
-                    "ladder_pos": ladder.data.root_pos_w,
-                    "ladder_quat": ladder.data.root_quat_w,
-                    "ladder_lin_vel": ladder.data.root_lin_vel_w,
-                    "ladder_ang_vel": ladder.data.root_ang_vel_w,
-                }
-            )
         if self._grip_sensor is not None:
             fields["grip_force"] = _obs.object_contact_forces(env.scene.sensors[self._grip_sensor])
         return fields
