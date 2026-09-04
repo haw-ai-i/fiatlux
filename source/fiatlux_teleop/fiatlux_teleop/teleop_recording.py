@@ -303,15 +303,6 @@ class TeleopTrajectoryRecorder(TrajectoryRecorder):
             )
         else:
             print("[teleop_recording] WARNING: no success gate found -- takes cannot score", flush=True)
-        _sensors = getattr(env.scene, "sensors", {})
-        # EVERY contact sensor, discovered rather than listed. A hardcoded list missed
-        # `release_contact` (S06's object_released gate) -- the same failure mode as hardcoding
-        # bulb+socket and losing the ladder. The two hand sensors are excluded because each has
-        # its own named column: hand_contact as `contact_force`, and left_hand_contact as
-        # `contact_force_left` (#89) -- discovering them here too would write one sensor twice.
-        self._extra_contacts = [
-            s for s in _sensors if s.endswith("_contact") and s not in ("hand_contact", "left_hand_contact")
-        ]
 
     def _resolve_gate(self, env) -> tuple[list, float]:
         """The gate the driver stashed, falling back to the live ``success`` term.
@@ -389,11 +380,7 @@ class TeleopTrajectoryRecorder(TrajectoryRecorder):
                 self._gate_fired = True
             step["success_term"] = np.full((self.n,), self._gate_fired, dtype=bool)
         step.update(self.object_state_fields())
-        # The gates read grip_contact (payload_held) and grasp_contact (hand_bodies_in_contact,
-        # grasp_force_within); hand_contact alone is filtered to the Bulb prim, so on a ladder task
-        # it reads a flat zero and tells you nothing about whether the ladder was actually held.
-        for _sname in self._extra_contacts:
-            step[f"{_sname}_force"] = _rec._obs.object_contact_forces(env.scene.sensors[_sname])
+        step.update(self.contact_fields())
         if self._has_contact:
             step["contact_force"] = _rec._obs.object_contact_forces(env.scene.sensors["hand_contact"])
         if self._has_left_contact:

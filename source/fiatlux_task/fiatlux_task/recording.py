@@ -64,10 +64,9 @@ def _np(t: torch.Tensor) -> np.ndarray:
 def _tracked_object_names(env) -> list[str]:
     """Every rigid object worth recording, or the cfg's curated ``record_objects`` list.
 
-    Rigid objects only: the columns here are a root pose and its two velocities, which is what a
-    ``RigidObject`` exposes. An articulation or a sensor named in ``record_objects`` has no such
-    single root state, so it is dropped -- but said out loud, because a silently missing column
-    reads offline as an object that never moved.
+    Rigid objects only: the columns are a root pose and its two velocities, which is what a
+    ``RigidObject`` exposes. A name that is not one is dropped, with a warning -- a silently
+    missing column reads offline as an object that never moved.
     """
     declared = getattr(getattr(env, "cfg", None), "record_objects", None)
     rigid = getattr(env.scene, "rigid_objects", {})
@@ -80,6 +79,21 @@ def _tracked_object_names(env) -> list[str]:
             flush=True,
         )
     return tracked
+
+
+# Each of these has a named column of its own: hand_contact as ``contact_force``,
+# left_hand_contact as ``contact_force_left`` (#89), grip_contact as ``grip_force`` (#106).
+_NAMED_CONTACT_SENSORS = ("hand_contact", "left_hand_contact", "grip_contact")
+
+
+def _extra_contact_names(env) -> list[str]:
+    """Every contact sensor that has no named column of its own, discovered rather than listed.
+
+    ``release_contact`` and ``grasp_contact`` are read by the disposal and grasp success
+    conditions; their columns are what says which condition stayed unmet.
+    """
+    sensors = getattr(env.scene, "sensors", {})
+    return [s for s in sensors if s.endswith("_contact") and s not in _NAMED_CONTACT_SENSORS]
 
 
 def _gym_task_id(env) -> str | None:
@@ -152,6 +166,7 @@ class TrajectoryRecorder:
         # ``grip_contact``. Resolved once for the same reason the bulb is -- a key that appeared
         # midway through the run would give the buffers ragged lengths.
         self._grip_sensor = "grip_contact" if "grip_contact" in env.scene.sensors else None
+        self._extra_contacts = _extra_contact_names(env)
 
         # EVERY rigid object, not one guessed bulb. The `_bulb_entity` heuristic above cannot
         # disambiguate a two-bulb scene, so S06-S09's bags recorded a parked bulb while the task
@@ -207,6 +222,12 @@ class TrajectoryRecorder:
             fields[f"{name}_ang_vel"] = obj.data.root_ang_vel_w
         return fields
 
+    def contact_fields(self) -> dict:
+        """One ``<sensor>_force`` column per contact sensor that has no named column of its own."""
+        return {
+            f"{name}_force": _obs.object_contact_forces(self.env.scene.sensors[name]) for name in self._extra_contacts
+        }
+
     def gate_fields(self) -> dict:
         """One column per success-gate conjunct, evaluated live.
 
@@ -220,8 +241,8 @@ class TrajectoryRecorder:
         ragged lengths. A conjunct that cannot be evaluated is dropped, loudly, rather than
         recorded as a silent False that would read offline as a condition genuinely unmet.
 
-        A task that declared a gate and could evaluate NONE of it raises: the alternative is a run
-        that records happily and turns out to be unscoreable only once it is over.
+        A task that declared a gate and can evaluate none of it raises rather than recording a run
+        that turns out to be unscoreable only once it is over.
         """
         if self._gate_resolved:
             return {
@@ -255,8 +276,8 @@ class TrajectoryRecorder:
         evaluation with none of the quantities its success conditions are written in -- every one
         of them is about where the ladder ended up. The joint vector alone does not give it: a
         floating-base robot's root pose is not derivable from ``joint_pos``. The ladder block
-        stands in only for a run whose ``record_objects`` curated the ladder out of
-        ``object_state_fields``, which otherwise writes the same four columns.
+        stands in only for a run whose ``record_objects`` curated the ladder out; otherwise
+        ``object_state_fields`` writes those four columns.
 
         ``grip_force`` is the ladder-or-payload grip channel (issue #106). The shared
         ``hand_contact`` sensor filters the bulbs the preset built, so on a ladder leg it reads a
@@ -332,6 +353,7 @@ class TrajectoryRecorder:
         }
         step.update(self.world_state_fields())
         step.update(self.object_state_fields())
+        step.update(self.contact_fields())
         step.update(self.gate_fields())
         # Bayonet lock state (issue #77). Only tasks that wire mdp.bulb_attachment have it.
         if self._attachment is not None:

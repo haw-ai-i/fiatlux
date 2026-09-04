@@ -120,3 +120,29 @@ def test_a_curated_list_that_names_a_non_rigid_object_says_so(recording, capsys)
     env = _Env(["old_bulb"], declared=["old_bulb", "robot"])
     assert recording._tracked_object_names(env) == ["old_bulb"]
     assert "robot" in capsys.readouterr().out
+
+
+class _Sensor:
+    pass
+
+
+class _SensorScene(_Scene):
+    def __init__(self, rigid, sensors):
+        super().__init__(rigid)
+        self.sensors = {name: _Sensor() for name in sensors}
+
+
+def test_every_contact_sensor_without_a_named_column_is_discovered(recording):
+    """The disposal and grasp gates read release_contact and grasp_contact. Their columns say WHY
+    a gate stayed shut, and a hardcoded list left them out of policy bags entirely. The three that
+    have a named column of their own are excluded, so no sensor is written twice."""
+    env = types.SimpleNamespace(
+        scene=_SensorScene(
+            [], ["hand_contact", "left_hand_contact", "grip_contact", "grasp_contact", "release_contact"]
+        )
+    )
+    assert recording._extra_contact_names(env) == ["grasp_contact", "release_contact"]
+
+
+def test_a_scene_with_no_sensors_records_no_extra_contact_columns(recording):
+    assert recording._extra_contact_names(types.SimpleNamespace(scene=_Scene([]))) == []
