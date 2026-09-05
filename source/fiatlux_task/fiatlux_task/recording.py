@@ -207,6 +207,9 @@ class TrajectoryRecorder:
         # was about the other one; and the crate every disposal gate reads was absent entirely.
         # An env cfg may curate the list with a `record_objects` tuple.
         self._tracked_objects = _tracked_object_names(env)
+        # Resolved once, not per step: `env.scene[name]` is a dict/category lookup, and
+        # `object_state_fields` runs on every step of every episode.
+        self._tracked_entities = [(name, env.scene[name]) for name in self._tracked_objects]
         # The success gate's conjuncts, so `gate_progress` -- half of a subtask's score -- can be
         # recomputed offline instead of only existing inside a live reward manager.
         self._gate_conjuncts, self._gate_seconds = self._resolve_gate(env)
@@ -245,8 +248,7 @@ class TrajectoryRecorder:
         stays shut.
         """
         fields: dict = {}
-        for name in self._tracked_objects:
-            obj = self.env.scene[name]
+        for name, obj in self._tracked_entities:
             fields[f"{name}_pos"] = obj.data.root_pos_w
             fields[f"{name}_quat"] = obj.data.root_quat_w
             fields[f"{name}_lin_vel"] = obj.data.root_lin_vel_w
