@@ -38,7 +38,19 @@ HAND_FLAT: dict[str, float] = dict.fromkeys(G1_HAND_JOINTS, 0.0)
 # Finger curl is bounded on both sides: below ~1.0 the bulb slips, at 1.3 the grip exceeds the
 # 50 N break threshold, past 1.4 the closing fingers eject it. The thumb's pitch joint tops out
 # at 0.6 rad.
-ARM_CRADLE: dict[str, float] = {**ARM_PRESS_HOVER, "right_wrist_roll_joint": 1.57}
+#
+# The carry arm mirrors the RESTING left arm (just the wrist rolls palm-up to cradle the bulb) so
+# the payload rides at the torso. The old bench press-hover pose held it extended at chest height,
+# which staged the arm/bulb inside wall fixtures and knocked the settling robot off the ladder (#127).
+ARM_CRADLE: dict[str, float] = {
+    "right_shoulder_pitch_joint": -0.35,
+    "right_shoulder_roll_joint": 0.00,
+    "right_shoulder_yaw_joint": 0.00,
+    "right_elbow_joint": 0.35,
+    "right_wrist_roll_joint": 1.57,
+    "right_wrist_pitch_joint": 0.00,
+    "right_wrist_yaw_joint": 0.00,
+}
 HAND_CRADLE: dict[str, float] = {
     **dict.fromkeys(G1_FINGER_JOINTS, 0.9),
     **dict.fromkeys(G1_THUMB_JOINTS, 0.6),

@@ -16,6 +16,7 @@ it via ``.replace(prim_path=...)`` so the same robot can be reused across tasks.
 """
 
 import inspect
+import os as _os  # override knobs: FIATLUX_FINGER_EFFORT, FIATLUX_FINGER_DAMP (see G1_INSPIRE_CFG).
 
 import isaaclab.sim as sim_utils
 from isaaclab.actuators import ImplicitActuatorCfg
@@ -293,11 +294,16 @@ G1_INSPIRE_CFG = ArticulationCfg(
         ),
         "hands": ImplicitActuatorCfg(
             joint_names_expr=["[LR]_.*_joint"],
-            # Real Inspire fingers produce ~1-2 N.m. A high limit lets a wedged finger's
-            # saturated PD torque catapult the whole robot off furniture.
-            effort_limit_sim=2.0,
-            stiffness=1000.0,
-            damping=15.0,
+            # Real Inspire fingers are current-limited (~1-2 N.m) and stall on contact. A high cap
+            # (2.0) instead drives the finger THROUGH the light 35 g bulb and jams it in the mesh;
+            # 0.5 stalls it at the surface (~12 N grip, holds, releases cleanly). #125. Override
+            # with FIATLUX_FINGER_EFFORT.
+            effort_limit_sim=float(_os.environ.get("FIATLUX_FINGER_EFFORT", "0.5")),
+            # Low gains sized to the hardware (like Dex3, 1.5/0.1): a 1-2 N.m micro actuator can't
+            # realize a stiff position spring, and on these light links a stiff one made every
+            # contact a limit cycle that shook the robot (#125). Damping 1.0 = #125-validated.
+            stiffness=3.0,
+            damping=float(_os.environ.get("FIATLUX_FINGER_DAMP", "1.0")),
         ),
     },
 )
