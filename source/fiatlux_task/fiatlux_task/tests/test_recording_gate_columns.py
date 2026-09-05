@@ -109,6 +109,26 @@ def test_colliding_conjunct_names_are_disambiguated(recording):
     assert row_again == {"gate_object_at_rest_0": True, "gate_object_at_rest_1": False}
 
 
+def test_a_conjunct_that_fails_after_resolution_holds_its_last_value(recording, capsys):
+    """A conjunct that evaluated fine on the probing step but raises on a later one (a transient
+    sensor read, a NaN) must not crash the whole recording -- its column carries the last value
+    it held instead."""
+    calls = {"n": 0}
+
+    def flaky(env, **params):
+        calls["n"] += 1
+        if calls["n"] == 2:
+            raise RuntimeError("sensor not ready")
+        return calls["n"] == 1
+
+    flaky.__name__ = "flaky"
+    stub = _Stub([(flaky, None)])
+    assert recording.TrajectoryRecorder.gate_fields(stub) == {"gate_flaky": True}
+    assert recording.TrajectoryRecorder.gate_fields(stub) == {"gate_flaky": True}
+    warning = capsys.readouterr().out
+    assert "gate_flaky" in warning and "sensor not ready" in warning
+
+
 class _Data:
     def __init__(self, root):
         if root:

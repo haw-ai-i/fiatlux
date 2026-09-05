@@ -274,12 +274,22 @@ class TrajectoryRecorder:
 
         A task that declared a gate and can evaluate none of it raises rather than recording a run
         that turns out to be unscoreable only once it is over.
+
+        A conjunct that evaluated fine on the probing step but raises on some later one (a
+        transient sensor read, a NaN) does not get to take the whole run down with it: its column
+        holds its last known value for that step, and the failure is still printed so it is not
+        silently wrong offline.
         """
         if self._gate_resolved:
-            return {
-                col_name: fn(self.env, **(params or {}))
-                for (fn, params), col_name in zip(self._gate_conjuncts, self._gate_col_names)
-            }
+            row = {}
+            for (fn, params), col_name in zip(self._gate_conjuncts, self._gate_col_names):
+                try:
+                    row[col_name] = self._gate_last_values[col_name] = fn(self.env, **(params or {}))
+                except Exception as e:  # noqa: BLE001
+                    msg = f"gate conjunct {col_name} failed this step ({e}); holding its last value"
+                    print(f"[recording] WARNING: {msg}", flush=True)
+                    row[col_name] = self._gate_last_values[col_name]
+            return row
 
         self._gate_resolved = True
         had_conjuncts = bool(self._gate_conjuncts)
@@ -300,7 +310,8 @@ class TrajectoryRecorder:
         base_names = [getattr(fn, "__name__", "conjunct") for fn, _, _ in usable]
         self._gate_col_names = [f"gate_{n}" for n in _disambiguate_names(base_names)]
         self._meta["gate_conjuncts"] = [n.replace("gate_", "", 1) for n in self._gate_col_names]
-        return {col_name: value for col_name, (_, _, value) in zip(self._gate_col_names, usable)}
+        self._gate_last_values = {col_name: value for col_name, (_, _, value) in zip(self._gate_col_names, usable)}
+        return dict(self._gate_last_values)
 
     def world_state_fields(self) -> dict:
         """Root pose/velocity channels every task shares (issue #107).
