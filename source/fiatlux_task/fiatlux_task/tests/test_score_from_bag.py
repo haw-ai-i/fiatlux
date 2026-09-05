@@ -132,3 +132,18 @@ def test_a_bag_from_a_non_subtask_gets_no_subtask_score(score):
     out = score.score_bag(episodes, {"task_id": "FIATLUX-Replace-v0"}, score.ScoreConfig())
     assert "subtask_score" not in out
     assert out["gate_progress"] == 1.0
+
+
+def test_a_bag_with_no_task_id_or_empty_meta_scores_cleanly(score):
+    """A bag with no task_id or an empty meta dict must score cleanly and not raise AttributeError."""
+    episodes = [{"success_term": np.array([True]), "gate_a": np.array([True])}]
+    out_empty = score.score_bag(episodes, {}, score.ScoreConfig())
+    assert out_empty["task"] is None
+    assert "subtask_score" not in out_empty
+    assert out_empty["gate_progress"] == 1.0
+
+    out_none = score.score_bag(episodes, {"task_id": None}, score.ScoreConfig())
+    assert out_none["task"] is None
+    assert "subtask_score" not in out_none
+    assert out_none["gate_progress"] == 1.0
+

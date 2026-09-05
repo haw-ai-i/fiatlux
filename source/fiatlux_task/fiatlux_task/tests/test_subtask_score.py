@@ -17,6 +17,7 @@ from fiatlux_task.subtask_score import (
     FACTOR_MULTIPLIERS,
     SUBTASK_FACTORS,
     aggregate,
+    base_subtask_id,
     subtask_score,
     subtask_weight,
     subtask_weights,
@@ -215,3 +216,9 @@ def test_score_subtasks_script_load_results_errors(tmp_path):
     assert score_subtasks.load_results([teleop]) == {
         "FIATLUX-S01-MoveLadder-v0": {"success_rate": 0.5, "gate_progress": 0.5}
     }
+
+
+def test_none_task_id_handled_gracefully():
+    assert base_subtask_id(None) is None
+    with pytest.raises(KeyError):
+        subtask_weight(None)

@@ -244,6 +244,8 @@ def score_bag(
 
 def _subtask_score(task: str | None, success_rate: float, gate_progress: float) -> tuple[float, float] | None:
     """``(score, difficulty weight)`` for a subtask id, or ``None`` for anything else."""
+    if not task:
+        return None
     pkg = str(Path(__file__).resolve().parents[1] / "source" / "fiatlux_task")
     if pkg not in sys.path:
         sys.path.insert(0, pkg)
