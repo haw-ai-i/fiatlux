@@ -36,6 +36,7 @@ from fiatlux_task.subtask_score import (  # noqa: E402
     SUBTASK_FACTORS,
     SUCCESS_SHARE,
     aggregate,
+    base_subtask_id,
     subtask_weights,
 )
 
@@ -52,12 +53,15 @@ def load_results(paths: list[Path]) -> dict[str, dict[str, float]]:
         task = blob.get("task")
         if task is None:
             raise ValueError(f"{f} has no 'task' field; it is not an eval.py result")
+        # A teleop take of a subtask is a take of that subtask, and records the twin's id.
+        task = base_subtask_id(task)
         if task in results:
             raise ValueError(f"{task} appears twice (second: {f}); scoring it once is ambiguous")
-        # A result recorded before partial credit existed carries only the raw per-horizon
-        # value, which is not comparable across subtasks.
-        if "gate_progress" not in blob:
-            raise ValueError(f"{f} ({task}) predates partial credit -- re-run eval.py to score it")
+        # A result recorded before partial credit existed carries only the raw per-horizon value,
+        # which is not comparable across subtasks. A bag recorded after, but with no gate columns
+        # in it, writes the key as null -- also unscoreable, and it has to be caught here too.
+        if blob.get("gate_progress") is None:
+            raise ValueError(f"{f} ({task}) has no partial credit -- re-run eval.py to score it")
         results[task] = {"success_rate": blob["success_rate"], "gate_progress": blob["gate_progress"]}
     return results
 

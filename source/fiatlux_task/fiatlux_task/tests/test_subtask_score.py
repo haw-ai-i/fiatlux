@@ -17,6 +17,7 @@ from fiatlux_task.subtask_score import (
     FACTOR_MULTIPLIERS,
     SUBTASK_FACTORS,
     aggregate,
+    base_subtask_id,
     subtask_score,
     subtask_weight,
     subtask_weights,
@@ -195,5 +196,29 @@ def test_score_subtasks_script_load_results_errors(tmp_path):
 
     no_progress = tmp_path / "no_progress.json"
     no_progress.write_text(json.dumps({"task": "FIATLUX-S01-MoveLadder-v0", "success_rate": 1.0}))
-    with pytest.raises(ValueError, match="predates partial credit"):
+    with pytest.raises(ValueError, match="no partial credit"):
         score_subtasks.load_results([no_progress])
+
+    # A bag with no gate columns writes the key as null. That is as unscoreable as a missing key,
+    # and reaching aggregate() with it would raise TypeError on float(None) instead.
+    null_progress = tmp_path / "null_progress.json"
+    null_progress.write_text(
+        json.dumps({"task": "FIATLUX-S01-MoveLadder-v0", "success_rate": 1.0, "gate_progress": None})
+    )
+    with pytest.raises(ValueError, match="no partial credit"):
+        score_subtasks.load_results([null_progress])
+
+    # A teleop take of a subtask is a take of that subtask, and collides with the policy run.
+    teleop = tmp_path / "teleop.json"
+    teleop.write_text(
+        json.dumps({"task": "FIATLUX-S01-MoveLadder-Teleop-v0", "success_rate": 0.5, "gate_progress": 0.5})
+    )
+    assert score_subtasks.load_results([teleop]) == {
+        "FIATLUX-S01-MoveLadder-v0": {"success_rate": 0.5, "gate_progress": 0.5}
+    }
+
+
+def test_none_task_id_handled_gracefully():
+    assert base_subtask_id(None) is None
+    with pytest.raises(KeyError):
+        subtask_weight(None)
