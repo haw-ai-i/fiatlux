@@ -57,8 +57,12 @@ def _benchmark_version() -> str:
         return "unknown"
 
 
-def _np(t: torch.Tensor) -> np.ndarray:
-    return t.detach().to("cpu").numpy()
+def _np(t: torch.Tensor | np.ndarray) -> np.ndarray:
+    if hasattr(t, "detach"):
+        arr = t.detach().to("cpu").numpy()
+    else:
+        arr = np.asarray(t)
+    return arr.copy()
 
 
 def _tracked_object_names(env) -> list[str]:
