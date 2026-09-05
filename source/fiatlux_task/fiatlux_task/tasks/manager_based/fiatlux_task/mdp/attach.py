@@ -512,33 +512,30 @@ def old_bulb_disposal_distance_pinned(env: ManagerBasedRLEnv) -> torch.Tensor:
     return torch.where(_old_bulb_constrained(env), d_held, d)
 
 
-def old_bulb_dropped_after_release(
-    env: ManagerBasedRLEnv, min_height: float, disposal_threshold: float
-) -> torch.Tensor:
+def old_bulb_dropped_after_release(env: ManagerBasedRLEnv, min_height: float) -> torch.Tensor:
     """Channel-aware ``old_bulb_dropped``: a constrained bulb cannot be "dropped".
 
     Guards the drop penalty/termination against transient displacement before the
     interval event projects the bulb back onto the bayonet channel.
     """
-    return old_bulb_dropped(env, min_height, disposal_threshold) & ~_old_bulb_constrained(env)
+    return old_bulb_dropped(env, min_height) & ~_old_bulb_constrained(env)
 
 
-def old_bulb_disposed_after_release(env: ManagerBasedRLEnv, disposal_threshold: float) -> torch.Tensor:
+def old_bulb_disposed_after_release(env: ManagerBasedRLEnv) -> torch.Tensor:
     """Channel-aware ``old_bulb_disposed``: only a *released* bulb can count as disposed.
 
     The paid-once disposal bonus and the ``success`` predicate read this rather than raw
     ``old_bulb_disposed``: rewards/terminations run before the interval event re-projects
-    a constrained bulb, so a transient shove of a still-guided bulb into the crate radius
+    a constrained bulb, so a transient shove of a still-guided bulb into the crate
     could otherwise latch the payout.
     """
-    return old_bulb_disposed(env, disposal_threshold) & ~_old_bulb_constrained(env)
+    return old_bulb_disposed(env) & ~_old_bulb_constrained(env)
 
 
 def attached_replacement_success(
     env: ManagerBasedRLEnv,
     pos_threshold: float = 0.015,
     ori_threshold: float = 0.2,
-    disposal_threshold: float = 0.25,
 ) -> torch.Tensor:
     """True where the fresh bulb is locked in AND the old bulb is in the disposal crate.
 
@@ -547,4 +544,4 @@ def attached_replacement_success(
     contract (``recording.py`` reads them off the ``success`` term); the bayonet entry
     and projection stages enforce alignment instead.
     """
-    return fresh_bulb_attached(env) & old_bulb_disposed_after_release(env, disposal_threshold)
+    return fresh_bulb_attached(env) & old_bulb_disposed_after_release(env)

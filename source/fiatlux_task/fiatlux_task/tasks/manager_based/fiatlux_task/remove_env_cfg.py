@@ -15,7 +15,7 @@ removal on ``mdp.bulb_attachment`` (issue #54); porting that term here is the re
 work (unification spec Phase 4: a revolute/screw
 joint or a make/break fixed-joint attach gated by rotation, anchored at the lamp's socket
 seat pose). The reward/termination code below is real, not a placeholder -- it is
-Replace's own ``old_bulb_removed`` / ``old_bulb_disposed`` distance channels, parametrized
+Replace's own ``old_bulb_removed`` / ``old_bulb_disposed`` channels, parametrized
 to point at this scene's ``bulb`` entity instead of Replace's ``old_bulb``. A policy can
 solve it today by lifting the bulb out and binning it; what the mechanic would add is the
 requirement to *unscrew* first, which is how Replace now scores the same channels.
@@ -49,7 +49,6 @@ from .scene_cfg import (
 
 BULB_ENTITY = SceneEntityCfg("old_bulb")  # this scene's single, dynamic "old" bulb
 REMOVAL_CLEARANCE = 0.10  # m; plug this far from the seat counts as removed
-DISPOSAL_THRESHOLD = 0.25  # m; within this of the crate origin counts as disposed
 OLD_BULB_DROP_HEIGHT = 0.15  # m; must clear a bulb resting *inside* the floor crate (~0.1)
 
 ##
@@ -188,7 +187,7 @@ class RewardsCfg:
     success_bonus = RewTerm(
         func=mdp.old_bulb_disposed,
         weight=500.0,
-        params={"distance_threshold": DISPOSAL_THRESHOLD, "asset_cfg": BULB_ENTITY},
+        params={"asset_cfg": BULB_ENTITY},
     )
     # -- penalties --
     robot_fall = RewTerm(
@@ -199,7 +198,7 @@ class RewardsCfg:
     bulb_dropped = RewTerm(
         func=mdp.old_bulb_dropped,
         weight=-100.0,
-        params={"min_height": OLD_BULB_DROP_HEIGHT, "disposal_threshold": DISPOSAL_THRESHOLD, "asset_cfg": BULB_ENTITY},
+        params={"min_height": OLD_BULB_DROP_HEIGHT, "asset_cfg": BULB_ENTITY},
     )
     contact_penalty = RewTerm(
         func=mdp.hand_contact_force_l2,
@@ -234,11 +233,11 @@ class TerminationsCfg:
     # removal (Replace's own logic), so only the disposal predicate is checked here.
     success = DoneTerm(
         func=mdp.old_bulb_disposed,
-        params={"distance_threshold": DISPOSAL_THRESHOLD, "asset_cfg": BULB_ENTITY},
+        params={"asset_cfg": BULB_ENTITY},
     )
     bulb_dropped = DoneTerm(
         func=mdp.old_bulb_dropped,
-        params={"min_height": OLD_BULB_DROP_HEIGHT, "disposal_threshold": DISPOSAL_THRESHOLD, "asset_cfg": BULB_ENTITY},
+        params={"min_height": OLD_BULB_DROP_HEIGHT, "asset_cfg": BULB_ENTITY},
     )
     fell_below = DoneTerm(func=mdp.root_height_below_minimum, params={"minimum_height": FALL_MIN_HEIGHT})
     fell_over = DoneTerm(func=mdp.bad_orientation, params={"limit_angle": FALL_TILT_LIMIT})

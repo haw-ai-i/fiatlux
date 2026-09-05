@@ -48,15 +48,11 @@ if TYPE_CHECKING:
 # rotates this by the live quaternion rather than assuming a world direction.
 LADDER_STEP_FACE_LOCAL = (0.0, -1.0, 0.0)
 
-# The crate's interior footprint: its outer footprint (0.60 x 0.40 x 0.17 m, scene_cfg) less one
-# wall. Only the interior footprint discriminates -- a bulb on the rim sits on the wall line.
-CRATE_OUTER_FOOTPRINT = (0.60, 0.40)  # m
-CRATE_RIM_Z = 0.17  # m, the crate's outer height: the rim a bulb could balance on
-CRATE_WALL_THICKNESS = 0.04  # m, PROVISIONAL
-CRATE_INTERIOR_HALF_EXTENT = (
-    CRATE_OUTER_FOOTPRINT[0] / 2.0 - CRATE_WALL_THICKNESS,
-    CRATE_OUTER_FOOTPRINT[1] / 2.0 - CRATE_WALL_THICKNESS,
-)
+CRATE_RIM_Z = 0.17  # m
+# Interior half-extent + floor, measured by ray-casting the crate collision mesh (#131);
+# re-measure if the crate USD changes.
+CRATE_INTERIOR_HALF_EXTENT = (0.2873, 0.1876)  # m; #131
+CRATE_INTERIOR_FLOOR_Z = 0.0074  # m; #131
 # Lowest root z a contained bulb can read, over every orientation: the root sits outside the
 # geometry, so a bulb standing on its cap on the crate's inner floor puts its root BELOW that
 # floor (BULB_STAND_Z_OFFSET), and one balanced on its glass dome lower still. Bounded by the
@@ -73,17 +69,19 @@ def object_at_rest(
     env: ManagerBasedRLEnv,
     asset_cfg: SceneEntityCfg,
     lin_vel_limit: float,
-    ang_vel_limit: float,
+    ang_vel_limit: float | None = None,
 ) -> torch.Tensor:
-    """True where the object's root is translating and rotating below both limits.
+    """True where the object's root is translating below ``lin_vel_limit``, and rotating below
+    ``ang_vel_limit`` where one is given.
 
     Placed means settled. Without this a gate passes on the pass-through frame of an object that
     is still moving through the target region.
     """
     asset: RigidObject = env.scene[asset_cfg.name]
-    slow = asset.data.root_lin_vel_w.norm(dim=-1) < lin_vel_limit
-    steady = asset.data.root_ang_vel_w.norm(dim=-1) < ang_vel_limit
-    return slow & steady
+    at_rest = asset.data.root_lin_vel_w.norm(dim=-1) < lin_vel_limit
+    if ang_vel_limit is not None:
+        at_rest = at_rest & (asset.data.root_ang_vel_w.norm(dim=-1) < ang_vel_limit)
+    return at_rest
 
 
 def object_released(
@@ -186,11 +184,11 @@ def object_in_container(
 
 def old_bulb_in_bin(
     env: ManagerBasedRLEnv,
-    interior_floor_z: float,
+    interior_floor_z: float = CRATE_INTERIOR_FLOOR_Z,
     asset_cfg: SceneEntityCfg = SceneEntityCfg("old_bulb"),
     bin_cfg: SceneEntityCfg = SceneEntityCfg("bin"),
 ) -> torch.Tensor:
-    """``object_in_container`` bound to the old bulb and the disposal crate."""
+    """``object_in_container`` bound to a bulb and the disposal crate."""
     return object_in_container(
         env,
         asset_cfg=asset_cfg,
