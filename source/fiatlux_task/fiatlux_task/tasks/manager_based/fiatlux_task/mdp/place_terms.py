@@ -49,6 +49,8 @@ if TYPE_CHECKING:
 LADDER_STEP_FACE_LOCAL = (0.0, -1.0, 0.0)
 
 CRATE_RIM_Z = 0.17  # m
+# Interior half-extent + floor, measured by ray-casting the crate collision mesh (#131);
+# re-measure if the crate USD changes.
 CRATE_INTERIOR_HALF_EXTENT = (0.2873, 0.1876)  # m; #131
 CRATE_INTERIOR_FLOOR_Z = 0.0074  # m; #131
 # Lowest root z a contained bulb can read, over every orientation: the root sits outside the
