@@ -413,9 +413,12 @@ G1_DEX3_CFG = G1_INSPIRE_CFG.replace(
     spawn=G1_INSPIRE_CFG.spawn.replace(usd_path=G1_DEX3_USD, func=_spawn_g1_dex3_with_filtered_hand_mounts),
     actuators={
         **{k: v for k, v in G1_INSPIRE_CFG.actuators.items() if k != "hands"},
-        # Unitree Dex3 driver gains; torque limits come from the URDF/USD.
+        # Dex3 driver gains. Cap finger effort like the Inspire hand (#125): the USD's own high
+        # torque limit drives the finger into the 35 g bulb (grip-close spikes past the 50 N break),
+        # so cap it to stall at a real ~12 N grip. Override with FIATLUX_FINGER_EFFORT.
         "hands": ImplicitActuatorCfg(
             joint_names_expr=G1_DEX3_FINGER_JOINT_PATTERNS,
+            effort_limit_sim=float(_os.environ.get("FIATLUX_FINGER_EFFORT", "0.1")),
             stiffness=1.5,
             damping=0.1,
         ),
