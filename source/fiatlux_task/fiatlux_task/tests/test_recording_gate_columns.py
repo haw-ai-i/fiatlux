@@ -43,6 +43,7 @@ class _Stub:
         self.env = object()
         self._gate_conjuncts = conjuncts
         self._gate_resolved = False
+        self._gate_col_names = []
         self._meta = {}
 
 
@@ -95,6 +96,17 @@ def test_a_task_with_no_gate_records_no_columns(recording):
     stub = _Stub([])
     assert recording.TrajectoryRecorder.gate_fields(stub) == {}
     assert recording.TrajectoryRecorder.gate_fields(stub) == {}
+
+
+def test_colliding_conjunct_names_are_disambiguated(recording):
+    """If a task declares two conjuncts using the same predicate function, both are recorded
+    with unique indexed column names instead of one overwriting the other."""
+    stub = _Stub([(_conjunct("object_at_rest", value=True), None), (_conjunct("object_at_rest", value=False), None)])
+    row = recording.TrajectoryRecorder.gate_fields(stub)
+    assert row == {"gate_object_at_rest_0": True, "gate_object_at_rest_1": False}
+    assert stub._meta["gate_conjuncts"] == ["object_at_rest_0", "object_at_rest_1"]
+    row_again = recording.TrajectoryRecorder.gate_fields(stub)
+    assert row_again == {"gate_object_at_rest_0": True, "gate_object_at_rest_1": False}
 
 
 class _Data:

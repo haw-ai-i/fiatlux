@@ -65,6 +65,23 @@ def _np(t: torch.Tensor | np.ndarray) -> np.ndarray:
     return arr.copy()
 
 
+def _disambiguate_names(names: list[str]) -> list[str]:
+    """Ensure conjunct names are unique across a gate's predicates."""
+    total: dict[str, int] = {}
+    for n in names:
+        total[n] = total.get(n, 0) + 1
+    counts: dict[str, int] = {}
+    unique: list[str] = []
+    for n in names:
+        if total[n] == 1:
+            unique.append(n)
+        else:
+            idx = counts.get(n, 0)
+            counts[n] = idx + 1
+            unique.append(f"{n}_{idx}")
+    return unique
+
+
 def _tracked_object_names(env) -> list[str]:
     """Every rigid object worth recording, or the cfg's curated ``record_objects`` list.
 
@@ -194,6 +211,7 @@ class TrajectoryRecorder:
         # recomputed offline instead of only existing inside a live reward manager.
         self._gate_conjuncts, self._gate_seconds = self._resolve_gate(env)
         self._gate_resolved = False
+        self._gate_col_names: list[str] = []
 
         self._buf: dict[str, list[np.ndarray]] = {}
         self._meta = self._build_meta(policy_spec=policy_spec, seed=seed, checkpoint=checkpoint, ee_name=ee_names[0])
@@ -259,8 +277,8 @@ class TrajectoryRecorder:
         """
         if self._gate_resolved:
             return {
-                f"gate_{getattr(fn, '__name__', 'conjunct')}": fn(self.env, **(params or {}))
-                for fn, params in self._gate_conjuncts
+                col_name: fn(self.env, **(params or {}))
+                for (fn, params), col_name in zip(self._gate_conjuncts, self._gate_col_names)
             }
 
         self._gate_resolved = True
@@ -279,8 +297,10 @@ class TrajectoryRecorder:
                 f"columns and cannot be scored: {'; '.join(dropped)}"
             )
         self._gate_conjuncts = [(fn, params) for fn, params, _ in usable]
-        self._meta["gate_conjuncts"] = [getattr(fn, "__name__", "conjunct") for fn, _, _ in usable]
-        return {f"gate_{getattr(fn, '__name__', 'conjunct')}": value for fn, _, value in usable}
+        base_names = [getattr(fn, "__name__", "conjunct") for fn, _, _ in usable]
+        self._gate_col_names = [f"gate_{n}" for n in _disambiguate_names(base_names)]
+        self._meta["gate_conjuncts"] = [n.replace("gate_", "", 1) for n in self._gate_col_names]
+        return {col_name: value for col_name, (_, _, value) in zip(self._gate_col_names, usable)}
 
     def world_state_fields(self) -> dict:
         """Root pose/velocity channels every task shares (issue #107).
