@@ -64,7 +64,7 @@ rather than discover it. Two consequences for the implementation:
 ## Terminations
 
 `time_out`, `success=climbed_with_bulb`, `fell_below`, `fell_over`, `ladder_tipped`,
-`bulb_dropped`. `episode_length_s = 30.0` — longer than S02's 20 s; one-handed is slower.
+`bulb_dropped`. `episode_length_s = 120.0`.
 
 ## Reuse
 

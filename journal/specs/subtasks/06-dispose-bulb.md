@@ -54,7 +54,7 @@ as-is; do not re-add a naive height check.
 ## Terminations
 
 `time_out`, `success=old_bulb_disposed_and_released`, `fell_below`, `fell_over`,
-`old_bulb_dropped`. `episode_length_s = 20.0`.
+`old_bulb_dropped`. `episode_length_s = 120.0`.
 
 ## Reuse
 

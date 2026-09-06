@@ -27,6 +27,21 @@ The goal is:
 
 The ladder must not be coupled to the fixture by default. Any ladder-fixture coupling should be an explicit debug or curriculum option only.
 
+### Horizon
+
+Every subtask env runs **120 s**; `FIATLUX-Replace-v0` runs their sum, **1440 s**. Set
+2026-09-05 (issue #136), replacing twelve hand-set per-stage values (435 s in total) and a flat
+40 s on Replace that was shorter than the stages it contains.
+
+Storage, measured on `FIATLUX-Replace-v0` with the recorder attached over 200 steps:
+**12,884 B per step** on disk (29,635 B uncompressed). So a full-length Replace bag is
+**0.93 GB** per episode, 46 GB for the standard 50, and a 120 s subtask bag is 77 MB.
+
+`scripts/eval.py` writes a JSON summary only, so the scored protocol stores no bags. Bags come
+from `scripts/record_run.py` and teleop takes, and reach full length only when an episode runs
+to timeout rather than ending on a failure termination. 94% of each step is `policy_obs`
+(27,920 B) -- narrowing or subsampling that field is worth more than shortening the horizon.
+
 ## Scoring
 
 Scene randomization must not directly improve or worsen score just because objects spawned closer together.

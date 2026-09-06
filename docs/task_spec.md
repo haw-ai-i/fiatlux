@@ -107,8 +107,8 @@ at 1.0). Completion bonuses pay once per episode.
 - **Ladder tipped**: ladder up-axis beyond 0.6 rad from vertical.
 - **Fresh bulb dropped**: below 0.4 m. **Old bulb dropped**: below 0.15 m *and* away
   from the crate (a disposed bulb legitimately rests near the floor inside it).
-- **Timeout**: `episode_length_s = 40 s` (the full approach → ladder → insert → dispose
-  horizon).
+- **Timeout**: `episode_length_s = 1440 s` — the twelve subtask budgets (120 s each) summed.
+  Part of the evaluation protocol (`docs/scoring.md`); a submission may not change it.
 
 ## Randomization
 

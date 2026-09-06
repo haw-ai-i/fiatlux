@@ -133,7 +133,5 @@ class S01MoveLadderEnvCfg(PlaceSubtaskCfg):
         # is indistinguishable from a dead sensor. Filtered to the ladder alone, this column is
         # attributable, and ``recording.py`` writes it into the bag as ``grip_force``.
         add_grip_contact_sensor(self.scene, self.scene.ladder.prim_path)
-        # The three retired horizons summed (20 s approach + 45 s loaded traverse + 20 s
-        # placement), rounded up. PROVISIONAL: no rollout has set it.
-        self.episode_length_s = 90.0
+        self.episode_length_s = 120.0
         frame_viewer_between(self.viewer, self.scene.robot.init_state.pos, self.scene.ladder.init_state.pos)

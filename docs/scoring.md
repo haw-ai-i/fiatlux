@@ -43,6 +43,12 @@ by slamming the bulb in is not a good policy.
 - Report all five metrics, the policy type, and the checkpoint.
 - For learned policies, also report seeds `0,1,2` and their mean ± std.
 
+## Protocol contract
+
+`FIATLUX-Replace-v0` runs `episode_length_s = 1440` and each subtask env runs `120`. A
+submission may not shorten or lengthen either — the horizon caps how long a policy may take,
+so changing it changes what `success_rate` means. Report a run against the horizon it used.
+
 ## Telemetry (Weights & Biases)
 
 The benchmark ships its own logging abstraction (`fiatlux_task.telemetry.ScoreLogger`,
