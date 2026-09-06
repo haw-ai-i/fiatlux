@@ -14,7 +14,9 @@ anywhere, so the stances and success gates read its live pose, not ``LADDER_POSI
 
 ``mdp.bulb_attachment`` is wired here rather than on the mate tier: the old bulb starts locked in
 the inverted fixture on every subtask in this file, and nothing else keeps it from falling out
-under gravity. Only S03 and S11 score against it.
+under gravity. Only S03 and S11 score against it. ``BalanceEventCfg`` is not only for this file's
+own subtasks, though: S01 (Place tier, off-ladder) wires it in too, for the same reason -- its
+socketed old bulb would otherwise fall out at spawn.
 """
 
 import math
