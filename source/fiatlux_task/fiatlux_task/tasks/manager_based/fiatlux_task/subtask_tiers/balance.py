@@ -12,11 +12,13 @@ termination and a penalty in every subtask in this file, and absent from
 ``FIATLUX-Climb-v0``/``FIATLUX-Descend-v0``, which climb a kinematic ladder -- and it can stand
 anywhere, so the stances and success gates read its live pose, not ``LADDER_POSITION``.
 
-``mdp.bulb_attachment`` is wired here rather than on the mate tier: the old bulb starts locked in
-the inverted fixture on every subtask in this file, and nothing else keeps it from falling out
-under gravity. Only S03 and S11 score against it. ``BalanceEventCfg`` is not only for this file's
-own subtasks, though: S01 (Place tier, off-ladder) wires it in too, for the same reason -- its
-socketed old bulb would otherwise fall out at spawn.
+``mdp.bulb_attachment`` is wired here (as ``BulbAttachmentEventCfg``) rather than on the mate
+tier: the old bulb starts locked in the inverted fixture on every subtask in this file, and
+nothing else keeps it from falling out under gravity. Only S03 and S11 score against it.
+``BulbAttachmentEventCfg`` is standalone from the on-the-ladder tier for that reason: S01 (Place
+tier, off-ladder) wires it in too, for the same falling-bulb problem, and must not inherit
+anything this file adds for the ladder. ``BalanceEventCfg`` subclasses it for this file's own
+subtasks, and is where any on-the-ladder-only event term belongs.
 """
 
 import math
@@ -56,8 +58,12 @@ from ..subtask_env_cfg import SubtaskEnvCfg, SubtaskEventCfg, SubtaskRewardsCfg,
 
 
 @configclass
-class BalanceEventCfg(SubtaskEventCfg):
-    """Bayonet channel enforcement, with ``FIATLUX-Replace-v0``'s parameters."""
+class BulbAttachmentEventCfg(SubtaskEventCfg):
+    """Bayonet channel enforcement, with ``FIATLUX-Replace-v0``'s parameters.
+
+    Nothing ladder-specific: S01 (Place tier, off-ladder) wires this in directly, so it must stay
+    usable on its own, without whatever ``BalanceEventCfg`` adds for the on-the-ladder tier.
+    """
 
     bulb_attachment = EventTerm(
         func=mdp.bulb_attachment,
@@ -71,6 +77,11 @@ class BalanceEventCfg(SubtaskEventCfg):
             "tilt_tolerance": BAYONET_ENTRY_TILT,
         },
     )
+
+
+@configclass
+class BalanceEventCfg(BulbAttachmentEventCfg):
+    """``BulbAttachmentEventCfg`` plus whatever the on-the-ladder tier adds for itself."""
 
 
 # Shared by every climb/descend gate in the family.
