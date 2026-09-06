@@ -17,8 +17,9 @@ socket -- never by robot state. Each bulb is in one of three phases per env:
 Install is insert-then-rotate, removal is rotate-then-eject, and the order is
 structural: the two motion regimes are mutually exclusive, so no sequence of pushes
 frees a locked bulb and no fresh bulb counts as installed until it bottomed out and
-turned through the lock angle. The old bulb resets locked (``ROTATING`` at
-``rotation_angle``); the fresh bulb resets ``FREE``.
+turned through the lock angle. Reset phase is read off each bulb's spawned pose
+(``_resolve_spawn_phase``): a bulb standing at the seat comes back ``ROTATING`` at
+``rotation_angle``, anything else comes back ``FREE``.
 
 ``insertion_depth`` and ``rotation_angle`` accept a scalar or a ``(low, high)`` range;
 ranges are re-sampled independently per env at each reset (the domain-randomization
@@ -180,8 +181,6 @@ class bulb_attachment(ManagerTermBase):
         self._entry_twist = torch.zeros(2, n, device=dev)
         self._depth = torch.zeros(n, device=dev)
         self._angle = torch.zeros(n, device=dev)
-        # Envs whose spawn phase has not been read off the scene yet. See _resolve_spawn_phase.
-        self._pending = torch.zeros(n, dtype=torch.bool, device=dev)
         self._axis_l = torch.tensor(SOCKET_SEAT_AXIS, device=dev).expand(n, 3)
         self._seat_offset = torch.tensor(SOCKET_SEAT_OFFSET, device=dev).expand(n, 3)
         self._plug_offset = torch.tensor(BULB_PLUG_OFFSET, device=dev).expand(n, 3)
@@ -221,18 +220,15 @@ class bulb_attachment(ManagerTermBase):
         ids = slice(None) if env_ids is None else env_ids
         _sample_parameter(self._depth, ids, self._insertion_depth_spec, "insertion_depth")
         _sample_parameter(self._angle, ids, self._rotation_angle_spec, "rotation_angle")
-        # Both bulbs reset FREE here and are locked, if they belong locked, by
-        # `_resolve_spawn_phase` on the first step -- see that method for why the decision
-        # cannot be made here, and issue #109 for what hardcoding it cost.
         self._phase[:, ids] = _FREE
         self._theta[:, ids] = 0.0
-        self._pending[ids] = True
         # Both bulbs spawn untwisted relative to the socket (the old bulb's init rot IS
         # the fixture rot), so the first step's twist delta reads as ~0, not as -angle.
         self._prev_twist[:, ids] = 0.0
         # The old bulb spawns AT the socket's rotation, so entry twist zero reproduces the
         # pre-#90 seated pose exactly.
         self._entry_twist[:, ids] = 0.0
+        self._resolve_spawn_phase(env_ids)
 
     def __call__(
         self,
@@ -251,7 +247,6 @@ class bulb_attachment(ManagerTermBase):
         del env_ids, insertion_depth, rotation_angle, rotation_sign
         old_bulb: RigidObject = env.scene["old_bulb"]
         fresh_bulb: RigidObject = env.scene["fresh_bulb"]
-        self._resolve_spawn_phase(env, old_bulb, fresh_bulb)
         self._advance(
             old_bulb,
             _OLD,
@@ -270,13 +265,13 @@ class bulb_attachment(ManagerTermBase):
         )
         self._take_snapshot()
 
-    def _resolve_spawn_phase(self, env: ManagerBasedEnv, old_bulb: RigidObject, fresh_bulb: RigidObject) -> None:
+    def _resolve_spawn_phase(self, env_ids: Sequence[int] | None) -> None:
         """Lock whichever bulb the task actually SPAWNED in the socket, and only that one.
 
-        This used to be hardcoded in ``reset()``: the old bulb always came back ``ROTATING`` and
-        the fresh one always ``FREE``, whatever the task had done with them. A locked bulb does
-        not obey physics -- the projection below writes its pose every step -- so on the legs that
-        run ``park_old_bulb_in_crate`` the machine dragged the old bulb straight back out of the
+        This used to be hardcoded: the old bulb always came back ``ROTATING`` and the fresh one
+        always ``FREE``, whatever the task had done with them. A locked bulb does not obey
+        physics -- the projection writes its pose every step -- so on the legs that run
+        ``park_old_bulb_in_crate`` the machine dragged the old bulb straight back out of the
         crate and pinned it at the seat, measured at 0.000 m from the socket by step 1 having
         started 4.073 m away (issue #109). It also left S12's fresh bulb unconstrained while the
         task requires it seated (issue #108); that only looked fine because the mis-locked old
@@ -285,23 +280,25 @@ class bulb_attachment(ManagerTermBase):
         Reading the phase off the scene instead means the two cannot disagree by construction: a
         preset that moves a bulb has said everything it needs to say.
 
-        Deferred to the first step rather than done in ``reset()`` because the phase depends on
-        the bulb's spawned pose, and the event that restores it (``reset_scene_to_default``) is a
-        sibling reset term -- ordering between them is not ours to rely on. By the first
-        ``__call__`` the scene is settled, and the zero interval guarantees that call happens
-        before anything reads the state.
+        Runs from ``reset``, so the phase is correct for every manager that reads it, including
+        the ones that reset and compute BEFORE the first interval event (issue #143).
         """
-        ids = self._pending.nonzero(as_tuple=False).squeeze(-1)
+        env = self._env
+        ids = (
+            torch.arange(env.num_envs, device=env.device)
+            if env_ids is None
+            else torch.as_tensor(env_ids, dtype=torch.long, device=env.device).reshape(-1)
+        )
         if ids.numel() == 0:
             return
         seat_pos, _ = _seated_bulb_root_pose_w(env)
-        for row, bulb in ((_OLD, old_bulb), (_FRESH, fresh_bulb)):
+        for row, name in ((_OLD, "old_bulb"), (_FRESH, "fresh_bulb")):
+            bulb: RigidObject = env.scene[name]
             at_seat = torch.norm(bulb.data.root_pos_w - seat_pos, dim=1) < _SEATED_SPAWN_TOLERANCE
             lock = ids[at_seat[ids]]
             if lock.numel() > 0:
                 self._phase[row, lock] = _ROTATING
                 self._theta[row, lock] = self._angle[lock]
-        self._pending[ids] = False
 
     def _advance(
         self,
@@ -476,6 +473,16 @@ def fresh_bulb_attached(env: ManagerBasedRLEnv) -> torch.Tensor:
     """
     mgr = _attachment(env)
     return (mgr._phase[_FRESH] == _ROTATING) & (mgr._theta[_FRESH] >= mgr._angle - _EPS)
+
+
+def fresh_bulb_detached(env: ManagerBasedRLEnv) -> torch.Tensor:
+    """The negation of :func:`fresh_bulb_attached`, for a gate that must END if the bulb comes loose.
+
+    The attach-aware replacement for ``bulb_unseated``. A subtask that starts with the bulb
+    already installed measures keeping it there, so leaving the lock is a termination rather
+    than an unmet success conjunct.
+    """
+    return ~fresh_bulb_attached(env)
 
 
 def _old_bulb_constrained(env: ManagerBasedRLEnv) -> torch.Tensor:

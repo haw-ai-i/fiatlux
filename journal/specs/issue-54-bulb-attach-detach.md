@@ -100,9 +100,15 @@ the live pose each step, never stored.
 
 Attachment is derived, not stored:
 
-- `old_bulb_attached` = `phase == ROTATING` (resets there with
-  `theta = rotation_angle` — locked).
+- `old_bulb_attached` = `phase == ROTATING`.
 - `fresh_bulb_attached` = `phase == ROTATING and theta >= rotation_angle`.
+- `fresh_bulb_detached` = its negation, for gates that must END if the bulb comes loose.
+
+Reset phase is read off each bulb's spawned pose (`_resolve_spawn_phase`, issue #109): a bulb
+standing at the seat comes back ROTATING at `theta = rotation_angle`, anything else FREE. This
+runs from `reset()`, not from the first `__call__` — `ManagerBasedRLEnv._reset_idx` resets and
+`step` computes several managers before the first interval event, and a phase that is still FREE
+there makes a detachment termination fire at spawn (issue #143).
 
 Removal is therefore ROTATING → (theta→0) → AXIAL → (travel past depth) → FREE;
 installation is the exact reverse.

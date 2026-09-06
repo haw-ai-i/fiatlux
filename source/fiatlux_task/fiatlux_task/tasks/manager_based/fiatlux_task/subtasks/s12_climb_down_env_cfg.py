@@ -17,6 +17,11 @@ Its success region is the chain's declared terminal state -- there is no success
 The bayonet attach/detach state machine (issue #54, ``mdp.bulb_attachment``) is wired at the
 balance tier (``subtask_tiers.balance.BalanceEventCfg``), retaining the bulb in the inverted fixture
 while the robot descends.
+
+"Still seated" therefore reads the FSM (``mdp.fresh_bulb_attached``), not the geometric
+``mdp.bulb_seated``. The lock holds a seated bulb a quarter turn from the socket's own frame, so a
+full-frame orientation comparison reads a correctly installed bulb as pi/2 off and never seated --
+which terminated every episode at spawn for -200 (issue #143).
 """
 
 from isaaclab.managers import RewardTermCfg as RewTerm
@@ -25,7 +30,6 @@ from isaaclab.utils import configclass
 
 from .. import mdp
 from ..mdp import balance_terms, grasp_terms, place_terms
-from ..replace_env_cfg import SEAT_ORI_THRESHOLD, SEAT_POS_THRESHOLD
 from ..scene_cfg import park_old_bulb_in_crate, seat_bulb_in_fixture
 from ..subtask_env_cfg import FALL_MIN_HEIGHT, FALL_TILT_LIMIT
 from ..subtask_tiers.balance import (
@@ -36,8 +40,6 @@ from ..subtask_tiers.balance import (
     DescendRewardsCfg,
     DescendSubtaskCfg,
 )
-
-_SEATING = {"pos_threshold": SEAT_POS_THRESHOLD, "ori_threshold": SEAT_ORI_THRESHOLD}
 
 # The success gate, as reviewable data (mdp.all_of) rather than a hand-written conjunction --
 # an omitted conjunct here is a gate that passes vacuously.
@@ -50,7 +52,7 @@ DESCENDED_INTACT_CONJUNCTS = [
             "max_speed": LADDER_SUCCESS_MAX_SPEED,
         },
     ),
-    (mdp.bulb_seated, _SEATING),
+    (mdp.fresh_bulb_attached, {}),
     (place_terms.robot_standing, {"minimum_height": FALL_MIN_HEIGHT, "limit_angle": FALL_TILT_LIMIT}),
     (grasp_terms.ladder_near_vertical, {"tilt_limit": mdp.LADDER_TILT_LIMIT}),
 ]
@@ -59,12 +61,12 @@ DESCENDED_INTACT_CONJUNCTS = [
 @configclass
 class S12RewardsCfg(DescendRewardsCfg):
     # Undoing the task's goal costs what destroying its equipment costs (ladder_tipped).
-    bulb_unseated = RewTerm(func=mdp.bulb_unseated, weight=-200.0, params=_SEATING)
+    bulb_unseated = RewTerm(func=mdp.fresh_bulb_detached, weight=-200.0)
 
 
 @configclass
 class S12TerminationsCfg(BalanceTerminationsCfg):
-    bulb_unseated = DoneTerm(func=mdp.bulb_unseated, params=_SEATING)
+    bulb_unseated = DoneTerm(func=mdp.fresh_bulb_detached)
 
 
 @configclass

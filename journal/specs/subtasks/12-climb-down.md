@@ -58,8 +58,8 @@ hardcodes `SUCCESS_XY` from that constant, which describes the default workshop 
 ## Reuse
 
 `descend_height_progress`, `descended_from_ladder` (S04's), `ladder_contact_fraction`,
-`add_ladder_contact_sensor`, `bulb_seated`, `SEAT_POS_THRESHOLD`, `SEAT_ORI_THRESHOLD`,
-`_ladder_top_point_w`, `completion_bonus`. New: `descended_and_bulb_intact`, `bulb_unseated`.
+`add_ladder_contact_sensor`, `fresh_bulb_attached`, `_ladder_top_point_w`, `completion_bonus`.
+New: `descended_and_bulb_intact`, `fresh_bulb_detached`.
 
 Nearly all of it is S04's, minus the payload. The two descend subtasks share
 `descended_from_ladder` and differ only in their gates — the intended shape.
@@ -105,14 +105,22 @@ are unreachable. Author it, validate everything else, and mark the seated condit
 `subtasks/s12_climb_down_env_cfg.py`, on `subtask_tiers.balance.DescendSubtaskCfg`. Constructs.
 
 Shares `balance_terms.descended_from_ladder` with S04 and differs only in the gate, as intended.
-`mdp.bulb_unseated` is the negated seating predicate, added beside `bulb_seated`; it is both the
-termination and the penalty, since `all_of` conjoins and cannot negate.
+`mdp.fresh_bulb_detached` is the negated attachment predicate, added beside
+`fresh_bulb_attached`; it is both the termination and the penalty, since `all_of` conjoins and
+cannot negate. It replaced the geometric `mdp.bulb_unseated` in #143: the bayonet lock holds a
+seated bulb a quarter turn from the socket's frame, which the full-frame orientation comparison
+read as pi/2 of misalignment, so every episode terminated at spawn for -200 on all six layout
+seeds. `mdp.bulb_unseated` is gone; `mdp.bulb_seated` stays for the tasks without the FSM.
 
 Start state composed from `scene_cfg.seat_bulb_in_fixture` (bulb root pose == socket root pose, no
 offset arithmetic at any mount orientation) and `park_old_bulb_in_crate`.
 
 Both hands are free, so the contact bootstrap keeps all four bodies.
 
-Not validated. This start state is the chain's terminal scene and the "what does success look like"
-reference for the whole benchmark, and nobody has rendered it. Blocked on #54: without retention
-the fresh bulb leaves the socket at t=0 and the gate is unreachable.
+Not visually validated. This start state is the chain's terminal scene and the "what does success
+look like" reference for the whole benchmark, and nobody has rendered it.
+
+Gate reachability was verified numerically on 2026-09-05 (#143), layout seeds 1-6, four envs each:
+at reset the fresh bulb resolves to ROTATING at theta = pi/2 and `fresh_bulb_attached` is true;
+`bulb_unseated` fires 0/40 steps over three consecutive episodes; the only success conjunct false
+at the start is `descended_from_ladder`, which is the descent itself.

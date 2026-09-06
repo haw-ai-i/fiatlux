@@ -129,12 +129,18 @@ class gate_progress(ManagerTermBase):
 
     A gate whose conjuncts are all true at reset scores 1.0 and means the episode starts solved --
     a start-state defect, caught by the per-subtask start checks.
+
+    ``true_at_reset`` is sampled on the episode's first ``__call__``, not in ``reset``:
+    ``_reset_idx`` runs ``reward_manager.reset`` BEFORE ``event_manager.reset``, so a conjunct
+    backed by a stateful event term reads the PREVIOUS episode's terminal state there, moving
+    the denominator between episodes (issue #143).
     """
 
     def __init__(self, cfg: RewardTermCfg, env: ManagerBasedRLEnv):
         super().__init__(cfg, env)
         self._at_reset = torch.zeros(env.num_envs, device=env.device)
         self._best = torch.zeros(env.num_envs, device=env.device)
+        self._unsampled = torch.ones(env.num_envs, dtype=torch.bool, device=env.device)
 
     def _count(self, env: ManagerBasedRLEnv) -> torch.Tensor:
         predicates: Sequence[tuple[Callable, dict]] = self.cfg.params["predicates"]
@@ -145,12 +151,16 @@ class gate_progress(ManagerTermBase):
 
     def reset(self, env_ids: Sequence[int] | None = None) -> None:
         ids = slice(None) if env_ids is None else env_ids
-        self._at_reset[ids] = self._count(self._env)[ids]
         self._best[ids] = 0.0
+        self._unsampled[ids] = True
 
     def __call__(self, env: ManagerBasedRLEnv, predicates: Sequence[tuple[Callable, dict]]) -> torch.Tensor:
         n = len(predicates)
-        gained = (self._count(env) - self._at_reset).clamp_min(0.0)
+        count = self._count(env)
+        if bool(self._unsampled.any()):
+            self._at_reset = torch.where(self._unsampled, count, self._at_reset)
+            self._unsampled[:] = False
+        gained = (count - self._at_reset).clamp_min(0.0)
         headroom = (n - self._at_reset).clamp_min(1e-6)
         frac = torch.where(self._at_reset >= n, torch.ones_like(gained), gained / headroom).clamp(0.0, 1.0)
         increment = (frac - self._best).clamp_min(0.0)

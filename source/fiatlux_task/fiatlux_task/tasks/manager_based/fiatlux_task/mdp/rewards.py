@@ -157,21 +157,13 @@ def bulb_seated(
     pos_threshold: float = 0.015,
     ori_threshold: float = 0.2,
 ) -> torch.Tensor:
-    """True where the bulb is within position *and* orientation tolerance of the socket."""
-    return (_bulb_socket_pos_error(env) < pos_threshold) & (_bulb_socket_ori_error(env) < ori_threshold)
+    """True where the bulb is within position *and* orientation tolerance of the socket.
 
-
-def bulb_unseated(
-    env: ManagerBasedRLEnv,
-    pos_threshold: float = 0.015,
-    ori_threshold: float = 0.2,
-) -> torch.Tensor:
-    """The negation of :func:`bulb_seated`, for a gate that must END if the bulb comes loose.
-
-    A subtask that starts with the bulb already installed measures keeping it there, so leaving
-    the socket is a termination rather than an unmet success conjunct.
+    Only for tasks WITHOUT the bayonet FSM (Install, the tabletop bulb envs). ``ori_threshold``
+    is full-frame, so where ``mdp.bulb_attachment`` is wired a correctly locked bulb reads
+    pi/2 off the socket and never seated -- use ``mdp.fresh_bulb_attached`` there (issue #143).
     """
-    return ~bulb_seated(env, pos_threshold, ori_threshold)
+    return (_bulb_socket_pos_error(env) < pos_threshold) & (_bulb_socket_ori_error(env) < ori_threshold)
 
 
 def object_dropped(
