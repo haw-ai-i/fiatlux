@@ -547,14 +547,34 @@ def _remap_binary_commands(term, joint_names: list[str], variant: str) -> None:
     term.open_command_expr, term.close_command_expr = (dict(d) for d in _HAND_COMMANDS[variant][side])
 
 
+def _remap_action_term(term, remap, variant: str) -> None:
+    """Remap one action term's ``joint_names``, and its binary open/close commands if any.
+
+    The binary-command check runs even when ``joint_names`` didn't need remapping (e.g. a
+    wildcard-scoped term): ``open_command_expr``/``close_command_expr`` are keyed by literal
+    joint name regardless of how the term is scoped, so a wildcard-scoped binary hand action
+    still needs its commands checked rather than silently left on the old hand's joints.
+    """
+    if getattr(term, "asset_name", None) != "robot" or not hasattr(term, "joint_names"):
+        return
+    remapped = remap(term.joint_names)
+    if remapped is not None:
+        term.joint_names = remapped
+    if hasattr(term, "open_command_expr") and hasattr(term, "close_command_expr"):
+        _remap_binary_commands(term, remapped if remapped is not None else term.joint_names, variant)
+
+
 def swap_robot_variant(env_cfg, variant: str) -> None:
     """Swap the scene's G1 hand variant in a parsed env cfg, keeping its placement.
 
     Rewrites every joint-name reference this function recognizes -- reward/termination/
     event *and* action *and* observation terms scoped to the Inspire hand's finger
     pattern or literal hand-joint list -- to the target variant's equivalent. A
-    wildcard action term (``joint_names=[".*"]``) needs no rewriting; it resolves
-    against whichever robot is attached.
+    wildcard action term (``joint_names=[".*"]``) needs no ``joint_names`` rewriting; it
+    resolves against whichever robot is attached. A binary action's ``open_command_expr``/
+    ``close_command_expr`` are keyed by literal joint name regardless, so a wildcard-scoped
+    binary hand action is still checked -- ``_remap_binary_commands`` cannot infer which
+    hand it is from ``[".*"]`` and raises rather than leaving it silently unrewritten.
 
     Raises ``ValueError`` if it finds a joint-name list that looks hand-specific (matches
     neither variant's known joint names, but contains a hand-name marker) and isn't in
@@ -633,12 +653,7 @@ def swap_robot_variant(env_cfg, variant: str) -> None:
         for term_name in dir(actions):
             if term_name.startswith("_"):
                 continue
-            term = getattr(actions, term_name)
-            if getattr(term, "asset_name", None) == "robot" and hasattr(term, "joint_names"):
-                remapped = remap(term.joint_names)
-                if remapped is not None:
-                    term.joint_names = remapped
-                    _remap_binary_commands(term, remapped, variant)
+            _remap_action_term(getattr(actions, term_name), remap, variant)
 
     observations = getattr(env_cfg, "observations", None)
     if observations is not None:
