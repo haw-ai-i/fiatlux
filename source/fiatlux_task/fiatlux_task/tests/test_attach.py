@@ -396,3 +396,28 @@ def test_engage_step_records_gate_and_approach_geometry():
     assert abs(row[attach._C_AXIAL].item() - 0.01) < 1e-6
     assert row[attach._C_LATERAL].item() < 1e-6
     assert row[attach._C_TILT].item() < 1e-6
+
+
+def test_theta_credit_is_the_clamped_credit_not_the_applied_motion():
+    """``theta_credit`` records the post-clamp credit; what theta actually does is also subject
+    to phase gating and the [0, angle] saturation (Codex review of PR #164). At the lock stop, a
+    lock-direction twist records a full credit while theta does not move -- the recorded theta
+    channel is the applied side."""
+    env, mgr = _make_env()
+    bulb = env.scene["old_bulb"]
+    _step(mgr, env)  # spawn-resolve: old locks at theta == angle
+    bulb.twist_by(-0.5)  # lock direction (rotation_sign = -1): credit +0.5 raw, +0.24 clamped
+    _step(mgr, env)
+    assert abs(mgr._interaction[OLD, 0, attach._C_CREDIT].item() - MAX_TWIST_STEP) < 1e-6
+    assert abs(mgr._theta[OLD, 0].item() - LOCK_ANGLE) < 1e-6  # saturated: nothing applied
+
+
+def test_telemetry_carries_the_gate_tolerances():
+    """The approach margins are judged against cfg constants; the bag records them so it stays
+    interpretable after the code moves (issue #163)."""
+    env, mgr = _make_env()
+    _step(mgr, env)
+    telemetry = attach.bulb_lock_telemetry(env)
+    assert abs(telemetry["lock_radial_tolerance"][0].item() - 0.015) < 1e-6
+    assert abs(telemetry["lock_tilt_tolerance"][0].item() - 0.2) < 1e-6
+    assert abs(telemetry["lock_seat_tolerance"][0].item() - 0.004) < 1e-6

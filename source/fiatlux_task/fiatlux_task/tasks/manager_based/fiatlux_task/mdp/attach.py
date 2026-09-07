@@ -113,12 +113,14 @@ _EPS = 1e-5
 
 # Per-step bulb-socket interaction channels (issue #163), recorded per bulb through
 # ``bulb_lock_telemetry`` as ``old_bulb_<name>`` / ``fresh_bulb_<name>``. The ``*_raw`` /
-# ``*_written`` pairs are the constraint's reaction: ``raw`` is what the solver produced, read
-# before any write this step; ``written`` is what the projection kept. Their difference, times
-# the bulb's mass (axial) or axial inertia (twist) over ``step_dt``, is the force / torque the
-# virtual socket applied. ``gate`` is the transition that fired this step: 0 none, 1 engage,
-# 2 lock, 3 unlock, 4 eject. Everything here is already computed by ``_advance``; these
-# channels only store it.
+# ``*_written`` pairs bound the constraint's reaction: ``raw`` is what the solver produced,
+# read before any write this step; ``written`` is what the projection kept. Their difference
+# over ``step_dt`` (times mass or axial inertia) is the average force / torque of the VELOCITY
+# overwrite alone -- the pose write's positional pull is a separate, momentum-free correction,
+# recorded as ``slack_correction`` (its rotational analog, the exact re-twist, is small and not
+# force-quantified). ``gate`` is the transition that fired this step: 0 none, 1 engage, 2 lock,
+# 3 unlock, 4 eject. Everything here is already computed by ``_advance``; these channels only
+# store it.
 _INTERACTION_CHANNELS = (
     "axial",  # plug depth along the socket axis (m)
     "lateral",  # plug offset off the axis (m)
@@ -130,7 +132,10 @@ _INTERACTION_CHANNELS = (
     "twist_rate_raw",  # spin about the axis the solver produced (rad/s)
     "twist_rate_written",  # spin the projection kept (rad/s)
     "theta_credit_raw",  # per-step twist credit before the max_twist_rate clamp (rad)
-    "theta_credit",  # the credit after the clamp -- the value that moves theta (rad)
+    # The credit after the rate clamp. theta applies it only while ROTATING (or on the lock
+    # step) and saturates at [0, rotation_angle], so the applied movement can be smaller --
+    # read the recorded theta channel for what actually moved.
+    "theta_credit",
 )
 (
     _C_AXIAL,
@@ -250,11 +255,19 @@ class bulb_attachment(ManagerTermBase):
         # Per-step bulb-socket interaction, one column per _INTERACTION_CHANNELS entry
         # (issue #163). `_advance` overwrites every row each call; nothing accumulates.
         self._interaction = torch.zeros(2, n, len(_INTERACTION_CHANNELS), device=dev)
+        # radial / tilt / seat gate tolerances, stashed by __call__ for the telemetry.
+        self._gate_tolerances = torch.zeros(3, device=dev)
         # Telemetry snapshot, taken at the end of every __call__ and never touched by reset().
         # `ManagerBasedRLEnv.step` runs interval events BEFORE it auto-resets finished
         # episodes, so this holds the state as of the terminating step -- which is what a
         # recorder wants for that row. Reading the live tensors there would report the *next*
         # episode's reset phases and freshly sampled limits instead.
+        #
+        # KNOWN WRONG for auto-reset envs (issue #165): upstream 2.3.2 actually resets done
+        # envs BEFORE the interval event (`step()`: `_reset_idx` at L221, interval events at
+        # L235), so on a done env's terminal row this snapshot already holds next-episode
+        # state. Teleop bags are unaffected -- their episodes do not auto-reset. The fix
+        # (hold reset rows through one snapshot pass) is #165's, not this file revision's.
         self._snapshot = (
             torch.zeros(2, n, device=dev),  # phase, as float
             torch.zeros(2, n, device=dev),  # theta
@@ -327,6 +340,12 @@ class bulb_attachment(ManagerTermBase):
         # still passes every gate, and above the ~2 mm a resting bulb sags per 50 Hz step
         # under gravity, so an unheld bulb is not churned by the clamp.
         del env_ids, insertion_depth, rotation_angle, rotation_sign
+        # Stash the gate tolerances for the telemetry (issue #163): the recorded approach
+        # margins are only interpretable against them, and a bag outlives the code version
+        # that set them -- same reason the sampled angle / depth are recorded.
+        self._gate_tolerances[0] = radial_tolerance
+        self._gate_tolerances[1] = tilt_tolerance
+        self._gate_tolerances[2] = seat_tolerance
         old_bulb: RigidObject = env.scene["old_bulb"]
         fresh_bulb: RigidObject = env.scene["fresh_bulb"]
         self._resolve_spawn_phase(env, old_bulb, fresh_bulb)
@@ -624,13 +643,18 @@ def bulb_lock_telemetry(env: ManagerBasedRLEnv) -> dict[str, torch.Tensor]:
     ``ManagerBasedRLEnv.step`` has auto-reset whichever episodes finished. The live state of a
     done env already belongs to the NEXT episode, so a terminal row would otherwise carry that
     episode's reset phases and newly sampled limits. This is the same hazard ``recording.py``
-    documents for object poses, and the reason it reads termination term flags.
+    documents for object poses, and the reason it reads termination term flags. CAVEAT: on
+    auto-reset envs the snapshot itself is taken too late to protect the terminal row -- see
+    issue #165 and the note on ``_snapshot``. Teleop bags are unaffected.
 
     Also carries the per-step bulb-socket interaction channels (issue #163), one
     ``<bulb>_<name>`` column per ``_INTERACTION_CHANNELS`` entry: the approach geometry the
-    capture gate checks, the transition that fired, and the raw-vs-written rate pairs whose
-    difference is the force / torque the virtual socket applied this step. The ``*_raw`` side
-    exists only here -- the bag's pose and velocity channels store post-projection state.
+    capture gate checks (with the gate tolerances it is judged against), the transition that
+    fired, and the raw-vs-written rate pairs -- what the solver produced vs what the projection
+    kept, whose difference over ``step_dt`` is the average force / torque of the velocity
+    overwrite (the positional pull is ``slack_correction``; see ``_INTERACTION_CHANNELS``).
+    The ``*_raw`` side exists only here -- the bag's pose and velocity channels store
+    post-projection state.
     """
     mgr = _attachment(env)
     phase, theta, angle, depth = mgr._snapshot
@@ -645,6 +669,12 @@ def bulb_lock_telemetry(env: ManagerBasedRLEnv) -> dict[str, torch.Tensor]:
     for row, prefix in ((_OLD, "old_bulb"), (_FRESH, "fresh_bulb")):
         for col, name in enumerate(_INTERACTION_CHANNELS):
             out[f"{prefix}_{name}"] = mgr._interaction_snap[row, :, col]
+    # The gate tolerances the margins are judged against. Constants per task, but a bag
+    # outlives the code version that set them.
+    n = mgr._interaction_snap.shape[1]
+    out["lock_radial_tolerance"] = mgr._gate_tolerances[0].expand(n)
+    out["lock_tilt_tolerance"] = mgr._gate_tolerances[1].expand(n)
+    out["lock_seat_tolerance"] = mgr._gate_tolerances[2].expand(n)
     return out
 
 
