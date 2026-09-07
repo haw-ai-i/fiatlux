@@ -62,6 +62,7 @@ from ..subtask_tiers.place import AT_REST_ANG_VEL_LIMIT, AT_REST_LIN_VEL_LIMIT, 
 
 _BULB = SceneEntityCfg("fresh_bulb")
 _GRIP = SceneEntityCfg("grip_contact")
+_GRIP_LEFT = SceneEntityCfg("grip_contact_left")
 
 # The success gate, as reviewable data (mdp.all_of) rather than a hand-written conjunction --
 # an omitted conjunct here is a gate that passes vacuously.
@@ -71,7 +72,10 @@ BULB_SCREWED_IN_CONJUNCTS = [
         place_terms.object_at_rest,
         {"asset_cfg": _BULB, "lin_vel_limit": AT_REST_LIN_VEL_LIMIT, "ang_vel_limit": AT_REST_ANG_VEL_LIMIT},
     ),
-    (place_terms.object_released, {"sensor_cfg": _GRIP, "force_threshold": RELEASE_FORCE_THRESHOLD_N}),
+    (
+        place_terms.object_released,
+        {"sensor_cfg": _GRIP, "other_sensor_cfg": _GRIP_LEFT, "force_threshold": RELEASE_FORCE_THRESHOLD_N},
+    ),
     (place_terms.robot_standing, {"minimum_height": FALL_MIN_HEIGHT, "limit_angle": FALL_TILT_LIMIT}),
     (grasp_terms.ladder_near_vertical, {"tilt_limit": mdp.LADDER_TILT_LIMIT}),
 ]

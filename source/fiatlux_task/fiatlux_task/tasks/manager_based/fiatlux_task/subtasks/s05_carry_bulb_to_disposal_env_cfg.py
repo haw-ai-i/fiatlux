@@ -53,7 +53,14 @@ OLD_BULB_AT_CRATE_CONJUNCTS = [
     (base_near, {"asset_cfg": SceneEntityCfg("bin"), "xy_radius": DISPOSAL_ARRIVAL_RADIUS}),
     (base_facing, {"asset_cfg": SceneEntityCfg("bin"), "facing_tolerance": ARRIVAL_FACING_TOLERANCE}),
     (base_calm, {"max_speed": ARRIVAL_MAX_SPEED}),
-    (payload_held, {"sensor_cfg": SceneEntityCfg("grip_contact"), "force_threshold": GRIP_FORCE_THRESHOLD_N}),
+    (
+        payload_held,
+        {
+            "sensor_cfg": SceneEntityCfg("grip_contact"),
+            "other_sensor_cfg": SceneEntityCfg("grip_contact_left"),
+            "force_threshold": GRIP_FORCE_THRESHOLD_N,
+        },
+    ),
 ]
 
 

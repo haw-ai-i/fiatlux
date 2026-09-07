@@ -84,20 +84,32 @@ def object_at_rest(
     return at_rest
 
 
+def _peak_filtered_force(env: ManagerBasedRLEnv, sensor_cfg: SceneEntityCfg) -> torch.Tensor:
+    """Largest per-body force magnitude on the sensor's filtered target."""
+    sensor: ContactSensor = env.scene.sensors[sensor_cfg.name]
+    force = sensor.data.force_matrix_w.sum(dim=2)  # (N, B, M, 3) -> (N, B, 3)
+    return force.norm(dim=-1).max(dim=1).values
+
+
 def object_released(
     env: ManagerBasedRLEnv,
     sensor_cfg: SceneEntityCfg,
     force_threshold: float,
+    other_sensor_cfg: SceneEntityCfg | None = None,
 ) -> torch.Tensor:
     """True where no hand body pushes on the sensor's filtered target above ``force_threshold``.
 
     The sensor must filter for exactly ONE prim (the manipulated object) -- summing a multi-target
     filter would let force on some other object mask the release, or the absence of force on it
     fake one.
+
+    With ``other_sensor_cfg``, released means BOTH hands are off it (issue #151): a bulb still
+    gripped by the other hand has not been let go of.
     """
-    sensor: ContactSensor = env.scene.sensors[sensor_cfg.name]
-    force = sensor.data.force_matrix_w.sum(dim=2)  # (N, B, M, 3) -> (N, B, 3)
-    return force.norm(dim=-1).max(dim=1).values < force_threshold
+    peak = _peak_filtered_force(env, sensor_cfg)
+    if other_sensor_cfg is not None:
+        peak = torch.maximum(peak, _peak_filtered_force(env, other_sensor_cfg))
+    return peak < force_threshold
 
 
 def robot_standing(

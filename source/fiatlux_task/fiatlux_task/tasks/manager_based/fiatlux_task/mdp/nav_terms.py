@@ -270,15 +270,37 @@ def add_grip_contact_sensor(scene: G1ReplaceSceneCfg, target_prim_path: str) -> 
         history_length=1,
         track_air_time=False,
     )
+    # Left mirror, so a payload carried in the left hand reads as carried (issue #151).
+    scene.grip_contact_left = ContactSensorCfg(
+        prim_path=scene.left_hand_contact.prim_path,
+        filter_prim_paths_expr=[target_prim_path],
+        history_length=1,
+        track_air_time=False,
+    )
 
 
-def payload_held(env: ManagerBasedRLEnv, sensor_cfg: SceneEntityCfg, force_threshold: float) -> torch.Tensor:
-    """True where some hand body still presses on the sensor's ONE filtered target above
-    ``force_threshold`` -- the positive counterpart of ``place_terms.object_released``.
-    """
+def _peak_filtered_force(env: ManagerBasedRLEnv, sensor_cfg: SceneEntityCfg) -> torch.Tensor:
+    """Largest per-body force magnitude on the sensor's ONE filtered target."""
     sensor: ContactSensor = env.scene.sensors[sensor_cfg.name]
     force = sensor.data.force_matrix_w.sum(dim=2)  # (N, B, M, 3) -> (N, B, 3); M == 1 here
-    return force.norm(dim=-1).max(dim=1).values > force_threshold
+    return force.norm(dim=-1).max(dim=1).values
+
+
+def payload_held(
+    env: ManagerBasedRLEnv,
+    sensor_cfg: SceneEntityCfg,
+    force_threshold: float,
+    other_sensor_cfg: SceneEntityCfg | None = None,
+) -> torch.Tensor:
+    """True where some hand body still presses on the sensor's ONE filtered target above
+    ``force_threshold`` -- the positive counterpart of ``place_terms.object_released``.
+
+    With ``other_sensor_cfg``, carrying it in EITHER hand counts (issue #151).
+    """
+    peak = _peak_filtered_force(env, sensor_cfg)
+    if other_sensor_cfg is not None:
+        peak = torch.maximum(peak, _peak_filtered_force(env, other_sensor_cfg))
+    return peak > force_threshold
 
 
 # ---------------------------------------------------------------------------
