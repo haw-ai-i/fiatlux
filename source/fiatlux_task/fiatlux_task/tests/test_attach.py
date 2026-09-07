@@ -190,8 +190,14 @@ FREE, AXIAL, ROTATING = attach._FREE, attach._AXIAL, attach._ROTATING
 EP06_UNWIND = [0.115, 0.086, 0.167, 0.496, 0.074, 0.144, 0.345, 0.144]
 
 
-def test_reset_seats_the_old_bulb_locked_and_frees_the_fresh():
-    _, mgr = _make_env()
+def test_spawn_resolution_locks_the_seated_bulb_and_frees_the_far_one():
+    """Post-#140 contract: reset leaves both bulbs FREE and *pending*; the first step reads the
+    scene and locks whichever bulb actually spawned at the seat (issues #108/#109). Here the old
+    bulb spawns seated and the fresh one a metre away, so the first call locks exactly the old."""
+    env, mgr = _make_env()
+    assert mgr._phase[OLD, 0] == FREE  # pending until the first step
+    assert mgr._phase[FRESH, 0] == FREE
+    _step(mgr, env)
     assert mgr._phase[OLD, 0] == ROTATING
     assert abs(mgr._theta[OLD, 0].item() - LOCK_ANGLE) < 1e-6
     assert mgr._phase[FRESH, 0] == FREE
@@ -315,6 +321,10 @@ def test_engage_keeps_the_entry_clock_angle():
     """Issue #90's semantics survive the clamps: a bulb engages at whatever twist it arrived
     with, and is not teleported onto the socket's own clock angle."""
     env, mgr = _make_env()
+    # Let the first step resolve the spawn phases (old locks at the seat, fresh is far and
+    # FREE) -- placing the fresh bulb at the mouth BEFORE this step would spawn-lock it
+    # directly to ROTATING (post-#140), bypassing the engage path this test exercises.
+    _step(mgr, env)
     # Empty the socket so the fresh bulb may engage: the old bulb is long gone and FREE.
     # Both must hold -- a FREE bulb parked at the seat would simply re-engage first.
     mgr._phase[OLD, 0] = FREE
