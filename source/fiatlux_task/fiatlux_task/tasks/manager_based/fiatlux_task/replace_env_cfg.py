@@ -79,7 +79,6 @@ from .scene_cfg import (
 
 LADDER_TILT_LIMIT = 0.6  # rad; the ladder stands at 0, real climbing wobble stays well under
 REMOVAL_CLEARANCE = 0.10  # m; old-bulb plug this far from the seat counts as removed
-DISPOSAL_THRESHOLD = 0.25  # m; old bulb within this of the crate origin counts as disposed
 SEAT_POS_THRESHOLD = 0.015  # m; fresh-bulb seating tolerance (Insert's validated values)
 SEAT_ORI_THRESHOLD = 0.2  # rad
 FRESH_BULB_DROP_HEIGHT = 0.4  # m; the fresh bulb's working heights are table (~1.0) and up
@@ -327,10 +326,7 @@ class RewardsCfg:
     old_bulb_disposed = RewTerm(
         func=mdp.completion_bonus,
         weight=250.0,
-        params={
-            "predicate_fn": mdp.old_bulb_disposed_after_release,
-            "predicate_params": {"disposal_threshold": DISPOSAL_THRESHOLD},
-        },
+        params={"predicate_fn": mdp.old_bulb_disposed_after_release},
     )
     # Full success terminates the episode on the same step, so the raw predicate pays once.
     success_bonus = RewTerm(
@@ -339,7 +335,6 @@ class RewardsCfg:
         params={
             "pos_threshold": SEAT_POS_THRESHOLD,
             "ori_threshold": SEAT_ORI_THRESHOLD,
-            "disposal_threshold": DISPOSAL_THRESHOLD,
         },
     )
     # -- penalties (each predicate also terminates, so it fires once; see fall_terminated) --
@@ -357,10 +352,7 @@ class RewardsCfg:
     old_bulb_dropped = RewTerm(
         func=mdp.old_bulb_dropped_after_release,
         weight=-100.0,
-        params={
-            "min_height": OLD_BULB_DROP_HEIGHT,
-            "disposal_threshold": DISPOSAL_THRESHOLD,
-        },
+        params={"min_height": OLD_BULB_DROP_HEIGHT},
     )
     contact_penalty = RewTerm(
         func=mdp.hand_contact_force_l2,
@@ -408,7 +400,7 @@ class TerminationsCfg:
     )
     old_bulb_dropped = DoneTerm(
         func=mdp.old_bulb_dropped_after_release,
-        params={"min_height": OLD_BULB_DROP_HEIGHT, "disposal_threshold": DISPOSAL_THRESHOLD},
+        params={"min_height": OLD_BULB_DROP_HEIGHT},
     )
     # Contract name: recording.py / score.py / eval.py read the `success` term. The pos/ori
     # params stay for the meta.json contract; the attach gate is what enforces them.
@@ -417,7 +409,6 @@ class TerminationsCfg:
         params={
             "pos_threshold": SEAT_POS_THRESHOLD,
             "ori_threshold": SEAT_ORI_THRESHOLD,
-            "disposal_threshold": DISPOSAL_THRESHOLD,
         },
     )
 

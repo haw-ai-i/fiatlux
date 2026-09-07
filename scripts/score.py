@@ -19,15 +19,27 @@ Scoring model (the task is "seat the bulb without violating constraints"):
   - *dropped* -- the bulb fell (recorded drop termination / below min height).
 - Control effort and episode length are **not** scored (reported as diagnostics).
 
+Subtask scoring (the benchmark headline) is derived here too, from the bag's recorded
+``gate_*`` conjunct columns: ``success_rate`` and ``gate_progress``, combined by
+``fiatlux_task.subtask_score``. Those two numbers used to exist only inside a live reward
+manager, which meant the headline score could not be reproduced from a recording. The output
+is shaped so ``scripts/score_subtasks.py`` can read it directly and roll bags up by difficulty
+weight.
+
 Run it with no simulator:
     python scripts/score.py logs/runs/random0
     python scripts/score.py logs/runs/random0 --fragility-threshold 30 --output score.json
+
+    # bags in, weighted benchmark score out -- still no simulator
+    python scripts/score.py logs/runs/s06 --output logs/eval/s06.json
+    python scripts/score_subtasks.py logs/eval/
 """
 
 from __future__ import annotations
 
 import argparse
 import json
+import sys
 from dataclasses import asdict, dataclass
 from pathlib import Path
 
@@ -111,6 +123,36 @@ def _peak_contact_force(ep: dict[str, np.ndarray]) -> float:
     return peak
 
 
+def gate_columns(ep: dict[str, np.ndarray]) -> list[str]:
+    """The episode's success-gate conjunct columns, in a stable order."""
+    return sorted(k for k in ep if k.startswith("gate_"))
+
+
+def episode_gate_progress(ep: dict[str, np.ndarray]) -> float | None:
+    """Partial credit in [0, 1]: how much of the success gate the episode ever held at once.
+
+    The offline twin of ``mdp.gates.gate_progress``, and computed the same way -- the best number
+    of conjuncts simultaneously true, normalized against how many were ALREADY true at the start,
+    because conditions like ``robot_standing`` hold at t=0 on every subtask and would otherwise
+    hand out free credit.
+
+    One documented difference from the live term: it captures its baseline in the reward manager's
+    reset, before the first step, while the bag's first row is after it. A conjunct that flips
+    during step 0 therefore moves this by one conjunct's worth.
+
+    ``None`` when the bag carries no gate columns (recorded before they existed), which is
+    reported as missing rather than as a zero.
+    """
+    cols = gate_columns(ep)
+    if not cols or len(np.asarray(ep[cols[0]])) == 0:
+        return None
+    counts = np.sum([np.asarray(ep[c]).astype(bool).reshape(-1) for c in cols], axis=0)
+    n, at_reset = len(cols), float(counts[0])
+    if at_reset >= n:
+        return 1.0
+    return float(np.clip((float(counts.max()) - at_reset) / (n - at_reset), 0.0, 1.0))
+
+
 def score_episode(ep: dict[str, np.ndarray], cfg: ScoreConfig) -> dict:
     success = ep.get("success_term")
     seated = bool(success[-1]) if success is not None and getattr(success, "size", 0) else False
@@ -144,6 +186,7 @@ def score_episode(ep: dict[str, np.ndarray], cfg: ScoreConfig) -> dict:
         "min_pos_error": min_pos_error,
         "length": length,
         "score": score,
+        "gate_progress": episode_gate_progress(ep),
     }
 
 
@@ -162,8 +205,11 @@ def score_bag(
     clean = sum(
         1 for e in per_ep if e["seated"] and not e["broken"] and not e["dropped"]
     )
-    return {
-        "task": meta.get("task"),
+    # The gym id keys the difficulty weights; meta's `task` is a cfg class name, which does not.
+    task = meta.get("task_id") or meta.get("task")
+    progress = [e["gate_progress"] for e in per_ep if e["gate_progress"] is not None]
+    results = {
+        "task": task,
         "benchmark_version": meta.get("benchmark_version"),
         "policy": meta.get("policy"),
         "seed": meta.get("seed"),
@@ -183,6 +229,32 @@ def score_bag(
         "mean_min_pos_error": mean("min_pos_error"),
         "score_config": asdict(cfg),
     }
+    # Partial credit, and the weighted subtask score it feeds. A bag with no gate columns says
+    # so rather than reporting 0.0 -- "not recorded" and "got nowhere" are different claims.
+    if progress:
+        results["gate_progress"] = float(np.mean(progress))
+        results["gate_conjuncts"] = meta.get("gate_conjuncts")
+        subtask = _subtask_score(task, results["success_rate"], results["gate_progress"])
+        if subtask is not None:
+            results["subtask_score"], results["subtask_weight"] = subtask
+    else:
+        results["gate_progress"] = None
+    return results
+
+
+def _subtask_score(task: str | None, success_rate: float, gate_progress: float) -> tuple[float, float] | None:
+    """``(score, difficulty weight)`` for a subtask id, or ``None`` for anything else."""
+    if not task:
+        return None
+    pkg = str(Path(__file__).resolve().parents[1] / "source" / "fiatlux_task")
+    if pkg not in sys.path:
+        sys.path.insert(0, pkg)
+    try:
+        from fiatlux_task.subtask_score import subtask_score, subtask_weight
+
+        return subtask_score(success_rate, gate_progress), subtask_weight(task)
+    except (ImportError, KeyError):
+        return None
 
 
 def main():

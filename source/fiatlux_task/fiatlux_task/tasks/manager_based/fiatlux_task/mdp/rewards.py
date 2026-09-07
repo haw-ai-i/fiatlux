@@ -59,6 +59,8 @@ from fiatlux_task.assets import (
     STEP_LADDER_TOP_OFFSET,
 )
 
+from .place_terms import old_bulb_in_bin
+
 if TYPE_CHECKING:
     from collections.abc import Callable, Sequence
 
@@ -542,44 +544,41 @@ def old_bulb_removed(
 
 def old_bulb_disposed(
     env: ManagerBasedRLEnv,
-    distance_threshold: float,
     asset_cfg: SceneEntityCfg = SceneEntityCfg("old_bulb"),
     bin_cfg: SceneEntityCfg = SceneEntityCfg("bin"),
 ) -> torch.Tensor:
-    """True where the old bulb rests within ``distance_threshold`` of the disposal crate."""
-    return old_bulb_disposal_distance(env, asset_cfg, bin_cfg) < distance_threshold
+    """True where the old bulb rests inside the disposal crate (#131)."""
+    return old_bulb_in_bin(env, asset_cfg=asset_cfg, bin_cfg=bin_cfg)
 
 
 def old_bulb_dropped(
     env: ManagerBasedRLEnv,
     min_height: float,
-    disposal_threshold: float,
     asset_cfg: SceneEntityCfg = SceneEntityCfg("old_bulb"),
     bin_cfg: SceneEntityCfg = SceneEntityCfg("bin"),
 ) -> torch.Tensor:
-    """True where the old bulb lies at floor level *away* from the disposal crate.
+    """True where the old bulb lies at floor level *outside* the disposal crate.
 
     A plain height gate cannot work here: legitimately disposing the bulb also ends near
     the floor (resting inside the crate), so "dropped" additionally requires being outside
-    the crate's ``disposal_threshold``.
+    the crate.
     """
     old_bulb: RigidObject = env.scene[asset_cfg.name]
     below = old_bulb.data.root_pos_w[:, 2] < min_height
-    return below & ~old_bulb_disposed(env, disposal_threshold, asset_cfg, bin_cfg)
+    return below & ~old_bulb_disposed(env, asset_cfg, bin_cfg)
 
 
 def full_replacement_success(
     env: ManagerBasedRLEnv,
     pos_threshold: float = 0.015,
     ori_threshold: float = 0.2,
-    disposal_threshold: float = 0.25,
 ) -> torch.Tensor:
     """True where the fresh bulb is seated AND the old bulb is in the disposal crate.
 
     Disposal implies removal, so the removed predicate is not re-checked. Also the
     ``success`` termination.
     """
-    return bulb_seated(env, pos_threshold, ori_threshold) & old_bulb_disposed(env, disposal_threshold)
+    return bulb_seated(env, pos_threshold, ori_threshold) & old_bulb_disposed(env)
 
 
 LADDER_TILT_LIMIT = 0.6  # rad; the upright ladder stands at ~0

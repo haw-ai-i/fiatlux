@@ -63,20 +63,25 @@ def elevation_deg(direction: np.ndarray) -> float:
     return math.degrees(math.asin(float(direction @ PALM_NORMAL) / np.linalg.norm(direction)))
 
 
-def main() -> int:
-    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("src")
-    ap.add_argument("--out", default=None, help="wrapper USD path (default: <src>_thumbfix.usd)")
-    ap.add_argument(
-        "--joints",
-        default="R_thumb_proximal_yaw_joint:-0.015,-0.045,-0.063;L_thumb_proximal_yaw_joint:-0.0088,-0.0453,0.0634",
-        help="semicolon-separated JOINT:x,y,z pairs -- the thumb rotation joint and the thumb's rest "
-        "direction (proximal -> distal) in the palm body's frame, measured live at zero joint angles. "
-        "The default covers both hands of the stock asset.",
-    )
-    args = ap.parse_args()
-    src = os.path.abspath(args.src)
-    out = os.path.abspath(args.out) if args.out else src[: -len(".usd")] + "_thumbfix.usd"
+# Thumb rotation joint + thumb rest direction (proximal->distal) in the palm frame, both hands
+# of the stock asset. Exposed as a constant so callers (e.g. the teleop driver's on-demand
+# regeneration) can reuse it without re-typing the measured vectors.
+DEFAULT_JOINTS = (
+    "R_thumb_proximal_yaw_joint:-0.015,-0.045,-0.063;"
+    "L_thumb_proximal_yaw_joint:-0.0088,-0.0453,0.0634"
+)
+
+
+def generate_thumbfix(src: str, out: str | None = None, joint_specs: str = DEFAULT_JOINTS) -> str:
+    """Write the re-authored-thumb wrapper USD for ``src`` and return its path.
+
+    Importable so the teleop driver can regenerate the wrapper in-process (``pxr`` is only
+    available once Kit is running). ``src`` is the vendor Inspire USD; ``out`` defaults to
+    ``<src>_thumbfix.usd`` next to it. The wrapper references the vendor by a RELATIVE path,
+    so it is portable across machines as long as it stays beside the vendor file.
+    """
+    src = os.path.abspath(src)
+    out = os.path.abspath(out) if out else src[: -len(".usd")] + "_thumbfix.usd"
 
     stage = Usd.Stage.Open(src)
     root = stage.GetDefaultPrim()
@@ -87,20 +92,22 @@ def main() -> int:
         os.remove(out)
     wrapper = Usd.Stage.CreateNew(out)
     prim = wrapper.DefinePrim(root.GetPath())
-    prim.GetReferences().AddReference(src)
+    # Reference the vendor file by a RELATIVE path so the wrapper stays portable when copied
+    # elsewhere (e.g. fetched from GCS); an absolute path would bake in this machine's location.
+    prim.GetReferences().AddReference("./" + os.path.relpath(src, os.path.dirname(out)))
     wrapper.SetDefaultPrim(prim)
     for key in ("upAxis", "metersPerUnit"):
         if stage.GetMetadata(key) is not None:
             wrapper.SetMetadata(key, stage.GetMetadata(key))
 
     print(f"{os.path.basename(src)}:")
-    for spec in args.joints.split(";"):
+    for spec in joint_specs.split(";"):
         joint_name, dir_str = spec.split(":")
         joints = [
             prim for prim in stage.Traverse() if prim.GetName() == joint_name and prim.IsA(UsdPhysics.RevoluteJoint)
         ]
         if len(joints) != 1:
-            raise SystemExit(f"expected exactly one revolute joint named {joint_name!r}, found {len(joints)}")
+            raise ValueError(f"expected exactly one revolute joint named {joint_name!r}, found {len(joints)}")
         joint = UsdPhysics.RevoluteJoint(joints[0])
         axis_index = {"X": 0, "Y": 1, "Z": 2}[str(joint.GetAxisAttr().Get())]
         rot0 = quat_to_mat(joint.GetLocalRot0Attr().Get())
@@ -138,6 +145,22 @@ def main() -> int:
 
     wrapper.GetRootLayer().Save()
     print(f"  wrote {out}")
+    return out
+
+
+def main() -> int:
+    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap.add_argument("src")
+    ap.add_argument("--out", default=None, help="wrapper USD path (default: <src>_thumbfix.usd)")
+    ap.add_argument(
+        "--joints",
+        default=DEFAULT_JOINTS,
+        help="semicolon-separated JOINT:x,y,z pairs -- the thumb rotation joint and the thumb's rest "
+        "direction (proximal -> distal) in the palm body's frame, measured live at zero joint angles. "
+        "The default covers both hands of the stock asset.",
+    )
+    args = ap.parse_args()
+    generate_thumbfix(args.src, args.out, args.joints)
     return 0
 
 

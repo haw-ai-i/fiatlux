@@ -64,17 +64,31 @@ SUBTASK_FACTORS: dict[str, tuple[str, ...]] = {
 }
 
 SUCCESS_SHARE = 0.5
+TELEOP_SUFFIX = "-Teleop-v0"
 
 
-def subtask_weight(task_id: str) -> float:
+def base_subtask_id(task_id: str | None) -> str | None:
+    """The benchmark id a teleop twin belongs to (``...-Teleop-v0`` -> ``...-v0``).
+
+    ``fiatlux_teleop`` registers one twin per subtask, and a teleop bag records that id. The
+    weights are keyed on the benchmark ids alone, so an operator's take of S06 is still S06.
+    """
+    if not task_id or not isinstance(task_id, str):
+        return task_id
+    if task_id.endswith(TELEOP_SUFFIX):
+        return task_id[: -len(TELEOP_SUFFIX)] + "-v0"
+    return task_id
+
+
+def subtask_weight(task_id: str | None) -> float:
     """The subtask's difficulty weight: the product of its factor multipliers.
 
     A subtask with no factors weighs 1.0 -- the floor, a bare walk to a target.
     """
-    try:
-        factors = SUBTASK_FACTORS[task_id]
-    except KeyError:
-        raise KeyError(f"{task_id} is not a subtask; the coarse tier is not weighted here") from None
+    base = base_subtask_id(task_id)
+    if base is None or base not in SUBTASK_FACTORS:
+        raise KeyError(f"{task_id} is not a subtask; the coarse tier is not weighted here")
+    factors = SUBTASK_FACTORS[base]
     return math.prod(FACTOR_MULTIPLIERS[f] for f in factors)
 
 
@@ -98,6 +112,14 @@ def aggregate(results: dict[str, dict[str, float]], success_share: float = SUCCE
     A subtask absent from ``results`` is reported missing and excluded from the denominator,
     never scored zero: "did not run" and "ran and failed" are different claims.
     """
+    canonical: dict[str, dict[str, float]] = {}
+    for task_id, entry in results.items():
+        base = base_subtask_id(task_id)
+        if base is None or base in canonical:
+            raise KeyError(f"{base} appears twice (as {task_id}); scoring it once is ambiguous")
+        canonical[base] = entry
+    results = canonical
+
     unknown = sorted(set(results) - set(SUBTASK_FACTORS))
     if unknown:
         raise KeyError(f"not subtask ids: {unknown}")

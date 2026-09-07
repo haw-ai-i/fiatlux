@@ -10,8 +10,8 @@ Starts from S05's end state: the robot at the crate with the old bulb already he
 fixture.
 
 Success requires the bulb inside the crate's interior footprint (``place_terms.old_bulb_in_bin``,
-orientation-agnostic), not merely near the crate's origin -- a bulb balanced on the rim or resting
-on the floor beside it would pass the coarser ``mdp.old_bulb_disposed`` radius alone.
+orientation-agnostic): a bulb balanced on the rim, or resting on the floor beside the crate, is
+outside it.
 """
 
 from isaaclab.managers import EventTermCfg as EventTerm
@@ -24,9 +24,7 @@ from fiatlux_task.poses import ARM_CRADLE, HAND_CUP
 from .. import mdp
 from ..mdp import place_terms
 from ..mdp.nav_terms import DISPOSAL_ARRIVAL_RADIUS, compose_carried_pose, settle_carried_payload_live
-from ..replace_env_cfg import DISPOSAL_THRESHOLD
 from ..scene_cfg import (
-    BIN_BULB_INTERIOR_Z,
     add_ego_camera,
     add_mid360_lidar,
     apply_replace_preset,
@@ -36,7 +34,6 @@ from ..scene_cfg import (
 from ..subtask_env_cfg import FALL_MIN_HEIGHT, FALL_TILT_LIMIT, SubtaskEventCfg
 from ..subtask_tiers.carrying import add_bulb_crush_gate
 from ..subtask_tiers.place import (
-    AT_REST_ANG_VEL_LIMIT,
     AT_REST_LIN_VEL_LIMIT,
     PLACE_SUSTAIN_SECONDS,
     RELEASE_FORCE_THRESHOLD_N,
@@ -47,15 +44,10 @@ from ..subtask_tiers.place import (
 # The success gate, as reviewable data (mdp.all_of) rather than a hand-written conjunction --
 # an omitted conjunct here is a gate that passes vacuously.
 OLD_BULB_DISPOSED_CONJUNCTS = [
-    (mdp.old_bulb_disposed, {"distance_threshold": DISPOSAL_THRESHOLD}),
-    (place_terms.old_bulb_in_bin, {"interior_floor_z": BIN_BULB_INTERIOR_Z}),
+    (place_terms.old_bulb_in_bin, {}),
     (
         place_terms.object_at_rest,
-        {
-            "asset_cfg": SceneEntityCfg("old_bulb"),
-            "lin_vel_limit": AT_REST_LIN_VEL_LIMIT,
-            "ang_vel_limit": AT_REST_ANG_VEL_LIMIT,
-        },
+        {"asset_cfg": SceneEntityCfg("old_bulb"), "lin_vel_limit": AT_REST_LIN_VEL_LIMIT},
     ),
     (
         place_terms.object_released,

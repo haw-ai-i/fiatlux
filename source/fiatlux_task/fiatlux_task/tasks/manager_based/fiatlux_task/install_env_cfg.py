@@ -50,7 +50,6 @@ from .scene_cfg import (
 # bare height gate would fire on the very first step. Uses old_bulb_dropped's
 # height-and-away-from-bin logic instead of object_dropped's single height gate.
 BULB_DROP_HEIGHT = BIN_BULB_POSITION[2] + 0.05  # m; just above the crate's resting height
-BIN_CLEARANCE = 0.25  # m; matches Remove/Replace's disposal-crate proximity scale
 
 ##
 # MDP settings (Insert's own -- see g1_bulb_env_cfg.py)
@@ -222,7 +221,6 @@ class TerminationsCfg:
         func=mdp.old_bulb_dropped,
         params={
             "min_height": BULB_DROP_HEIGHT,
-            "disposal_threshold": BIN_CLEARANCE,
             "asset_cfg": SceneEntityCfg("fresh_bulb"),
             "bin_cfg": SceneEntityCfg("bin"),
         },

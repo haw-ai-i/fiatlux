@@ -15,7 +15,10 @@ The cfg deliberately leaves ``prim_path`` unset (``MISSING``); each scene suppli
 it via ``.replace(prim_path=...)`` so the same robot can be reused across tasks.
 """
 
+# override knobs: FIATLUX_FINGER_EFFORT, FIATLUX_FINGER_DAMP, FIATLUX_INSPIRE_FINGER_EFFORT,
+# FIATLUX_DEX3_FINGER_EFFORT (see G1_INSPIRE_CFG, _finger_effort).
 import inspect
+import os as _os
 
 import isaaclab.sim as sim_utils
 from isaaclab.actuators import ImplicitActuatorCfg
@@ -42,12 +45,27 @@ _G1_DEX3_FILTERED_PAIRS = {
 }
 
 
-def _make_filtered_hand_mount_spawner(pairs: dict[str, tuple[str, ...]]):
-    """Build a spawner that filters ``pairs`` (formatted per side) after loading the USD."""
+# The real RH56DFTP hand weighs 790 +/- 10 g (vendor datasheet), but the Unitree-authored
+# USD carries only ~0.19 kg of hand links per side -- the CAD shells, without the palm's
+# linear actuators. The robot must be simulated at the mass it will deploy with: SONIC's
+# balance feels the distal mass, and at the authored value it settles ~2x more pitched and
+# falls off ladder treads (issue #127). The correction below tops the palm (base link) up
+# to the hardware total at spawn, since that is where the actuators sit on the real hand.
+# The Dex3 USD needs no entry: its authored ~0.81 kg/side already matches its hardware.
+INSPIRE_HAND_UNIT_MASS_KG = 0.790
+
+
+def _make_filtered_hand_mount_spawner(pairs: dict[str, tuple[str, ...]], hand_unit_mass_kg: float | None = None):
+    """Build a spawner that filters ``pairs`` (formatted per side) after loading the USD.
+
+    If ``hand_unit_mass_kg`` is given, each hand unit (base link + finger links; the camera
+    mount is separate hardware and left alone) is brought to that total by topping up the
+    base link -- see the note on ``INSPIRE_HAND_UNIT_MASS_KG``.
+    """
 
     @clone
     def _spawn(prim_path, cfg, translation=None, orientation=None):
-        from pxr import UsdPhysics
+        from pxr import Usd, UsdPhysics
 
         prim = _spawn_from_usd_file(prim_path, cfg.usd_path, cfg, translation, orientation)
         stage = prim.GetStage()
@@ -58,12 +76,27 @@ def _make_filtered_hand_mount_spawner(pairs: dict[str, tuple[str, ...]]):
                 rel = api.GetFilteredPairsRel()
                 for target in targets:
                     rel.AddTarget(f"{prim_path}/{target.format(**fmt)}")
+            if hand_unit_mass_kg is not None:
+                base_attr = None
+                unit_total = 0.0
+                for p in Usd.PrimRange(stage.GetPrimAtPath(prim_path)):
+                    name = p.GetName()
+                    if not (name.startswith(f"{fmt['S']}_") or name == f"{side}_hand_base_link"):
+                        continue
+                    attr = UsdPhysics.MassAPI(p).GetMassAttr()
+                    if attr and attr.HasAuthoredValue():
+                        unit_total += attr.Get()
+                        if name == f"{side}_hand_base_link":
+                            base_attr = attr
+                base_attr.Set(base_attr.Get() + hand_unit_mass_kg - unit_total)
         return prim
 
     return _spawn
 
 
-_spawn_g1_with_filtered_hand_mounts = _make_filtered_hand_mount_spawner(_G1_INSPIRE_FILTERED_PAIRS)
+_spawn_g1_with_filtered_hand_mounts = _make_filtered_hand_mount_spawner(
+    _G1_INSPIRE_FILTERED_PAIRS, hand_unit_mass_kg=INSPIRE_HAND_UNIT_MASS_KG
+)
 _spawn_g1_dex3_with_filtered_hand_mounts = _make_filtered_hand_mount_spawner(_G1_DEX3_FILTERED_PAIRS)
 
 
@@ -201,6 +234,20 @@ _ARM_ARMATURE = {
     ".*_wrist_yaw_joint": ARMATURE_4010,
 }
 
+
+def _finger_effort(hand: str, default: str) -> float:
+    """Finger effort cap (N.m), per hand. ``FIATLUX_<HAND>_FINGER_EFFORT`` (e.g.
+    ``FIATLUX_DEX3_FINGER_EFFORT``) overrides the shared ``FIATLUX_FINGER_EFFORT``, which overrides
+    the built-in default -- so one hand can be retuned without touching the other."""
+    hand_var = f"FIATLUX_{hand.upper()}_FINGER_EFFORT"
+    shared_var = "FIATLUX_FINGER_EFFORT"
+    value = _os.environ.get(hand_var, _os.environ.get(shared_var, default))
+    try:
+        return float(value)
+    except ValueError:
+        raise ValueError(f"Invalid finger effort override {value!r} (from {hand_var} or {shared_var})") from None
+
+
 # ---------------------------------------------------------------------------
 # Articulation config (legged / free base, Inspire hand)
 # ---------------------------------------------------------------------------
@@ -263,11 +310,16 @@ G1_INSPIRE_CFG = ArticulationCfg(
         ),
         "hands": ImplicitActuatorCfg(
             joint_names_expr=["[LR]_.*_joint"],
-            # Real Inspire fingers produce ~1-2 N.m. A high limit lets a wedged finger's
-            # saturated PD torque catapult the whole robot off furniture.
-            effort_limit_sim=2.0,
-            stiffness=1000.0,
-            damping=15.0,
+            # Real Inspire fingers are current-limited (~1-2 N.m) and stall on contact. A high cap
+            # (2.0) instead drives the finger THROUGH the light 35 g bulb and jams it in the mesh;
+            # 0.5 stalls it at the surface (~12 N grip, holds, releases cleanly). #125. Override
+            # with FIATLUX_INSPIRE_FINGER_EFFORT (or the shared FIATLUX_FINGER_EFFORT).
+            effort_limit_sim=_finger_effort("inspire", "0.5"),
+            # Low gains sized to the hardware (like Dex3, 1.5/0.1): a 1-2 N.m micro actuator can't
+            # realize a stiff position spring, and on these light links a stiff one made every
+            # contact a limit cycle that shook the robot (#125). Damping 1.0 = #125-validated.
+            stiffness=3.0,
+            damping=float(_os.environ.get("FIATLUX_FINGER_DAMP", "1.0")),
         ),
     },
 )
@@ -377,9 +429,13 @@ G1_DEX3_CFG = G1_INSPIRE_CFG.replace(
     spawn=G1_INSPIRE_CFG.spawn.replace(usd_path=G1_DEX3_USD, func=_spawn_g1_dex3_with_filtered_hand_mounts),
     actuators={
         **{k: v for k, v in G1_INSPIRE_CFG.actuators.items() if k != "hands"},
-        # Unitree Dex3 driver gains; torque limits come from the URDF/USD.
+        # Dex3 driver gains. Cap finger effort like the Inspire hand (#125): the USD's own high
+        # torque limit drives the finger into the 35 g bulb (grip-close spikes past the 50 N break),
+        # so cap it to stall at a real ~12 N grip. Override with FIATLUX_DEX3_FINGER_EFFORT
+        # (or the shared FIATLUX_FINGER_EFFORT).
         "hands": ImplicitActuatorCfg(
             joint_names_expr=G1_DEX3_FINGER_JOINT_PATTERNS,
+            effort_limit_sim=_finger_effort("dex3", "0.1"),
             stiffness=1.5,
             damping=0.1,
         ),

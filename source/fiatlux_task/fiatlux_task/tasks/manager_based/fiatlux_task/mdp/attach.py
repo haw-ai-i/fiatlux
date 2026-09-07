@@ -98,6 +98,15 @@ _AXIAL = 1
 _ROTATING = 2
 _OLD = 0  # state row of the old bulb (scene entity "old_bulb")
 _FRESH = 1  # state row of the fresh bulb (scene entity "fresh_bulb")
+
+# How near the seat a bulb must SPAWN to be treated as starting locked in the fixture
+# (``_resolve_spawn_phase``). Only has to separate "seated" from "put somewhere else", and the
+# binding case is NOT the disposal crate (metres away) but the in-hand carry: the staged
+# carried bulb spawns 0.103 m (S04) / 0.130 m (S11) from the seat, measured zero-action at
+# the first step on 481c0ad (main with #126's re-baked carry seat merged). That is ~2x this
+# tolerance, so the value IS a tuning knob: re-measure those two distances before changing
+# it, and whenever the carry stage pose or ``BULB_IN_ROOT_*`` seat constants move.
+_SEATED_SPAWN_TOLERANCE = 0.05  # m
 _EPS = 1e-5
 
 ParameterSpec = float | tuple[float, float]
@@ -196,6 +205,8 @@ class bulb_attachment(ManagerTermBase):
         self._entry_twist = torch.zeros(2, n, device=dev)
         self._depth = torch.zeros(n, device=dev)
         self._angle = torch.zeros(n, device=dev)
+        # Envs whose spawn phase has not been read off the scene yet. See _resolve_spawn_phase.
+        self._pending = torch.zeros(n, dtype=torch.bool, device=dev)
         self._axis_l = torch.tensor(SOCKET_SEAT_AXIS, device=dev).expand(n, 3)
         self._seat_offset = torch.tensor(SOCKET_SEAT_OFFSET, device=dev).expand(n, 3)
         self._plug_offset = torch.tensor(BULB_PLUG_OFFSET, device=dev).expand(n, 3)
@@ -235,10 +246,12 @@ class bulb_attachment(ManagerTermBase):
         ids = slice(None) if env_ids is None else env_ids
         _sample_parameter(self._depth, ids, self._insertion_depth_spec, "insertion_depth")
         _sample_parameter(self._angle, ids, self._rotation_angle_spec, "rotation_angle")
-        self._phase[_OLD, ids] = _ROTATING
-        self._theta[_OLD, ids] = self._angle[ids]
-        self._phase[_FRESH, ids] = _FREE
-        self._theta[_FRESH, ids] = 0.0
+        # Both bulbs reset FREE here and are locked, if they belong locked, by
+        # `_resolve_spawn_phase` on the first step -- see that method for why the decision
+        # cannot be made here, and issue #109 for what hardcoding it cost.
+        self._phase[:, ids] = _FREE
+        self._theta[:, ids] = 0.0
+        self._pending[ids] = True
         # Both bulbs spawn untwisted relative to the socket (the old bulb's init rot IS
         # the fixture rot), so the first step's twist delta reads as ~0, not as -angle.
         self._prev_twist[:, ids] = 0.0
@@ -274,6 +287,7 @@ class bulb_attachment(ManagerTermBase):
         del env_ids, insertion_depth, rotation_angle, rotation_sign
         old_bulb: RigidObject = env.scene["old_bulb"]
         fresh_bulb: RigidObject = env.scene["fresh_bulb"]
+        self._resolve_spawn_phase(env, old_bulb, fresh_bulb)
         self._advance(
             old_bulb,
             _OLD,
@@ -297,6 +311,39 @@ class bulb_attachment(ManagerTermBase):
             position_slack=position_slack,
         )
         self._take_snapshot()
+
+    def _resolve_spawn_phase(self, env: ManagerBasedEnv, old_bulb: RigidObject, fresh_bulb: RigidObject) -> None:
+        """Lock whichever bulb the task actually SPAWNED in the socket, and only that one.
+
+        This used to be hardcoded in ``reset()``: the old bulb always came back ``ROTATING`` and
+        the fresh one always ``FREE``, whatever the task had done with them. A locked bulb does
+        not obey physics -- the projection below writes its pose every step -- so on the legs that
+        run ``park_old_bulb_in_crate`` the machine dragged the old bulb straight back out of the
+        crate and pinned it at the seat, measured at 0.000 m from the socket by step 1 having
+        started 4.073 m away (issue #109). It also left S12's fresh bulb unconstrained while the
+        task requires it seated (issue #108); that only looked fine because the mis-locked old
+        bulb was propping it up.
+
+        Reading the phase off the scene instead means the two cannot disagree by construction: a
+        preset that moves a bulb has said everything it needs to say.
+
+        Deferred to the first step rather than done in ``reset()`` because the phase depends on
+        the bulb's spawned pose, and the event that restores it (``reset_scene_to_default``) is a
+        sibling reset term -- ordering between them is not ours to rely on. By the first
+        ``__call__`` the scene is settled, and the zero interval guarantees that call happens
+        before anything reads the state.
+        """
+        ids = self._pending.nonzero(as_tuple=False).squeeze(-1)
+        if ids.numel() == 0:
+            return
+        seat_pos, _ = _seated_bulb_root_pose_w(env)
+        for row, bulb in ((_OLD, old_bulb), (_FRESH, fresh_bulb)):
+            at_seat = torch.norm(bulb.data.root_pos_w - seat_pos, dim=1) < _SEATED_SPAWN_TOLERANCE
+            lock = ids[at_seat[ids]]
+            if lock.numel() > 0:
+                self._phase[row, lock] = _ROTATING
+                self._theta[row, lock] = self._angle[lock]
+        self._pending[ids] = False
 
     def _advance(
         self,
@@ -548,33 +595,30 @@ def old_bulb_disposal_distance_pinned(env: ManagerBasedRLEnv) -> torch.Tensor:
     return torch.where(_old_bulb_constrained(env), d_held, d)
 
 
-def old_bulb_dropped_after_release(
-    env: ManagerBasedRLEnv, min_height: float, disposal_threshold: float
-) -> torch.Tensor:
+def old_bulb_dropped_after_release(env: ManagerBasedRLEnv, min_height: float) -> torch.Tensor:
     """Channel-aware ``old_bulb_dropped``: a constrained bulb cannot be "dropped".
 
     Guards the drop penalty/termination against transient displacement before the
     interval event projects the bulb back onto the bayonet channel.
     """
-    return old_bulb_dropped(env, min_height, disposal_threshold) & ~_old_bulb_constrained(env)
+    return old_bulb_dropped(env, min_height) & ~_old_bulb_constrained(env)
 
 
-def old_bulb_disposed_after_release(env: ManagerBasedRLEnv, disposal_threshold: float) -> torch.Tensor:
+def old_bulb_disposed_after_release(env: ManagerBasedRLEnv) -> torch.Tensor:
     """Channel-aware ``old_bulb_disposed``: only a *released* bulb can count as disposed.
 
     The paid-once disposal bonus and the ``success`` predicate read this rather than raw
     ``old_bulb_disposed``: rewards/terminations run before the interval event re-projects
-    a constrained bulb, so a transient shove of a still-guided bulb into the crate radius
+    a constrained bulb, so a transient shove of a still-guided bulb into the crate
     could otherwise latch the payout.
     """
-    return old_bulb_disposed(env, disposal_threshold) & ~_old_bulb_constrained(env)
+    return old_bulb_disposed(env) & ~_old_bulb_constrained(env)
 
 
 def attached_replacement_success(
     env: ManagerBasedRLEnv,
     pos_threshold: float = 0.015,
     ori_threshold: float = 0.2,
-    disposal_threshold: float = 0.25,
 ) -> torch.Tensor:
     """True where the fresh bulb is locked in AND the old bulb is in the disposal crate.
 
@@ -583,4 +627,4 @@ def attached_replacement_success(
     contract (``recording.py`` reads them off the ``success`` term); the bayonet entry
     and projection stages enforce alignment instead.
     """
-    return fresh_bulb_attached(env) & old_bulb_disposed_after_release(env, disposal_threshold)
+    return fresh_bulb_attached(env) & old_bulb_disposed_after_release(env)
