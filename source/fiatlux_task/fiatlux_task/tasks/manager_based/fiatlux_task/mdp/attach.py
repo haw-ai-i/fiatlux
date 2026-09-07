@@ -10,9 +10,11 @@ socket -- never by robot state. Each bulb is in one of three phases per env:
 
 - ``FREE`` -- unconstrained rigid body; physics owns it entirely.
 - ``AXIAL`` -- the insertion channel: only travel along the socket axis survives;
-  lateral offset and all relative rotation are projected away every step.
-- ``ROTATING`` -- the lock groove at full depth: position is pinned at the seat and only
-  twist about the axis survives, tracked as ``theta`` in ``[0, rotation_angle]``.
+  lateral offset and all relative rotation are projected back to within
+  ``position_slack`` of zero every step, not to exactly zero.
+- ``ROTATING`` -- the lock groove at full depth: position is pinned at the seat, to
+  within ``position_slack``, and only twist about the axis survives, tracked as
+  ``theta`` in ``[0, rotation_angle]``.
 
 Install is insert-then-rotate, removal is rotate-then-eject, and the order is
 structural: the two motion regimes are mutually exclusive, so no sequence of pushes
@@ -36,6 +38,31 @@ threshold and be made permanent by the best-progress / paid-once latches in
 the bulb at the seat pose until it actually leaves the channel (being constrained IS the
 task state; the displacement is solver noise). The raw-geometry terms in ``rewards.py``
 remain for tasks without an attachment manager.
+
+Three parameters bound what contact can do to a constrained bulb (PR #128, from the
+2026-09-01 sessions where closing a hand on a locked bulb knocked it out of the socket
+in 4 of 5 takes):
+
+- ``position_slack`` -- the projection pulls the bulb back only to within this distance
+  of the constraint manifold, never exactly onto it. A full teleport re-opens the gap
+  that contact resolution just closed, so closing fingers ratchet INTO the bulb step
+  after step and the depenetration blast never ends (3.4 kN of hand contact measured on
+  S03 against 60 N in the take that grasped nothing).
+- ``max_twist_rate`` -- caps both the per-step twist credited to ``theta`` and the twist
+  velocity the projection lets a ROTATING bulb keep. The depenetration chaos spun a
+  crushed bulb at 30-50 rad/s (transients to 170), unwinding the lock with no visible
+  rotation (the bulb is a surface of revolution). The default 12 rad/s sits well above the
+  measured deliberate unscrew (p90 ~7 rad/s in the 2026-09-01 clean removals) and well
+  below that noise, so a hand's twist is credited in full and a single anomalous impulse
+  cannot unwind a large fraction of the lock in one step. It is a rate BACKSTOP, not a
+  guarantee: a sustained one-directional spin above the cap would still unwind the lock
+  over enough steps. What removes that sustained spin is ``position_slack`` -- it kills the
+  force that drives it -- so the two work together, not either alone.
+- ``max_axial_rate`` -- caps the axial velocity an AXIAL bulb keeps, and the speed of
+  the FREE handoff at eject (ejecting rows drop out of the projection, so they would
+  otherwise leave with whatever the last solver step gave them: 2.3 m/s + 47 rad/s
+  measured on the bench, 5.6 m/s on S03 -- straight through the collision-filtered
+  fixture, see ``_spawn_bulb_socket_filtered``).
 """
 
 from __future__ import annotations
@@ -244,10 +271,21 @@ class bulb_attachment(ManagerTermBase):
         radial_tolerance: float = 0.015,
         tilt_tolerance: float = 0.2,
         seat_tolerance: float = 0.004,
+        max_twist_rate: float = 12.0,
+        max_axial_rate: float = 1.0,
+        position_slack: float = 0.003,
     ) -> None:
         # insertion_depth / rotation_angle / rotation_sign are consumed from cfg.params
         # in __init__/reset. Always operates on all envs: the constraint must be
         # enforced every step, which the zero interval guarantees.
+        #
+        # max_twist_rate 12 rad/s clears the measured deliberate unscrew (p90 ~7 rad/s in
+        # the 2026-09-01 clean removals) with margin, and stays 3-14x below the crush's
+        # noise spin, so a hand's twist is never eaten and a single impulse can credit at
+        # most a quarter turn / 6.5 = 0.24 rad. max_axial_rate 1.0 m/s is a fast hand
+        # withdrawal. position_slack 3 mm sits under seat_tolerance (4 mm), so a parked bulb
+        # still passes every gate, and above the ~2 mm a resting bulb sags per 50 Hz step
+        # under gravity, so an unheld bulb is not churned by the clamp.
         del env_ids, insertion_depth, rotation_angle, rotation_sign
         old_bulb: RigidObject = env.scene["old_bulb"]
         fresh_bulb: RigidObject = env.scene["fresh_bulb"]
@@ -259,6 +297,9 @@ class bulb_attachment(ManagerTermBase):
             radial_tolerance=radial_tolerance,
             tilt_tolerance=tilt_tolerance,
             seat_tolerance=seat_tolerance,
+            max_twist_rate=max_twist_rate,
+            max_axial_rate=max_axial_rate,
+            position_slack=position_slack,
         )
         self._advance(
             fresh_bulb,
@@ -267,6 +308,9 @@ class bulb_attachment(ManagerTermBase):
             radial_tolerance=radial_tolerance,
             tilt_tolerance=tilt_tolerance,
             seat_tolerance=seat_tolerance,
+            max_twist_rate=max_twist_rate,
+            max_axial_rate=max_axial_rate,
+            position_slack=position_slack,
         )
         self._take_snapshot()
 
@@ -311,6 +355,9 @@ class bulb_attachment(ManagerTermBase):
         radial_tolerance: float,
         tilt_tolerance: float,
         seat_tolerance: float,
+        max_twist_rate: float,
+        max_axial_rate: float,
+        position_slack: float,
     ) -> None:
         sign = self._rotation_sign
         socket: RigidObject = self._env.scene["socket"]
@@ -325,8 +372,19 @@ class bulb_attachment(ManagerTermBase):
         twist = _signed_twist(socket_quat, bulb_quat, self._axis_l)
 
         phase, theta, entry = self._phase[row], self._theta[row], self._entry_twist[row]
-        # Lock-positive twist change since the pose we last wrote (or the spawn pose).
-        delta = sign * _wrap_to_pi(twist - self._prev_twist[row])
+        # Lock-positive twist change since the pose we last wrote (or the spawn pose), with
+        # the per-step CREDIT bounded to what a hand does in one step. Two failure modes this
+        # closes, both from the 2026-09-01 crush: an anomalous depenetration spin (30-50 rad/s,
+        # transients to 170) crediting a big fraction of the lock in a single step, and a
+        # >half-turn-per-step spin aliasing through ``_wrap_to_pi`` into a jump either way. The
+        # bound is a rate BACKSTOP, not a full stop: a genuine hand twist (p90 ~7 rad/s here)
+        # is under the cap and credited in full, but a sustained one-directional spin above it
+        # still unwinds the lock over enough steps -- ``position_slack`` below is what removes
+        # that spin, by killing the contact force that drives it. A hand twisting faster than
+        # the cap is not silently swallowed: grip friction carries the bulb the rest of the way
+        # over the next steps, each of which credits the fresh offset it re-measures.
+        max_twist_step = max_twist_rate * self._env.step_dt
+        delta = (sign * _wrap_to_pi(twist - self._prev_twist[row])).clamp(-max_twist_step, max_twist_step)
 
         # -- transitions, all evaluated on the phase at step start (at most one per step)
         was_free = phase == _FREE
@@ -364,6 +422,19 @@ class bulb_attachment(ManagerTermBase):
         phase[unlock] = _AXIAL
         theta[unlock] = 0.0
 
+        # An ejecting bulb drops out of the projection below, so nothing else bounds the
+        # FREE handoff: it would leave with whatever the last solver step gave it -- 2.3 m/s
+        # with a 47 rad/s spin on the bench, 5.6 m/s on S03 (2026-09-01), straight through
+        # the collision-filtered fixture. A legitimate withdrawal moves at hand speed and
+        # passes the cap untouched.
+        ejected = eject.nonzero(as_tuple=False).squeeze(-1)
+        if ejected.numel() > 0:
+            lin = bulb.data.root_lin_vel_w[ejected]
+            ang = bulb.data.root_ang_vel_w[ejected]
+            lin = lin * (max_axial_rate / lin.norm(dim=1, keepdim=True).clamp(min=_EPS)).clamp(max=1.0)
+            ang = ang * (max_twist_rate / ang.norm(dim=1, keepdim=True).clamp(min=_EPS)).clamp(max=1.0)
+            bulb.write_root_velocity_to_sim(torch.cat([lin, ang], dim=-1), env_ids=ejected)
+
         # -- projection: remove every pose/velocity component the phase forbids
         in_axial = phase == _AXIAL
         in_rotating = phase == _ROTATING
@@ -384,11 +455,25 @@ class bulb_attachment(ManagerTermBase):
                 torch.zeros_like(axial),
             )
             proj_pos = seat + proj_axial.unsqueeze(1) * axis_w - quat_apply(proj_quat, self._plug_offset)
+            # Pull the bulb back only to within position_slack of the constraint, never
+            # exactly onto it. A full teleport re-opens the gap that contact resolution just
+            # closed, so fingers closing on a constrained bulb ratchet INTO it step after
+            # step: the solver depenetrates, the projection un-does it, the drives advance
+            # into the vacated space, and the depenetration blast grows without bound --
+            # 3.4 kN of hand contact in the 2026-09-01 S03 takes that crushed a locked bulb,
+            # 60 N in the take that did not. Parked at the slack shell, the bulb is a surface
+            # that stays put, contact reaches drive-torque equilibrium, and the fight never
+            # starts. The written orientation stays exact: ``theta`` bookkeeping assumes the
+            # written twist, and tilt corrections move the glass by well under the slack.
+            residual = bulb.data.root_pos_w - proj_pos
+            residual_norm = residual.norm(dim=1, keepdim=True)
+            proj_pos = proj_pos + residual * (position_slack / residual_norm.clamp(min=_EPS)).clamp(max=1.0)
 
-            axial_speed = (bulb.data.root_lin_vel_w * axis_w).sum(dim=1)
+            axial_speed = (bulb.data.root_lin_vel_w * axis_w).sum(dim=1).clamp(-max_axial_rate, max_axial_rate)
             twist_speed = (bulb.data.root_ang_vel_w * axis_w).sum(dim=1)
             at_lock_stop = (theta >= self._angle - _EPS) & (sign * twist_speed > 0.0)
             twist_speed = torch.where(at_lock_stop, torch.zeros_like(twist_speed), twist_speed)
+            twist_speed = twist_speed.clamp(-max_twist_rate, max_twist_rate)
             zero = torch.zeros_like(axis_w)
             proj_lin = torch.where(axial_travel.unsqueeze(1), axial_speed.unsqueeze(1) * axis_w, zero)
             proj_ang = torch.where(in_rotating.unsqueeze(1), twist_speed.unsqueeze(1) * axis_w, zero)
