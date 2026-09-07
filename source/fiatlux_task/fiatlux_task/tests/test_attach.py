@@ -308,6 +308,7 @@ def test_deliberate_unscrew_withdraw_and_bounded_eject():
         if mgr._phase[OLD, 0] == AXIAL:
             break
     assert mgr._phase[OLD, 0] == AXIAL
+    assert mgr._interaction[OLD, 0, attach._C_GATE] == 3.0  # unlock fired this step (#163)
     axis = torch.tensor([[0.0, 0.0, 1.0]])
     while mgr._phase[OLD, 0] == AXIAL:
         bulb.data.root_pos_w = bulb.data.root_pos_w + 0.008 * axis
@@ -315,6 +316,10 @@ def test_deliberate_unscrew_withdraw_and_bounded_eject():
         _step(mgr, env)
     assert mgr._phase[OLD, 0] == FREE
     assert torch.linalg.norm(bulb.data.root_lin_vel_w) <= 1.0 + 1e-6
+    # The eject step's interaction row records the raw and the written handoff (#163).
+    assert mgr._interaction[OLD, 0, attach._C_GATE] == 4.0
+    assert abs(mgr._interaction[OLD, 0, attach._C_AXIAL_RAW].item() - 3.0) < 1e-5
+    assert mgr._interaction[OLD, 0, attach._C_AXIAL_WRITTEN].item() <= 1.0 + 1e-6
 
 
 def test_engage_keeps_the_entry_clock_angle():
@@ -337,3 +342,57 @@ def test_engage_keeps_the_entry_clock_angle():
     # The written pose keeps the 0.3 rad entry twist (z-component of the wxyz quaternion).
     written = fresh.data.root_quat_w[0]
     assert abs(2.0 * math.atan2(written[3], written[0]) - 0.3) < 1e-5
+
+
+def test_interaction_channels_report_the_constraint_reaction():
+    """The #163 channels: raw is what the solver produced, written is what the projection kept,
+    and their difference is the reaction the virtual socket applied. The raw side must survive
+    even though the projection overwrites the bulb's state in the same call."""
+    env, mgr = _make_env()
+    bulb = env.scene["old_bulb"]
+    _step(mgr, env)  # resolve spawn: old locks at the seat
+
+    # A crush-like solver step: fast spin, junk linear velocity, a 10 mm shove off the seat,
+    # and a half-radian twist of the pose.
+    bulb.data.root_ang_vel_w = torch.tensor([[0.0, 0.0, 40.0]])
+    bulb.data.root_lin_vel_w = torch.tensor([[2.0, 0.0, 0.0]])
+    bulb.data.root_pos_w = torch.tensor([[0.010, 0.0, 0.0]])
+    bulb.twist_by(0.5)
+    _step(mgr, env)
+
+    row = mgr._interaction[OLD, 0]
+    assert abs(row[attach._C_TWIST_RAW].item() - 40.0) < 1e-5
+    assert abs(row[attach._C_TWIST_WRITTEN].item() - MAX_TWIST_RATE) < 1e-5
+    assert row[attach._C_AXIAL_WRITTEN].item() == 0.0  # ROTATING keeps no axial speed
+    # 10 mm shove, 3 mm slack: the projection pulled the bulb back ~7 mm.
+    assert abs(row[attach._C_SLACK].item() - 0.007) < 1e-4
+    # +0.5 rad of pose twist reads as a -0.5 rad credit (rotation_sign = -1), clamped.
+    assert abs(row[attach._C_CREDIT_RAW].item() + 0.5) < 1e-4
+    assert abs(row[attach._C_CREDIT].item() + MAX_TWIST_STEP) < 1e-6
+    assert row[attach._C_GATE].item() == 0.0  # no transition fired
+
+    # The telemetry dict carries every channel for both bulbs, from the snapshot.
+    telemetry = attach.bulb_lock_telemetry(env)
+    for prefix in ("old_bulb", "fresh_bulb"):
+        for name in attach._INTERACTION_CHANNELS:
+            assert f"{prefix}_{name}" in telemetry, f"missing {prefix}_{name}"
+    assert abs(telemetry["old_bulb_twist_rate_raw"][0].item() - 40.0) < 1e-5
+    # A free bulb nothing writes keeps raw == written: a zero correction.
+    assert telemetry["fresh_bulb_twist_rate_raw"][0] == telemetry["fresh_bulb_twist_rate_written"][0]
+
+
+def test_engage_step_records_gate_and_approach_geometry():
+    """The approach channels answer "did the socket capture the bulb, and if not, why" (#163)."""
+    env, mgr = _make_env()
+    mgr._phase[OLD, 0] = FREE
+    env.scene["old_bulb"].data.root_pos_w = torch.tensor([[2.0, 0.0, 0.0]])
+    _step(mgr, env)  # resolve spawns; old is away and FREE, fresh is far and FREE
+
+    fresh = env.scene["fresh_bulb"]
+    fresh.data.root_pos_w = torch.tensor([[0.0, 0.0, 0.01]])
+    _step(mgr, env)
+    row = mgr._interaction[FRESH, 0]
+    assert row[attach._C_GATE].item() == 1.0  # engage fired
+    assert abs(row[attach._C_AXIAL].item() - 0.01) < 1e-6
+    assert row[attach._C_LATERAL].item() < 1e-6
+    assert row[attach._C_TILT].item() < 1e-6

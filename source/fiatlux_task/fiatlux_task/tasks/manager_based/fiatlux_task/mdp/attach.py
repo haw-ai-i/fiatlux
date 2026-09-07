@@ -111,6 +111,41 @@ _FRESH = 1  # state row of the fresh bulb (scene entity "fresh_bulb")
 _SEATED_SPAWN_TOLERANCE = 0.05  # m
 _EPS = 1e-5
 
+# Per-step bulb-socket interaction channels (issue #163), recorded per bulb through
+# ``bulb_lock_telemetry`` as ``old_bulb_<name>`` / ``fresh_bulb_<name>``. The ``*_raw`` /
+# ``*_written`` pairs are the constraint's reaction: ``raw`` is what the solver produced, read
+# before any write this step; ``written`` is what the projection kept. Their difference, times
+# the bulb's mass (axial) or axial inertia (twist) over ``step_dt``, is the force / torque the
+# virtual socket applied. ``gate`` is the transition that fired this step: 0 none, 1 engage,
+# 2 lock, 3 unlock, 4 eject. Everything here is already computed by ``_advance``; these
+# channels only store it.
+_INTERACTION_CHANNELS = (
+    "axial",  # plug depth along the socket axis (m)
+    "lateral",  # plug offset off the axis (m)
+    "tilt",  # plug-axis vs seat-axis angle (rad)
+    "gate",  # transition fired this step (code above)
+    "axial_rate_raw",  # axial speed the solver produced (m/s)
+    "axial_rate_written",  # axial speed the projection kept (m/s)
+    "slack_correction",  # distance the projection pulled the bulb back (m)
+    "twist_rate_raw",  # spin about the axis the solver produced (rad/s)
+    "twist_rate_written",  # spin the projection kept (rad/s)
+    "theta_credit_raw",  # per-step twist credit before the max_twist_rate clamp (rad)
+    "theta_credit",  # the credit after the clamp -- the value that moves theta (rad)
+)
+(
+    _C_AXIAL,
+    _C_LATERAL,
+    _C_TILT,
+    _C_GATE,
+    _C_AXIAL_RAW,
+    _C_AXIAL_WRITTEN,
+    _C_SLACK,
+    _C_TWIST_RAW,
+    _C_TWIST_WRITTEN,
+    _C_CREDIT_RAW,
+    _C_CREDIT,
+) = range(len(_INTERACTION_CHANNELS))
+
 ParameterSpec = float | tuple[float, float]
 
 
@@ -212,6 +247,9 @@ class bulb_attachment(ManagerTermBase):
         self._axis_l = torch.tensor(SOCKET_SEAT_AXIS, device=dev).expand(n, 3)
         self._seat_offset = torch.tensor(SOCKET_SEAT_OFFSET, device=dev).expand(n, 3)
         self._plug_offset = torch.tensor(BULB_PLUG_OFFSET, device=dev).expand(n, 3)
+        # Per-step bulb-socket interaction, one column per _INTERACTION_CHANNELS entry
+        # (issue #163). `_advance` overwrites every row each call; nothing accumulates.
+        self._interaction = torch.zeros(2, n, len(_INTERACTION_CHANNELS), device=dev)
         # Telemetry snapshot, taken at the end of every __call__ and never touched by reset().
         # `ManagerBasedRLEnv.step` runs interval events BEFORE it auto-resets finished
         # episodes, so this holds the state as of the terminating step -- which is what a
@@ -223,6 +261,7 @@ class bulb_attachment(ManagerTermBase):
             torch.zeros(n, device=dev),  # sampled rotation angle
             torch.zeros(n, device=dev),  # sampled insertion depth
         )
+        self._interaction_snap = torch.zeros_like(self._interaction)
         self.reset()
         self._take_snapshot()
 
@@ -233,6 +272,7 @@ class bulb_attachment(ManagerTermBase):
         theta.copy_(self._theta)
         angle.copy_(self._angle)
         depth.copy_(self._depth)
+        self._interaction_snap.copy_(self._interaction)
 
     @property
     def rotation_sign(self) -> float:
@@ -369,7 +409,17 @@ class bulb_attachment(ManagerTermBase):
         displacement = plug - seat
         axial = (displacement * axis_w).sum(dim=1)
         lateral = torch.norm(displacement - axial.unsqueeze(1) * axis_w, dim=1)
+        tilt = _tilt_error(socket_quat, bulb_quat, self._axis_l)
         twist = _signed_twist(socket_quat, bulb_quat, self._axis_l)
+        # Raw solver output along the constrained DOFs, read BEFORE any write this step --
+        # the eject clamp below writes velocities, so reading later would miss the raw side
+        # of exactly the rows that matter (issue #163). "Written" starts as a copy: a row
+        # nothing writes keeps raw == written, i.e. a zero correction.
+        axial_rate_raw = (bulb.data.root_lin_vel_w * axis_w).sum(dim=1)
+        twist_rate_raw = (bulb.data.root_ang_vel_w * axis_w).sum(dim=1)
+        axial_rate_written = axial_rate_raw.clone()
+        twist_rate_written = twist_rate_raw.clone()
+        slack_correction = torch.zeros_like(axial)
 
         phase, theta, entry = self._phase[row], self._theta[row], self._entry_twist[row]
         # Lock-positive twist change since the pose we last wrote (or the spawn pose), with
@@ -384,7 +434,8 @@ class bulb_attachment(ManagerTermBase):
         # the cap is not silently swallowed: grip friction carries the bulb the rest of the way
         # over the next steps, each of which credits the fresh offset it re-measures.
         max_twist_step = max_twist_rate * self._env.step_dt
-        delta = (sign * _wrap_to_pi(twist - self._prev_twist[row])).clamp(-max_twist_step, max_twist_step)
+        theta_credit_raw = sign * _wrap_to_pi(twist - self._prev_twist[row])
+        delta = theta_credit_raw.clamp(-max_twist_step, max_twist_step)
 
         # -- transitions, all evaluated on the phase at step start (at most one per step)
         was_free = phase == _FREE
@@ -400,7 +451,7 @@ class bulb_attachment(ManagerTermBase):
             & (axial >= -seat_tolerance)
             & (axial <= self._depth)
             & (lateral < radial_tolerance)
-            & (_tilt_error(socket_quat, bulb_quat, self._axis_l) < tilt_tolerance)
+            & (tilt < tilt_tolerance)
         )
         eject = was_axial & (axial > self._depth)
         # Bottomed within seat_tolerance: contact geometry stops the bulb slightly short
@@ -431,9 +482,12 @@ class bulb_attachment(ManagerTermBase):
         if ejected.numel() > 0:
             lin = bulb.data.root_lin_vel_w[ejected]
             ang = bulb.data.root_ang_vel_w[ejected]
-            lin = lin * (max_axial_rate / lin.norm(dim=1, keepdim=True).clamp(min=_EPS)).clamp(max=1.0)
-            ang = ang * (max_twist_rate / ang.norm(dim=1, keepdim=True).clamp(min=_EPS)).clamp(max=1.0)
-            bulb.write_root_velocity_to_sim(torch.cat([lin, ang], dim=-1), env_ids=ejected)
+            lin_scale = (max_axial_rate / lin.norm(dim=1, keepdim=True).clamp(min=_EPS)).clamp(max=1.0)
+            ang_scale = (max_twist_rate / ang.norm(dim=1, keepdim=True).clamp(min=_EPS)).clamp(max=1.0)
+            bulb.write_root_velocity_to_sim(torch.cat([lin * lin_scale, ang * ang_scale], dim=-1), env_ids=ejected)
+            # Scaling the whole vector scales its axial / twist component by the same factor.
+            axial_rate_written[ejected] = axial_rate_raw[ejected] * lin_scale.squeeze(-1)
+            twist_rate_written[ejected] = twist_rate_raw[ejected] * ang_scale.squeeze(-1)
 
         # -- projection: remove every pose/velocity component the phase forbids
         in_axial = phase == _AXIAL
@@ -479,9 +533,44 @@ class bulb_attachment(ManagerTermBase):
             proj_ang = torch.where(in_rotating.unsqueeze(1), twist_speed.unsqueeze(1) * axis_w, zero)
             bulb.write_root_pose_to_sim(torch.cat([proj_pos[ids], proj_quat[ids]], dim=-1), env_ids=ids)
             bulb.write_root_velocity_to_sim(torch.cat([proj_lin[ids], proj_ang[ids]], dim=-1), env_ids=ids)
+            # What the projection kept, for the interaction channels (issue #163): the clamped
+            # axial rate on travel rows, the clamped twist rate on ROTATING rows, zero on every
+            # other written component. The correction distance is what the slack shell removed.
+            constrained = in_axial | in_rotating
+            zero1 = torch.zeros_like(axial_speed)
+            axial_rate_written = torch.where(
+                constrained, torch.where(axial_travel, axial_speed, zero1), axial_rate_written
+            )
+            twist_rate_written = torch.where(
+                constrained, torch.where(in_rotating, twist_speed, zero1), twist_rate_written
+            )
+            slack_correction = torch.where(
+                constrained, (residual_norm.squeeze(-1) - position_slack).clamp(min=0.0), slack_correction
+            )
 
         # A constrained bulb now sits at the twist we wrote; a free bulb keeps its own.
         self._prev_twist[row] = torch.where(in_axial | in_rotating, entry + sign * theta, twist)
+
+        # Store the per-step interaction row (issue #163); `_take_snapshot` copies it for the
+        # recorder at the end of `__call__`. Gate codes: the four transitions are mutually
+        # exclusive by construction (each starts from a different phase).
+        gate = engage.float() + 2.0 * lock.float() + 3.0 * unlock.float() + 4.0 * eject.float()
+        self._interaction[row] = torch.stack(
+            [
+                axial,
+                lateral,
+                tilt,
+                gate,
+                axial_rate_raw,
+                axial_rate_written,
+                slack_correction,
+                twist_rate_raw,
+                twist_rate_written,
+                theta_credit_raw,
+                delta,
+            ],
+            dim=-1,
+        )
 
 
 def _attachment(env: ManagerBasedRLEnv) -> bulb_attachment:
@@ -536,9 +625,16 @@ def bulb_lock_telemetry(env: ManagerBasedRLEnv) -> dict[str, torch.Tensor]:
     done env already belongs to the NEXT episode, so a terminal row would otherwise carry that
     episode's reset phases and newly sampled limits. This is the same hazard ``recording.py``
     documents for object poses, and the reason it reads termination term flags.
+
+    Also carries the per-step bulb-socket interaction channels (issue #163), one
+    ``<bulb>_<name>`` column per ``_INTERACTION_CHANNELS`` entry: the approach geometry the
+    capture gate checks, the transition that fired, and the raw-vs-written rate pairs whose
+    difference is the force / torque the virtual socket applied this step. The ``*_raw`` side
+    exists only here -- the bag's pose and velocity channels store post-projection state.
     """
-    phase, theta, angle, depth = _attachment(env)._snapshot
-    return {
+    mgr = _attachment(env)
+    phase, theta, angle, depth = mgr._snapshot
+    out = {
         "old_bulb_phase": phase[_OLD],
         "old_bulb_theta": theta[_OLD],
         "fresh_bulb_phase": phase[_FRESH],
@@ -546,6 +642,10 @@ def bulb_lock_telemetry(env: ManagerBasedRLEnv) -> dict[str, torch.Tensor]:
         "lock_rotation_angle": angle,
         "lock_insertion_depth": depth,
     }
+    for row, prefix in ((_OLD, "old_bulb"), (_FRESH, "fresh_bulb")):
+        for col, name in enumerate(_INTERACTION_CHANNELS):
+            out[f"{prefix}_{name}"] = mgr._interaction_snap[row, :, col]
+    return out
 
 
 def old_bulb_attached(env: ManagerBasedRLEnv) -> torch.Tensor:
