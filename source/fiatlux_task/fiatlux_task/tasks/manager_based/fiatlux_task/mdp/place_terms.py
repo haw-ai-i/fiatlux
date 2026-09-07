@@ -163,6 +163,24 @@ def _revolved_extent(
     return (base + centre - spread).min(dim=1).values, (base + centre + spread).max(dim=1).values
 
 
+def object_vertical_span(
+    env: ManagerBasedRLEnv,
+    asset_cfg: SceneEntityCfg,
+    meridian: tuple[tuple[float, float], ...],
+) -> tuple[torch.Tensor, torch.Tensor]:
+    """(lowest, highest) world z reached by the object's geometry, at any orientation.
+
+    Height gates want the body, not the root: the bulb's root sits off its own cap, so tipping
+    one over on a table moves the root 76 mm without moving the bulb off the surface at all
+    (issue #131).
+    """
+    obj: RigidObject = env.scene[asset_cfg.name]
+    outline = torch.tensor(meridian, dtype=torch.float32, device=env.device)
+    local_axis = torch.tensor((0.0, 0.0, 1.0), device=env.device).expand(env.num_envs, 3)
+    axis = quat_apply(obj.data.root_quat_w, local_axis)
+    return _revolved_extent(axis, obj.data.root_pos_w, outline, 2)
+
+
 def object_in_container(
     env: ManagerBasedRLEnv,
     asset_cfg: SceneEntityCfg,

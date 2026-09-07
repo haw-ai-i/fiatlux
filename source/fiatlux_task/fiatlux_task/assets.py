@@ -61,6 +61,9 @@ BULB_MERIDIAN = (
     (0.18181, 0.02640),
     (0.19267, 0.00000),
 )
+# Centroid of that outline: a point actually ON the bulb, for anything that means "where the
+# bulb is" rather than "where its transform origin is" (issue #131).
+BULB_BODY_CENTRE_OFFSET = (0.0, 0.0, 0.10961)
 SOCKET_BASE_Z_OFFSET = 0.0
 # Cap bottom to fixture top: how far the bulb sinks when seated.
 SOCKET_INSERTION_DEPTH = 0.034226

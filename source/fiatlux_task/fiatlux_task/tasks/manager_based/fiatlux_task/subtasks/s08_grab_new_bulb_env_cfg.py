@@ -20,7 +20,6 @@ from isaaclab.managers import SceneEntityCfg
 from isaaclab.managers import TerminationTermCfg as DoneTerm
 from isaaclab.utils import configclass
 
-from fiatlux_task.assets import BULB_STAND_Z_OFFSET
 from fiatlux_task.grasp_poses import GLASS_CONTACT_LIMIT_N
 
 from .. import mdp
@@ -38,12 +37,9 @@ from ..scene_cfg import (
 from ..subtask_env_cfg import FALL_MIN_HEIGHT, FALL_TILT_LIMIT, SubtaskTerminationsCfg
 from ..subtask_tiers.grasp import GRASP_SUSTAIN_SECONDS, GraspRewardsCfg, GraspSubtaskCfg, add_grasp_contact_sensor
 
-# Resting root height on the (always z=0) table, standing on its cap.
-BULB_TABLETOP_REST_Z = TABLETOP_SURFACE_Z - BULB_STAND_Z_OFFSET  # m
-
-# Root rise counted as "lifted". PROVISIONAL.
+# Clearance above the table the whole bulb must reach to count as lifted. PROVISIONAL.
 BULB_LIFT_CLEARANCE_M = 0.03  # m
-BULB_LIFTED_HEIGHT_M = BULB_TABLETOP_REST_Z + BULB_LIFT_CLEARANCE_M
+BULB_LIFTED_HEIGHT_M = TABLETOP_SURFACE_Z + BULB_LIFT_CLEARANCE_M
 
 # Below the tabletop rest height, above the floor (~-0.036 m): catches "knocked off the table"
 # before it lands. PROVISIONAL.
