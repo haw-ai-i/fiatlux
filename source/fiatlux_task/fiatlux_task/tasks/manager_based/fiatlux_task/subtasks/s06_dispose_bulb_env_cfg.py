@@ -23,7 +23,7 @@ from fiatlux_task.poses import ARM_CRADLE, HAND_CUP
 
 from .. import mdp
 from ..mdp import place_terms
-from ..mdp.nav_terms import DISPOSAL_ARRIVAL_RADIUS, compose_carried_pose, settle_carried_payload_live
+from ..mdp.nav_terms import DISPOSAL_STANCE_RADIUS, compose_carried_pose, settle_carried_payload_live
 from ..scene_cfg import (
     add_ego_camera,
     add_mid360_lidar,
@@ -96,7 +96,7 @@ class S06DisposeBulbEnvCfg(PlaceSubtaskCfg):
         apply_replace_preset(self.scene, couple_ladder_to_fixture=True)
         # The preset's own robot zone is independent of the bin's; pull the robot to where it
         # would be holding the old bulb it starts this subtask already carrying.
-        stand_robot_near(self.scene, self.scene.bin.init_state.pos[:2], DISPOSAL_ARRIVAL_RADIUS)
+        stand_robot_near(self.scene, self.scene.bin.init_state.pos[:2], DISPOSAL_STANCE_RADIUS)
         # S05's end state: the old bulb starts already held, at the carry offset from the robot's
         # own (now-final) root pose -- not seated at the fixture, which is where the preset
         # leaves it and where it stayed until this was added.

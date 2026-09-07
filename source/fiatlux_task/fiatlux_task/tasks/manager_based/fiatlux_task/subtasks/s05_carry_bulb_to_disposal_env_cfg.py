@@ -24,7 +24,7 @@ from fiatlux_task.poses import ARM_CRADLE, HAND_CUP
 
 from .. import mdp
 from ..mdp.nav_terms import (
-    DISPOSAL_ARRIVAL_RADIUS,
+    DISPOSAL_ARRIVAL_CLEARANCE,
     GRIP_FORCE_THRESHOLD_N,
     LADDER_MOUNT_RADIUS,
     add_grip_contact_sensor,
@@ -36,6 +36,7 @@ from ..mdp.nav_terms import (
     payload_held,
     settle_carried_payload_live,
 )
+from ..mdp.place_terms import CRATE_FOOTPRINT_HALF_EXTENT
 from ..scene_cfg import (
     add_ego_camera,
     add_mid360_lidar,
@@ -50,7 +51,14 @@ from ..subtask_tiers.carrying import add_bulb_crush_gate
 # The success gate as data (mdp.all_of). Without the grip conjunct a thrown bulb that skids into
 # the crate's radius would score.
 OLD_BULB_AT_CRATE_CONJUNCTS = [
-    (base_near, {"asset_cfg": SceneEntityCfg("bin"), "xy_radius": DISPOSAL_ARRIVAL_RADIUS}),
+    (
+        base_near,
+        {
+            "asset_cfg": SceneEntityCfg("bin"),
+            "xy_radius": DISPOSAL_ARRIVAL_CLEARANCE,
+            "half_extent": CRATE_FOOTPRINT_HALF_EXTENT,
+        },
+    ),
     (base_facing, {"asset_cfg": SceneEntityCfg("bin"), "facing_tolerance": ARRIVAL_FACING_TOLERANCE}),
     (base_calm, {"max_speed": ARRIVAL_MAX_SPEED}),
     (payload_held, {"sensor_cfg": SceneEntityCfg("grip_contact"), "force_threshold": GRIP_FORCE_THRESHOLD_N}),

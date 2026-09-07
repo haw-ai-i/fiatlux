@@ -24,7 +24,7 @@ standing within reach of it, still holding the bulb.
 
 | Condition | Value |
 |---|---|
-| robot root within xy radius of the crate root | `CRATE_APPROACH_RADIUS`, **probe** |
+| robot root within xy clearance of the crate FOOTPRINT | `DISPOSAL_ARRIVAL_CLEARANCE` = `G1_HORIZONTAL_REACH` |
 | facing error to crate bearing | < 0.5 rad |
 | root speed | < 1.0 m/s |
 | **bulb still held** | hand↔old_bulb contact > 2 N |
@@ -32,10 +32,14 @@ standing within reach of it, still holding the bulb.
 | robot standing | `FALL_MIN_HEIGHT`, `FALL_TILT_LIMIT` |
 | sustained | 0.5 s |
 
-**Probe:** `CRATE_APPROACH_RADIUS` — the crate is 0.60 × 0.40 × 0.17 m with its interior floor at
-`BIN_BULB_INTERIOR_Z = 0.055`, so "within reach to drop a bulb in" is a shorter standoff than the
-ladder's. Reuse the horizontal-reach measurement from S01 (the ladder leg) rather than re-deriving it; the crate's
-half-extent replaces the ladder's.
+**Settled (#149).** The crate is 0.60 × 0.40 × 0.17 m, so measuring arrival to its ORIGIN scored
+the approach side rather than being at it: the same 0.24 m gap from the crate reads 0.54 m off the
+short end and 0.44 m off the long face, and three operator takes standing 0.24-0.29 m from the edge
+split 1/3 on which face they came from. `base_near` now takes the target's footprint
+(`CRATE_FOOTPRINT_HALF_EXTENT`) and measures the clearance to it, with the threshold being
+`G1_HORIZONTAL_REACH` — within arm's reach of the crate is exactly when a hand can go over it.
+The staging radius keeps its own constant (`DISPOSAL_STANCE_RADIUS`), since where staging PUTS the
+robot is a distance from the origin, not a clearance.
 
 Dropping the bulb *en route* must not score, hence the held condition; dropping it *into the
 crate* is S06, not S05.
