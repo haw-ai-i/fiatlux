@@ -15,8 +15,10 @@ The cfg deliberately leaves ``prim_path`` unset (``MISSING``); each scene suppli
 it via ``.replace(prim_path=...)`` so the same robot can be reused across tasks.
 """
 
+# override knobs: FIATLUX_FINGER_EFFORT, FIATLUX_FINGER_DAMP, FIATLUX_INSPIRE_FINGER_EFFORT,
+# FIATLUX_DEX3_FINGER_EFFORT (see G1_INSPIRE_CFG, _finger_effort).
 import inspect
-import os as _os  # override knobs: FIATLUX_FINGER_EFFORT, FIATLUX_FINGER_DAMP (see G1_INSPIRE_CFG).
+import os as _os
 
 import isaaclab.sim as sim_utils
 from isaaclab.actuators import ImplicitActuatorCfg
@@ -232,6 +234,20 @@ _ARM_ARMATURE = {
     ".*_wrist_yaw_joint": ARMATURE_4010,
 }
 
+
+def _finger_effort(hand: str, default: str) -> float:
+    """Finger effort cap (N.m), per hand. ``FIATLUX_<HAND>_FINGER_EFFORT`` (e.g.
+    ``FIATLUX_DEX3_FINGER_EFFORT``) overrides the shared ``FIATLUX_FINGER_EFFORT``, which overrides
+    the built-in default -- so one hand can be retuned without touching the other."""
+    hand_var = f"FIATLUX_{hand.upper()}_FINGER_EFFORT"
+    shared_var = "FIATLUX_FINGER_EFFORT"
+    value = _os.environ.get(hand_var, _os.environ.get(shared_var, default))
+    try:
+        return float(value)
+    except ValueError:
+        raise ValueError(f"Invalid finger effort override {value!r} (from {hand_var} or {shared_var})") from None
+
+
 # ---------------------------------------------------------------------------
 # Articulation config (legged / free base, Inspire hand)
 # ---------------------------------------------------------------------------
@@ -297,8 +313,8 @@ G1_INSPIRE_CFG = ArticulationCfg(
             # Real Inspire fingers are current-limited (~1-2 N.m) and stall on contact. A high cap
             # (2.0) instead drives the finger THROUGH the light 35 g bulb and jams it in the mesh;
             # 0.5 stalls it at the surface (~12 N grip, holds, releases cleanly). #125. Override
-            # with FIATLUX_FINGER_EFFORT.
-            effort_limit_sim=float(_os.environ.get("FIATLUX_FINGER_EFFORT", "0.5")),
+            # with FIATLUX_INSPIRE_FINGER_EFFORT (or the shared FIATLUX_FINGER_EFFORT).
+            effort_limit_sim=_finger_effort("inspire", "0.5"),
             # Low gains sized to the hardware (like Dex3, 1.5/0.1): a 1-2 N.m micro actuator can't
             # realize a stiff position spring, and on these light links a stiff one made every
             # contact a limit cycle that shook the robot (#125). Damping 1.0 = #125-validated.
@@ -413,9 +429,13 @@ G1_DEX3_CFG = G1_INSPIRE_CFG.replace(
     spawn=G1_INSPIRE_CFG.spawn.replace(usd_path=G1_DEX3_USD, func=_spawn_g1_dex3_with_filtered_hand_mounts),
     actuators={
         **{k: v for k, v in G1_INSPIRE_CFG.actuators.items() if k != "hands"},
-        # Unitree Dex3 driver gains; torque limits come from the URDF/USD.
+        # Dex3 driver gains. Cap finger effort like the Inspire hand (#125): the USD's own high
+        # torque limit drives the finger into the 35 g bulb (grip-close spikes past the 50 N break),
+        # so cap it to stall at a real ~12 N grip. Override with FIATLUX_DEX3_FINGER_EFFORT
+        # (or the shared FIATLUX_FINGER_EFFORT).
         "hands": ImplicitActuatorCfg(
             joint_names_expr=G1_DEX3_FINGER_JOINT_PATTERNS,
+            effort_limit_sim=_finger_effort("dex3", "0.1"),
             stiffness=1.5,
             damping=0.1,
         ),
