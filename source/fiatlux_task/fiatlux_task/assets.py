@@ -78,6 +78,12 @@ G1_OVERHEAD_REACH = 1.3738
 
 # Horizontal fingertip offset from the pelvis, arm forward at rail height.
 G1_HORIZONTAL_REACH = 0.5045
+# MEASURED 2026-09-07 by FK from the on-ladder stance (issue #130): shoulder to PALM with the arm
+# fully extended, and the working shoulder's offset from the pelvis in the robot's own frame.
+# The fingertip figure above is what a gate must NOT use -- fingertips brush a bulb the palm
+# cannot close around.
+G1_PALM_REACH = 0.419  # m
+G1_WORKING_SHOULDER_OFFSET = (0.001, -0.101, 0.291)  # m, robot frame
 
 ELEVATED_SOCKET_USD = SOCKET_USD
 

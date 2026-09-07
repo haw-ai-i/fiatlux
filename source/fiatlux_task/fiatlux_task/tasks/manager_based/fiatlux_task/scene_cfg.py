@@ -61,6 +61,7 @@ from fiatlux_task.assets import (
     FIATLUX_ASSETS_DIR,
     G1_HORIZONTAL_REACH,
     G1_OVERHEAD_REACH,
+    G1_PALM_REACH,
     SOCKET_USD,
     STEP_LADDER_RIGID_USD,
     STEP_LADDER_TOP_OFFSET,
@@ -178,6 +179,16 @@ LADDER_READY_MARGIN = 0.05  # m, held back off the geometric bound
 LADDER_READY_XY_RADIUS = (
     math.sqrt(G1_OVERHEAD_REACH**2 - (CEILING_FIXTURE_Z - LADDER_WORK_FOOT_Z) ** 2) - LADDER_READY_MARGIN
 )
+# What "ready" actually asks (issue #147): from the stance THIS ladder pose would produce, is the
+# socket inside the palm's envelope, and does that stance face it? The flat radius above is
+# ~0.67 m, roughly three times the graspable reach, and carries no orientation at all -- three
+# operator takes scored 1.0 with the socket past even the fingertip arm, two of them with the
+# steps pointing away.
+LADDER_READY_REACH = G1_PALM_REACH - 0.04  # m, so the arm is not locked straight at the target
+# 45 deg, not tighter. A wall draw's ladder must stand off its own depth, and at 30 deg the best
+# placement that clears the wall still leaves the socket 0.390 m from the shoulder -- outside the
+# reach gate. Tightening this makes S01 unwinnable on wall draws; at 45 deg the best is 0.292 m.
+LADDER_READY_FACING_TOLERANCE = math.radians(45.0)
 if LADDER_READY_XY_RADIUS <= 0.0:
     raise ValueError(
         f"no horizontal slack left for the ladder placement: a {CEILING_FIXTURE_Z} m fixture eats "
@@ -260,6 +271,16 @@ LADDER_ANCHOR_HALF_SIZE = 0.18
 
 # Quarter turn between the on-tread stance and the ladder's own frame; the coupled draw below
 # turns the ladder back by the same amount. See ``subtask_tiers.balance.stand_robot_on_ladder_top``.
+# Pelvis height above the tread, from G1_INSPIRE_CFG's bent-knee standing height. Places the
+# feet on the platform collider (see assets.STEP_LADDER_TOP_OFFSET) rather than in the open air
+# the convex-decomposed ladder leaves there.
+#
+# The placement is on real geometry now, but the stance is not stable unattended: under zero
+# action the pelvis leaves 1.967 m and reads 1.28 / 0.27 / 1.18 after 1.8 s in S03 / S11 / S12.
+# Zero action gives a free-base biped no balance correction at all, so some settling is expected;
+# this is more than settling. Needs either a stance that is stable passively or an explicit
+# statement that these start states assume a controller from step one.
+TOP_STANCE_PELVIS_OFFSET = 0.787  # m
 TOP_STANCE_YAW_OFFSET_DEG = 90.0
 
 # Ladder mass, every preset. Without an authored MassAPI PhysX derives mass from collider

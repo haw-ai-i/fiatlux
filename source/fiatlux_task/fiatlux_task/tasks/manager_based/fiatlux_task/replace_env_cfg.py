@@ -65,7 +65,8 @@ from fiatlux_task.robots.g1 import (
 from . import mdp
 from .climb_env_cfg import FALL_MIN_HEIGHT, FALL_TILT_LIMIT
 from .scene_cfg import (
-    LADDER_READY_XY_RADIUS,
+    LADDER_READY_FACING_TOLERANCE,
+    LADDER_READY_REACH,
     ROOM_ENV_SPACING,
     G1ReplaceSceneCfg,
     add_ego_camera,
@@ -303,7 +304,8 @@ class RewardsCfg:
         params={
             "predicate_fn": mdp.ladder_ready,
             "predicate_params": {
-                "xy_radius": LADDER_READY_XY_RADIUS,
+                "reach": LADDER_READY_REACH,
+                "facing_tolerance": LADDER_READY_FACING_TOLERANCE,
                 "tilt_limit": LADDER_TILT_LIMIT,
             },
         },

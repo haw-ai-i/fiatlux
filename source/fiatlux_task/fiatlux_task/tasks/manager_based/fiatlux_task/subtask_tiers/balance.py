@@ -39,6 +39,7 @@ from ..replace_env_cfg import (
 from ..scene_cfg import (
     CLIMB_ROBOT_POSITION,
     LADDER_POSITION,
+    TOP_STANCE_PELVIS_OFFSET,
     TOP_STANCE_YAW_OFFSET_DEG,
     G1ReplaceSceneCfg,
     _quat_mul,
@@ -83,16 +84,6 @@ LADDER_FLOOR_STANCE_HEIGHT = CLIMB_ROBOT_POSITION[2] + 0.15  # m
 # Offset along the ladder's step-facing direction from its root, rotated onto the sampled yaw.
 MOUNT_STANCE_STANDOFF = math.dist(CLIMB_ROBOT_POSITION[:2], LADDER_POSITION[:2])
 
-# Pelvis height above the tread, from G1_INSPIRE_CFG's bent-knee standing height. Places the
-# feet on the platform collider (see assets.STEP_LADDER_TOP_OFFSET) rather than in the open air
-# the convex-decomposed ladder leaves there.
-#
-# The placement is on real geometry now, but the stance is not stable unattended: under zero
-# action the pelvis leaves 1.967 m and reads 1.28 / 0.27 / 1.18 after 1.8 s in S03 / S11 / S12.
-# Zero action gives a free-base biped no balance correction at all, so some settling is expected;
-# this is more than settling. Needs either a stance that is stable passively or an explicit
-# statement that these start states assume a controller from step one.
-TOP_STANCE_PELVIS_OFFSET = 0.787  # m
 
 # Feet plus the left palm, for a subtask whose right hand is occupied for the whole episode.
 # Both hand variants' left palm are named: the sensor is built before the variant may be
@@ -132,9 +123,7 @@ def stand_robot_on_ladder_top(scene: G1ReplaceSceneCfg) -> None:
     dx = local_x * math.cos(yaw) - local_y * math.sin(yaw)
     dy = local_x * math.sin(yaw) + local_y * math.cos(yaw)
     scene.robot.init_state.pos = (ladder_x + dx, ladder_y + dy, platform_z + TOP_STANCE_PELVIS_OFFSET)
-    scene.robot.init_state.rot = _quat_mul(
-        scene.ladder.init_state.rot, _quat_z_deg(TOP_STANCE_YAW_OFFSET_DEG)
-    )
+    scene.robot.init_state.rot = _quat_mul(scene.ladder.init_state.rot, _quat_z_deg(TOP_STANCE_YAW_OFFSET_DEG))
 
 
 @configclass

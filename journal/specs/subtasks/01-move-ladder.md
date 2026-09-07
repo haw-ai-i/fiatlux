@@ -51,7 +51,7 @@ claim is that the ladder stays standing once whatever was holding it stops.
 
 | Conjunct | Value |
 |---|---|
-| `ladder_ready(xy_radius=LADDER_READY_XY_RADIUS, tilt_limit=LADDER_TILT_LIMIT)` | ladder top within reach of the seat, ladder upright |
+| `ladder_ready(reach=LADDER_READY_REACH, tilt_limit, facing_tolerance=LADDER_READY_FACING_TOLERANCE)` | the stance this ladder pose would produce can reach the seat with its PALM, in 3-D, while facing it; ladder upright |
 | `ladder_feet_down(tolerance=0.02)` | root on the floor — a ladder *held* in the right place at the right angle is not standing |
 | `object_at_rest(ladder, 0.05 m/s, 0.10 rad/s)` | settled, not swinging through |
 | `robot_standing(FALL_MIN_HEIGHT, FALL_TILT_LIMIT)` | not scoring on the step the robot collapses |
@@ -137,3 +137,31 @@ that failed there would mean this subtask and its successors disagree about wher
 - **Tier membership thinned.** `GraspSubtaskCfg` is down to one member (S08) and `MateSubtaskCfg`
   to two. Both are kept: the split they encode — terms here, numbers in the leaf — is what keeps
   routine retuning out of shared code, and that does not depend on the member count.
+
+
+## Reach and orientation (#147)
+
+The gate used to be a flat `LADDER_READY_XY_RADIUS` (~0.67 m) plus upright, and nothing else.
+Three operator VR takes scored 1.0 with the socket past even the fingertip arm in 3-D, two of them
+with the ladder's steps pointing away.
+
+Both gaps are closed by judging the STANCE rather than the ladder top. The stance is a pure
+function of the ladder pose (`stand_robot_on_ladder_top`), so the gate predicts where the shoulder
+would be and asks two questions of it: is the seat within `LADDER_READY_REACH` in 3-D, and does the
+stance face it within `LADDER_READY_FACING_TOLERANCE`.
+
+- **3-D, not flat.** The horizontal budget shrinks as the fixture sits higher above the shoulder,
+  so a flat radius accepts placements the arm cannot cover.
+- **To the palm, not the fingertip.** `G1_PALM_REACH` = 0.419 m measured by FK (#130), against
+  0.559 m to the fingertip. Closing a hand around the bulb needs a hand's depth more than brushing
+  it, which is the whole of #130.
+- **45 deg facing, and it cannot be tighter.** A wall draw's ladder has to stand off its own depth,
+  so searching every placement that clears the wall: at 45 deg the best leaves the seat 0.292 m
+  from the shoulder (inside the gate), at 30 deg the best is 0.390 m (outside it). A 30 deg
+  tolerance would make S01 unwinnable on wall draws.
+
+Verified in sim at layout seed 3. At 0.35 m out the gate fires only for ladder yaws 90 and 135 deg
+(facing 22 and 45 deg) and rejects 0, 45, 180 and 270. At the facing-correct yaw it fires out to
+0.45 m and rejects 0.60 and 1.00 m, both of which the old radius accepted. The reported failure
+case -- 0.35 m out with the steps turned 130 deg away -- is inside the reach at 0.378 m and
+rejected on facing.
