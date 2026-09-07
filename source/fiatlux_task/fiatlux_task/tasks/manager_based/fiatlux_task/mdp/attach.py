@@ -10,9 +10,11 @@ socket -- never by robot state. Each bulb is in one of three phases per env:
 
 - ``FREE`` -- unconstrained rigid body; physics owns it entirely.
 - ``AXIAL`` -- the insertion channel: only travel along the socket axis survives;
-  lateral offset and all relative rotation are projected away every step.
-- ``ROTATING`` -- the lock groove at full depth: position is pinned at the seat and only
-  twist about the axis survives, tracked as ``theta`` in ``[0, rotation_angle]``.
+  lateral offset and all relative rotation are projected back to within
+  ``position_slack`` of zero every step, not to exactly zero.
+- ``ROTATING`` -- the lock groove at full depth: position is pinned at the seat, to
+  within ``position_slack``, and only twist about the axis survives, tracked as
+  ``theta`` in ``[0, rotation_angle]``.
 
 Install is insert-then-rotate, removal is rotate-then-eject, and the order is
 structural: the two motion regimes are mutually exclusive, so no sequence of pushes
