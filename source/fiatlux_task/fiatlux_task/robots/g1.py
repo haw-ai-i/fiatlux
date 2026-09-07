@@ -237,9 +237,13 @@ def _finger_effort(hand: str, default: str) -> float:
     """Finger effort cap (N.m), per hand. ``FIATLUX_<HAND>_FINGER_EFFORT`` (e.g.
     ``FIATLUX_DEX3_FINGER_EFFORT``) overrides the shared ``FIATLUX_FINGER_EFFORT``, which overrides
     the built-in default -- so one hand can be retuned without touching the other."""
-    return float(
-        _os.environ.get(f"FIATLUX_{hand.upper()}_FINGER_EFFORT", _os.environ.get("FIATLUX_FINGER_EFFORT", default))
-    )
+    hand_var = f"FIATLUX_{hand.upper()}_FINGER_EFFORT"
+    shared_var = "FIATLUX_FINGER_EFFORT"
+    value = _os.environ.get(hand_var, _os.environ.get(shared_var, default))
+    try:
+        return float(value)
+    except ValueError:
+        raise ValueError(f"Invalid finger effort override {value!r} (from {hand_var} or {shared_var})") from None
 
 
 # ---------------------------------------------------------------------------
