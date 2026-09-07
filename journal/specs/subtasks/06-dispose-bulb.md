@@ -20,7 +20,7 @@ crate, facing it, old bulb in hand (`BULB_IN_ROOT_STANDING`), crate on the floor
 |---|---|---|
 | bulb within the disposal threshold of the crate origin | `DISPOSAL_THRESHOLD = 0.25` m | `old_bulb_disposed` |
 | bulb at rest | lin vel < 0.05 m/s, ang vel < 0.10 rad/s | new |
-| bulb inside the crate, not on its rim | bulb AABB centre inside the crate's interior AABB | measured at spawn |
+| bulb inside the crate, not on its rim | bulb geometry inside the crate's interior box | `old_bulb_in_bin` |
 | **released** — zero hand↔old_bulb contact | < 1 N | filtered channel |
 | bulb not broken | peak contact never exceeded the glass bound | `GLASS_CONTACT_LIMIT_N` |
 | robot standing | `FALL_MIN_HEIGHT`, `FALL_TILT_LIMIT` | base |
@@ -35,8 +35,16 @@ of `BIN_BULB_INTERIOR_Z - BULB_STAND_Z_OFFSET` = 0.0187 m, which silently assume
 *standing on its cap*: a bulb lying on its glass reads root z = `0.055 + BULB_LIE_Z_OFFSET` =
 **0.0946 m** and fails. `poses.py` argues this bulb self-rights onto its flat cap, so the window was
 not necessarily unsatisfiable — but a bulb wedged against a crate wall or still settling would fail a
-gate that should only be asking whether it is in the crate. Test the AABBs; it holds in every
-orientation.
+gate that should only be asking whether it is in the crate.
+
+**And it must test the bulb, not its root.** The root frame is a transform origin that sits 36 mm
+off the cap and up to 193 mm from the far end of the glass, so it can be past the crate wall while
+the bulb rests against that wall from the inside — measured on four of seven VR takes, all scored 0
+while visibly in the crate (#131). Correcting for the offset does not work: it is
+orientation-dependent and as large as the bulb, and the first fix applied a fixed allowance on z
+only, which is what left the gate unable to separate in from out. `object_in_container` now takes
+the bulb's outline (`assets.BULB_MERIDIAN`, a solid of revolution about local +z) and computes its
+exact reach along each crate axis from the live pose.
 
 Note the interaction with `old_bulb_dropped`, which is deliberately *not* a plain height gate for
 exactly this reason: legitimately disposing the bulb also ends near the floor, so "dropped"
