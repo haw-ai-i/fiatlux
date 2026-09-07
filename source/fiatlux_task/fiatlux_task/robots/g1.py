@@ -15,8 +15,10 @@ The cfg deliberately leaves ``prim_path`` unset (``MISSING``); each scene suppli
 it via ``.replace(prim_path=...)`` so the same robot can be reused across tasks.
 """
 
+# override knobs: FIATLUX_FINGER_EFFORT, FIATLUX_FINGER_DAMP, FIATLUX_INSPIRE_FINGER_EFFORT,
+# FIATLUX_DEX3_FINGER_EFFORT (see G1_INSPIRE_CFG, _finger_effort).
 import inspect
-import os as _os  # override knobs: FIATLUX_FINGER_EFFORT, FIATLUX_FINGER_DAMP (see G1_INSPIRE_CFG).
+import os as _os
 
 import isaaclab.sim as sim_utils
 from isaaclab.actuators import ImplicitActuatorCfg
