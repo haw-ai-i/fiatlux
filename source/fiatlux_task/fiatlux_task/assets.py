@@ -41,6 +41,29 @@ SOCKET_SEAT_AXIS = (0.0, 0.0, 1.0)
 # root z = surface_z + BULB_LIE_Z_OFFSET. The fixture's origin is its floor-contact plane.
 BULB_STAND_Z_OFFSET = 0.036259
 BULB_LIE_Z_OFFSET = 0.039561
+# The bulb's collider outline as (z, radius) in its own root frame -- it is a solid of
+# revolution about local +z. The body starts 36 mm ABOVE the root and ends at 193 mm, so the
+# root frame origin lies outside the geometry entirely: a gate that tests the root as if it
+# were a point on the bulb is testing a point up to 193 mm away from it (issue #131).
+# Measured from the collision meshes; re-measure if the bulb USD changes.
+BULB_MERIDIAN = (
+    (0.03626, 0.00759),
+    (0.04583, 0.02026),
+    (0.07436, 0.02196),
+    (0.08479, 0.02440),
+    (0.09706, 0.02442),
+    (0.11086, 0.02558),
+    (0.12366, 0.03025),
+    (0.13688, 0.03652),
+    (0.15224, 0.03956),
+    (0.15748, 0.03922),
+    (0.16764, 0.03653),
+    (0.18181, 0.02640),
+    (0.19267, 0.00000),
+)
+# Centroid of that outline: a point actually ON the bulb, for anything that means "where the
+# bulb is" rather than "where its transform origin is" (issue #131).
+BULB_BODY_CENTRE_OFFSET = (0.0, 0.0, 0.10961)
 SOCKET_BASE_Z_OFFSET = 0.0
 # Cap bottom to fixture top: how far the bulb sinks when seated.
 SOCKET_INSERTION_DEPTH = 0.034226

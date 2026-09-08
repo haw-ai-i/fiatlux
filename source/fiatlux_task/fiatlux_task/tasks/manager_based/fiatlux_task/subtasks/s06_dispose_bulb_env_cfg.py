@@ -11,7 +11,8 @@ fixture.
 
 Success requires the bulb inside the crate's interior footprint (``place_terms.old_bulb_in_bin``,
 orientation-agnostic): a bulb balanced on the rim, or resting on the floor beside the crate, is
-outside it.
+outside it. The gate tests the bulb's geometry rather than its root frame, which lies off the
+body and can be past the crate wall while the bulb rests against it from the inside (#131).
 """
 
 from isaaclab.managers import EventTermCfg as EventTerm

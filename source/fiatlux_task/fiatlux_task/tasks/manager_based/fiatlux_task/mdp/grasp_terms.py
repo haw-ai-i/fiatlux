@@ -33,7 +33,10 @@ from isaaclab.managers import SceneEntityCfg
 from isaaclab.sensors import ContactSensor
 from isaaclab.utils.math import quat_apply
 
+from fiatlux_task.assets import BULB_BODY_CENTRE_OFFSET, BULB_MERIDIAN
 from fiatlux_task.robots.g1 import G1_PALM_BODY_BY_VARIANT
+
+from .place_terms import object_vertical_span
 
 if TYPE_CHECKING:
     from isaaclab.envs import ManagerBasedRLEnv
@@ -77,16 +80,25 @@ def _right_hand_pos_w(env: ManagerBasedRLEnv) -> torch.Tensor:
     return robot.data.body_pos_w[:, body_id, :]
 
 
+def _bulb_body_centre_w(env: ManagerBasedRLEnv, name: str) -> torch.Tensor:
+    """The bulb's own centre in world frame -- a point on the glass, not its root frame.
+
+    The root sits 36 mm off the cap and up to 193 mm from the far end, so reaching for it aims
+    the hand beside the bulb rather than at it (issue #131).
+    """
+    bulb: RigidObject = env.scene[name]
+    offset = torch.tensor(BULB_BODY_CENTRE_OFFSET, device=env.device).expand(env.num_envs, 3)
+    return bulb.data.root_pos_w + quat_apply(bulb.data.root_quat_w, offset)
+
+
 def hand_bulb_distance(env: ManagerBasedRLEnv) -> torch.Tensor:
     """Distance (m) from the right hand to the fresh bulb; S08's reach signal."""
-    bulb: RigidObject = env.scene["fresh_bulb"]
-    return torch.norm(_right_hand_pos_w(env) - bulb.data.root_pos_w, dim=1)
+    return torch.norm(_right_hand_pos_w(env) - _bulb_body_centre_w(env, "fresh_bulb"), dim=1)
 
 
 def hand_old_bulb_distance(env: ManagerBasedRLEnv) -> torch.Tensor:
     """Distance (m) from the right hand to the seated old bulb; S03's reach signal."""
-    old_bulb: RigidObject = env.scene["old_bulb"]
-    return torch.norm(_right_hand_pos_w(env) - old_bulb.data.root_pos_w, dim=1)
+    return torch.norm(_right_hand_pos_w(env) - _bulb_body_centre_w(env, "old_bulb"), dim=1)
 
 
 # ---------------------------------------------------------------------------
@@ -158,11 +170,17 @@ def ladder_near_vertical(
 # ---------------------------------------------------------------------------
 
 
-def object_lifted(env: ManagerBasedRLEnv, asset_cfg: SceneEntityCfg, min_height: float) -> torch.Tensor:
-    """True where the object's root sits above ``min_height`` (world frame).
+def object_lifted(
+    env: ManagerBasedRLEnv,
+    asset_cfg: SceneEntityCfg,
+    min_height: float,
+    meridian: tuple[tuple[float, float], ...] = BULB_MERIDIAN,
+) -> torch.Tensor:
+    """True where the whole object sits above ``min_height`` (world frame).
 
-    Generic height gate for "off the surface it started on"; the leaf supplies ``min_height``
-    from that surface's own rest height plus a clearance margin.
+    Gates the object's LOWEST geometry, not its root: the bulb's root is off its own body, so a
+    root test reads a bulb merely tipped onto its side as lifted 76 mm while it never leaves the
+    surface (issue #131). ``min_height`` is therefore the surface's own height plus a clearance
+    margin, not a root rest height.
     """
-    obj: RigidObject = env.scene[asset_cfg.name]
-    return obj.data.root_pos_w[:, 2] > min_height
+    return object_vertical_span(env, asset_cfg, meridian)[0] > min_height
