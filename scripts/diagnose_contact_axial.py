@@ -95,7 +95,7 @@ from fiatlux_task.tasks.manager_based.fiatlux_task.mdp import attach as task_att
 from fiatlux_task.tasks.manager_based.fiatlux_task.scene_cfg import set_layout_seed
 
 import isaaclab.sim as sim_utils
-from isaaclab.utils.math import quat_apply
+from isaaclab.utils.math import quat_apply, quat_mul
 
 from isaaclab_tasks.utils import parse_env_cfg
 
@@ -156,6 +156,34 @@ def main() -> int:
     module_name, class_name = spec.entry_point.split(":")
     env = getattr(importlib.import_module(module_name), class_name)(cfg=cfg)
     env.reset(seed=args_cli.seed)
+
+    def _measure_live_plug_radius() -> float | None:
+        """Query the plug mesh's ACTUAL bounding radius from the running stage -- confirms
+        which asset Isaac Sim really resolved at runtime, independent of any offline USD
+        inspection or assumption about what ``download_assets.sh`` last synced. Expect
+        ~0.0175 m if the radially-shrunk asset loaded, ~0.0208 m if the original did."""
+        import omni.usd
+        from pxr import UsdGeom
+
+        stage = omni.usd.get_context().get_stage()
+        if stage is None:
+            return None
+        for prim in stage.Traverse():
+            path = str(prim.GetPath())
+            if path.endswith("Geom/BulbGrp/Base") and "env_0" in path and prim.IsA(UsdGeom.Mesh):
+                cache = UsdGeom.BBoxCache(0, ["default", "render"], useExtentsHint=False)
+                rng = cache.ComputeWorldBound(prim).ComputeAlignedBox()
+                lo, hi = rng.GetMin(), rng.GetMax()
+                return 0.5 * max(hi[0] - lo[0], hi[1] - lo[1])
+        return None
+
+    live_radius = _measure_live_plug_radius()
+    print(
+        f"SETUP live_plug_radius={live_radius if live_radius is None else round(live_radius, 5)} "
+        "(expect ~0.0175 if the shrunk asset loaded, ~0.0208 if not; None means the query "
+        "itself failed -- treat that as inconclusive, not confirmation either way)",
+        flush=True,
+    )
 
     socket = env.scene["socket"]
     fresh_bulb = env.scene["fresh_bulb"]
@@ -315,6 +343,63 @@ def main() -> int:
         )
         return seated
 
+    def run_force_hard_hold(magnitude: float, direction: float) -> bool:
+        """Axial push while lateral and tilt are corrected HARD every step (position_slack=0
+        -- an exact re-alignment, not a spring), reusing ``attach.py``'s own AXIAL-phase
+        projection math (``_signed_twist`` / ``_axis_angle_quat``) instead of a hand-tuned
+        controller.
+
+        This exists because the FORCE_HELD sweep could not answer the actual question: every
+        gain from 0.02 to 1.0 (a 50x range) left tilt above 1 rad, and one configuration
+        diverged to multi-metre displacement -- signatures of an under/over-damped soft
+        controller losing to contact torque, not necessarily of the bore still being too
+        tight. A hard hold removes that confound: it re-applies the same DOF-selective
+        constraint the real (currently pose-overwriting) enforcement already uses, so if
+        insertion STILL fails here, that is direct evidence of a geometry/contact-margin
+        problem independent of any control scheme -- not a "the diagnostic's controller was
+        bad" ambiguity.
+
+        This deliberately reproduces the "authority overwrites contact" pattern the rest of
+        this investigation is trying to move away from for PRODUCTION code -- that is fine
+        for a diagnostic whose only job is to isolate one variable, but this function must
+        never be copied into ``attach.py`` as-is.
+        """
+        settle()
+        axial0, _, _ = geometry()
+        trace = []
+        for i in range(args_cli.steps):
+            socket_quat = socket.data.root_quat_w
+            axis_w = quat_apply(socket_quat, seat_axis.unsqueeze(0))
+            forces = (direction * magnitude * axis_w).unsqueeze(1)
+            fresh_bulb.set_external_force_and_torque(forces, torch.zeros((1, 1, 3), device=device))
+            env.step(zero_action)
+
+            socket_quat = socket.data.root_quat_w
+            axis_w = quat_apply(socket_quat, seat_axis.unsqueeze(0))
+            seat = socket.data.root_pos_w + quat_apply(socket_quat, seat_offset.unsqueeze(0))
+            bulb_quat = fresh_bulb.data.root_quat_w
+            plug = fresh_bulb.data.root_pos_w + quat_apply(bulb_quat, plug_offset.unsqueeze(0))
+            axial_now = ((plug - seat) * axis_w).sum(dim=1).clamp(min=-0.02, max=depth)
+            twist_now = task_attach._signed_twist(socket_quat, bulb_quat, seat_axis)
+            proj_quat = quat_mul(socket_quat, task_attach._axis_angle_quat(seat_axis, twist_now))
+            proj_pos = seat + axial_now.unsqueeze(1) * axis_w - quat_apply(proj_quat, plug_offset.unsqueeze(0))
+            fresh_bulb.write_root_pose_to_sim(torch.cat([proj_pos, proj_quat], dim=-1))
+            fresh_bulb.write_root_velocity_to_sim(torch.zeros((1, 6), device=device))
+
+            if i % 20 == 0 or i == args_cli.steps - 1:
+                axial, lateral, tilt = geometry()
+                trace.append((i, round(axial, 4), round(lateral, 4), round(tilt, 3), phase()))
+        axial, lateral, tilt = geometry()
+        seated = phase() != task_attach._FREE or (
+            abs(axial) <= seat_tolerance and lateral < radial_tolerance and tilt < tilt_tolerance
+        )
+        print(
+            f"FORCE_HARD_HOLD mag={magnitude:g} dir={direction:+.0f} axial {axial0:.4f} -> {axial:.4f} "
+            f"lateral={lateral:.4f} tilt={tilt:.3f} phase={phase()} seated={seated} trace={trace}",
+            flush=True,
+        )
+        return seated
+
     def run_pose_drive() -> bool:
         """Control: the way the shipped code drives it today. Must reach the seat, or the run
         proves nothing about contact -- same non-negotiable control as the twist script."""
@@ -355,11 +440,15 @@ def main() -> int:
     held_seated = False
     for magnitude in (0.5, 2.0, 10.0):
         held_seated |= run_force_held_orientation(magnitude, 1.0)
+    hard_hold_seated = False
+    for magnitude in (0.5, 2.0, 10.0):
+        hard_hold_seated |= run_force_hard_hold(magnitude, 1.0)
     control_seated = run_pose_drive()
 
     print(
         f"VERDICT socket_pair_collision={'FORCED ON' if FORCE_SOCKET_COLLISION else 'filtered off'} "
-        f"contact_seated={contact_seated} held_seated={held_seated} control_seated={control_seated}",
+        f"contact_seated={contact_seated} held_seated={held_seated} "
+        f"hard_hold_seated={hard_hold_seated} control_seated={control_seated}",
         flush=True,
     )
     env.close()
