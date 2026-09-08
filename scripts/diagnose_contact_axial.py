@@ -112,14 +112,32 @@ FORCE_SOCKET_COLLISION = os.environ.get("FORCE_SOCKET_COLLISION") == "1"
 
 @_clone
 def _unfiltered_bulb_spawn(prim_path, cfg, translation=None, orientation=None):
-    """``_spawn_bulb_socket_filtered`` without the ``FilteredPairsAPI`` call.
+    """``_spawn_bulb_socket_filtered`` with the ``FilteredPairsAPI`` call skipped for the
+    FRESH bulb only -- ``old_bulb`` stays filtered, matching production.
+
+    ``_make_bulb_cfg`` (scene_cfg.py) is a SHARED factory: both ``old_bulb`` (prim path
+    ``.../OldBulb``) and ``fresh_bulb`` (``.../Bulb``) reference ``_spawn_bulb_socket_filtered``
+    by the same module-global name, so an earlier version of this monkeypatch un-filtered
+    BOTH bulbs, not just the one under test. That is a real bug: ``FIATLUX-Replace-v0``
+    spawns ``old_bulb`` already seated (embedded in the housing), and ``mdp.bulb_attachment``
+    kinematically pins its pose there every step regardless of collision state -- giving it
+    real collision reproduces the exact "median 1067 N, ~3100x weight" two-authorities
+    pathology ``_spawn_bulb_socket_filtered``'s own docstring describes, injecting that noise
+    into every trial's dynamics whether or not it has anything to do with the fresh bulb's
+    own insertion physics.
 
     MUST carry @clone like the original: the spawner is handed a regex prim path
     (/World/envs/env_.*/Bulb) and @clone is what resolves it to the source env and
     replicates. Without it USD gets the regex verbatim and the run dies on an
     ill-formed SdfPath.
     """
-    return scene_cfg_mod._spawn_from_usd_file(prim_path, cfg.usd_path, cfg, translation, orientation)
+    prim = scene_cfg_mod._spawn_from_usd_file(prim_path, cfg.usd_path, cfg, translation, orientation)
+    if "OldBulb" in prim_path:
+        from pxr import Sdf, UsdPhysics
+
+        socket_path = prim_path.rsplit("/", 1)[0] + "/Socket"
+        UsdPhysics.FilteredPairsAPI.Apply(prim).CreateFilteredPairsRel().AddTarget(Sdf.Path(socket_path))
+    return prim
 
 
 def build_cfg():
@@ -247,9 +265,13 @@ def main() -> int:
             env.step(zero_action)
 
     def run_force(magnitude: float, direction: float) -> bool:
-        """Constant world-frame force along the seat axis. Positive direction pushes toward
-        the seat (into the channel); negative pulls out -- a sign-asymmetry check, the way
-        diagnose_contact_twist.py tries both twist directions."""
+        """Constant world-frame force along the seat axis (``is_global=True`` -- without it
+        ``set_external_force_and_torque`` applies in the BODY's local frame, which an earlier
+        version of this script got wrong on every call site). Positive direction pushes along
+        +seat_axis, which is OUTWARD (``replace_env_cfg.py``: "positive axial travel leaves
+        the socket, which is what `eject` tests"); negative is inward, toward the seat. Both
+        signs are swept regardless -- a sign-asymmetry check, the way diagnose_contact_twist.py
+        tries both twist directions."""
         settle()
         axial0, _, _ = geometry()
         socket_quat = socket.data.root_quat_w
@@ -258,12 +280,12 @@ def main() -> int:
         torque = torch.zeros((1, 1, 3), device=device)
         trace = []
         for i in range(args_cli.steps):
-            fresh_bulb.set_external_force_and_torque(forces, torque)
+            fresh_bulb.set_external_force_and_torque(forces, torque, is_global=True)
             env.step(zero_action)
             if i % 20 == 0 or i == args_cli.steps - 1:
                 axial, lateral, tilt = geometry()
                 trace.append((i, round(axial, 4), round(lateral, 4), round(tilt, 3), phase()))
-        fresh_bulb.set_external_force_and_torque(torch.zeros_like(forces), torque)
+        fresh_bulb.set_external_force_and_torque(torch.zeros_like(forces), torque, is_global=True)
         axial, lateral, tilt = geometry()
         seated = phase() != task_attach._FREE or (abs(axial) <= seat_tolerance and lateral < radial_tolerance and tilt < tilt_tolerance)
         print(
@@ -323,13 +345,13 @@ def main() -> int:
             correction = torch.cross(plug_axis_w, seat_axis_w, dim=-1)
             ang_vel = fresh_bulb.data.root_ang_vel_w
             torque = (k_p * correction - k_d * ang_vel).unsqueeze(1)
-            fresh_bulb.set_external_force_and_torque(forces, torque)
+            fresh_bulb.set_external_force_and_torque(forces, torque, is_global=True)
             env.step(zero_action)
             if i % 20 == 0 or i == args_cli.steps - 1:
                 axial, lateral, tilt = geometry()
                 trace.append((i, round(axial, 4), round(lateral, 4), round(tilt, 3), phase()))
         fresh_bulb.set_external_force_and_torque(
-            torch.zeros_like(forces), torch.zeros((1, 1, 3), device=device)
+            torch.zeros_like(forces), torch.zeros((1, 1, 3), device=device), is_global=True
         )
         axial, lateral, tilt = geometry()
         seated = phase() != task_attach._FREE or (
@@ -371,7 +393,9 @@ def main() -> int:
             socket_quat = socket.data.root_quat_w
             axis_w = quat_apply(socket_quat, seat_axis.unsqueeze(0))
             forces = (direction * magnitude * axis_w).unsqueeze(1)
-            fresh_bulb.set_external_force_and_torque(forces, torch.zeros((1, 1, 3), device=device))
+            fresh_bulb.set_external_force_and_torque(
+                forces, torch.zeros((1, 1, 3), device=device), is_global=True
+            )
             env.step(zero_action)
 
             socket_quat = socket.data.root_quat_w
@@ -446,12 +470,19 @@ def main() -> int:
             contact_seated |= run_force(magnitude, direction)
     for speed in (0.05, 0.5):
         contact_seated |= run_velocity(speed)
+    # dir=+1 pushes along +seat_axis, which is OUTWARD (replace_env_cfg.py: "positive axial
+    # travel leaves the socket, which is what `eject` tests") -- so INWARD is dir=-1. Sweep
+    # both rather than assume one is "the" inward direction: it's cheap, and an earlier
+    # version of this script called these two trials with only dir=+1, silently testing
+    # ejection instead of insertion the whole time.
     held_seated = False
     for magnitude in (0.5, 2.0, 10.0):
-        held_seated |= run_force_held_orientation(magnitude, 1.0)
+        for direction in (1.0, -1.0):
+            held_seated |= run_force_held_orientation(magnitude, direction)
     hard_hold_seated = False
     for magnitude in (0.5, 2.0, 10.0):
-        hard_hold_seated |= run_force_hard_hold(magnitude, 1.0)
+        for direction in (1.0, -1.0):
+            hard_hold_seated |= run_force_hard_hold(magnitude, direction)
     control_seated = run_pose_drive()
 
     print(
