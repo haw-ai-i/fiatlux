@@ -112,7 +112,11 @@ def _seated_bulb_root_pose_w(env: ManagerBasedEnv) -> tuple[torch.Tensor, torch.
 
 
 class bulb_attachment(ManagerTermBase):
-    """Every-step FREE/SEATED axial-detent retention for both bulbs."""
+    """Every-step FREE/SEATED axial-detent retention for both bulbs.
+
+    ``old_bulb`` is optional -- insert-only scenes (nothing to remove) omit it, and this term
+    then only ever manages ``fresh_bulb``.
+    """
 
     def __init__(self, cfg: EventTermCfg, env: ManagerBasedEnv):
         super().__init__(cfg, env)
@@ -168,21 +172,25 @@ class bulb_attachment(ManagerTermBase):
         # seat_tolerance (4 mm) so an unheld, resting bulb (which sags a little under gravity)
         # never self-releases, but well short of a real withdrawal.
         del env_ids
-        old_bulb: RigidObject = env.scene["old_bulb"]
+        # old_bulb is absent from insert-only scenes (e.g. the tabletop preset, which has
+        # nothing to remove) -- self._phase[_OLD] then never leaves its _FREE default, so
+        # fresh_bulb's own socket_empty check below is correct with no further change.
+        old_bulb: RigidObject | None = env.scene["old_bulb"] if "old_bulb" in env.scene.keys() else None
         fresh_bulb: RigidObject = env.scene["fresh_bulb"]
         self._resolve_spawn_phase(env, old_bulb, fresh_bulb)
-        self._advance(
-            old_bulb,
-            _OLD,
-            socket_empty=self._phase[_FRESH] == _FREE,
-            radial_tolerance=radial_tolerance,
-            tilt_tolerance=tilt_tolerance,
-            seat_tolerance=seat_tolerance,
-            release_threshold=release_threshold,
-            spring_k=spring_k,
-            spring_d=spring_d,
-            max_force=max_force,
-        )
+        if old_bulb is not None:
+            self._advance(
+                old_bulb,
+                _OLD,
+                socket_empty=self._phase[_FRESH] == _FREE,
+                radial_tolerance=radial_tolerance,
+                tilt_tolerance=tilt_tolerance,
+                seat_tolerance=seat_tolerance,
+                release_threshold=release_threshold,
+                spring_k=spring_k,
+                spring_d=spring_d,
+                max_force=max_force,
+            )
         self._advance(
             fresh_bulb,
             _FRESH,
@@ -197,7 +205,9 @@ class bulb_attachment(ManagerTermBase):
         )
         self._take_snapshot()
 
-    def _resolve_spawn_phase(self, env: ManagerBasedEnv, old_bulb: RigidObject, fresh_bulb: RigidObject) -> None:
+    def _resolve_spawn_phase(
+        self, env: ManagerBasedEnv, old_bulb: RigidObject | None, fresh_bulb: RigidObject
+    ) -> None:
         """Seat whichever bulb the task actually SPAWNED at the seat, and only that one.
 
         Reading the phase off the scene means a preset that moves a bulb has said everything
@@ -205,12 +215,17 @@ class bulb_attachment(ManagerTermBase):
         Deferred to the first step rather than done in ``reset()`` because the phase depends on
         the bulb's spawned pose, and the event that restores it (``reset_scene_to_default``) is
         a sibling reset term whose ordering against this one is not ours to rely on.
+
+        ``old_bulb`` is ``None`` on insert-only scenes with nothing to remove; that row is left
+        alone (permanently ``_FREE``, its default).
         """
         ids = self._pending.nonzero(as_tuple=False).squeeze(-1)
         if ids.numel() == 0:
             return
         seat_pos, _ = _seated_bulb_root_pose_w(env)
         for row, bulb in ((_OLD, old_bulb), (_FRESH, fresh_bulb)):
+            if bulb is None:
+                continue
             at_seat = torch.norm(bulb.data.root_pos_w - seat_pos, dim=1) < _SEATED_SPAWN_TOLERANCE
             seated = ids[at_seat[ids]]
             if seated.numel() > 0:

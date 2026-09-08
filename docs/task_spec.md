@@ -22,21 +22,24 @@ return to it (plus the reset jitter below).
   default; `ReplaceEnvCfg.couple_ladder_to_fixture = True` is an explicit debug/curriculum
   opt-in that spawns it reachably near the fixture.
 - **Both bulbs are dynamic**, governed by the `mdp.bulb_attachment` state machine
-  (unification spec Phase 4, issue #54). It models a bayonet channel from the bulb pose:
-  insertion permits only axial translation; at full depth, starting a twist locks
-  translation and permits only rotation. Removal reverses the sequence: rotate, then
-  eject axially.
-  The insertion depth and locking angle are scalar-or-range parameters, sampled per env
-  at reset when ranges are configured. `fresh_bulb_inserted` and `success` read the
-  attachment state, so every score channel is achievable. Remove/Install do not yet use
-  this mechanic: their bulbs simply lift out of / drop into the socket.
+  (unification spec Phase 4; issue #167 superseded the original bayonet design, issue #54).
+  Two states per bulb: `FREE` (unconstrained) and `SEATED` (a continuous axial spring-damper
+  force holds it at the seat). `FREE -> SEATED` fires on reaching the seat aligned
+  (position + tilt tolerance) with the socket empty; real bulb-socket collision -- filtered
+  out under the old bayonet, now enabled everywhere -- constrains lateral position and
+  orientation on its own, so nothing here scripts them. `SEATED -> FREE` (release) fires on
+  a real, physics-driven axial pull past `release_threshold`. No twist/lock/rotation state:
+  this asset has no physical lug or groove, so the old bayonet's clock-angle semantics were
+  never modeling a real feature. `fresh_bulb_attached` and `success` read the attachment
+  state, so every score channel is achievable. Remove/Install do not yet use this mechanic:
+  their bulbs simply lift out of / drop into the socket.
 
 ## Goal
 
 Insert the fresh bulb into the fixture, remove the old bulb from the fixture, and place
-the old bulb in the disposal crate. Full success = fresh bulb **attached** (fully inserted
-and rotated through the configured lock angle, per `mdp.bulb_attachment`) **and** old bulb
-in the crate. Seating alone no longer scores.
+the old bulb in the disposal crate. Full success = fresh bulb **attached** (seated and held
+by the retention spring, per `mdp.bulb_attachment`) **and** old bulb in the crate. Seating
+alone no longer scores.
 
 ## Actions
 

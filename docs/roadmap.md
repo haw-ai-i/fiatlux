@@ -43,14 +43,21 @@ descoping still stands — it is one flat RL episode, chaining is solution struc
   smoke-test policies.~~ DONE (2026-07-09): `replace_env_cfg.py`, see
   `docs/task_spec.md` / `docs/scoring.md`.
 - Policy stitching / staged-curriculum chaining: not planned (solution structure).
-- Old-bulb attach/detach mechanic (unification spec Phase 4): LANDED for Replace
-  (issue #54, revised 2026-07-31) as the `mdp.bulb_attachment` bayonet state machine.
-  It constrains each bulb to axial-only insertion/ejection or rotation-only locking,
-  switching only when the bulb itself moves at the fully inserted junction. Insertion
-  depth and lock angle are per-env scalar-or-range parameters for future domain
-  randomization. All Replace score channels are achievable. Follow-up: put Remove/Install
-  on the same mechanic; their bulbs are already dynamic but currently lift straight out
-  of / drop straight into the socket.
+- Old-bulb attach/detach mechanic (unification spec Phase 4): the original bayonet state
+  machine (issue #54) was superseded (issue #167, 2026-09-08) by a simpler two-state
+  `mdp.bulb_attachment` FREE/SEATED axial detent -- real bulb-socket collision (re-enabled
+  globally; the old collision filter is gone) now constrains lateral position and
+  orientation on its own, so the only thing left to script is axial retention: a
+  continuous spring-damper force while seated, release on a real physics-driven axial
+  pull past `release_threshold`. No twist/lock semantics (this asset has no physical
+  lug/groove; the bayonet never modeled a real feature). Wired for Replace, the S01/S03/S11
+  subtask-teleop tasks, and `FIATLUX-Insert-v0` (RL). **Not yet wired for
+  `FIATLUX-Insert-Teleop-v0`**: that task swaps in a differently-scaled OMNI socket/bulb
+  asset whose seat/plug geometry hasn't been measured against the family asset's calibrated
+  offsets, so retention there needs its own calibration pass first (see the TODO in
+  `insert_teleop_env_cfg.py`). Follow-up: put Remove/Install on the same mechanic; their
+  bulbs are already dynamic but currently lift straight out of / drop straight into the
+  socket (issue #76 Step 2).
 
 ## 3. Learned-policy support
 

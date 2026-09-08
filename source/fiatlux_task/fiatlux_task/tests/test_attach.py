@@ -208,6 +208,31 @@ def test_spawn_resolution_seats_the_seated_bulb_and_frees_the_far_one():
     assert mgr._phase[FRESH, 0] == FREE
 
 
+def test_insert_only_scene_without_old_bulb_seats_fresh_bulb():
+    """Insert-only scenes (the tabletop preset) never spawn an ``old_bulb`` -- there is nothing
+    to remove. The manager must not crash indexing a scene entity that does not exist, and
+    ``fresh_bulb`` must still seat normally: with no old bulb, ``self._phase[_OLD]`` never
+    leaves its ``_FREE`` default, so the socket-empty check is satisfied on its own."""
+    env = SimpleNamespace(
+        num_envs=1,
+        device="cpu",
+        step_dt=0.02,
+        scene={
+            "socket": _FakeBody([0.0, 0.0, 0.0]),
+            "fresh_bulb": _FakeBody([1.0, 0.0, 0.0]),
+        },
+    )
+    cfg = SimpleNamespace(params={})
+    mgr = attach.bulb_attachment(cfg, env)
+    _step(mgr, env)
+    fresh = env.scene["fresh_bulb"]
+    assert mgr._phase[FRESH, 0] == FREE  # far away, unseated
+
+    fresh.data.root_pos_w = torch.tensor([[0.0, 0.0, 0.0]])
+    _step(mgr, env)
+    assert mgr._phase[FRESH, 0] == SEATED
+
+
 def test_free_bulb_gets_no_force():
     """A FREE bulb is untouched: the wrench call still happens every step (so a stale force
     from a previous seat never lingers), but the applied force/torque are exactly zero."""
