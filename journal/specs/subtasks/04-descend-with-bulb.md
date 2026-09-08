@@ -50,7 +50,7 @@ describes the default workshop layout, not this chain's placed ladder. New predi
 ## Terminations
 
 `time_out`, `success=descended_with_bulb`, `fell_below`, `fell_over`, `ladder_tipped`,
-`old_bulb_dropped`. `episode_length_s = 30.0`.
+`old_bulb_dropped`. `episode_length_s = 120.0`.
 
 Note `fell_below` and the success height gate both read pelvis height and must not collide:
 `FALL_MIN_HEIGHT = 0.35` sits below the floor-stance success height (~0.94 m in Descend's

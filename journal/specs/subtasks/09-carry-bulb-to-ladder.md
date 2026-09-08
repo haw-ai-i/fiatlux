@@ -48,7 +48,7 @@ demolishing the thing you are about to climb must not score.
 ## Terminations
 
 `time_out`, `success=arrived_at_ladder_with_bulb`, `fell_below`, `fell_over`, `bulb_dropped`,
-`ladder_tipped`. `episode_length_s = 25.0`.
+`ladder_tipped`. `episode_length_s = 120.0`.
 
 ## Reuse
 

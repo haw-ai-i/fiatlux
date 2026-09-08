@@ -113,5 +113,5 @@ class S06DisposeBulbEnvCfg(PlaceSubtaskCfg):
         add_mid360_lidar(self.scene)
         add_release_contact_sensor(self.scene, self.scene.old_bulb.prim_path)
         add_bulb_crush_gate(self, "release_contact")
-        self.episode_length_s = 20.0
+        self.episode_length_s = 120.0
         frame_viewer_on(self.viewer, self.scene.robot.init_state.pos)

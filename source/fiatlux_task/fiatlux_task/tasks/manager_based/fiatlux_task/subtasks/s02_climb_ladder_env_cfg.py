@@ -52,4 +52,4 @@ class S02ClimbLadderEnvCfg(ClimbSubtaskCfg):
 
     def __post_init__(self) -> None:
         super().__post_init__()
-        self.episode_length_s = 20.0
+        self.episode_length_s = 120.0

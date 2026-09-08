@@ -54,7 +54,7 @@ validated offset rather than probing from scratch.
 ## Terminations
 
 `time_out`, `success=arrived_at_bulb`, `fell_below`, `fell_over`, `bulb_dropped`.
-`episode_length_s = 25.0`.
+`episode_length_s = 120.0`.
 
 ## Reuse
 

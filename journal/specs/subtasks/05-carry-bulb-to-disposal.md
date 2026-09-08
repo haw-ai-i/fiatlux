@@ -53,7 +53,7 @@ requirement.
 ## Terminations
 
 `time_out`, `success=arrived_at_disposal`, `fell_below`, `fell_over`, `old_bulb_dropped`.
-`episode_length_s = 25.0`.
+`episode_length_s = 120.0`.
 
 No `ladder_tipped` term: the robot is walking away from the ladder and no longer interacts with
 it. State that at the cfg site — its absence is a decision, not an omission.

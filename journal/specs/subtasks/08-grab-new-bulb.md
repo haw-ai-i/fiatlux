@@ -67,7 +67,7 @@ There is no headroom; if retention fails, the answer is not more curl.
 ## Terminations
 
 `time_out`, `success=bulb_grasped`, `fell_below`, `fell_over`, `bulb_dropped`.
-`episode_length_s = 20.0`.
+`episode_length_s = 120.0`.
 
 ## Reuse
 
