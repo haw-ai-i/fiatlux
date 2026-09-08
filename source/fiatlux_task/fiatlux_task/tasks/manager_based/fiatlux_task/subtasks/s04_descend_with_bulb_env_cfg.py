@@ -143,4 +143,4 @@ class S04DescendWithBulbEnvCfg(DescendSubtaskCfg):
         }
         add_grip_contact_sensor(self.scene, self.scene.old_bulb.prim_path)
         add_bulb_crush_gate(self)
-        self.episode_length_s = 30.0
+        self.episode_length_s = 120.0

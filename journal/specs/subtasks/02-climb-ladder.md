@@ -47,7 +47,7 @@ stance on the top steps scores rather than requiring the pelvis exactly at rail 
 ## Terminations
 
 `time_out`, `success=climbed_to_ladder_top`, `fell_below`, `fell_over`, `ladder_tipped`.
-`episode_length_s = 20.0`.
+`episode_length_s = 120.0`.
 
 ## Sensing
 

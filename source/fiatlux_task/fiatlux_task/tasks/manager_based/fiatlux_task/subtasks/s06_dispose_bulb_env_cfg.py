@@ -11,7 +11,8 @@ fixture.
 
 Success requires the bulb inside the crate's interior footprint (``place_terms.old_bulb_in_bin``,
 orientation-agnostic): a bulb balanced on the rim, or resting on the floor beside the crate, is
-outside it.
+outside it. The gate tests the bulb's geometry rather than its root frame, which lies off the
+body and can be past the crate wall while the bulb rests against it from the inside (#131).
 """
 
 from isaaclab.managers import EventTermCfg as EventTerm
@@ -113,5 +114,5 @@ class S06DisposeBulbEnvCfg(PlaceSubtaskCfg):
         add_mid360_lidar(self.scene)
         add_release_contact_sensor(self.scene, self.scene.old_bulb.prim_path)
         add_bulb_crush_gate(self, "release_contact")
-        self.episode_length_s = 20.0
+        self.episode_length_s = 120.0
         frame_viewer_on(self.viewer, self.scene.robot.init_state.pos)

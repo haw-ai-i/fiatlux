@@ -85,4 +85,4 @@ class S12ClimbDownEnvCfg(DescendSubtaskCfg):
         # S11's end state: the job is done -- fresh bulb in the fixture, old one thrown away.
         park_old_bulb_in_crate(self.scene)
         seat_bulb_in_fixture(self.scene)
-        self.episode_length_s = 20.0
+        self.episode_length_s = 120.0

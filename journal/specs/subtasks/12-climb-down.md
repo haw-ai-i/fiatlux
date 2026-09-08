@@ -53,7 +53,7 @@ hardcodes `SUCCESS_XY` from that constant, which describes the default workshop 
 ## Terminations
 
 `time_out`, `success=descended_and_bulb_intact`, `fell_below`, `fell_over`, `ladder_tipped`,
-`bulb_unseated`. `episode_length_s = 20.0`.
+`bulb_unseated`. `episode_length_s = 120.0`.
 
 ## Reuse
 
