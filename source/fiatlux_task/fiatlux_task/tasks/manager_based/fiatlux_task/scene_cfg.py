@@ -219,7 +219,16 @@ LADDER_LADDER_HALF_DEPTH = 0.49  # m, half the ladder's 0.979 m footprint depth
 # How far the ladder's reserved anchor sits from the fixture in the floor plane -- from the wall
 # face, or from the point directly beneath a ceiling mount. Both mount kinds: an anchor under a
 # ceiling fixture puts the on-ladder working stance's chest inside it.
-LADDER_FIXTURE_STANDOFF = 0.60  # m; for a wall draw that leaves 0.11 m of clearance behind the ladder
+# A wall draw has the ladder's own depth behind it; a ceiling draw has nothing there, so the two
+# are bounded by different things and get different values (issue #130).
+LADDER_FIXTURE_STANDOFF_WALL = 0.60  # m; leaves 0.11 m behind the ladder -- the closest a wall
+# draw can sit, since the ladder's own depth is what sits behind it.
+# MEASURED 2026-09-07 by FK from the on-ladder stance, layout seeds 1-8: shoulder-to-palm at full
+# extension is 0.419 m while the socket sat 0.49-0.52 m away, so the fingertips reached it and the
+# palm never did -- touch, not grasp (issue #130). This closes that gap with the arm short of full
+# extension; only the torso-clearance floor bounds it below.
+LADDER_FIXTURE_STANDOFF_CEILING = 0.48  # m; nothing sits behind the ladder at a ceiling mount, so
+# it comes closer than the wall draw, keeping the socket inside palm reach.
 # The stance must clear the fixture, not just reach it: the working stance's pelvis is at 1.967 m
 # and the fixture at 2.200 m, so the fixture is at chest height and the torso is what collides.
 # MEASURED 2026-08-26, ``scripts/verify_ladder_stance.py --measure`` at layout seed 1: the widest
@@ -239,19 +248,21 @@ LADDER_FIXTURE_MIN_STANDOFF = G1_STANCE_TORSO_HALF_EXTENT + FIXTURE_HALF_EXTENT 
 # reaching up-and-out than straight out. Re-measure by FK from the on-ladder stance before
 # treating such a draw's score as meaningful.
 LADDER_FIXTURE_REACH_SLACK = math.sqrt(max(G1_OVERHEAD_REACH**2 - (WALL_MOUNT_Z - LADDER_WORK_FOOT_Z) ** 2, 0.0))
-if not LADDER_LADDER_HALF_DEPTH < LADDER_FIXTURE_STANDOFF <= LADDER_FIXTURE_REACH_SLACK:
+if not LADDER_LADDER_HALF_DEPTH < LADDER_FIXTURE_STANDOFF_WALL <= LADDER_FIXTURE_REACH_SLACK:
     raise ValueError(
-        f"the fixture standoff ({LADDER_FIXTURE_STANDOFF} m) must clear the ladder's own half-depth "
-        f"({LADDER_LADDER_HALF_DEPTH} m) and stay inside the reach slack from the platform "
-        f"({LADDER_FIXTURE_REACH_SLACK:.3f} m); no value satisfies both if the fixture is too high"
+        f"the wall fixture standoff ({LADDER_FIXTURE_STANDOFF_WALL} m) must clear the ladder's own "
+        f"half-depth ({LADDER_LADDER_HALF_DEPTH} m) and stay inside the reach slack from the "
+        f"platform ({LADDER_FIXTURE_REACH_SLACK:.3f} m); no value satisfies both if the fixture "
+        "is too high"
     )
-if LADDER_FIXTURE_STANDOFF <= LADDER_FIXTURE_MIN_STANDOFF:
-    raise ValueError(
-        f"the fixture standoff ({LADDER_FIXTURE_STANDOFF} m) leaves the working stance's torso "
-        f"inside the fixture: it must exceed {LADDER_FIXTURE_MIN_STANDOFF:.3f} m "
-        f"(torso {G1_STANCE_TORSO_HALF_EXTENT} + fixture {FIXTURE_HALF_EXTENT} + jitter "
-        f"{STANCE_RESET_JITTER:.3f})"
-    )
+for _kind, _standoff in (("wall", LADDER_FIXTURE_STANDOFF_WALL), ("ceiling", LADDER_FIXTURE_STANDOFF_CEILING)):
+    if _standoff <= LADDER_FIXTURE_MIN_STANDOFF:
+        raise ValueError(
+            f"the {_kind} fixture standoff ({_standoff} m) leaves the working stance's torso "
+            f"inside the fixture: it must exceed {LADDER_FIXTURE_MIN_STANDOFF:.3f} m "
+            f"(torso {G1_STANCE_TORSO_HALF_EXTENT} + fixture {FIXTURE_HALF_EXTENT} + jitter "
+            f"{STANCE_RESET_JITTER:.3f})"
+        )
 # The anchor's own reserved zone, small enough that clamping it to the floor box (itself inset
 # 0.41 m from the side walls) does not shove the ladder back out of reach. The ladder's real
 # footprint half-diagonal is 0.576 m; ZONE_MARGIN (0.5 m) leaves 0.11 m of true separation even
@@ -1060,7 +1071,7 @@ def _sample_fixture_mount(rng: random.Random) -> FixtureMount:
 
     Returns ``(mount_kind, position, orientation, anchor_bearing, ladder_anchor)``. The anchor is
     the floor point the ladder has to stand on for the fixture to be workable: for both mount
-    kinds, ``LADDER_FIXTURE_STANDOFF`` out from the fixture along the bearing -- the wall's inward
+    kinds, the mount kind's own standoff out from the fixture along the bearing -- the wall's inward
     normal, or a sampled direction for a ceiling mount.
 
     The standoff applies to a ceiling mount too because ``stand_robot_on_ladder_top`` puts the
@@ -1079,7 +1090,7 @@ def _sample_fixture_mount(rng: random.Random) -> FixtureMount:
     outward from the wall face.
     """
     inset = LADDER_ANCHOR_HALF_SIZE
-    standoff = LADDER_FIXTURE_STANDOFF
+    standoff = LADDER_FIXTURE_STANDOFF_CEILING
     if rng.random() < 0.5:
         x = rng.uniform(ROOM_FLOOR_MIN[0] + inset, ROOM_FLOOR_MAX[0] - inset)
         y = rng.uniform(ROOM_FLOOR_MIN[1] + inset, ROOM_FLOOR_MAX[1] - inset)
@@ -1090,6 +1101,7 @@ def _sample_fixture_mount(rng: random.Random) -> FixtureMount:
         anchor = _clamp_to_floor((x + normal[0] * standoff, y + normal[1] * standoff), LADDER_ANCHOR_HALF_SIZE)
         return "ceiling", (x, y, CEILING_FIXTURE_Z), _quat_y_deg(180.0), normal, anchor
 
+    standoff = LADDER_FIXTURE_STANDOFF_WALL
     wall_name = rng.choice(list(_WALLS))
     axis, value, normal, yaw, (span_lo, span_hi) = _WALLS[wall_name]
     # Sample along the REAL panel span, inset so the anchor's ladder zone stays in the room.
