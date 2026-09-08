@@ -225,8 +225,19 @@ def test_engage_requires_alignment_not_just_axial_proximity():
     applies -- alignment, not just depth, gates entry)."""
     env, mgr = _make_env()
     _step(mgr, env)  # old bulb seats; fresh bulb stays FREE and far away
-    fresh = env.scene["fresh_bulb"]
 
+    # Free the socket by withdrawing the old bulb past release_threshold (real, physics-driven
+    # release, like test_release_past_threshold_frees_the_bulb_and_zeroes_the_force), so this
+    # test isolates the alignment gate from the socket-empty gate, which
+    # test_engage_requires_socket_empty covers on its own -- otherwise the fresh bulb's move
+    # to the exact seat position below would correctly stay FREE just because the old bulb
+    # still occupies it.
+    old = env.scene["old_bulb"]
+    old.data.root_pos_w = torch.tensor([[0.0, 0.0, 1.0]])  # withdrawn along the seat axis
+    _step(mgr, env)
+    assert mgr._phase[OLD, 0] == FREE
+
+    fresh = env.scene["fresh_bulb"]
     # At the seat axially, but well outside the lateral tolerance.
     fresh.data.root_pos_w = torch.tensor([[0.0, 0.05, 0.0]])
     _step(mgr, env)
