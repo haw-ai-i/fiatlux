@@ -52,6 +52,8 @@ CRATE_RIM_Z = 0.17  # m
 # Interior half-extent, measured by ray-casting the crate collision mesh (#131);
 # re-measure if the crate USD changes.
 CRATE_INTERIOR_HALF_EXTENT = (0.2873, 0.1876)  # m; #131
+# Outer footprint, from the same measurement: what "standing at the crate" is measured against.
+CRATE_FOOTPRINT_HALF_EXTENT = (0.3007, 0.2009)  # m; #149
 # An object resting against an inner wall touches it, so equality is inside.
 CONTAINMENT_TOLERANCE = 0.001  # m
 
