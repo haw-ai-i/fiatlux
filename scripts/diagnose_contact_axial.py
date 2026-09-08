@@ -379,7 +379,14 @@ def main() -> int:
             seat = socket.data.root_pos_w + quat_apply(socket_quat, seat_offset.unsqueeze(0))
             bulb_quat = fresh_bulb.data.root_quat_w
             plug = fresh_bulb.data.root_pos_w + quat_apply(bulb_quat, plug_offset.unsqueeze(0))
-            axial_now = ((plug - seat) * axis_w).sum(dim=1).clamp(min=-0.02, max=depth)
+            axial_raw = ((plug - seat) * axis_w).sum(dim=1)
+            # Sanity bound only (catch a blowup), NOT a gate at `depth` -- an earlier version
+            # clamped to max=depth, which silently became a software ceiling: every magnitude
+            # converged to bit-identical axial=depth regardless of force, the signature of a
+            # code-level cap, not real contact (real contact resistance would not produce the
+            # exact same resting position across a 20x force range). Kept far from anything
+            # physically meaningful so a genuine crossing of `depth` is never masked.
+            axial_now = axial_raw.clamp(min=-0.1, max=0.1)
             twist_now = task_attach._signed_twist(socket_quat, bulb_quat, seat_axis)
             proj_quat = quat_mul(socket_quat, task_attach._axis_angle_quat(seat_axis, twist_now))
             proj_pos = seat + axial_now.unsqueeze(1) * axis_w - quat_apply(proj_quat, plug_offset.unsqueeze(0))
@@ -388,7 +395,9 @@ def main() -> int:
 
             if i % 20 == 0 or i == args_cli.steps - 1:
                 axial, lateral, tilt = geometry()
-                trace.append((i, round(axial, 4), round(lateral, 4), round(tilt, 3), phase()))
+                trace.append(
+                    (i, round(axial, 4), round(float(axial_raw.item()), 4), round(lateral, 4), round(tilt, 3), phase())
+                )
         axial, lateral, tilt = geometry()
         seated = phase() != task_attach._FREE or (
             abs(axial) <= seat_tolerance and lateral < radial_tolerance and tilt < tilt_tolerance
