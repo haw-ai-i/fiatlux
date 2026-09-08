@@ -75,6 +75,7 @@ simulation_app = app_launcher.app
 import importlib
 import os
 
+from isaaclab.sim.utils import clone as _clone
 import fiatlux_task.tasks  # noqa: F401  -- registers the FIATLUX Gym environments
 import gymnasium as gym
 import torch
@@ -99,8 +100,15 @@ DISABLE_GRAVITY = NO_COLLIDE or os.environ.get("DISABLE_GRAVITY") == "1"
 FORCE_SOCKET_COLLISION = os.environ.get("FORCE_SOCKET_COLLISION") == "1"
 
 
+@_clone
 def _unfiltered_bulb_spawn(prim_path, cfg, translation=None, orientation=None):
-    """``_spawn_bulb_socket_filtered`` without the ``FilteredPairsAPI`` call."""
+    """``_spawn_bulb_socket_filtered`` without the ``FilteredPairsAPI`` call.
+
+    MUST carry @clone like the original: the spawner is handed a regex prim path
+    (/World/envs/env_.*/Bulb) and @clone is what resolves it to the source env and
+    replicates. Without it USD gets the regex verbatim and the run dies on an
+    ill-formed SdfPath.
+    """
     return scene_cfg_mod._spawn_from_usd_file(prim_path, cfg.usd_path, cfg, translation, orientation)
 
 
