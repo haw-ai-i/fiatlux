@@ -30,6 +30,16 @@ Method, deliberately parallel to diagnose_contact_twist.py:
   away, and read whether real axial displacement tracks it under contact.
 * A VELOCITY-driven trial: inject axial linear velocity every step without writing pose,
   mirroring the twist script's ``run_velocity``.
+* A FORCE_HELD trial: the same axial push, plus a small spring-damper torque holding tilt
+  near zero -- a rough stand-in for a hand's orientation control (or the wrench-based
+  enforcement in the plan). Added after an unassisted push at every magnitude from 0.5 to
+  50 N tumbled the bulb 78-114 degrees regardless of direction or force, which is the
+  signature of an uncontrolled-torque problem, not a clearance problem: a free rigid body
+  that grazes anything off-axis during a 5cm unguided approach has nothing arresting the
+  spin it picks up. This trial isolates "does the geometry now allow insertion given
+  reasonable guidance" from "can it survive being shoved with zero rotational control,"
+  which isn't representative of how a hand (or the eventual production mechanism) inserts
+  it.
 
 Each trial runs twice: real geometry (both colliders on, the default) and with the
 bulb-socket pair collision force-enabled past the shipped ``_spawn_bulb_socket_filtered``
@@ -161,6 +171,8 @@ def main() -> int:
     plug_offset = torch.tensor(BULB_PLUG_OFFSET, device=device)
     depth = float(manager._depth[0].item())
     seat_tolerance = 0.004  # matches attach.py's default; not exposed on the manager
+    radial_tolerance = 0.015  # matches attach.py's engage-gate default
+    tilt_tolerance = 0.2  # matches attach.py's engage-gate default
 
     print(
         f"SETUP bulb_collider={'off' if DISABLE_COLLISION else 'ON'} "
@@ -225,7 +237,7 @@ def main() -> int:
                 trace.append((i, round(axial, 4), round(lateral, 4), round(tilt, 3), phase()))
         fresh_bulb.set_external_force_and_torque(torch.zeros_like(forces), torque)
         axial, lateral, tilt = geometry()
-        seated = phase() != task_attach._FREE or abs(axial) <= seat_tolerance
+        seated = phase() != task_attach._FREE or (abs(axial) <= seat_tolerance and lateral < radial_tolerance and tilt < tilt_tolerance)
         print(
             f"FORCE mag={magnitude:g} dir={direction:+.0f} axial {axial0:.4f} -> {axial:.4f} "
             f"lateral={lateral:.4f} tilt={tilt:.3f} phase={phase()} seated={seated} trace={trace}",
@@ -246,10 +258,59 @@ def main() -> int:
             fresh_bulb.write_root_velocity_to_sim(velocity)
             env.step(zero_action)
         axial, lateral, tilt = geometry()
-        seated = phase() != task_attach._FREE or abs(axial) <= seat_tolerance
+        seated = phase() != task_attach._FREE or (abs(axial) <= seat_tolerance and lateral < radial_tolerance and tilt < tilt_tolerance)
         print(
             f"VELOCITY speed={speed:+g} axial {axial0:.4f} -> {axial:.4f} lateral={lateral:.4f} "
             f"tilt={tilt:.3f} phase={phase()} seated={seated}",
+            flush=True,
+        )
+        return seated
+
+    def run_force_held_orientation(magnitude: float, direction: float, k_p: float = 0.02, k_d: float = 0.002) -> bool:
+        """Axial push force plus a spring-damper torque holding tilt near zero -- a rough
+        stand-in for a hand's orientation control (or the wrench-based enforcement this
+        whole diagnostic feeds into). Only corrects SWING (tilt), never TWIST about the seat
+        axis, matching ``attach.py``'s own convention that twist is free entry-clock-angle,
+        not misalignment (issue #90) -- a real hand doesn't lock the bulb's roll either.
+
+        ``correction = cross(plug_axis, seat_axis)`` is the standard small-angle "align A to
+        B" torque: its direction is the correct rotation axis and its magnitude grows with
+        sin(tilt), vanishing at tilt=0. Damping uses the FULL angular velocity (including
+        twist) for simplicity; a small amount of unwanted twist damping is an acceptable
+        approximation for this diagnostic, which only asks whether tilt can be held steady
+        enough for the geometry to pass through, not how a production controller should be
+        tuned. ``k_p``/``k_d`` are rough starting gains, not derived from anything -- if this
+        trial itself oscillates or fails to hold tilt near zero, that is a sign the gains
+        need retuning before trusting the result either way.
+        """
+        settle()
+        axial0, _, tilt0 = geometry()
+        socket_quat_ref = socket.data.root_quat_w
+        seat_axis_w = quat_apply(socket_quat_ref, seat_axis.unsqueeze(0))
+        forces = (direction * magnitude * seat_axis_w).unsqueeze(1)
+        trace = []
+        for i in range(args_cli.steps):
+            bulb_quat = fresh_bulb.data.root_quat_w
+            plug_axis_w = quat_apply(bulb_quat, seat_axis.unsqueeze(0))
+            correction = torch.cross(plug_axis_w, seat_axis_w, dim=-1)
+            ang_vel = fresh_bulb.data.root_ang_vel_w
+            torque = (k_p * correction - k_d * ang_vel).unsqueeze(1)
+            fresh_bulb.set_external_force_and_torque(forces, torque)
+            env.step(zero_action)
+            if i % 20 == 0 or i == args_cli.steps - 1:
+                axial, lateral, tilt = geometry()
+                trace.append((i, round(axial, 4), round(lateral, 4), round(tilt, 3), phase()))
+        fresh_bulb.set_external_force_and_torque(
+            torch.zeros_like(forces), torch.zeros((1, 1, 3), device=device)
+        )
+        axial, lateral, tilt = geometry()
+        seated = phase() != task_attach._FREE or (
+            abs(axial) <= seat_tolerance and lateral < radial_tolerance and tilt < tilt_tolerance
+        )
+        print(
+            f"FORCE_HELD mag={magnitude:g} dir={direction:+.0f} axial {axial0:.4f} -> {axial:.4f} "
+            f"lateral={lateral:.4f} tilt0={tilt0:.3f}->tilt={tilt:.3f} phase={phase()} seated={seated} "
+            f"trace={trace}",
             flush=True,
         )
         return seated
@@ -277,7 +338,7 @@ def main() -> int:
                 axial, lateral, tilt = geometry()
                 hold_trace.append((i, round(axial, 4), round(lateral, 4), phase()))
         axial, lateral, tilt = geometry()
-        seated = phase() != task_attach._FREE or abs(axial) <= seat_tolerance
+        seated = phase() != task_attach._FREE or (abs(axial) <= seat_tolerance and lateral < radial_tolerance and tilt < tilt_tolerance)
         print(
             f"CONTROL_POSE_DRIVE axial {axial0:.4f} -> driven={driven_axial:.4f} -> held={axial:.4f} "
             f"seated={seated} hold={hold_trace}",
@@ -291,11 +352,14 @@ def main() -> int:
             contact_seated |= run_force(magnitude, direction)
     for speed in (0.05, 0.5):
         contact_seated |= run_velocity(speed)
+    held_seated = False
+    for magnitude in (0.5, 2.0, 10.0):
+        held_seated |= run_force_held_orientation(magnitude, 1.0)
     control_seated = run_pose_drive()
 
     print(
         f"VERDICT socket_pair_collision={'FORCED ON' if FORCE_SOCKET_COLLISION else 'filtered off'} "
-        f"contact_seated={contact_seated} control_seated={control_seated}",
+        f"contact_seated={contact_seated} held_seated={held_seated} control_seated={control_seated}",
         flush=True,
     )
     env.close()
