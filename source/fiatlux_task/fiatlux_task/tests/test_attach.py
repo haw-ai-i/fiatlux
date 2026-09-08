@@ -3,23 +3,26 @@
 #
 # SPDX-License-Identifier: BSD-3-Clause
 
-"""Guardrails for the bayonet state machine's contact bounds (issue #92, PR #128).
+"""Guardrails for the axial-detent retention mechanism (issue #167).
 
-The 2026-09-01 sessions showed a hand closing on a locked bulb unlocking and ejecting it
-through solver noise alone: depenetration spun the bulb at 30-50 rad/s, ``theta`` unwound a
-quarter-turn lock in 14 control steps with no visible rotation, and the ejected bulb left at
-up to 5.6 m/s. These tests drive ``mdp.bulb_attachment`` through that exact recorded unwind
-(``bench-releases/ep06`` of ``gs://fiatlux/teleop-trajectory/
-issue-evidence-2026-09-01-92-release-sessions/``) and through the legitimate flows around it.
+An earlier version of this file tested a three-phase bayonet state machine (FREE/AXIAL/
+ROTATING, twist tracking, PR #128's contact-rate clamps) that a per-step pose/velocity
+overwrite enforced. That mechanism is gone: two independent diagnostics found real bulb-socket
+contact geometry blocked both the release-twist and the axial-insertion motions it assumed
+were unobstructed (see ``plans/bayonet-force-based-attachment.md``), and fixing that geometry
+made the whole apparatus unnecessary -- with real collision enabled, the socket confines the
+bulb laterally and angularly on its own. What replaced it is a continuous axial spring-damper
+FORCE, applied alongside (never instead of) real contact, plus a much smaller FREE/SEATED
+admission gate. These tests cover that: the spring's sign and saturation, the seat/release
+gates, and that nothing here ever falls back to a pose/velocity overwrite.
 
-The state machine is pure torch, but ``attach.py`` imports Isaac Lab symbols, so the module
-is loaded standalone: ``isaaclab`` is stubbed (with real wxyz quaternion math) when it is not
+The state machine is pure torch, but ``attach.py`` imports Isaac Lab symbols, so the module is
+loaded standalone: ``isaaclab`` is stubbed (with real wxyz quaternion math) when it is not
 installed, and the ``.rewards`` sibling -- needed only by the score-channel helpers, not the
 state machine -- is replaced by an inert stand-in. No GPU, no ``isaacsim_ci`` marker.
 """
 
 import importlib.util
-import math
 import sys
 import types
 from pathlib import Path
@@ -123,35 +126,45 @@ attach = _load_attach()
 # -- a one-env fake scene the manager can write to ------------------------------------------
 
 _IDENTITY = (1.0, 0.0, 0.0, 0.0)
-LOCK_ANGLE = 0.5 * math.pi
-DEPTH = 0.034
-STEP_DT = 0.02
-MAX_TWIST_RATE = 12.0  # the __call__ default; the per-step theta credit is this * STEP_DT
-MAX_AXIAL_RATE = 1.0
-MAX_TWIST_STEP = MAX_TWIST_RATE * STEP_DT
+SEAT_TOLERANCE = 0.004  # the __call__ default
+RADIAL_TOLERANCE = 0.015
+TILT_TOLERANCE = 0.2
+RELEASE_THRESHOLD = 0.02
+SPRING_K = 20.0
+SPRING_D = 1.7
+MAX_FORCE = 5.0
 
 
 class _FakeBody:
-    """The slice of ``RigidObject`` the manager touches: root state + the two sim writes."""
+    """The slice of ``RigidObject`` the manager touches: root state + the wrench call.
 
-    def __init__(self, pos):
+    No ``write_root_pose_to_sim``/``write_root_velocity_to_sim`` here on purpose -- the new
+    mechanism never calls them. If a future change reintroduces a pose/velocity overwrite,
+    every test below fails with an ``AttributeError`` rather than silently passing.
+    """
+
+    def __init__(self, pos, device="cpu"):
+        self.device = device
         self.data = SimpleNamespace(
             root_pos_w=torch.tensor([pos]),
             root_quat_w=torch.tensor([_IDENTITY]),
             root_lin_vel_w=torch.zeros(1, 3),
             root_ang_vel_w=torch.zeros(1, 3),
         )
+        self.last_force: torch.Tensor | None = None
+        self.last_torque: torch.Tensor | None = None
+        self.force_calls = 0
 
-    def write_root_pose_to_sim(self, pose, env_ids):
-        self.data.root_pos_w[env_ids] = pose[:, :3]
-        self.data.root_quat_w[env_ids] = pose[:, 3:]
-
-    def write_root_velocity_to_sim(self, velocity, env_ids):
-        self.data.root_lin_vel_w[env_ids] = velocity[:, :3]
-        self.data.root_ang_vel_w[env_ids] = velocity[:, 3:]
+    def set_external_force_and_torque(self, forces, torques, is_global=False):
+        assert is_global, "the retention spring must be applied in the world frame"
+        self.last_force = forces.clone()
+        self.last_torque = torques.clone()
+        self.force_calls += 1
 
     def twist_by(self, angle):
         """Rotate the body about world z, as a hand (or the solver) would."""
+        import math
+
         half = 0.5 * angle
         q = torch.tensor([[math.cos(half), 0.0, 0.0, math.sin(half)]])
         self.data.root_quat_w = _quat_mul(q, self.data.root_quat_w)
@@ -163,14 +176,14 @@ def _make_env():
     env = SimpleNamespace(
         num_envs=1,
         device="cpu",
-        step_dt=STEP_DT,
+        step_dt=0.02,
         scene={
             "socket": _FakeBody([0.0, 0.0, 0.0]),
             "old_bulb": _FakeBody([0.0, 0.0, 0.0]),
             "fresh_bulb": _FakeBody([1.0, 0.0, 0.0]),
         },
     )
-    cfg = SimpleNamespace(params={"insertion_depth": DEPTH, "rotation_angle": LOCK_ANGLE, "rotation_sign": -1.0})
+    cfg = SimpleNamespace(params={})
     return env, attach.bulb_attachment(cfg, env)
 
 
@@ -179,161 +192,128 @@ def _step(mgr, env, **overrides):
 
 
 OLD, FRESH = attach._OLD, attach._FRESH
-FREE, AXIAL, ROTATING = attach._FREE, attach._AXIAL, attach._ROTATING
-
-# ``rotation_sign`` is -1: locking is a negative (clockwise) twist, so UNLOCKING twists
-# positive. The recorded ep06 unwind below is stored as positive twist increments.
-
-# Per-step twist of the crushed bulb over t=4.56-4.72 s of bench-releases/ep06 -- the solver
-# spun a LOCKED bulb through its full quarter-turn lock in 8 control steps while the operator
-# only squeezed. theta unwound 1.571 -> 0 and the bulb ejected at the following step.
-EP06_UNWIND = [0.115, 0.086, 0.167, 0.496, 0.074, 0.144, 0.345, 0.144]
+FREE, SEATED = attach._FREE, attach._SEATED
 
 
-def test_spawn_resolution_locks_the_seated_bulb_and_frees_the_far_one():
-    """Post-#140 contract: reset leaves both bulbs FREE and *pending*; the first step reads the
-    scene and locks whichever bulb actually spawned at the seat (issues #108/#109). Here the old
-    bulb spawns seated and the fresh one a metre away, so the first call locks exactly the old."""
+def test_spawn_resolution_seats_the_seated_bulb_and_frees_the_far_one():
+    """Reset leaves both bulbs FREE and *pending*; the first step reads the scene and seats
+    whichever bulb actually spawned at the seat (issues #108/#109, carried over unchanged).
+    Here the old bulb spawns seated and the fresh one a metre away, so the first call seats
+    exactly the old one."""
     env, mgr = _make_env()
     assert mgr._phase[OLD, 0] == FREE  # pending until the first step
     assert mgr._phase[FRESH, 0] == FREE
     _step(mgr, env)
-    assert mgr._phase[OLD, 0] == ROTATING
-    assert abs(mgr._theta[OLD, 0].item() - LOCK_ANGLE) < 1e-6
+    assert mgr._phase[OLD, 0] == SEATED
     assert mgr._phase[FRESH, 0] == FREE
 
 
-def test_recorded_solver_unwind_does_not_fully_unlock():
-    """Replaying ep06's measured spin leaves the lock still engaged, where it fully opened before.
-
-    On the pre-clamp code these eight deltas summed to exactly 1.571 rad and unwound theta to 0 --
-    the bulb left the socket. With the per-step credit capped at ``max_twist_rate * step_dt``, the
-    same eight steps shed at most 0.24 rad each, so theta stays >~0.36 and the bulb stays ROTATING.
-
-    This is a RATE cap, not an impossibility proof: sustaining that spin for more steps than the
-    recording holds would still unlock. What stops the *sustained* spin is ``position_slack``
-    removing the contact force that drives it -- untestable here without contact physics, so this
-    asserts only what the clamp alone guarantees.
-    """
+def test_free_bulb_gets_no_force():
+    """A FREE bulb is untouched: the wrench call still happens every step (so a stale force
+    from a previous seat never lingers), but the applied force/torque are exactly zero."""
     env, mgr = _make_env()
-    bulb = env.scene["old_bulb"]
-    for delta in EP06_UNWIND:
-        bulb.twist_by(delta)
-        _step(mgr, env)
-        assert mgr._phase[OLD, 0] == ROTATING
-    shed = sum(min(d, MAX_TWIST_STEP) for d in EP06_UNWIND)
-    assert abs(mgr._theta[OLD, 0].item() - (LOCK_ANGLE - shed)) < 1e-5
-    assert mgr._theta[OLD, 0] > 0.3
-
-
-def test_clamp_bounds_theta_change_even_when_raw_twist_aliases():
-    """A raw twist above pi folds through ``_wrap_to_pi``; the credit clamp bounds the theta
-    change to ``max_twist_rate * step_dt`` regardless, so no single spin unwinds a large arc.
-
-    Tested off the lock ceiling: at theta == angle the ``min(.., angle)`` saturation would hide a
-    lock-direction change, so this first unwinds partway with sub-cap steps, then applies one
-    >pi jump. Pre-clamp, the aliased delta moves theta by ~0.8 rad in that step; clamped, <= 0.24.
-    """
-    env, mgr = _make_env()
-    bulb = env.scene["old_bulb"]
-    for _ in range(6):  # sub-cap unlock, so theta sits mid-range
-        bulb.twist_by(0.10)
-        _step(mgr, env)
-    assert 0.2 < mgr._theta[OLD, 0].item() < LOCK_ANGLE - 0.2
-    before = mgr._theta[OLD, 0].item()
-    bulb.twist_by(3.3)  # raw jump > pi: _wrap_to_pi folds it toward a large credit
-    _step(mgr, env)
-    assert abs(mgr._theta[OLD, 0].item() - before) <= MAX_TWIST_STEP + 1e-6
-
-
-def test_axial_bulb_retains_only_clamped_axial_velocity():
-    """A bulb in the insertion channel keeps at most ``max_axial_rate`` of axial velocity, so a
-    violent solver step cannot fire it up the channel. Deleting the clamp on attach.py's
-    ``axial_speed`` makes this fail while every other test still passes (review coverage gap)."""
-    env, mgr = _make_env()
-    bulb = env.scene["old_bulb"]
-    for _ in range(30):  # unlock fully -> AXIAL
-        bulb.twist_by(0.2)
-        _step(mgr, env)
-        if mgr._phase[OLD, 0] == AXIAL:
-            break
-    assert mgr._phase[OLD, 0] == AXIAL
-    axis = torch.tensor([[0.0, 0.0, 1.0]])
-    # Inside the channel (axial < depth) so it does not eject; a violent last solver step.
-    bulb.data.root_pos_w = torch.tensor([[0.0, 0.0, 0.005]])
-    bulb.data.root_lin_vel_w = 5.0 * axis
-    _step(mgr, env)
-    assert mgr._phase[OLD, 0] == AXIAL
-    assert (bulb.data.root_lin_vel_w[0] * axis[0]).sum().abs().item() <= MAX_AXIAL_RATE + 1e-6
-
-
-def test_slack_concedes_small_displacement_and_bounds_large():
-    """The anti-ratchet property: the projection never drags the bulb back into a gap that
-    contact resolution just closed -- it concedes up to ``position_slack`` and no more."""
-    env, mgr = _make_env()
-    bulb = env.scene["old_bulb"]
-    # Within the slack: the bulb stays exactly where the solver parked it.
-    bulb.data.root_pos_w = torch.tensor([[0.002, 0.0, 0.0]])
-    _step(mgr, env)
-    assert torch.allclose(bulb.data.root_pos_w, torch.tensor([[0.002, 0.0, 0.0]]), atol=1e-7)
-    # Beyond it: pulled back exactly to the slack shell, in the displacement's direction.
-    bulb.data.root_pos_w = torch.tensor([[0.010, 0.0, 0.0]])
-    _step(mgr, env)
-    assert torch.allclose(bulb.data.root_pos_w, torch.tensor([[0.003, 0.0, 0.0]]), atol=1e-6)
-    assert mgr._phase[OLD, 0] == ROTATING
-
-
-def test_rotating_bulb_keeps_only_clamped_twist_velocity():
-    env, mgr = _make_env()
-    bulb = env.scene["old_bulb"]
-    bulb.data.root_lin_vel_w = torch.tensor([[2.0, -1.0, 3.0]])
-    bulb.data.root_ang_vel_w = torch.tensor([[5.0, 5.0, 40.0]])
-    _step(mgr, env)
-    assert torch.allclose(bulb.data.root_lin_vel_w, torch.zeros(1, 3))
-    assert torch.allclose(bulb.data.root_ang_vel_w, torch.tensor([[0.0, 0.0, MAX_TWIST_RATE]]))
-
-
-def test_deliberate_unscrew_withdraw_and_bounded_eject():
-    """The legitimate removal still works end to end, and the FREE handoff is capped.
-
-    A 2 rad/s twist (well under the 12 rad/s cap) unwinds the lock; an 0.4 m/s pull travels
-    the channel; the eject step hands physics a bulb at ``max_axial_rate``, not at whatever
-    the last solver step produced (2.3-5.6 m/s in the 2026-09-01 pop-outs).
-    """
-    env, mgr = _make_env()
-    bulb = env.scene["old_bulb"]
-    for _ in range(41):  # 1.571 rad at 0.04 rad/step
-        bulb.twist_by(2.0 * STEP_DT)
-        _step(mgr, env)
-        if mgr._phase[OLD, 0] == AXIAL:
-            break
-    assert mgr._phase[OLD, 0] == AXIAL
-    axis = torch.tensor([[0.0, 0.0, 1.0]])
-    while mgr._phase[OLD, 0] == AXIAL:
-        bulb.data.root_pos_w = bulb.data.root_pos_w + 0.008 * axis
-        bulb.data.root_lin_vel_w = 3.0 * axis  # a violent last solver step
-        _step(mgr, env)
-    assert mgr._phase[OLD, 0] == FREE
-    assert torch.linalg.norm(bulb.data.root_lin_vel_w) <= 1.0 + 1e-6
-
-
-def test_engage_keeps_the_entry_clock_angle():
-    """Issue #90's semantics survive the clamps: a bulb engages at whatever twist it arrived
-    with, and is not teleported onto the socket's own clock angle."""
-    env, mgr = _make_env()
-    # Let the first step resolve the spawn phases (old locks at the seat, fresh is far and
-    # FREE) -- placing the fresh bulb at the mouth BEFORE this step would spawn-lock it
-    # directly to ROTATING (post-#140), bypassing the engage path this test exercises.
-    _step(mgr, env)
-    # Empty the socket so the fresh bulb may engage: the old bulb is long gone and FREE.
-    # Both must hold -- a FREE bulb parked at the seat would simply re-engage first.
-    mgr._phase[OLD, 0] = FREE
-    env.scene["old_bulb"].data.root_pos_w = torch.tensor([[2.0, 0.0, 0.0]])
+    _step(mgr, env)  # resolves spawn phase; fresh bulb is FREE, far from the seat
     fresh = env.scene["fresh_bulb"]
-    fresh.data.root_pos_w = torch.tensor([[0.0, 0.0, 0.01]])
-    fresh.twist_by(0.3)
+    assert fresh.force_calls >= 1
+    assert torch.allclose(fresh.last_force, torch.zeros_like(fresh.last_force))
+    assert torch.allclose(fresh.last_torque, torch.zeros_like(fresh.last_torque))
+
+
+def test_engage_requires_alignment_not_just_axial_proximity():
+    """Reaching the seat axially is not enough: lateral offset or tilt past tolerance keeps
+    the bulb FREE, exactly like the old bayonet's entry gate (issue #90's finding still
+    applies -- alignment, not just depth, gates entry)."""
+    env, mgr = _make_env()
+    _step(mgr, env)  # old bulb seats; fresh bulb stays FREE and far away
+    fresh = env.scene["fresh_bulb"]
+
+    # At the seat axially, but well outside the lateral tolerance.
+    fresh.data.root_pos_w = torch.tensor([[0.0, 0.05, 0.0]])
     _step(mgr, env)
-    assert mgr._phase[FRESH, 0] == AXIAL
-    # The written pose keeps the 0.3 rad entry twist (z-component of the wxyz quaternion).
-    written = fresh.data.root_quat_w[0]
-    assert abs(2.0 * math.atan2(written[3], written[0]) - 0.3) < 1e-5
+    assert mgr._phase[FRESH, 0] == FREE
+
+    # Move it onto the axis and it seats.
+    fresh.data.root_pos_w = torch.tensor([[0.0, 0.0, 0.0]])
+    _step(mgr, env)
+    assert mgr._phase[FRESH, 0] == SEATED
+
+
+def test_engage_requires_socket_empty():
+    """A bulb cannot seat while the other bulb already occupies the socket."""
+    env, mgr = _make_env()
+    _step(mgr, env)  # old bulb seats
+    fresh = env.scene["fresh_bulb"]
+    fresh.data.root_pos_w = torch.tensor([[0.0, 0.0, 0.0]])  # perfectly at the seat too
+    _step(mgr, env)
+    assert mgr._phase[FRESH, 0] == FREE  # socket occupied by the old bulb
+    assert mgr._phase[OLD, 0] == SEATED
+
+
+def test_seated_bulb_spring_resists_small_outward_displacement():
+    """A small axial displacement from the seat produces a restoring force back toward it,
+    proportional to the error (the spring term), and does not release."""
+    env, mgr = _make_env()
+    _step(mgr, env)  # seats the old bulb
+    bulb = env.scene["old_bulb"]
+    bulb.data.root_pos_w = torch.tensor([[0.0, 0.0, 0.010]])  # 10 mm out, past seat_tolerance
+    _step(mgr, env)
+    assert mgr._phase[OLD, 0] == SEATED
+    # axis is +z (SOCKET_SEAT_AXIS in the real module is (0,0,1)); force should pull -z.
+    applied_z = bulb.last_force[0, 0, 2].item()
+    assert applied_z < 0.0
+    assert abs(applied_z) <= MAX_FORCE + 1e-6
+    expected = -SPRING_K * 0.010
+    assert abs(applied_z - expected) < 1e-6  # zero velocity, so damping contributes nothing
+
+
+def test_spring_saturates_at_max_force():
+    """A displacement large enough that k*x would exceed max_force is clamped, not left to
+    grow without bound -- this is what stands in for the bayonet's rate caps."""
+    env, mgr = _make_env()
+    _step(mgr, env)
+    bulb = env.scene["old_bulb"]
+    bulb.data.root_pos_w = torch.tensor([[0.0, 0.0, 1.0]])  # absurdly far; still SEATED (< release)
+    # release_threshold is 0.02 m by default, so first push it past that separately (below);
+    # here we only check saturation while still within release_threshold.
+    bulb.data.root_pos_w = torch.tensor([[0.0, 0.0, RELEASE_THRESHOLD - 1e-4]])
+    _step(mgr, env)
+    assert mgr._phase[OLD, 0] == SEATED
+    assert abs(bulb.last_force[0, 0, 2].item()) <= MAX_FORCE + 1e-6
+
+
+def test_release_past_threshold_frees_the_bulb_and_zeroes_the_force():
+    """A real, physics-driven excursion past ``release_threshold`` releases the bulb -- not a
+    force reading, a displacement one, so it is directly legible off real contact with nothing
+    overwritten. The very next step applies zero force, since nothing is SEATED anymore."""
+    env, mgr = _make_env()
+    _step(mgr, env)
+    bulb = env.scene["old_bulb"]
+    bulb.data.root_pos_w = torch.tensor([[0.0, 0.0, RELEASE_THRESHOLD + 0.001]])
+    _step(mgr, env)
+    assert mgr._phase[OLD, 0] == FREE
+    assert torch.allclose(bulb.last_force, torch.zeros_like(bulb.last_force))
+
+
+def test_small_resting_sag_does_not_self_release():
+    """release_threshold (2 cm) sits comfortably above what an unheld bulb sags under gravity
+    at rest, so a bulb the spring is actively holding does not flicker in and out of SEATED
+    from ordinary settling."""
+    env, mgr = _make_env()
+    _step(mgr, env)
+    bulb = env.scene["old_bulb"]
+    bulb.data.root_pos_w = torch.tensor([[0.0, 0.0, 0.002]])  # a couple mm of sag
+    _step(mgr, env)
+    assert mgr._phase[OLD, 0] == SEATED
+
+
+def test_damping_opposes_outward_velocity():
+    """The damping term pulls against outward velocity even at zero displacement -- so a bulb
+    given an outward kick, still at the seat, gets an inward-pulling force immediately."""
+    env, mgr = _make_env()
+    _step(mgr, env)
+    bulb = env.scene["old_bulb"]
+    bulb.data.root_lin_vel_w = torch.tensor([[0.0, 0.0, 1.0]])  # moving outward (+z)
+    _step(mgr, env)
+    assert mgr._phase[OLD, 0] == SEATED
+    applied_z = bulb.last_force[0, 0, 2].item()
+    assert applied_z < 0.0  # opposes the outward velocity

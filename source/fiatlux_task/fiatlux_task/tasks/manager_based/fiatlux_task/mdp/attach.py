@@ -3,78 +3,59 @@
 #
 # SPDX-License-Identifier: BSD-3-Clause
 
-"""Bayonet bulb/socket constraint (issue #54; spec: ``journal/specs/issue-54-bulb-attach-detach.md``).
+"""Bulb/socket retention (issue #167): an axial detent, not a bayonet.
 
-The socket is a bayonet mount driven entirely by the **bulb pose** relative to the
-socket -- never by robot state. Each bulb is in one of three phases per env:
+An earlier version of this module (issue #54) implemented a three-phase FREE/AXIAL/ROTATING
+bayonet with twist tracking, enforced by overwriting the bulb's pose and velocity every step.
+That overwrite ran *after* the physics solver had already resolved contact for the step, so
+whenever real bulb-socket collision was enabled the two authorities fought instead of
+converging: contact pushed one way, the projection un-did it, contact pushed again -- the
+"median 1067 N of socket contact" and the PR #128 crush-glitch spikes were both this pattern.
+The workaround was to filter bulb-socket collision out entirely (``scene_cfg.py``'s
+``_spawn_bulb_socket_filtered``, now removed) and let the scripted projection substitute for
+real contact everywhere.
+
+Two independent diagnostics (``scripts/diagnose_contact_twist.py``,
+``scripts/diagnose_contact_axial.py``; see ``plans/bayonet-force-based-attachment.md``) found
+that with collision genuinely enabled, real contact geometry blocked BOTH the twist-release and
+axial-insertion motions the bayonet assumed were unobstructed -- the plug's radius was equal to
+or larger than the bore at every relevant height. Shrinking the plug (2026-09-07) fixed that,
+and a rerun under real contact (2026-09-08) confirmed insertion now works given reasonable
+orientation guidance. That result removed the reason for the bayonet's own existence: with
+collision back on, the socket's geometry confines the bulb laterally and angularly on its own --
+nothing scripted has to. There is also no physical lug or groove in this asset (a plain round
+bore), so the twist/lock semantics were never modeling a real feature, only a scripted one.
+
+What real contact still cannot provide is RETENTION: nothing stops the bulb sliding back out of
+a plain round bore under gravity or a knock. This module supplies exactly that, and nothing
+else. Two states per bulb, per env:
 
 - ``FREE`` -- unconstrained rigid body; physics owns it entirely.
-- ``AXIAL`` -- the insertion channel: only travel along the socket axis survives;
-  lateral offset and all relative rotation are projected back to within
-  ``position_slack`` of zero every step, not to exactly zero.
-- ``ROTATING`` -- the lock groove at full depth: position is pinned at the seat, to
-  within ``position_slack``, and only twist about the axis survives, tracked as
-  ``theta`` in ``[0, rotation_angle]``.
+- ``SEATED`` -- held by a continuous axial spring-damper FORCE (world-frame, applied through
+  ``set_external_force_and_torque``), not a pose or velocity overwrite. Lateral position and
+  orientation are left entirely to real contact; only axial displacement from the seat is
+  corrected, and only while seated.
 
-Install is insert-then-rotate, removal is rotate-then-eject, and the order is
-structural: the two motion regimes are mutually exclusive, so no sequence of pushes
-frees a locked bulb and no fresh bulb counts as installed until it bottomed out and
-turned through the lock angle. The old bulb resets locked (``ROTATING`` at
-``rotation_angle``); the fresh bulb resets ``FREE``.
+``FREE -> SEATED`` fires on reaching the seat (within ``seat_tolerance``) while reasonably
+aligned (``radial_tolerance``, ``tilt_tolerance``) with the socket unoccupied by the other bulb.
+``SEATED -> FREE`` (release) fires when real, physics-driven axial displacement from the seat
+exceeds ``release_threshold`` -- a deliberate, sustained pull, not a force threshold, so a light
+knock does not release it but a genuine withdrawal does.
 
-``insertion_depth`` and ``rotation_angle`` accept a scalar or a ``(low, high)`` range;
-ranges are re-sampled independently per env at each reset (the domain-randomization
-hook). Enforcement is per-step pose/velocity projection through the tensorized
-``RigidObject`` root-state API -- no USD edits, no joints, valid per-env on GPU. Wire
-the event term with ``mode="interval"`` and ``interval_range_s=(0.0, 0.0)`` so it runs
-every step.
-
-One ordering caveat shapes the score-channel functions below: ``ManagerBasedRLEnv.step``
-computes terminations and rewards *before* interval events, so those managers see the
-bulb wherever physics left it -- the corrective projection lands afterwards. A hard
-mid-step shove of a constrained bulb could therefore transiently satisfy a distance
-threshold and be made permanent by the best-progress / paid-once latches in
-``distance_progress`` / ``completion_bonus``. The ``old_bulb_*`` functions here report
-the bulb at the seat pose until it actually leaves the channel (being constrained IS the
-task state; the displacement is solver noise). The raw-geometry terms in ``rewards.py``
-remain for tasks without an attachment manager.
-
-Three parameters bound what contact can do to a constrained bulb (PR #128, from the
-2026-09-01 sessions where closing a hand on a locked bulb knocked it out of the socket
-in 4 of 5 takes):
-
-- ``position_slack`` -- the projection pulls the bulb back only to within this distance
-  of the constraint manifold, never exactly onto it. A full teleport re-opens the gap
-  that contact resolution just closed, so closing fingers ratchet INTO the bulb step
-  after step and the depenetration blast never ends (3.4 kN of hand contact measured on
-  S03 against 60 N in the take that grasped nothing).
-- ``max_twist_rate`` -- caps both the per-step twist credited to ``theta`` and the twist
-  velocity the projection lets a ROTATING bulb keep. The depenetration chaos spun a
-  crushed bulb at 30-50 rad/s (transients to 170), unwinding the lock with no visible
-  rotation (the bulb is a surface of revolution). The default 12 rad/s sits well above the
-  measured deliberate unscrew (p90 ~7 rad/s in the 2026-09-01 clean removals) and well
-  below that noise, so a hand's twist is credited in full and a single anomalous impulse
-  cannot unwind a large fraction of the lock in one step. It is a rate BACKSTOP, not a
-  guarantee: a sustained one-directional spin above the cap would still unwind the lock
-  over enough steps. What removes that sustained spin is ``position_slack`` -- it kills the
-  force that drives it -- so the two work together, not either alone.
-- ``max_axial_rate`` -- caps the axial velocity an AXIAL bulb keeps, and the speed of
-  the FREE handoff at eject (ejecting rows drop out of the projection, so they would
-  otherwise leave with whatever the last solver step gave them: 2.3 m/s + 47 rad/s
-  measured on the bench, 5.6 m/s on S03 -- straight through the collision-filtered
-  fixture, see ``_spawn_bulb_socket_filtered``).
+Because retention is a continuous force rather than a per-step overwrite, the solver resolves
+contact and the spring together in one solve every step -- there is no second authority for it
+to disagree with, and so no equivalent of the crush-glitch pattern to reintroduce.
 """
 
 from __future__ import annotations
 
-import math
 from typing import TYPE_CHECKING
 
 import torch
 
 from isaaclab.assets import RigidObject
 from isaaclab.managers import ManagerTermBase
-from isaaclab.utils.math import quat_apply, quat_inv, quat_mul
+from isaaclab.utils.math import quat_apply
 
 from fiatlux_task.assets import BULB_PLUG_OFFSET, SOCKET_SEAT_AXIS, SOCKET_SEAT_OFFSET
 
@@ -96,74 +77,23 @@ if TYPE_CHECKING:
 _ENV_ATTR = "_fiatlux_bulb_attachment"
 
 _FREE = 0
-_AXIAL = 1
-_ROTATING = 2
+_SEATED = 1
 _OLD = 0  # state row of the old bulb (scene entity "old_bulb")
 _FRESH = 1  # state row of the fresh bulb (scene entity "fresh_bulb")
 
-# How near the seat a bulb must SPAWN to be treated as starting locked in the fixture
-# (``_resolve_spawn_phase``). Only has to separate "seated" from "put somewhere else", and the
-# binding case is NOT the disposal crate (metres away) but the in-hand carry: the staged
-# carried bulb spawns 0.103 m (S04) / 0.130 m (S11) from the seat, measured zero-action at
-# the first step on 481c0ad (main with #126's re-baked carry seat merged). That is ~2x this
-# tolerance, so the value IS a tuning knob: re-measure those two distances before changing
-# it, and whenever the carry stage pose or ``BULB_IN_ROOT_*`` seat constants move.
+# How near the seat a bulb must SPAWN to be treated as starting seated in the fixture
+# (``_resolve_spawn_phase``). Only has to separate "seated" from "put somewhere else"; carried
+# over unchanged from the bayonet version -- see its git history for the measurements behind
+# this value (the in-hand carry stage spawns ~0.10-0.13 m from the seat, ~2x this tolerance).
 _SEATED_SPAWN_TOLERANCE = 0.05  # m
-_EPS = 1e-5
-
-ParameterSpec = float | tuple[float, float]
-
-
-def _sample_parameter(target: torch.Tensor, env_ids, spec: ParameterSpec, name: str) -> None:
-    """Fill selected environments from a scalar or uniform randomization range."""
-    if isinstance(spec, tuple):
-        if len(spec) != 2 or spec[0] <= 0.0 or spec[1] < spec[0]:
-            raise ValueError(f"{name} range must satisfy 0 < low <= high, got {spec}")
-        target[env_ids] = torch.empty_like(target[env_ids]).uniform_(spec[0], spec[1])
-    else:
-        if spec <= 0.0:
-            raise ValueError(f"{name} must be positive, got {spec}")
-        target[env_ids] = spec
-
-
-def _axis_angle_quat(axis: torch.Tensor, angle: torch.Tensor) -> torch.Tensor:
-    half = 0.5 * angle
-    return torch.cat([torch.cos(half).unsqueeze(-1), axis * torch.sin(half).unsqueeze(-1)], dim=-1)
-
-
-def _wrap_to_pi(angle: torch.Tensor) -> torch.Tensor:
-    return torch.atan2(torch.sin(angle), torch.cos(angle))
-
-
-def _signed_twist(socket_quat: torch.Tensor, bulb_quat: torch.Tensor, local_axis: torch.Tensor) -> torch.Tensor:
-    """Signed bulb twist about the socket axis (swing-twist decomposition), radians."""
-    relative = quat_mul(quat_inv(socket_quat), bulb_quat)
-    relative = relative * torch.where(relative[:, :1] < 0.0, -1.0, 1.0)
-    twist_sin = (relative[:, 1:] * local_axis).sum(dim=1)
-    return 2.0 * torch.atan2(twist_sin, relative[:, 0])
-
-
-def _orientation_error(socket_quat: torch.Tensor, bulb_quat: torch.Tensor) -> torch.Tensor:
-    """Full-frame rotation angle between socket and bulb (bounds both tilt and twist).
-
-    NOT the entry gate. Twist about the seat axis IS the screwing motion, so a full-frame
-    comparison reads the very pose the mechanic asks for as misalignment -- see ``_tilt_error``
-    and issue #90. This stays for callers that genuinely want both components bounded.
-    """
-    relative = quat_mul(quat_inv(socket_quat), bulb_quat)
-    return 2.0 * torch.acos(relative[:, 0].abs().clamp(max=1.0))
 
 
 def _tilt_error(socket_quat: torch.Tensor, bulb_quat: torch.Tensor, local_axis: torch.Tensor) -> torch.Tensor:
     """Angle between the bulb's plug axis and the socket's seat axis, ignoring twist (issue #90).
 
-    This is what an entry gate should measure. A bayonet cap enters at any clock angle -- the
-    operator holds it wherever their wrist happens to be and turns from there -- so the only
-    orientation that can block entry is the bulb pointing the wrong way.
-
-    Measured in the teleop bags of 2026-08-21: of the steps where the operator held the bulb in
-    the socket and it did not capture, the tilt was within tolerance on 326 of 358, and the twist
-    alone was rejecting them. One hold lasted 0.92 s at 25 degrees of twist.
+    A push-fit bulb enters at any clock angle -- only the bulb pointing the wrong way should
+    block entry. Carried over unchanged from the bayonet version; still the right entry gate
+    even with no lock to turn into.
     """
     plug = quat_apply(bulb_quat, local_axis.expand(bulb_quat.shape[0], 3))
     seat = quat_apply(socket_quat, local_axis.expand(socket_quat.shape[0], 3))
@@ -182,111 +112,62 @@ def _seated_bulb_root_pose_w(env: ManagerBasedEnv) -> tuple[torch.Tensor, torch.
 
 
 class bulb_attachment(ManagerTermBase):
-    """Every-step FREE/AXIAL/ROTATING bayonet state machine for both bulbs."""
+    """Every-step FREE/SEATED axial-detent retention for both bulbs."""
 
     def __init__(self, cfg: EventTermCfg, env: ManagerBasedEnv):
         super().__init__(cfg, env)
         setattr(env, _ENV_ATTR, self)
-        self._rotation_sign = float(cfg.params.get("rotation_sign", -1.0))
-        if abs(self._rotation_sign) != 1.0:
-            raise ValueError(f"rotation_sign must be -1 or 1, got {self._rotation_sign}")
-        self._insertion_depth_spec = cfg.params.get("insertion_depth", 0.034)
-        self._rotation_angle_spec = cfg.params.get("rotation_angle", 0.5 * math.pi)
         n, dev = env.num_envs, env.device
         # Row 0 = old bulb, row 1 = fresh bulb; the bulbs differ only in reset phase.
         self._phase = torch.zeros(2, n, dtype=torch.int8, device=dev)
-        self._theta = torch.zeros(2, n, device=dev)
-        # Twist of each bulb's pose as we last wrote (or spawned) it: theta integrates
-        # against this, so transition and reset steps need no special-casing.
-        self._prev_twist = torch.zeros(2, n, device=dev)
-        # Clock angle each bulb entered the channel at (issue #90). The mechanic used to force
-        # every engaged bulb to the socket's own clock angle, which teleported a gripped bulb by
-        # up to a fifth of a radian in one step. `theta` is measured FROM this, so a lock is a
-        # quarter turn from wherever the operator entered. The final roll varies and is invisible:
-        # the bulb is a surface of revolution.
-        self._entry_twist = torch.zeros(2, n, device=dev)
-        self._depth = torch.zeros(n, device=dev)
-        self._angle = torch.zeros(n, device=dev)
         # Envs whose spawn phase has not been read off the scene yet. See _resolve_spawn_phase.
         self._pending = torch.zeros(n, dtype=torch.bool, device=dev)
         self._axis_l = torch.tensor(SOCKET_SEAT_AXIS, device=dev).expand(n, 3)
         self._seat_offset = torch.tensor(SOCKET_SEAT_OFFSET, device=dev).expand(n, 3)
         self._plug_offset = torch.tensor(BULB_PLUG_OFFSET, device=dev).expand(n, 3)
         # Telemetry snapshot, taken at the end of every __call__ and never touched by reset().
-        # `ManagerBasedRLEnv.step` runs interval events BEFORE it auto-resets finished
-        # episodes, so this holds the state as of the terminating step -- which is what a
-        # recorder wants for that row. Reading the live tensors there would report the *next*
-        # episode's reset phases and freshly sampled limits instead.
-        self._snapshot = (
-            torch.zeros(2, n, device=dev),  # phase, as float
-            torch.zeros(2, n, device=dev),  # theta
-            torch.zeros(n, device=dev),  # sampled rotation angle
-            torch.zeros(n, device=dev),  # sampled insertion depth
-        )
+        # `ManagerBasedRLEnv.step` auto-resets finished episodes before the next call, so a
+        # terminal row must read this snapshot rather than the live tensor, or it would report
+        # the NEXT episode's reset phase instead (same hazard the bayonet version documented).
+        self._snapshot = torch.zeros(2, n, device=dev)  # phase, as float
         self.reset()
         self._take_snapshot()
 
     def _take_snapshot(self) -> None:
-        """Copy the current lock state into the telemetry snapshot. See ``_snapshot``."""
-        phase, theta, angle, depth = self._snapshot
-        phase.copy_(self._phase.float())
-        theta.copy_(self._theta)
-        angle.copy_(self._angle)
-        depth.copy_(self._depth)
-
-    @property
-    def rotation_sign(self) -> float:
-        """Sign convention of the unlock twist. Issue #77 settles which face is correct.
-
-        The wrong face is silent: the old bulb resets *at* the clamp ceiling, so a twist
-        further into the lock changes nothing and ``at_lock_stop`` damps it away. Recording
-        this value tells an operator which convention a run used.
-        """
-        return self._rotation_sign
+        self._snapshot.copy_(self._phase.float())
 
     def reset(self, env_ids: Sequence[int] | None = None) -> None:
         ids = slice(None) if env_ids is None else env_ids
-        _sample_parameter(self._depth, ids, self._insertion_depth_spec, "insertion_depth")
-        _sample_parameter(self._angle, ids, self._rotation_angle_spec, "rotation_angle")
-        # Both bulbs reset FREE here and are locked, if they belong locked, by
+        # Both bulbs reset FREE here and are seated, if they belong seated, by
         # `_resolve_spawn_phase` on the first step -- see that method for why the decision
-        # cannot be made here, and issue #109 for what hardcoding it cost.
+        # cannot be made here.
         self._phase[:, ids] = _FREE
-        self._theta[:, ids] = 0.0
         self._pending[ids] = True
-        # Both bulbs spawn untwisted relative to the socket (the old bulb's init rot IS
-        # the fixture rot), so the first step's twist delta reads as ~0, not as -angle.
-        self._prev_twist[:, ids] = 0.0
-        # The old bulb spawns AT the socket's rotation, so entry twist zero reproduces the
-        # pre-#90 seated pose exactly.
-        self._entry_twist[:, ids] = 0.0
 
     def __call__(
         self,
         env: ManagerBasedEnv,
         env_ids: torch.Tensor,
-        insertion_depth: ParameterSpec = 0.034,
-        rotation_angle: ParameterSpec = 0.5 * math.pi,
-        rotation_sign: float = -1.0,
         radial_tolerance: float = 0.015,
         tilt_tolerance: float = 0.2,
         seat_tolerance: float = 0.004,
-        max_twist_rate: float = 12.0,
-        max_axial_rate: float = 1.0,
-        position_slack: float = 0.003,
+        release_threshold: float = 0.02,
+        spring_k: float = 20.0,
+        spring_d: float = 1.7,
+        max_force: float = 5.0,
     ) -> None:
-        # insertion_depth / rotation_angle / rotation_sign are consumed from cfg.params
-        # in __init__/reset. Always operates on all envs: the constraint must be
-        # enforced every step, which the zero interval guarantees.
+        # Always operates on all envs: retention must be enforced every step, which the zero
+        # interval guarantees.
         #
-        # max_twist_rate 12 rad/s clears the measured deliberate unscrew (p90 ~7 rad/s in
-        # the 2026-09-01 clean removals) with margin, and stays 3-14x below the crush's
-        # noise spin, so a hand's twist is never eaten and a single impulse can credit at
-        # most a quarter turn / 6.5 = 0.24 rad. max_axial_rate 1.0 m/s is a fast hand
-        # withdrawal. position_slack 3 mm sits under seat_tolerance (4 mm), so a parked bulb
-        # still passes every gate, and above the ~2 mm a resting bulb sags per 50 Hz step
-        # under gravity, so an unheld bulb is not churned by the clamp.
-        del env_ids, insertion_depth, rotation_angle, rotation_sign
+        # spring_k/spring_d starting point: critically damped (d = 2*sqrt(k*m)) at the bulb's
+        # ~0.035 kg mass, kept well under the semi-implicit stability bound k < mass/step_dt^2
+        # (~87 N/m at step_dt=0.02s) with margin for the fact this is a rough starting gain,
+        # not a derived one -- retune against real teleop bags before trusting it in production.
+        # max_force 5 N is an arbitrary "light detent" ceiling, several times the bulb's own
+        # ~0.34 N weight; also needs real tuning. release_threshold 2 cm is comfortably past
+        # seat_tolerance (4 mm) so an unheld, resting bulb (which sags a little under gravity)
+        # never self-releases, but well short of a real withdrawal.
+        del env_ids
         old_bulb: RigidObject = env.scene["old_bulb"]
         fresh_bulb: RigidObject = env.scene["fresh_bulb"]
         self._resolve_spawn_phase(env, old_bulb, fresh_bulb)
@@ -297,9 +178,10 @@ class bulb_attachment(ManagerTermBase):
             radial_tolerance=radial_tolerance,
             tilt_tolerance=tilt_tolerance,
             seat_tolerance=seat_tolerance,
-            max_twist_rate=max_twist_rate,
-            max_axial_rate=max_axial_rate,
-            position_slack=position_slack,
+            release_threshold=release_threshold,
+            spring_k=spring_k,
+            spring_d=spring_d,
+            max_force=max_force,
         )
         self._advance(
             fresh_bulb,
@@ -308,32 +190,21 @@ class bulb_attachment(ManagerTermBase):
             radial_tolerance=radial_tolerance,
             tilt_tolerance=tilt_tolerance,
             seat_tolerance=seat_tolerance,
-            max_twist_rate=max_twist_rate,
-            max_axial_rate=max_axial_rate,
-            position_slack=position_slack,
+            release_threshold=release_threshold,
+            spring_k=spring_k,
+            spring_d=spring_d,
+            max_force=max_force,
         )
         self._take_snapshot()
 
     def _resolve_spawn_phase(self, env: ManagerBasedEnv, old_bulb: RigidObject, fresh_bulb: RigidObject) -> None:
-        """Lock whichever bulb the task actually SPAWNED in the socket, and only that one.
+        """Seat whichever bulb the task actually SPAWNED at the seat, and only that one.
 
-        This used to be hardcoded in ``reset()``: the old bulb always came back ``ROTATING`` and
-        the fresh one always ``FREE``, whatever the task had done with them. A locked bulb does
-        not obey physics -- the projection below writes its pose every step -- so on the legs that
-        run ``park_old_bulb_in_crate`` the machine dragged the old bulb straight back out of the
-        crate and pinned it at the seat, measured at 0.000 m from the socket by step 1 having
-        started 4.073 m away (issue #109). It also left S12's fresh bulb unconstrained while the
-        task requires it seated (issue #108); that only looked fine because the mis-locked old
-        bulb was propping it up.
-
-        Reading the phase off the scene instead means the two cannot disagree by construction: a
-        preset that moves a bulb has said everything it needs to say.
-
+        Reading the phase off the scene means a preset that moves a bulb has said everything
+        it needs to say -- carried over unchanged from the bayonet version (issue #109/#108).
         Deferred to the first step rather than done in ``reset()`` because the phase depends on
-        the bulb's spawned pose, and the event that restores it (``reset_scene_to_default``) is a
-        sibling reset term -- ordering between them is not ours to rely on. By the first
-        ``__call__`` the scene is settled, and the zero interval guarantees that call happens
-        before anything reads the state.
+        the bulb's spawned pose, and the event that restores it (``reset_scene_to_default``) is
+        a sibling reset term whose ordering against this one is not ours to rely on.
         """
         ids = self._pending.nonzero(as_tuple=False).squeeze(-1)
         if ids.numel() == 0:
@@ -341,10 +212,9 @@ class bulb_attachment(ManagerTermBase):
         seat_pos, _ = _seated_bulb_root_pose_w(env)
         for row, bulb in ((_OLD, old_bulb), (_FRESH, fresh_bulb)):
             at_seat = torch.norm(bulb.data.root_pos_w - seat_pos, dim=1) < _SEATED_SPAWN_TOLERANCE
-            lock = ids[at_seat[ids]]
-            if lock.numel() > 0:
-                self._phase[row, lock] = _ROTATING
-                self._theta[row, lock] = self._angle[lock]
+            seated = ids[at_seat[ids]]
+            if seated.numel() > 0:
+                self._phase[row, seated] = _SEATED
         self._pending[ids] = False
 
     def _advance(
@@ -355,11 +225,11 @@ class bulb_attachment(ManagerTermBase):
         radial_tolerance: float,
         tilt_tolerance: float,
         seat_tolerance: float,
-        max_twist_rate: float,
-        max_axial_rate: float,
-        position_slack: float,
+        release_threshold: float,
+        spring_k: float,
+        spring_d: float,
+        max_force: float,
     ) -> None:
-        sign = self._rotation_sign
         socket: RigidObject = self._env.scene["socket"]
         socket_quat = socket.data.root_quat_w
         bulb_quat = bulb.data.root_quat_w
@@ -369,119 +239,37 @@ class bulb_attachment(ManagerTermBase):
         displacement = plug - seat
         axial = (displacement * axis_w).sum(dim=1)
         lateral = torch.norm(displacement - axial.unsqueeze(1) * axis_w, dim=1)
-        twist = _signed_twist(socket_quat, bulb_quat, self._axis_l)
 
-        phase, theta, entry = self._phase[row], self._theta[row], self._entry_twist[row]
-        # Lock-positive twist change since the pose we last wrote (or the spawn pose), with
-        # the per-step CREDIT bounded to what a hand does in one step. Two failure modes this
-        # closes, both from the 2026-09-01 crush: an anomalous depenetration spin (30-50 rad/s,
-        # transients to 170) crediting a big fraction of the lock in a single step, and a
-        # >half-turn-per-step spin aliasing through ``_wrap_to_pi`` into a jump either way. The
-        # bound is a rate BACKSTOP, not a full stop: a genuine hand twist (p90 ~7 rad/s here)
-        # is under the cap and credited in full, but a sustained one-directional spin above it
-        # still unwinds the lock over enough steps -- ``position_slack`` below is what removes
-        # that spin, by killing the contact force that drives it. A hand twisting faster than
-        # the cap is not silently swallowed: grip friction carries the bulb the rest of the way
-        # over the next steps, each of which credits the fresh offset it re-measures.
-        max_twist_step = max_twist_rate * self._env.step_dt
-        delta = (sign * _wrap_to_pi(twist - self._prev_twist[row])).clamp(-max_twist_step, max_twist_step)
-
-        # -- transitions, all evaluated on the phase at step start (at most one per step)
+        phase = self._phase[row]
         was_free = phase == _FREE
-        was_axial = phase == _AXIAL
-        was_rotating = phase == _ROTATING
-        # `axial >= -seat_tolerance`, not `>= 0`: `lock` already accepts the bulb sitting that
-        # far past the seat, because contact geometry stops it slightly short of the exact plane.
-        # An entry gate that demands `>= 0` exactly rejects an operator who pushes a millimetre
-        # too far -- the same overshoot the next transition forgives (issue #90).
-        engage = (
+        was_seated = phase == _SEATED
+
+        seat_now = (
             was_free
             & socket_empty
-            & (axial >= -seat_tolerance)
-            & (axial <= self._depth)
+            & (axial.abs() <= seat_tolerance)
             & (lateral < radial_tolerance)
             & (_tilt_error(socket_quat, bulb_quat, self._axis_l) < tilt_tolerance)
         )
-        eject = was_axial & (axial > self._depth)
-        # Bottomed within seat_tolerance: contact geometry stops the bulb slightly short
-        # of the exact seat, so an exact axial<=0 gate would make locking unreachable.
-        lock = was_axial & ~eject & (axial <= seat_tolerance) & (delta > _EPS)
-        theta_rotated = torch.minimum((theta + delta).clamp(min=0.0), self._angle)
-        unlock = was_rotating & (theta_rotated <= _EPS) & (delta < 0.0)
+        # A real, physics-driven excursion past the seat -- not a force threshold -- releases
+        # it. This is deliberately readable straight off real contact: nothing here overwrites
+        # position, so `axial` is exactly what the solver produced.
+        release = was_seated & (axial.abs() > release_threshold)
 
-        phase[engage] = _AXIAL
-        theta[engage] = 0.0
-        # Keep the clock angle the bulb arrived at. Without this the projection below writes
-        # `socket_quat` outright, which teleports a gripped bulb onto the socket's own clock
-        # angle in a single step -- measured at 0.155 rad in the 2026-08-21 bags (issue #90).
-        entry[engage] = twist[engage]
-        phase[eject] = _FREE
-        phase[lock] = _ROTATING
-        theta[lock] = torch.minimum(delta, self._angle)[lock]
-        theta[was_rotating] = theta_rotated[was_rotating]
-        phase[unlock] = _AXIAL
-        theta[unlock] = 0.0
+        phase[seat_now] = _SEATED
+        phase[release] = _FREE
 
-        # An ejecting bulb drops out of the projection below, so nothing else bounds the
-        # FREE handoff: it would leave with whatever the last solver step gave it -- 2.3 m/s
-        # with a 47 rad/s spin on the bench, 5.6 m/s on S03 (2026-09-01), straight through
-        # the collision-filtered fixture. A legitimate withdrawal moves at hand speed and
-        # passes the cap untouched.
-        ejected = eject.nonzero(as_tuple=False).squeeze(-1)
-        if ejected.numel() > 0:
-            lin = bulb.data.root_lin_vel_w[ejected]
-            ang = bulb.data.root_ang_vel_w[ejected]
-            lin = lin * (max_axial_rate / lin.norm(dim=1, keepdim=True).clamp(min=_EPS)).clamp(max=1.0)
-            ang = ang * (max_twist_rate / ang.norm(dim=1, keepdim=True).clamp(min=_EPS)).clamp(max=1.0)
-            bulb.write_root_velocity_to_sim(torch.cat([lin, ang], dim=-1), env_ids=ejected)
-
-        # -- projection: remove every pose/velocity component the phase forbids
-        in_axial = phase == _AXIAL
-        in_rotating = phase == _ROTATING
-        # The unlock step (ROTATING -> AXIAL) stays pinned at the seat like the lock step,
-        # so axial travel only begins the following step -- otherwise a shove landing on
-        # the same step the bulb unlocks would leak through the channel before AXIAL
-        # projection engages.
-        axial_travel = in_axial & ~unlock
-        ids = (in_axial | in_rotating).nonzero(as_tuple=False).squeeze(-1)
-        if ids.numel() > 0:
-            # theta == 0 throughout AXIAL, so one expression covers both phases. The written
-            # twist is the ENTRY clock angle plus theta: a lock is a quarter turn from wherever
-            # the bulb went in, not a turn onto the socket's own angle.
-            proj_quat = quat_mul(socket_quat, _axis_angle_quat(self._axis_l, entry + sign * theta))
-            proj_axial = torch.where(
-                axial_travel,
-                torch.minimum(axial.clamp(min=0.0), self._depth),
-                torch.zeros_like(axial),
-            )
-            proj_pos = seat + proj_axial.unsqueeze(1) * axis_w - quat_apply(proj_quat, self._plug_offset)
-            # Pull the bulb back only to within position_slack of the constraint, never
-            # exactly onto it. A full teleport re-opens the gap that contact resolution just
-            # closed, so fingers closing on a constrained bulb ratchet INTO it step after
-            # step: the solver depenetrates, the projection un-does it, the drives advance
-            # into the vacated space, and the depenetration blast grows without bound --
-            # 3.4 kN of hand contact in the 2026-09-01 S03 takes that crushed a locked bulb,
-            # 60 N in the take that did not. Parked at the slack shell, the bulb is a surface
-            # that stays put, contact reaches drive-torque equilibrium, and the fight never
-            # starts. The written orientation stays exact: ``theta`` bookkeeping assumes the
-            # written twist, and tilt corrections move the glass by well under the slack.
-            residual = bulb.data.root_pos_w - proj_pos
-            residual_norm = residual.norm(dim=1, keepdim=True)
-            proj_pos = proj_pos + residual * (position_slack / residual_norm.clamp(min=_EPS)).clamp(max=1.0)
-
-            axial_speed = (bulb.data.root_lin_vel_w * axis_w).sum(dim=1).clamp(-max_axial_rate, max_axial_rate)
-            twist_speed = (bulb.data.root_ang_vel_w * axis_w).sum(dim=1)
-            at_lock_stop = (theta >= self._angle - _EPS) & (sign * twist_speed > 0.0)
-            twist_speed = torch.where(at_lock_stop, torch.zeros_like(twist_speed), twist_speed)
-            twist_speed = twist_speed.clamp(-max_twist_rate, max_twist_rate)
-            zero = torch.zeros_like(axis_w)
-            proj_lin = torch.where(axial_travel.unsqueeze(1), axial_speed.unsqueeze(1) * axis_w, zero)
-            proj_ang = torch.where(in_rotating.unsqueeze(1), twist_speed.unsqueeze(1) * axis_w, zero)
-            bulb.write_root_pose_to_sim(torch.cat([proj_pos[ids], proj_quat[ids]], dim=-1), env_ids=ids)
-            bulb.write_root_velocity_to_sim(torch.cat([proj_lin[ids], proj_ang[ids]], dim=-1), env_ids=ids)
-
-        # A constrained bulb now sits at the twist we wrote; a free bulb keeps its own.
-        self._prev_twist[row] = torch.where(in_axial | in_rotating, entry + sign * theta, twist)
+        # Continuous axial spring-damper, world-frame, applied alongside (never instead of)
+        # real contact -- zero force where not seated, so a bulb that just released or was
+        # never seated is untouched by this term. Lateral and orientation are left to real
+        # contact entirely; nothing here corrects them.
+        seated_now = (phase == _SEATED) & ~release
+        axial_rate = (bulb.data.root_lin_vel_w * axis_w).sum(dim=1)
+        spring_force = (-spring_k * axial - spring_d * axial_rate).clamp(-max_force, max_force)
+        applied = torch.where(seated_now, spring_force, torch.zeros_like(spring_force))
+        forces = (applied.unsqueeze(1) * axis_w).unsqueeze(1)
+        torques = torch.zeros((self._env.num_envs, 1, 3), device=self._env.device)
+        bulb.set_external_force_and_torque(forces, torques, is_global=True)
 
 
 def _attachment(env: ManagerBasedRLEnv) -> bulb_attachment:
@@ -505,75 +293,58 @@ def attachment_manager(env: ManagerBasedRLEnv) -> bulb_attachment | None:
 
 
 def bulb_lock_state(env: ManagerBasedRLEnv) -> torch.Tensor:
-    """Bayonet lock state of both bulbs, for the privileged observation group (issue #77).
+    """Seated state of both bulbs, for the privileged observation group (issue #77).
 
-    Columns: old phase, old ``theta`` (rad), fresh phase, fresh ``theta`` (rad). Phase is
-    0 ``FREE``, 1 ``AXIAL``, 2 ``ROTATING``, cast to float so the group concatenates.
-
-    Until this term existed, ``_phase`` and ``_theta`` reached no observation, telemetry or
-    recording path. An operator could not see whether a twist registered, which is why the
-    three candidate causes in #77 could not be told apart -- nor told apart from a bad grasp.
+    Columns: old seated (0/1), fresh seated (0/1), cast to float so the group concatenates.
+    Two columns, not the bayonet version's four -- there is no theta to report anymore.
 
     Returns:
-        Tensor of shape (num_envs, 4).
+        Tensor of shape (num_envs, 2).
     """
     mgr = _attachment(env)
-    return torch.stack(
-        [mgr._phase[_OLD].float(), mgr._theta[_OLD], mgr._phase[_FRESH].float(), mgr._theta[_FRESH]],
-        dim=-1,
-    )
+    return torch.stack([mgr._phase[_OLD].float(), mgr._phase[_FRESH].float()], dim=-1)
 
 
 def bulb_lock_telemetry(env: ManagerBasedRLEnv) -> dict[str, torch.Tensor]:
-    """Per-bulb lock state plus the per-env sampled parameters, for ``recording.py``.
-
-    ``rotation_angle`` and ``insertion_depth`` re-sample per env at every reset, so a
-    recorded ``theta`` alone is not interpretable: the same 1.4 rad is a fully locked bulb
-    under one sample and a half-turned one under the next.
+    """Per-bulb seated state, for ``recording.py``.
 
     Reads the snapshot rather than the live tensors, because a recorder runs after
     ``ManagerBasedRLEnv.step`` has auto-reset whichever episodes finished. The live state of a
     done env already belongs to the NEXT episode, so a terminal row would otherwise carry that
-    episode's reset phases and newly sampled limits. This is the same hazard ``recording.py``
-    documents for object poses, and the reason it reads termination term flags.
+    episode's reset phase. This is the same hazard ``recording.py`` documents for object poses.
     """
-    phase, theta, angle, depth = _attachment(env)._snapshot
+    snapshot = _attachment(env)._snapshot
     return {
-        "old_bulb_phase": phase[_OLD],
-        "old_bulb_theta": theta[_OLD],
-        "fresh_bulb_phase": phase[_FRESH],
-        "fresh_bulb_theta": theta[_FRESH],
-        "lock_rotation_angle": angle,
-        "lock_insertion_depth": depth,
+        "old_bulb_phase": snapshot[_OLD],
+        "fresh_bulb_phase": snapshot[_FRESH],
     }
 
 
 def old_bulb_attached(env: ManagerBasedRLEnv) -> torch.Tensor:
-    """True while the old bulb remains in the rotation-only lock groove."""
-    return _attachment(env)._phase[_OLD] == _ROTATING
+    """True while the old bulb remains seated."""
+    return _attachment(env)._phase[_OLD] == _SEATED
 
 
 def fresh_bulb_attached(env: ManagerBasedRLEnv) -> torch.Tensor:
-    """True where the fresh bulb completed insertion and the full lock rotation.
+    """True while the fresh bulb remains seated.
 
-    The attach-aware replacement for the geometric ``bulb_seated``: requires the whole
-    bayonet sequence, not just transiting the seating tolerances.
+    The attach-aware replacement for the geometric ``bulb_seated``: requires the seat
+    admission gate (alignment + socket-empty) to have fired, not just current proximity.
     """
-    mgr = _attachment(env)
-    return (mgr._phase[_FRESH] == _ROTATING) & (mgr._theta[_FRESH] >= mgr._angle - _EPS)
+    return _attachment(env)._phase[_FRESH] == _SEATED
 
 
 def _old_bulb_constrained(env: ManagerBasedRLEnv) -> torch.Tensor:
-    """True until the old bulb has traveled out of the bayonet channel."""
+    """True while the old bulb is seated (retained)."""
     return _attachment(env)._phase[_OLD] != _FREE
 
 
 def old_bulb_release_clearance(env: ManagerBasedRLEnv) -> torch.Tensor:
-    """Old-bulb fixture clearance (m) that reads 0 until the bulb exits the channel.
+    """Old-bulb fixture clearance (m) that reads 0 until the bulb is released.
 
-    Attach-aware ``old_bulb_fixture_clearance``: terminations/rewards run before the
-    interval event projects a constrained bulb (see module docstring), so the raw
-    clearance can transiently exceed the removal threshold and latch a false payout.
+    Attach-aware ``old_bulb_fixture_clearance``: a transient shove of a seated bulb must not
+    read as clearance, since the retention spring (not a projection) still owns the axial
+    error and will pull it back.
     """
     clearance = old_bulb_fixture_clearance(env)
     return torch.where(_old_bulb_constrained(env), torch.zeros_like(clearance), clearance)
@@ -585,10 +356,9 @@ def old_bulb_removed_after_release(env: ManagerBasedRLEnv, clearance_threshold: 
 
 
 def old_bulb_disposal_distance_pinned(env: ManagerBasedRLEnv) -> torch.Tensor:
-    """Old-bulb -> crate distance, pinned to the seat until it exits the channel.
+    """Old-bulb -> crate distance, pinned to the seat until it is released.
 
-    A transient shove of a constrained bulb toward the crate must not pay disposal
-    progress; the interval event rejects that displacement after rewards are computed.
+    A transient shove of a seated bulb toward the crate must not pay disposal progress.
     """
     d = old_bulb_disposal_distance(env)
     seat_pos, _ = _seated_bulb_root_pose_w(env)
@@ -598,11 +368,7 @@ def old_bulb_disposal_distance_pinned(env: ManagerBasedRLEnv) -> torch.Tensor:
 
 
 def old_bulb_dropped_after_release(env: ManagerBasedRLEnv, min_height: float) -> torch.Tensor:
-    """Channel-aware ``old_bulb_dropped``: a constrained bulb cannot be "dropped".
-
-    Guards the drop penalty/termination against transient displacement before the
-    interval event projects the bulb back onto the bayonet channel.
-    """
+    """Channel-aware ``old_bulb_dropped``: a seated bulb cannot be "dropped"."""
     return old_bulb_dropped(env, min_height) & ~_old_bulb_constrained(env)
 
 
@@ -610,9 +376,8 @@ def old_bulb_disposed_after_release(env: ManagerBasedRLEnv) -> torch.Tensor:
     """Channel-aware ``old_bulb_disposed``: only a *released* bulb can count as disposed.
 
     The paid-once disposal bonus and the ``success`` predicate read this rather than raw
-    ``old_bulb_disposed``: rewards/terminations run before the interval event re-projects
-    a constrained bulb, so a transient shove of a still-guided bulb into the crate
-    could otherwise latch the payout.
+    ``old_bulb_disposed``, so a transient shove of a still-seated bulb into the crate cannot
+    latch the payout.
     """
     return old_bulb_disposed(env) & ~_old_bulb_constrained(env)
 
@@ -622,11 +387,11 @@ def attached_replacement_success(
     pos_threshold: float = 0.015,
     ori_threshold: float = 0.2,
 ) -> torch.Tensor:
-    """True where the fresh bulb is locked in AND the old bulb is in the disposal crate.
+    """True where the fresh bulb is seated AND the old bulb is in the disposal crate.
 
     The attach-aware ``full_replacement_success`` (also the ``success`` termination).
-    ``pos_threshold`` / ``ori_threshold`` are accepted for the meta.json recording
-    contract (``recording.py`` reads them off the ``success`` term); the bayonet entry
-    and projection stages enforce alignment instead.
+    ``pos_threshold``/``ori_threshold`` are accepted for the meta.json recording contract
+    (``recording.py`` reads them off the ``success`` term); the seat admission gate enforces
+    alignment instead.
     """
     return fresh_bulb_attached(env) & old_bulb_disposed_after_release(env)

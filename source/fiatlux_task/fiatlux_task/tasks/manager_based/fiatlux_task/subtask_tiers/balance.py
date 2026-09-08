@@ -13,7 +13,7 @@ termination and a penalty in every subtask in this file, and absent from
 anywhere, so the stances and success gates read its live pose, not ``LADDER_POSITION``.
 
 ``mdp.bulb_attachment`` is wired here (as ``BulbAttachmentEventCfg``) rather than on the mate
-tier: the old bulb starts locked in the inverted fixture on every subtask in this file, and
+tier: the old bulb starts seated in the inverted fixture on every subtask in this file, and
 nothing else keeps it from falling out under gravity. Only S03 and S11 score against it.
 ``BulbAttachmentEventCfg`` is standalone from the on-the-ladder tier for that reason: S01 (Place
 tier, off-ladder) wires it in too, for the same falling-bulb problem, and must not inherit
@@ -35,9 +35,8 @@ from fiatlux_task.robots.g1 import G1_DEX3_PALM_BODIES, G1_FOOT_BODIES, G1_PALM_
 from .. import mdp
 from ..mdp.place_terms import step_face_dir_from_yaw, yaw_from_quat
 from ..replace_env_cfg import (
-    BAYONET_ENTRY_TILT,
-    BAYONET_INSERTION_DEPTH,
-    BAYONET_ROTATION_ANGLE,
+    BULB_ENTRY_TILT,
+    BULB_RELEASE_THRESHOLD,
     SEAT_POS_THRESHOLD,
 )
 from ..scene_cfg import (
@@ -59,7 +58,7 @@ from ..subtask_env_cfg import SubtaskEnvCfg, SubtaskEventCfg, SubtaskRewardsCfg,
 
 @configclass
 class BulbAttachmentEventCfg(SubtaskEventCfg):
-    """Bayonet channel enforcement, with ``FIATLUX-Replace-v0``'s parameters.
+    """Axial retention spring, with ``FIATLUX-Replace-v0``'s parameters.
 
     Nothing ladder-specific: S01 (Place tier, off-ladder) wires this in directly, so it must stay
     usable on its own, without whatever ``BalanceEventCfg`` adds for the on-the-ladder tier.
@@ -70,11 +69,9 @@ class BulbAttachmentEventCfg(SubtaskEventCfg):
         mode="interval",
         interval_range_s=(0.0, 0.0),
         params={
-            "insertion_depth": BAYONET_INSERTION_DEPTH,
-            "rotation_angle": BAYONET_ROTATION_ANGLE,
-            "rotation_sign": -1.0,
             "radial_tolerance": SEAT_POS_THRESHOLD,
-            "tilt_tolerance": BAYONET_ENTRY_TILT,
+            "tilt_tolerance": BULB_ENTRY_TILT,
+            "release_threshold": BULB_RELEASE_THRESHOLD,
         },
     )
 
