@@ -141,9 +141,27 @@ that bearing so the stance faces the fixture on either mount kind. `scene_cfg` c
 import-time guard tying the standoff to the measured clearance it has to buy
 (`LADDER_FIXTURE_MIN_STANDOFF` = torso 0.152 + fixture 0.081 + reset jitter 0.071 = 0.304 m).
 
-Consequence to accept: a ceiling fixture is now 0.60 m away in the floor plane instead of 0 m, so
-it is exactly as hard to reach as a wall one — and `scene_cfg`'s standing caveat that the honest
-forward reach (`G1_HORIZONTAL_REACH` = 0.5045 m) is shorter than that standoff now applies to both
-mount kinds rather than only to wall draws. The reach was never *usable* on a ceiling draw before
-this, since the fixture was inside the robot; what changes is that the open question is now
-uniform.
+That open question is now answered (#130). **MEASURED 2026-09-07 by FK from the on-ladder stance,
+layout seeds 1-8**, which is the re-measure `scene_cfg`'s caveat asked for:
+
+| | |
+|---|---|
+| shoulder to palm, arm fully extended | **0.419 m** |
+| shoulder to fingertip, arm fully extended | 0.559 m |
+| shoulder to socket seat, at a 0.60 m standoff | **0.49 - 0.52 m** |
+
+So the fingertips reached the bulb and the palm never did, on every draw — touch, not grasp,
+exactly what the VR session reported. The gap was 73-105 mm.
+
+The two mount kinds are bounded by different things, so they no longer share a standoff. A wall
+draw has the ladder's own half-depth (0.49 m) behind it and cannot come closer than 0.60 m without
+the ladder entering the wall. A ceiling draw has nothing behind it, so only the torso-clearance
+floor (0.304 m) bounds it: `LADDER_FIXTURE_STANDOFF_CEILING = 0.45 m` closes the gap with the arm
+short of full extension. Re-measured after the change, ceiling draws reach with 51-70 mm to spare,
+and the closest robot body to the socket at spawn is a thumb at 0.116-0.141 m — near, not
+intersecting.
+
+**Still open: wall draws.** They remain 65-105 mm beyond palm reach and moving the ladder cannot
+fix it, because the ladder's depth is what blocks it. That needs either a stance change or the
+ladder turned onto its narrow axis (half-depth 0.304 m), which is a placement question and belongs
+with #147.
