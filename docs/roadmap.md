@@ -65,21 +65,24 @@ descoping still stands — it is one flat RL episode, chaining is solution struc
     they damp wobble without fighting real contact or affecting insertion (gated on
     `seated_now` exactly like the axial term). Gains are rough starting points, same as the
     original axial ones -- needs real-teleop retuning before trusting the numbers.
-  - **Gravity feedforward (issue #171, second finding, 2026-09-08)**: re-teleop after the
-    centering fix found wall mounts hold cleanly, but a ceiling-mounted bulb falls out
-    unassisted within under a second, no operator or contact. Cause: a ceiling fixture is
-    inverted, so the seat axis points down and gravity acts entirely along it, in the
-    OUTWARD/release direction -- the axial spring's steady-state hold distance under that
-    load (~1.7cm at the shipped gain) left almost no margin before `release_threshold` (2cm)
-    on its own, before any transient. Fixed by adding a gravity feedforward to the axial term
-    that cancels gravity's own component along the seat axis every step, so the spring only
-    ever corrects deviations rather than also holding static weight -- steady-state sag is
-    now ~0 at any mount orientation, not a margin tuned around whichever one was tested.
-    Wall mounts are unaffected (gravity is ~perpendicular to a horizontal seat axis there, so
-    the feedforward is ~0). Uses a hardcoded bulb mass and gravity vector (module has no
-    direct read of the sim's configured gravity); needs a regression pass on S11
-    (screw-in, ceiling) to confirm the insert-then-hold failure reported alongside this is
-    the same root cause.
+  - **Axial stiffness against gravity (issue #171, second finding, 2026-09-08)**: re-teleop
+    after the centering fix found wall mounts hold cleanly, but a ceiling-mounted bulb falls
+    out unassisted within under a second, no operator or contact. Cause: a ceiling fixture is
+    inverted, so the seat axis points down and the bulb's own weight acts entirely along it,
+    in the OUTWARD/release direction -- the axial spring's steady-state hold distance under
+    that load (~1.7cm at the original 20 N/m gain) left almost no margin before
+    `release_threshold` (2cm) on its own, before any transient. First attempt added a gravity
+    feedforward that cancelled it outright (steady-state sag ~0 everywhere) -- rejected on
+    review: a passive retention mechanism (spring, friction, magnet) doesn't know its own
+    orientation and null out whatever load that implies, so a bulb hanging against gravity
+    SHOULD sag more than one resting with it, same as it would for any real hardware
+    equivalent. Fixed instead by raising `spring_k` (50, from 20; `spring_d` re-derived for
+    critical damping) until the worst-case sag sits comfortably clear of
+    `release_threshold`, while staying well under the documented semi-implicit stability
+    ceiling (~87 N/m). Table/wall mounts still sag less than ceiling ones under their own
+    weight, correctly -- both simply sag much less than before. Needs a regression pass on
+    S11 (screw-in, ceiling) to confirm the insert-then-hold failure reported alongside this
+    is the same root cause.
   Follow-up: put Remove/Install on the same mechanic; their
   bulbs are already dynamic but currently lift straight out of / drop straight into the
   socket (issue #76 Step 2).

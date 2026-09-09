@@ -130,8 +130,8 @@ SEAT_TOLERANCE = 0.004  # the __call__ default
 RADIAL_TOLERANCE = 0.015
 TILT_TOLERANCE = 0.2
 RELEASE_THRESHOLD = 0.02
-SPRING_K = 20.0
-SPRING_D = 1.7
+SPRING_K = 50.0
+SPRING_D = 2.65
 MAX_FORCE = 5.0
 BULB_MASS = 0.035
 GRAVITY = 9.81
@@ -295,57 +295,36 @@ def test_engage_requires_socket_empty():
 
 def test_seated_bulb_spring_resists_small_outward_displacement():
     """A small axial displacement from the seat produces a restoring force back toward it,
-    proportional to the error (the spring term) plus the gravity feedforward (issue #171),
-    and does not release."""
+    proportional to the error (the spring term), and does not release. Purely
+    displacement/velocity-driven, deliberately: no gravity or orientation awareness (issue
+    #171's second finding rejected an earlier version that cancelled gravity outright -- a
+    passive mechanism doesn't know its own orientation and null out whatever load that implies;
+    see test_worst_case_gravity_sag_has_margin_before_release for the actual fix, sizing
+    spring_k itself against the worst case instead)."""
     env, mgr = _make_env()
     _step(mgr, env)  # seats the old bulb
     bulb = env.scene["old_bulb"]
     bulb.data.root_pos_w = torch.tensor([[0.0, 0.0, 0.010]])  # 10 mm out, past seat_tolerance
     _step(mgr, env)
     assert mgr._phase[OLD, 0] == SEATED
-    # axis is +z (SOCKET_SEAT_AXIS in the real module is (0,0,1)). This fixture's synthetic
-    # "axis points straight up" test orientation (not a real mount kind -- real mounts are wall
-    # or ceiling, never this) has gravity pulling INWARD (-z) on its own, so the feedforward
-    # term here pushes OUTWARD to cancel that -- the same formula that pushes INWARD to cancel
-    # gravity at a real ceiling mount, where the axis points down instead. See
-    # test_seated_bulb_at_ceiling_mount_gets_gravity_compensated for that direction.
+    # axis is +z (SOCKET_SEAT_AXIS in the real module is (0,0,1)); force should pull -z.
     applied_z = bulb.last_force[0, 0, 2].item()
+    assert applied_z < 0.0
     assert abs(applied_z) <= MAX_FORCE + 1e-6
-    expected = -SPRING_K * 0.010 + BULB_MASS * GRAVITY  # spring term + gravity feedforward
+    expected = -SPRING_K * 0.010
     assert abs(applied_z - expected) < 1e-6  # zero velocity, so damping contributes nothing
 
 
-def test_seated_bulb_at_ceiling_mount_gets_gravity_compensated():
-    """A ceiling-mounted fixture is inverted: its seat axis points straight down, so gravity
-    pulls a seated bulb OUTWARD along it (issue #171's second finding) -- without
-    compensation, a ceiling-seated bulb sags toward ``release_threshold`` and falls out
-    unassisted, no operator or contact needed. At rest exactly on the seat (zero displacement,
-    zero velocity), the spring-damper contributes nothing, so the commanded force must be
-    exactly the feedforward term canceling gravity, INWARD (i.e. world +z, opposing the
-    downward pull)."""
-    ceiling_quat = (0.0, 0.0, 1.0, 0.0)  # 180 deg about Y: flips the seat axis to point down
-    env = SimpleNamespace(
-        num_envs=1,
-        device="cpu",
-        step_dt=0.02,
-        scene={
-            "socket": _FakeBody([0.0, 0.0, 0.0]),
-            "old_bulb": _FakeBody([0.0, 0.0, 0.0]),
-            "fresh_bulb": _FakeBody([1.0, 0.0, 0.0]),
-        },
-    )
-    env.scene["socket"].data.root_quat_w = torch.tensor([list(ceiling_quat)])
-    env.scene["old_bulb"].data.root_quat_w = torch.tensor([list(ceiling_quat)])
-    cfg = SimpleNamespace(params={})
-    mgr = attach.bulb_attachment(cfg, env)
-    _step(mgr, env)
-    assert mgr._phase[OLD, 0] == SEATED  # spawned at the seat, aligned with it
-    bulb = env.scene["old_bulb"]
-    applied_z = bulb.last_force[0, 0, 2].item()
-    assert applied_z > 0.0  # pulls world +z: inward, opposing the downward pull
-    expected = BULB_MASS * GRAVITY
-    assert abs(applied_z - expected) < 1e-4
-    assert abs(applied_z) <= MAX_FORCE + 1e-6
+def test_worst_case_gravity_sag_has_margin_before_release():
+    """Sanity check on the tuned constants themselves, not a simulated scenario (the fake
+    harness doesn't integrate dynamics): the worst-case steady-state sag under the bulb's own
+    weight -- spring_k alone holding it, as at an inverted ceiling mount where gravity acts
+    entirely along the release direction -- must sit well clear of release_threshold, or a
+    resting bulb sags into self-release on its own with no operator or contact (issue #171,
+    second finding). At the original 20 N/m gain this margin was razor-thin (~1.7cm sag vs. a
+    2cm threshold) and a ceiling-seated bulb did exactly that."""
+    worst_case_sag = (BULB_MASS * GRAVITY) / SPRING_K
+    assert worst_case_sag < RELEASE_THRESHOLD * 0.5  # at least 2x margin before any transient
 
 
 def test_seated_bulb_lateral_spring_resists_lateral_displacement():

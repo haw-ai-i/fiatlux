@@ -61,22 +61,28 @@ for contact the way the old bayonet's pose overwrite did. Gated on ``seated_now`
 the axial term, so a FREE bulb (including one still mid-insertion) is completely unaffected --
 this cannot touch insertion dynamics at all.
 
-**Gravity feedforward (issue #171, second finding)**: the axial spring's steady-state hold
-distance under a constant load is ``load / spring_k`` -- for the bulb's own ~0.34 N weight at
-the shipped gain, ~1.7 cm, uncomfortably close to the 2 cm ``release_threshold`` on its own,
-before any transient. That margin is fine at a WALL mount, where gravity is roughly
-perpendicular to the seat axis (mostly a lateral load, which real contact already bears --
-issue #171's teleop evidence confirmed wall removal now holds cleanly). It is not fine at a
-CEILING mount: the fixture is inverted, so the seat axis points straight down and gravity acts
-entirely along it, in the OUTWARD (release) direction -- confirmed sagging a ceiling-seated
-bulb past ``release_threshold`` and releasing it unassisted within under a second, no operator,
-no contact. Rather than retune ``spring_k`` against the semi-implicit stability ceiling
-(``~mass/step_dt^2``, already not far above the shipped value) to shrink that margin, the axial
-term now also cancels gravity's own component along the seat axis directly, every step, so the
-spring only ever has to correct DEVIATIONS from the seat -- steady-state sag is ~0 at any mount
-orientation, not just tuned to survive the worst one. ``_BULB_MASS``/``_GRAVITY_W`` below are
-the physical constants this needs; the module has no direct access to the sim's configured
-gravity vector, so ``_GRAVITY_W`` assumes Isaac Sim's unmodified default.
+**Axial stiffness against gravity (issue #171, second finding)**: the axial spring's
+steady-state hold distance under a constant load is ``load / spring_k``. At a WALL mount this
+barely matters -- gravity is roughly perpendicular to the seat axis there, mostly a lateral
+load real contact already bears. At a CEILING mount the fixture is inverted, so the seat axis
+points straight down and the bulb's own weight acts entirely along it, in the OUTWARD (release)
+direction: at the original gain (spring_k=20) that sag was ~1.7cm, uncomfortably close to the
+2cm ``release_threshold`` before any transient, and a ceiling-seated bulb reliably sagged past
+it and released unassisted within under a second, no operator, no contact.
+
+An earlier version of this fix added a feedforward that cancelled gravity's axial component
+outright, making steady-state sag ~0 at every orientation. That is not how a passive
+retention mechanism -- spring, friction, magnet, whatever this is meant to model -- actually
+behaves: none of those know about gravity and null it out; they have a fixed
+force/displacement (or force/velocity) characteristic, and the bulb settles wherever that
+characteristic balances whatever load it is actually under. A real magnetic catch genuinely
+does hold a downward-hanging bulb less securely than an upward-facing one, for the same
+reason a spring does -- that asymmetry is physically correct, not a bug. So this instead just
+raises ``spring_k`` (with ``spring_d`` re-derived for critical damping at the new value) until
+the worst-case (ceiling, full weight) sag sits well clear of ``release_threshold`` with real
+margin for transients, while staying well under the documented semi-implicit stability ceiling
+(``~mass/step_dt^2``). A table-mounted bulb still sags less than a ceiling-mounted one under
+this scheme, correctly -- both simply sag much less than before.
 """
 
 from __future__ import annotations
@@ -118,11 +124,6 @@ _FRESH = 1  # state row of the fresh bulb (scene entity "fresh_bulb")
 # over unchanged from the bayonet version -- see its git history for the measurements behind
 # this value (the in-hand carry stage spawns ~0.10-0.13 m from the seat, ~2x this tolerance).
 _SEATED_SPAWN_TOLERANCE = 0.05  # m
-
-# Gravity feedforward inputs (issue #171 -- see the module docstring). World-frame, since the
-# axial force this cancels is computed and applied in world frame throughout.
-_BULB_MASS = 0.035  # kg; matches this module's existing gain-derivation comments elsewhere.
-_GRAVITY_W = (0.0, 0.0, -9.81)  # m/s^2; Isaac Sim's default -- not read from the sim config.
 
 
 def _tilt_error(socket_quat: torch.Tensor, bulb_quat: torch.Tensor, local_axis: torch.Tensor) -> torch.Tensor:
@@ -179,7 +180,6 @@ class bulb_attachment(ManagerTermBase):
         self._axis_l = torch.tensor(SOCKET_SEAT_AXIS, device=dev).expand(n, 3)
         self._seat_offset = torch.tensor(SOCKET_SEAT_OFFSET, device=dev).expand(n, 3)
         self._plug_offset = torch.tensor(BULB_PLUG_OFFSET, device=dev).expand(n, 3)
-        self._gravity_w = torch.tensor(_GRAVITY_W, device=dev).expand(n, 3)
         # Telemetry snapshot, taken at the end of every __call__ and never touched by reset().
         # `ManagerBasedRLEnv.step` auto-resets finished episodes before the next call, so a
         # terminal row must read this snapshot rather than the live tensor, or it would report
@@ -207,8 +207,8 @@ class bulb_attachment(ManagerTermBase):
         tilt_tolerance: float = 0.2,
         seat_tolerance: float = 0.004,
         release_threshold: float = 0.02,
-        spring_k: float = 20.0,
-        spring_d: float = 1.7,
+        spring_k: float = 50.0,
+        spring_d: float = 2.65,
         max_force: float = 5.0,
         lateral_k: float = 5.0,
         lateral_d: float = 0.85,
@@ -220,23 +220,33 @@ class bulb_attachment(ManagerTermBase):
         # Always operates on all envs: retention must be enforced every step, which the zero
         # interval guarantees.
         #
-        # spring_k/spring_d starting point: critically damped (d = 2*sqrt(k*m)) at the bulb's
-        # ~0.035 kg mass, kept well under the semi-implicit stability bound k < mass/step_dt^2
-        # (~87 N/m at step_dt=0.02s) with margin for the fact this is a rough starting gain,
-        # not a derived one -- retune against real teleop bags before trusting it in production.
-        # max_force 5 N is an arbitrary "light detent" ceiling, several times the bulb's own
-        # ~0.34 N weight; also needs real tuning. release_threshold 2 cm is comfortably past
-        # seat_tolerance (4 mm) so an unheld, resting bulb (which sags a little under gravity)
-        # never self-releases, but well short of a real withdrawal.
+        # spring_k/spring_d (issue #171, revised): critically damped (d = 2*sqrt(k*m)) at the
+        # bulb's ~0.035 kg mass, kept well under the semi-implicit stability bound
+        # k < mass/step_dt^2 (~87 N/m at step_dt=0.02s; 50 is ~57% of it). Sized for the WORST
+        # CASE static load, not the average one: a ceiling mount is inverted, so the bulb's own
+        # ~0.34 N weight acts entirely along the (outward) seat axis there, and the resulting
+        # steady-state sag (weight/spring_k, ~6.9mm at this gain) needs to sit clear of
+        # release_threshold with real margin for transients -- at the original 20 N/m that sag
+        # was ~1.7cm against a 2cm threshold, and a ceiling-seated bulb reliably sagged past it
+        # and released on its own. A table/wall-mounted bulb sags less than this under its own
+        # weight, correctly -- that asymmetry is what a real passive retention mechanism
+        # (spring, friction, magnet) would also show; nothing here is gravity-aware or
+        # orientation-aware, on purpose. Still a rough starting gain, not a derived one --
+        # retune against real teleop bags before trusting it in production. max_force 5 N is an
+        # arbitrary "light detent" ceiling, several times the bulb's own ~0.34 N weight; also
+        # needs real tuning. release_threshold 2 cm is comfortably past seat_tolerance (4 mm) so
+        # an unheld, resting bulb (which sags a little under gravity) never self-releases, but
+        # well short of a real withdrawal.
         #
         # lateral_k/lateral_d/max_lateral_force (issue #171): deliberately far gentler than the
-        # axial term -- 1/4 the stiffness, critically damped the same way, capped at ~3x the
-        # bulb's own weight -- so this damps wobble without fighting real contact or acting as a
-        # second authority over lateral position. tilt_k/tilt_d/max_torque have no inertia
-        # measurement behind them (unlike spring_k/spring_d's mass-derived critical damping);
-        # they are rough starting points at the same order of magnitude as
-        # diagnose_contact_axial.py's own orientation-hold trial (k_p=0.02, k_d=0.002) shown to
-        # function as a soft aligner there, needing the same real-teleop retuning as every other
+        # axial term -- capped at ~3x the bulb's own weight, critically damped the same way --
+        # so this damps wobble without fighting real contact or acting as a second authority
+        # over lateral position (real contact, not this term, is what actually has to bear a
+        # sideways load). tilt_k/tilt_d/max_torque have no inertia measurement behind them
+        # (unlike spring_k/spring_d's mass-derived critical damping); they are rough starting
+        # points at the same order of magnitude as diagnose_contact_axial.py's own
+        # orientation-hold trial (k_p=0.02, k_d=0.002) shown to function as a soft aligner
+        # there, needing the same real-teleop retuning as every other
         # gain in this term.
         del env_ids
         # old_bulb is absent from insert-only scenes (e.g. the tabletop preset, which has
@@ -348,17 +358,12 @@ class bulb_attachment(ManagerTermBase):
         seated_now = (phase == _SEATED) & ~release
         seated_mask = seated_now.unsqueeze(1)
 
-        # Axial: full-strength retention, plus a gravity feedforward (issue #171 -- see the
-        # module docstring). `gravity_axial` is the signed component of the bulb's own weight
-        # along the seat axis: positive at a ceiling mount (axis points down, gravity pulls
-        # OUTWARD), ~zero at a wall mount (axis roughly horizontal, gravity mostly lateral --
-        # left to the lateral term/real contact, unchanged). Subtracting it cancels gravity from
-        # the net axial force exactly, so the spring-damper only ever corrects deviations from
-        # the seat instead of also having to hold static weight -- steady-state sag is ~0 at any
-        # orientation, not a margin tuned around whichever mount happened to be tested.
+        # Axial: full-strength retention. A plain spring-damper, deliberately -- no gravity
+        # feedforward (issue #171's second finding rejected that: a passive mechanism doesn't
+        # know about gravity and cancel it, so a stiff-enough spring is what's physical, not an
+        # anti-gravity term). See the module docstring for why spring_k is what it is.
         axial_rate = (bulb.data.root_lin_vel_w * axis_w).sum(dim=1)
-        gravity_axial = _BULB_MASS * (self._gravity_w * axis_w).sum(dim=1)
-        axial_force = (-spring_k * axial - spring_d * axial_rate - gravity_axial).clamp(-max_force, max_force)
+        axial_force = (-spring_k * axial - spring_d * axial_rate).clamp(-max_force, max_force)
         axial_force_vec = axial_force.unsqueeze(1) * axis_w
 
         # Lateral: a much gentler spring-damper pulling the plug back toward the seat axis

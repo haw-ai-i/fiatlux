@@ -42,13 +42,15 @@ return to it (plus the reset jitter below).
     `scripts/diagnose_contact_axial.py`), so the fix is a much gentler additional
     spring-damper on lateral position and tilt while seated, not a tighter bore. Gated on
     the same seated condition as the axial term, so it cannot affect insertion.
-  - **Gravity feedforward (issue #171)**: a ceiling mount is inverted (seat axis points down),
-    so gravity pulls a seated bulb OUTWARD along it -- with only the spring holding static
-    weight, the steady-state sag left almost no margin before `release_threshold`, and a
-    ceiling-seated bulb fell out unassisted within under a second. The axial term now also
-    cancels gravity's component along the seat axis directly every step, so steady-state sag
-    is ~0 at any mount orientation instead of a margin tuned around one. Wall mounts are
-    unaffected (gravity is ~perpendicular to a horizontal seat axis there).
+  - **Axial stiffness against gravity (issue #171)**: a ceiling mount is inverted (seat axis
+    points down), so gravity pulls a seated bulb OUTWARD along it -- at the original gain, the
+    steady-state sag under the bulb's own weight left almost no margin before
+    `release_threshold`, and a ceiling-seated bulb fell out unassisted within under a second.
+    Fixed by raising the axial spring's stiffness (not by adding a gravity feedforward -- a
+    passive retention mechanism doesn't cancel gravity outright, and shouldn't hold a
+    ceiling-hung bulb as securely as a resting one, same as any real spring/friction/magnet
+    equivalent) until worst-case sag sits comfortably clear of `release_threshold`. Table/wall
+    mounts sag less than ceiling ones under their own weight, correctly.
 
 ## Goal
 
