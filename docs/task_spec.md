@@ -23,16 +23,25 @@ return to it (plus the reset jitter below).
   opt-in that spawns it reachably near the fixture.
 - **Both bulbs are dynamic**, governed by the `mdp.bulb_attachment` state machine
   (unification spec Phase 4; issue #167 superseded the original bayonet design, issue #54).
-  Two states per bulb: `FREE` (unconstrained) and `SEATED` (a continuous axial spring-damper
-  force holds it at the seat). `FREE -> SEATED` fires on reaching the seat aligned
-  (position + tilt tolerance) with the socket empty; real bulb-socket collision -- filtered
-  out under the old bayonet, now enabled everywhere -- constrains lateral position and
-  orientation on its own, so nothing here scripts them. `SEATED -> FREE` (release) fires on
-  a real, physics-driven axial pull past `release_threshold`. No twist/lock/rotation state:
-  this asset has no physical lug or groove, so the old bayonet's clock-angle semantics were
-  never modeling a real feature. `fresh_bulb_attached` and `success` read the attachment
-  state, so every score channel is achievable. Remove/Install do not yet use this mechanic:
-  their bulbs simply lift out of / drop into the socket.
+  Two states per bulb: `FREE` (unconstrained) and `SEATED` (a continuous spring-damper
+  wrench holds it at the seat: a full-strength axial term plus a much gentler lateral +
+  tilt centering term, issue #171 -- see below). `FREE -> SEATED` fires on reaching the seat
+  aligned (position + tilt tolerance) with the socket empty; real bulb-socket collision --
+  filtered out under the old bayonet, now enabled everywhere -- constrains lateral position
+  and orientation as its primary mechanism, the wrench's lateral/tilt term only assisting.
+  `SEATED -> FREE` (release) fires on a real, physics-driven axial pull past
+  `release_threshold`. No twist/lock/rotation state: this asset has no physical lug or
+  groove, so the old bayonet's clock-angle semantics were never modeling a real feature.
+  `fresh_bulb_attached` and `success` read the attachment state, so every score channel is
+  achievable. Remove/Install do not yet use this mechanic: their bulbs simply lift out of /
+  drop into the socket.
+  - **Lateral + tilt centering (issue #171)**: the original design left lateral position and
+    orientation entirely to real contact. Teleop evidence found a seated bulb visibly
+    tilts/swings -- the bore's 2.69mm radial clearance is real, necessary slop (tightening
+    it even to 1.86mm breaks force-driven insertion outright, confirmed with
+    `scripts/diagnose_contact_axial.py`), so the fix is a much gentler additional
+    spring-damper on lateral position and tilt while seated, not a tighter bore. Gated on
+    the same seated condition as the axial term, so it cannot affect insertion.
 
 ## Goal
 

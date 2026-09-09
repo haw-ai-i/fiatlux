@@ -31,10 +31,9 @@ a plain round bore under gravity or a knock. This module supplies exactly that, 
 else. Two states per bulb, per env:
 
 - ``FREE`` -- unconstrained rigid body; physics owns it entirely.
-- ``SEATED`` -- held by a continuous axial spring-damper FORCE (world-frame, applied through
-  ``set_external_force_and_torque``), not a pose or velocity overwrite. Lateral position and
-  orientation are left entirely to real contact; only axial displacement from the seat is
-  corrected, and only while seated.
+- ``SEATED`` -- held by a continuous spring-damper WRENCH (world-frame, applied through
+  ``set_external_force_and_torque``), not a pose or velocity overwrite: a full-strength axial
+  term plus a deliberately much gentler lateral + tilt centering term (issue #171).
 
 ``FREE -> SEATED`` fires on reaching the seat (within ``seat_tolerance``) while reasonably
 aligned (``radial_tolerance``, ``tilt_tolerance``) with the socket unoccupied by the other bulb.
@@ -43,8 +42,24 @@ exceeds ``release_threshold`` -- a deliberate, sustained pull, not a force thres
 knock does not release it but a genuine withdrawal does.
 
 Because retention is a continuous force rather than a per-step overwrite, the solver resolves
-contact and the spring together in one solve every step -- there is no second authority for it
+contact and the wrench together in one solve every step -- there is no second authority for it
 to disagree with, and so no equivalent of the crush-glitch pattern to reintroduce.
+
+**Lateral + tilt centering (issue #171, added after the mechanism above shipped)**: the first
+version left lateral position and orientation entirely to real contact, on the theory that with
+collision back on the socket confines the bulb on its own. Real teleop evidence found otherwise:
+a seated bulb visibly tilts/swings, because the bore's authored radial clearance (2.69mm,
+``assets/omniverse_bulb/LightBulb_bulb_z_rigid.usda``'s 0.84 plug scale) is real, necessary
+slop, not a defect -- ``scripts/diagnose_contact_axial.py`` confirmed that tightening it even
+to 1.86mm (0.88 scale) breaks force-driven insertion outright (the bore has no lead-in
+chamfer; any reduction makes the plug catch on the sharp rim), so the wobble cannot be fixed by
+shrinking the gap. Instead, a SEATED bulb now also gets a lateral spring-damper (pulling the
+plug back toward the seat axis line) and a tilt spring-damper torque (aligning the plug axis
+back to the seat axis, twist left free as always) -- both far weaker than the axial term and
+its own real contact, `deliberately` gentle so they damp wobble without fighting or substituting
+for contact the way the old bayonet's pose overwrite did. Gated on ``seated_now`` exactly like
+the axial term, so a FREE bulb (including one still mid-insertion) is completely unaffected --
+this cannot touch insertion dynamics at all.
 """
 
 from __future__ import annotations
@@ -99,6 +114,19 @@ def _tilt_error(socket_quat: torch.Tensor, bulb_quat: torch.Tensor, local_axis: 
     seat = quat_apply(socket_quat, local_axis.expand(socket_quat.shape[0], 3))
     cos = (plug * seat).sum(dim=1) / (plug.norm(dim=1) * seat.norm(dim=1)).clamp(min=1e-9)
     return torch.acos(cos.clamp(-1.0, 1.0))
+
+
+def _clamp_vector_norm(v: torch.Tensor, max_norm: float) -> torch.Tensor:
+    """Scale each row of ``v`` down to ``max_norm`` if it exceeds it, preserving direction.
+
+    The axial spring is a scalar (one DOF), so a plain ``.clamp(-max, max)`` saturates it
+    correctly. Lateral force and tilt torque are 3-vectors; clamping components independently
+    would distort their direction when only one axis saturates, so this scales the whole vector
+    down uniformly instead, by its norm.
+    """
+    norm = v.norm(dim=-1, keepdim=True)
+    scale = (max_norm / norm.clamp(min=1e-9)).clamp(max=1.0)
+    return v * scale
 
 
 def _seated_bulb_root_pose_w(env: ManagerBasedEnv) -> tuple[torch.Tensor, torch.Tensor]:
@@ -159,6 +187,12 @@ class bulb_attachment(ManagerTermBase):
         spring_k: float = 20.0,
         spring_d: float = 1.7,
         max_force: float = 5.0,
+        lateral_k: float = 5.0,
+        lateral_d: float = 0.85,
+        max_lateral_force: float = 1.0,
+        tilt_k: float = 0.05,
+        tilt_d: float = 0.01,
+        max_torque: float = 0.05,
     ) -> None:
         # Always operates on all envs: retention must be enforced every step, which the zero
         # interval guarantees.
@@ -171,6 +205,16 @@ class bulb_attachment(ManagerTermBase):
         # ~0.34 N weight; also needs real tuning. release_threshold 2 cm is comfortably past
         # seat_tolerance (4 mm) so an unheld, resting bulb (which sags a little under gravity)
         # never self-releases, but well short of a real withdrawal.
+        #
+        # lateral_k/lateral_d/max_lateral_force (issue #171): deliberately far gentler than the
+        # axial term -- 1/4 the stiffness, critically damped the same way, capped at ~3x the
+        # bulb's own weight -- so this damps wobble without fighting real contact or acting as a
+        # second authority over lateral position. tilt_k/tilt_d/max_torque have no inertia
+        # measurement behind them (unlike spring_k/spring_d's mass-derived critical damping);
+        # they are rough starting points at the same order of magnitude as
+        # diagnose_contact_axial.py's own orientation-hold trial (k_p=0.02, k_d=0.002) shown to
+        # function as a soft aligner there, needing the same real-teleop retuning as every other
+        # gain in this term.
         del env_ids
         # old_bulb is absent from insert-only scenes (e.g. the tabletop preset, which has
         # nothing to remove) -- self._phase[_OLD] then never leaves its _FREE default, so
@@ -178,23 +222,7 @@ class bulb_attachment(ManagerTermBase):
         old_bulb: RigidObject | None = env.scene["old_bulb"] if "old_bulb" in env.scene.keys() else None
         fresh_bulb: RigidObject = env.scene["fresh_bulb"]
         self._resolve_spawn_phase(env, old_bulb, fresh_bulb)
-        if old_bulb is not None:
-            self._advance(
-                old_bulb,
-                _OLD,
-                socket_empty=self._phase[_FRESH] == _FREE,
-                radial_tolerance=radial_tolerance,
-                tilt_tolerance=tilt_tolerance,
-                seat_tolerance=seat_tolerance,
-                release_threshold=release_threshold,
-                spring_k=spring_k,
-                spring_d=spring_d,
-                max_force=max_force,
-            )
-        self._advance(
-            fresh_bulb,
-            _FRESH,
-            socket_empty=self._phase[_OLD] == _FREE,
+        gains = dict(
             radial_tolerance=radial_tolerance,
             tilt_tolerance=tilt_tolerance,
             seat_tolerance=seat_tolerance,
@@ -202,7 +230,16 @@ class bulb_attachment(ManagerTermBase):
             spring_k=spring_k,
             spring_d=spring_d,
             max_force=max_force,
+            lateral_k=lateral_k,
+            lateral_d=lateral_d,
+            max_lateral_force=max_lateral_force,
+            tilt_k=tilt_k,
+            tilt_d=tilt_d,
+            max_torque=max_torque,
         )
+        if old_bulb is not None:
+            self._advance(old_bulb, _OLD, socket_empty=self._phase[_FRESH] == _FREE, **gains)
+        self._advance(fresh_bulb, _FRESH, socket_empty=self._phase[_OLD] == _FREE, **gains)
         self._take_snapshot()
 
     def _resolve_spawn_phase(
@@ -244,6 +281,12 @@ class bulb_attachment(ManagerTermBase):
         spring_k: float,
         spring_d: float,
         max_force: float,
+        lateral_k: float,
+        lateral_d: float,
+        max_lateral_force: float,
+        tilt_k: float,
+        tilt_d: float,
+        max_torque: float,
     ) -> None:
         socket: RigidObject = self._env.scene["socket"]
         socket_quat = socket.data.root_quat_w
@@ -253,7 +296,8 @@ class bulb_attachment(ManagerTermBase):
         plug = bulb.data.root_pos_w + quat_apply(bulb_quat, self._plug_offset)
         displacement = plug - seat
         axial = (displacement * axis_w).sum(dim=1)
-        lateral = torch.norm(displacement - axial.unsqueeze(1) * axis_w, dim=1)
+        lateral_vec = displacement - axial.unsqueeze(1) * axis_w
+        lateral = torch.norm(lateral_vec, dim=1)
 
         phase = self._phase[row]
         was_free = phase == _FREE
@@ -274,17 +318,37 @@ class bulb_attachment(ManagerTermBase):
         phase[seat_now] = _SEATED
         phase[release] = _FREE
 
-        # Continuous axial spring-damper, world-frame, applied alongside (never instead of)
-        # real contact -- zero force where not seated, so a bulb that just released or was
-        # never seated is untouched by this term. Lateral and orientation are left to real
-        # contact entirely; nothing here corrects them.
+        # Continuous spring-damper wrench, world-frame, applied alongside (never instead of)
+        # real contact -- zero everywhere a bulb is not seated, so a bulb that just released or
+        # was never seated is completely untouched by this term (including mid-insertion: this
+        # cannot affect the FREE-phase dynamics diagnose_contact_axial.py exercises).
         seated_now = (phase == _SEATED) & ~release
+        seated_mask = seated_now.unsqueeze(1)
+
+        # Axial: full-strength retention, unchanged from the original design.
         axial_rate = (bulb.data.root_lin_vel_w * axis_w).sum(dim=1)
-        spring_force = (-spring_k * axial - spring_d * axial_rate).clamp(-max_force, max_force)
-        applied = torch.where(seated_now, spring_force, torch.zeros_like(spring_force))
-        forces = (applied.unsqueeze(1) * axis_w).unsqueeze(1)
-        torques = torch.zeros((self._env.num_envs, 1, 3), device=self._env.device)
-        bulb.set_external_force_and_torque(forces, torques, is_global=True)
+        axial_force = (-spring_k * axial - spring_d * axial_rate).clamp(-max_force, max_force)
+        axial_force_vec = axial_force.unsqueeze(1) * axis_w
+
+        # Lateral: a much gentler spring-damper pulling the plug back toward the seat axis
+        # line (issue #171 -- see the module docstring for why this is a software fix, not a
+        # tighter bore).
+        lin_vel = bulb.data.root_lin_vel_w
+        lateral_vel = lin_vel - (lin_vel * axis_w).sum(dim=1, keepdim=True) * axis_w
+        lateral_force_vec = _clamp_vector_norm(-lateral_k * lateral_vec - lateral_d * lateral_vel, max_lateral_force)
+
+        # Tilt: small torque aligning the plug axis back to the seat axis -- the standard
+        # small-angle "rotate A onto B" construction (magnitude ~ sin(tilt), direction the
+        # correct rotation axis), damped against the FULL angular velocity rather than just its
+        # tilt component. That damps a little unwanted twist too, an acceptable simplification
+        # since twist is free by design (issue #90) and nothing anywhere tracks it.
+        plug_axis_w = quat_apply(bulb_quat, self._axis_l)
+        tilt_correction = torch.cross(plug_axis_w, axis_w, dim=-1)
+        tilt_torque_vec = _clamp_vector_norm(tilt_k * tilt_correction - tilt_d * bulb.data.root_ang_vel_w, max_torque)
+
+        forces = torch.where(seated_mask, axial_force_vec + lateral_force_vec, torch.zeros_like(axial_force_vec))
+        torques = torch.where(seated_mask, tilt_torque_vec, torch.zeros_like(tilt_torque_vec))
+        bulb.set_external_force_and_torque(forces.unsqueeze(1), torques.unsqueeze(1), is_global=True)
 
 
 def _attachment(env: ManagerBasedRLEnv) -> bulb_attachment:

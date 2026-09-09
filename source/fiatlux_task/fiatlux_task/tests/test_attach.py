@@ -133,6 +133,12 @@ RELEASE_THRESHOLD = 0.02
 SPRING_K = 20.0
 SPRING_D = 1.7
 MAX_FORCE = 5.0
+LATERAL_K = 5.0
+LATERAL_D = 0.85
+MAX_LATERAL_FORCE = 1.0
+TILT_K = 0.05
+TILT_D = 0.01
+MAX_TORQUE = 0.05
 
 
 class _FakeBody:
@@ -300,6 +306,49 @@ def test_seated_bulb_spring_resists_small_outward_displacement():
     assert abs(applied_z) <= MAX_FORCE + 1e-6
     expected = -SPRING_K * 0.010
     assert abs(applied_z - expected) < 1e-6  # zero velocity, so damping contributes nothing
+
+
+def test_seated_bulb_lateral_spring_resists_lateral_displacement():
+    """A seated bulb pushed sideways (perpendicular to the seat axis, axial unchanged) gets a
+    restoring lateral force -- the gentler lateral analogue of the axial spring (issue #171).
+    A lateral offset alone does not release the bulb: release is axial-only, unchanged."""
+    env, mgr = _make_env()
+    _step(mgr, env)  # seats the old bulb
+    bulb = env.scene["old_bulb"]
+    bulb.data.root_pos_w = torch.tensor([[0.0, 0.010, 0.0]])  # 10 mm sideways; axial still 0
+    _step(mgr, env)
+    assert mgr._phase[OLD, 0] == SEATED  # a lateral offset alone never releases it
+    applied_y = bulb.last_force[0, 0, 1].item()
+    assert applied_y < 0.0  # pulls back toward the seat axis
+    assert abs(applied_y) <= MAX_LATERAL_FORCE + 1e-6
+    expected = -LATERAL_K * 0.010
+    assert abs(applied_y - expected) < 1e-6  # zero velocity, so damping contributes nothing
+
+
+def test_seated_bulb_tilt_torque_resists_tilt():
+    """A seated bulb tilted off-axis (rotated about an axis PERPENDICULAR to the seat axis, not
+    twisted about it) gets a restoring torque aligning its plug axis back -- issue #171. Twist
+    about the seat axis itself is untouched, matching the module's twist-is-free convention
+    (issue #90): rotating about world X here tilts the bulb's local +z away from the socket's,
+    which the correction opposes, but never rotates purely about z (there is no torque_z here to
+    check against, unlike a rotation via ``twist_by`` about world z, which would produce none)."""
+    import math
+
+    env, mgr = _make_env()
+    _step(mgr, env)  # seats the old bulb
+    bulb = env.scene["old_bulb"]
+    angle = 0.1  # rad, about world X -- tilts the bulb's +z toward -y (right-hand rule)
+    half = 0.5 * angle
+    bulb.data.root_quat_w = torch.tensor([[math.cos(half), math.sin(half), 0.0, 0.0]])
+    _step(mgr, env)
+    assert mgr._phase[OLD, 0] == SEATED  # tilt alone never releases it either
+    torque = bulb.last_torque[0, 0]
+    assert torque[1].item() == 0.0
+    assert torque[2].item() == 0.0
+    expected_x = -TILT_K * math.sin(angle)
+    assert expected_x < 0.0
+    assert abs(torque[0].item() - expected_x) < 1e-6  # zero ang. velocity, so damping is zero
+    assert abs(torque[0].item()) <= MAX_TORQUE + 1e-6
 
 
 def test_spring_saturates_at_max_force():

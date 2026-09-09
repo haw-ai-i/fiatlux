@@ -47,15 +47,25 @@ descoping still stands — it is one flat RL episode, chaining is solution struc
   machine (issue #54) was superseded (issue #167, 2026-09-08) by a simpler two-state
   `mdp.bulb_attachment` FREE/SEATED axial detent -- real bulb-socket collision (re-enabled
   globally; the old collision filter is gone) now constrains lateral position and
-  orientation on its own, so the only thing left to script is axial retention: a
-  continuous spring-damper force while seated, release on a real physics-driven axial
-  pull past `release_threshold`. No twist/lock semantics (this asset has no physical
-  lug/groove; the bayonet never modeled a real feature). Wired for Replace, the S01/S03/S11
-  subtask-teleop tasks, and `FIATLUX-Insert-v0` (RL). **Not yet wired for
-  `FIATLUX-Insert-Teleop-v0`**: that task swaps in a differently-scaled OMNI socket/bulb
-  asset whose seat/plug geometry hasn't been measured against the family asset's calibrated
-  offsets, so retention there needs its own calibration pass first (see the TODO in
-  `insert_teleop_env_cfg.py`). Follow-up: put Remove/Install on the same mechanic; their
+  orientation on its own, so the only thing left to script is retention: a continuous
+  spring-damper WRENCH while seated, release on a real physics-driven axial pull past
+  `release_threshold`. No twist/lock semantics (this asset has no physical lug/groove; the
+  bayonet never modeled a real feature). Wired for Replace, the S01/S03/S11 subtask-teleop
+  tasks, and `FIATLUX-Insert-v0` (RL). **Not yet wired for `FIATLUX-Insert-Teleop-v0`**: that
+  task swaps in a differently-scaled OMNI socket/bulb asset whose seat/plug geometry hasn't
+  been measured against the family asset's calibrated offsets, so retention there needs its
+  own calibration pass first (see the TODO in `insert_teleop_env_cfg.py`).
+  - **Lateral + tilt centering (issue #171, 2026-09-08)**: real teleop evidence found a
+    seated bulb visibly tilts/swings -- the axial-only design left lateral position and
+    orientation entirely to real contact, and the bore's necessary radial clearance (2.69mm)
+    is real slop, not a defect (`scripts/diagnose_contact_axial.py` confirmed tightening it
+    even to 1.86mm breaks force-driven insertion outright, since the bore has no lead-in
+    chamfer). Fixed in software instead: a SEATED bulb now also gets a much gentler lateral
+    spring-damper and a tilt spring-damper torque, both far weaker than the axial term so
+    they damp wobble without fighting real contact or affecting insertion (gated on
+    `seated_now` exactly like the axial term). Gains are rough starting points, same as the
+    original axial ones -- needs real-teleop retuning before trusting the numbers.
+  Follow-up: put Remove/Install on the same mechanic; their
   bulbs are already dynamic but currently lift straight out of / drop straight into the
   socket (issue #76 Step 2).
 
