@@ -81,6 +81,7 @@ from .rewards import (  # noqa: F401
     descend_height_progress,
     descended_to_target,
     distance_progress,
+    signal_progress,
     fall_terminated,
     full_replacement_success,
     hand_contact_force_l2,

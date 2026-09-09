@@ -154,6 +154,11 @@ def stand_robot_on_ladder_top(scene: G1ReplaceSceneCfg) -> None:
     scene.robot.init_state.rot = _quat_mul(scene.ladder.init_state.rot, _quat_z_deg(TOP_STANCE_YAW_OFFSET_DEG))
 
 
+# Potential-based, so the episode total is capped at ``weight * dt`` (2.0 at dt=0.02)
+# regardless of horizon -- a fifth of the 10.0 a completed subtask pays (issue #169).
+LADDER_CONTACT_WEIGHT = 100.0
+
+
 @configclass
 class OnLadderRewardsCfg(SubtaskShapingRewardsCfg):
     """No ``flat_orientation_l2``: working on the ladder requires a sustained forward lean, so
@@ -167,9 +172,13 @@ class BalanceRewardsCfg(OnLadderRewardsCfg):
     """Adds the limb-on-ladder bootstrap; the height channel comes from the climb/descend tier."""
 
     ladder_contact = RewTerm(
-        func=mdp.ladder_contact_fraction,
-        weight=0.25,
-        params={"sensor_cfg": SceneEntityCfg("ladder_contact"), "threshold": 1.0},
+        func=mdp.signal_progress,
+        weight=LADDER_CONTACT_WEIGHT,
+        params={
+            "signal_fn": mdp.ladder_contact_fraction,
+            "sensor_cfg": SceneEntityCfg("ladder_contact"),
+            "threshold": 1.0,
+        },
     )
 
 

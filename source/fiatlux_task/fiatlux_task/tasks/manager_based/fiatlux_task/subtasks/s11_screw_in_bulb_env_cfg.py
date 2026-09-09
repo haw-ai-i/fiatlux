@@ -118,7 +118,9 @@ class S11RewardsCfg(MateRewardsCfg):
         func=mdp.distance_progress, weight=500.0, params={"distance_fn": mdp.bulb_fixture_distance}
     )
     alignment = RewTerm(
-        func=mate_terms.bulb_axis_alignment_tanh, weight=MATE_ALIGNMENT_WEIGHT, params={"std": MATE_ALIGNMENT_STD}
+        func=mdp.signal_progress,
+        weight=MATE_ALIGNMENT_WEIGHT,
+        params={"signal_fn": mate_terms.bulb_axis_alignment_tanh, "std": MATE_ALIGNMENT_STD},
     )
     bulb_dropped = RewTerm(
         func=mdp.object_dropped, weight=-200.0, params={"asset_cfg": _BULB, "min_height": FRESH_BULB_DROP_HEIGHT}
