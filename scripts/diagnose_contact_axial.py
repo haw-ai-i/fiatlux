@@ -68,12 +68,12 @@ simulation_app = app_launcher.app
 
 """Everything else follows."""
 
+import importlib
 import os
 import sys
 
 import fiatlux_task.tasks  # noqa: F401  -- registers the FIATLUX Gym environments
 import gymnasium as gym
-import importlib
 import torch
 from fiatlux_task.assets import BULB_PLUG_OFFSET, SOCKET_SEAT_AXIS, SOCKET_SEAT_OFFSET
 from fiatlux_task.tasks.manager_based.fiatlux_task.mdp import attach as task_attach
@@ -118,6 +118,33 @@ def build_cfg():
         if DISABLE_COLLISION:
             bulb_cfg.spawn.collision_props = sim_utils.CollisionPropertiesCfg(collision_enabled=False)
     return cfg
+
+
+def _run_all_trials(
+    run_force, run_velocity, run_force_held_orientation, run_force_hard_hold, run_pose_drive
+) -> tuple[bool, bool, bool, bool]:
+    """Sweep every trial magnitude/direction and report which families ever seated.
+
+    Pulled out of ``main()`` as its own function purely to keep ``main()``'s cyclomatic
+    complexity under this repo's ruff limit; the five trial functions are still closures
+    defined in ``main()`` (they capture the env/scene locals there), just called from here.
+    """
+    contact_seated = False
+    for magnitude in (0.5, 2.0, 10.0, 50.0):
+        for direction in (1.0, -1.0):
+            contact_seated |= run_force(magnitude, direction)
+    for speed in (0.05, 0.5):
+        contact_seated |= run_velocity(speed)
+    held_seated = False
+    for magnitude in (0.5, 2.0, 10.0):
+        for direction in (1.0, -1.0):
+            held_seated |= run_force_held_orientation(magnitude, direction)
+    hard_hold_seated = False
+    for magnitude in (0.5, 2.0, 10.0):
+        for direction in (1.0, -1.0):
+            hard_hold_seated |= run_force_hard_hold(magnitude, direction)
+    control_seated = run_pose_drive()
+    return contact_seated, held_seated, hard_hold_seated, control_seated
 
 
 def main() -> int:
@@ -231,7 +258,9 @@ def main() -> int:
                 trace.append((i, round(axial, 4), round(lateral, 4), round(tilt, 3), phase()))
         fresh_bulb.set_external_force_and_torque(torch.zeros_like(forces), torque, is_global=True)
         axial, lateral, tilt = geometry()
-        seated = phase() != task_attach._FREE or (abs(axial) <= seat_tolerance and lateral < radial_tolerance and tilt < tilt_tolerance)
+        seated = phase() != task_attach._FREE or (
+            abs(axial) <= seat_tolerance and lateral < radial_tolerance and tilt < tilt_tolerance
+        )
         print(
             f"FORCE mag={magnitude:g} dir={direction:+.0f} axial {axial0:.4f} -> {axial:.4f} "
             f"lateral={lateral:.4f} tilt={tilt:.3f} phase={phase()} seated={seated} trace={trace}",
@@ -251,7 +280,9 @@ def main() -> int:
             fresh_bulb.write_root_velocity_to_sim(velocity)
             env.step(zero_action)
         axial, lateral, tilt = geometry()
-        seated = phase() != task_attach._FREE or (abs(axial) <= seat_tolerance and lateral < radial_tolerance and tilt < tilt_tolerance)
+        seated = phase() != task_attach._FREE or (
+            abs(axial) <= seat_tolerance and lateral < radial_tolerance and tilt < tilt_tolerance
+        )
         print(
             f"VELOCITY speed={speed:+g} axial {axial0:.4f} -> {axial:.4f} lateral={lateral:.4f} "
             f"tilt={tilt:.3f} phase={phase()} seated={seated}",
@@ -318,9 +349,7 @@ def main() -> int:
             socket_quat = socket.data.root_quat_w
             axis_w = quat_apply(socket_quat, seat_axis.unsqueeze(0))
             forces = (direction * magnitude * axis_w).unsqueeze(1)
-            fresh_bulb.set_external_force_and_torque(
-                forces, torch.zeros((1, 1, 3), device=device), is_global=True
-            )
+            fresh_bulb.set_external_force_and_torque(forces, torch.zeros((1, 1, 3), device=device), is_global=True)
             env.step(zero_action)
 
             socket_quat = socket.data.root_quat_w
@@ -376,7 +405,9 @@ def main() -> int:
                 axial, lateral, tilt = geometry()
                 hold_trace.append((i, round(axial, 4), round(lateral, 4), phase()))
         axial, lateral, tilt = geometry()
-        seated = phase() != task_attach._FREE or (abs(axial) <= seat_tolerance and lateral < radial_tolerance and tilt < tilt_tolerance)
+        seated = phase() != task_attach._FREE or (
+            abs(axial) <= seat_tolerance and lateral < radial_tolerance and tilt < tilt_tolerance
+        )
         print(
             f"CONTROL_POSE_DRIVE axial {axial0:.4f} -> driven={driven_axial:.4f} -> held={axial:.4f} "
             f"seated={seated} hold={hold_trace}",
@@ -384,21 +415,9 @@ def main() -> int:
         )
         return seated
 
-    contact_seated = False
-    for magnitude in (0.5, 2.0, 10.0, 50.0):
-        for direction in (1.0, -1.0):
-            contact_seated |= run_force(magnitude, direction)
-    for speed in (0.05, 0.5):
-        contact_seated |= run_velocity(speed)
-    held_seated = False
-    for magnitude in (0.5, 2.0, 10.0):
-        for direction in (1.0, -1.0):
-            held_seated |= run_force_held_orientation(magnitude, direction)
-    hard_hold_seated = False
-    for magnitude in (0.5, 2.0, 10.0):
-        for direction in (1.0, -1.0):
-            hard_hold_seated |= run_force_hard_hold(magnitude, direction)
-    control_seated = run_pose_drive()
+    contact_seated, held_seated, hard_hold_seated, control_seated = _run_all_trials(
+        run_force, run_velocity, run_force_held_orientation, run_force_hard_hold, run_pose_drive
+    )
 
     print(
         f"VERDICT socket_pair_collision=ALWAYS_ON "

@@ -303,9 +303,7 @@ class bulb_attachment(ManagerTermBase):
         self._advance(fresh_bulb, _FRESH, socket_empty=self._phase[_OLD] == _FREE, **gains)
         self._take_snapshot()
 
-    def _resolve_spawn_phase(
-        self, env: ManagerBasedEnv, old_bulb: RigidObject | None, fresh_bulb: RigidObject
-    ) -> None:
+    def _resolve_spawn_phase(self, env: ManagerBasedEnv, old_bulb: RigidObject | None, fresh_bulb: RigidObject) -> None:
         """Seat whichever bulb the task actually SPAWNED at the seat, and only that one.
 
         Reading the phase off the scene means a preset that moves a bulb has said everything
