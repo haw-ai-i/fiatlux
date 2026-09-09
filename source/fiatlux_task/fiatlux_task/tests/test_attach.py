@@ -143,9 +143,7 @@ MAX_LATERAL_FORCE = 1.0
 TILT_K = 0.05
 TILT_D = 0.01
 MAX_TORQUE = 0.05
-TWIST_FRICTION = 0.5
-TWIST_DEADBAND = 0.1
-MAX_TWIST_TORQUE = 1.0
+# No TWIST_* constants: there is no twist term. See test_no_twist_torque_at_any_spin_rate.
 
 
 class _FakeBody:
@@ -397,60 +395,62 @@ def test_seated_bulb_tilt_torque_resists_tilt():
     assert abs(torque[0].item()) <= MAX_TORQUE + 1e-6
 
 
-def test_twist_friction_opposes_spin_with_its_own_larger_budget():
-    """A seated bulb spinning about the seat axis itself (twist, not tilt -- no misalignment,
-    just rotation about its own axis) gets a friction-like torque from a SEPARATE, much larger
-    budget than tilt's -- issue #171's third finding: a real ceiling-mount spin ran at 1-19
-    rad/s, essentially undamped, because the old code damped twist through tilt's shared, tiny
-    max_torque (0.05 N*m)."""
+def test_no_twist_torque_at_any_spin_rate():
+    """A seated bulb spinning about the seat axis itself gets NO torque about that axis, at any
+    rate -- issue #171's third finding, after the ablation.
+
+    A 0.5 N*m Coulomb twist friction used to live here. It was the CAUSE of the reported
+    ceiling spin, not a fix for it: against this bulb's ~2.9e-05 kg*m^2 twist inertia one
+    control step of it swings the twist rate by ~344 rad/s, while its sign flips at a 0.1 rad/s
+    deadband -- so it overshot zero and reversed every step. The original teleop bag shows
+    exactly that, twist alternating sign on 138 of 140 consecutive control steps at +-16 rad/s.
+    Zeroing it (and no other term) removed the spin: 95-97 rad/s with it, 0.7-3.0 without.
+
+    Rotation about the seat axis is now left entirely to the socket's real contact friction,
+    which the asset carries (static 1.2 / dynamic 1.0, bound on every bulb and socket
+    collider). Sweeping the rate here is the point, not incidental: any velocity-dependent
+    twist term, viscous or Coulomb, would show up as a nonzero z-torque at one of these."""
     env, mgr = _make_env()
     _step(mgr, env)  # seats the old bulb
     bulb = env.scene["old_bulb"]
-    bulb.data.root_ang_vel_w = torch.tensor([[0.0, 0.0, 10.0]])  # spinning about +z, no tilt
-    _step(mgr, env)
-    assert mgr._phase[OLD, 0] == SEATED  # spin alone never releases it
-    torque = bulb.last_torque[0, 0]
-    assert torque[0].item() == 0.0
-    assert torque[1].item() == 0.0  # no tilt misalignment and no tilt angular velocity component
-    assert TWIST_FRICTION > MAX_TORQUE  # would have been clamped away almost entirely before
-    # 10 rad/s is far past the smoothing deadband (0.1 rad/s), so direction has saturated to
-    # ~1.0 -- torque should read essentially the full friction magnitude.
-    assert abs(torque[2].item() - (-TWIST_FRICTION)) < 1e-6
-    assert abs(torque[2].item()) <= MAX_TWIST_TORQUE + 1e-6
-
-
-def test_twist_friction_is_constant_not_velocity_proportional():
-    """The defining property that distinguishes friction from viscous damping (issue #171,
-    third finding): magnitude stays the SAME regardless of how fast the spin is, once well
-    past the smoothing deadband -- unlike a viscous term, which grows with speed. An earlier
-    viscous-only version of this damping showed a chaotic, non-monotonic equilibrium spin
-    under real contact that got WORSE, not better, as its gain was raised -- evidence the
-    force LAW was wrong, not just under-sized; a real socket's contact friction is
-    Coulomb-like (roughly constant), not viscous."""
-    env, mgr = _make_env()
-    _step(mgr, env)
-    bulb = env.scene["old_bulb"]
-    torques = []
-    for rate in (5.0, 20.0, 100.0):
+    for rate in (0.05, 5.0, 20.0, 100.0, -100.0):
         bulb.data.root_ang_vel_w = torch.tensor([[0.0, 0.0, rate]])
         _step(mgr, env)
-        assert mgr._phase[OLD, 0] == SEATED
-        torques.append(bulb.last_torque[0, 0, 2].item())
-    assert all(abs(t - torques[0]) < 1e-4 for t in torques)
+        assert mgr._phase[OLD, 0] == SEATED  # spin alone never releases it
+        torque = bulb.last_torque[0, 0]
+        assert torque[2].item() == 0.0, f"twist torque reappeared at {rate} rad/s"
+        # Pure twist is also not leaked into the tilt term: no misalignment, and the tilt
+        # damping sees only the axis-perpendicular part of angular velocity, which is zero.
+        assert torque[0].item() == 0.0
+        assert torque[1].item() == 0.0
 
 
-def test_twist_friction_saturates_at_max_twist_torque():
-    """max_twist_torque is a defensive outer clamp: the default twist_friction (0.5) is
-    already comfortably under it (1.0), so this only binds if twist_friction is configured
-    larger than the cap -- exercised here via an explicit override, not the defaults."""
+def test_tilt_damping_ignores_twist_so_it_keeps_its_budget():
+    """Tilt damping reads only the axis-PERPENDICULAR angular velocity, so carried twist cannot
+    consume tilt's deliberately tiny max_torque (issue #171).
+
+    This is the one sound piece of the abandoned twist work, and it still matters with no twist
+    term: damping the full angular velocity would put ``tilt_d * twist_rate`` into a 0.05 N*m
+    budget, saturating it at any real spin and starving the alignment correction the budget
+    exists for. Here a bulb is tilted (so alignment wants a definite torque) AND spinning fast
+    about the seat axis; the torque must be exactly what tilt alone asks for."""
+    import math
+
     env, mgr = _make_env()
     _step(mgr, env)
     bulb = env.scene["old_bulb"]
-    bulb.data.root_ang_vel_w = torch.tensor([[0.0, 0.0, 10.0]])
-    _step(mgr, env, twist_friction=2.0, max_twist_torque=1.0)
+    angle = 0.1  # rad about world X -- same tilt as test_seated_bulb_tilt_torque_resists_tilt
+    half = 0.5 * angle
+    bulb.data.root_quat_w = torch.tensor([[math.cos(half), math.sin(half), 0.0, 0.0]])
+    bulb.data.root_ang_vel_w = torch.tensor([[0.0, 0.0, 50.0]])  # fast twist, no tilt rate
+    _step(mgr, env)
     assert mgr._phase[OLD, 0] == SEATED
-    torque_z = bulb.last_torque[0, 0, 2].item()
-    assert abs(torque_z - (-1.0)) < 1e-6
+    torque = bulb.last_torque[0, 0]
+    # Identical to the un-spinning case: the 50 rad/s twist contributes nothing, and nothing
+    # is clamped away, so the full alignment torque survives.
+    assert abs(torque[0].item() - (-TILT_K * math.sin(angle))) < 1e-6
+    assert abs(torque[0].item()) <= MAX_TORQUE + 1e-6
+    assert torque[2].item() == 0.0
 
 
 def test_axial_force_saturates_at_max_force():
