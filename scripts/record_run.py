@@ -194,6 +194,8 @@ def main():
             policy_spec=args_cli.policy,
             seed=args_cli.seed,
             checkpoint=args_cli.checkpoint,
+            out_dir=args_cli.out,
+            fmt=args_cli.format,
         )
         if want_bag
         else None

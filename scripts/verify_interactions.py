@@ -911,7 +911,9 @@ def scenario_fragility():
     cfg.episode_length_s = 6.0  # short episodes; time_out truncates each phase
     env = make_env("FIATLUX-Insert-v0", cfg)
     try:
-        recorder = TrajectoryRecorder(env, policy_spec="scripted:verify_interactions", seed=args_cli.seed)
+        recorder = TrajectoryRecorder(
+            env, policy_spec="scripted:verify_interactions", seed=args_cli.seed, out_dir=out_dir
+        )
         zero = torch.zeros((env.num_envs, env.action_manager.total_action_dim), device=env.device)
         gentle_press = targets_to_actions(env, {**ARM_PRESS_DOWN, **HAND_FLAT})
         # wedges the bulb between palm and kinematic table: sustained force spans many
