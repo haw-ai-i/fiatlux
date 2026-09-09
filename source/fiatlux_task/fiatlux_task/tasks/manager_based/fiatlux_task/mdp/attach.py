@@ -61,28 +61,44 @@ for contact the way the old bayonet's pose overwrite did. Gated on ``seated_now`
 the axial term, so a FREE bulb (including one still mid-insertion) is completely unaffected --
 this cannot touch insertion dynamics at all.
 
-**Axial stiffness against gravity (issue #171, second finding)**: the axial spring's
-steady-state hold distance under a constant load is ``load / spring_k``. At a WALL mount this
-barely matters -- gravity is roughly perpendicular to the seat axis there, mostly a lateral
-load real contact already bears. At a CEILING mount the fixture is inverted, so the seat axis
-points straight down and the bulb's own weight acts entirely along it, in the OUTWARD (release)
-direction: at the original gain (spring_k=20) that sag was ~1.7cm, uncomfortably close to the
-2cm ``release_threshold`` before any transient, and a ceiling-seated bulb reliably sagged past
-it and released unassisted within under a second, no operator, no contact.
+**Axial retention is a magnet, not a spring (issue #171, revised)**: a first pass held the
+bulb with a linear spring (``F = -k*axial``) -- weakest exactly at the seat, growing the
+farther out the bulb is pulled. That was flagged as physically backwards for what this is
+meant to model: a magnetic (or friction/detent) catch is STRONGEST at contact and falls off
+with distance, the opposite shape. The practical difference matters -- a spring makes removal
+progressively harder the more you pull (hardest right before release); a magnet gives a firm
+breakaway resistance right at full contact, then gets EASIER to keep separating once past it,
+and the force-to-zero jump at ``release_threshold`` is smaller since it was already decaying
+into that boundary rather than sitting near its peak.
 
-An earlier version of this fix added a feedforward that cancelled gravity's axial component
-outright, making steady-state sag ~0 at every orientation. That is not how a passive
-retention mechanism -- spring, friction, magnet, whatever this is meant to model -- actually
-behaves: none of those know about gravity and null it out; they have a fixed
-force/displacement (or force/velocity) characteristic, and the bulb settles wherever that
-characteristic balances whatever load it is actually under. A real magnetic catch genuinely
-does hold a downward-hanging bulb less securely than an upward-facing one, for the same
-reason a spring does -- that asymmetry is physically correct, not a bug. So this instead just
-raises ``spring_k`` (with ``spring_d`` re-derived for critical damping at the new value) until
-the worst-case (ceiling, full weight) sag sits well clear of ``release_threshold`` with real
-margin for transients, while staying well under the documented semi-implicit stability ceiling
-(``~mass/step_dt^2``). A table-mounted bulb still sags less than a ceiling-mounted one under
-this scheme, correctly -- both simply sag much less than before.
+The axial force is now ``F(axial) = -tanh(axial / deadband) * hold_force / (1 + |axial| /
+hold_range) - spring_d * axial_rate``: magnitude peaks at ``hold_force`` exactly at the seat
+and decays toward 0 as ``|axial|`` grows past ``hold_range`` (the "half-strength distance");
+``tanh(.../deadband)`` supplies the sign smoothly (a plain ``sign(axial)`` would flip
+direction at full magnitude across an infinitesimal crossing of ``axial=0``, a chatter risk at
+rest -- ``deadband`` is far smaller than any displacement that matters, so this is
+indistinguishable from a sign flip everywhere except in a sub-millimeter dead zone at the
+seat). ``spring_d`` (still linear velocity damping, critically-damped for the LOCAL stiffness
+``hold_force/hold_range`` at ``axial=0``, the region where the bulb actually spends most of
+its time) is unchanged in form.
+
+An earlier version of the ceiling-mount fix (before this model change) added a feedforward
+that cancelled gravity's axial component outright, making steady-state sag ~0 at every
+orientation. That was rejected on review: a passive mechanism doesn't know about gravity and
+null it out, so a bulb hanging against gravity SHOULD sag more than one resting with it, the
+same as any real spring/friction/magnet would -- that asymmetry is physically correct, not a
+bug. The magnet model's own gravity margin is sized the same way the spring's was: ``hold_force``
+and ``hold_range`` are chosen so the worst-case (ceiling, full weight, gravity entirely along
+the release direction) steady-state sag sits well clear of ``release_threshold``, while keeping
+the local stiffness at ``axial=0`` well under the documented semi-implicit stability ceiling
+(``~mass/step_dt^2``). That ceiling is also why ``hold_force`` ends up modest in absolute terms
+(a fraction of a newton, not the old spring's several-newton cap): a magnet-like law's peak
+force occurs exactly where its local stiffness is evaluated (``axial=0``), unlike a linear
+spring whose cap can sit far out along an otherwise-gentle-near-zero curve -- there is no way
+to get a strong peak AND fast falloff AND stay under the same stability ceiling at this
+control loop's rate (50 Hz) all at once; this trades some peak strength for real gravity
+margin and a stable, chatter-free hold. A table/wall-mounted bulb still sags less than a
+ceiling-mounted one under its own weight, correctly.
 """
 
 from __future__ import annotations
@@ -207,7 +223,8 @@ class bulb_attachment(ManagerTermBase):
         tilt_tolerance: float = 0.2,
         seat_tolerance: float = 0.004,
         release_threshold: float = 0.02,
-        spring_k: float = 50.0,
+        hold_force: float = 0.5,
+        hold_range: float = 0.01,
         spring_d: float = 2.65,
         max_force: float = 5.0,
         lateral_k: float = 5.0,
@@ -220,34 +237,44 @@ class bulb_attachment(ManagerTermBase):
         # Always operates on all envs: retention must be enforced every step, which the zero
         # interval guarantees.
         #
-        # spring_k/spring_d (issue #171, revised): critically damped (d = 2*sqrt(k*m)) at the
-        # bulb's ~0.035 kg mass, kept well under the semi-implicit stability bound
-        # k < mass/step_dt^2 (~87 N/m at step_dt=0.02s; 50 is ~57% of it). Sized for the WORST
-        # CASE static load, not the average one: a ceiling mount is inverted, so the bulb's own
-        # ~0.34 N weight acts entirely along the (outward) seat axis there, and the resulting
-        # steady-state sag (weight/spring_k, ~6.9mm at this gain) needs to sit clear of
-        # release_threshold with real margin for transients -- at the original 20 N/m that sag
-        # was ~1.7cm against a 2cm threshold, and a ceiling-seated bulb reliably sagged past it
-        # and released on its own. A table/wall-mounted bulb sags less than this under its own
-        # weight, correctly -- that asymmetry is what a real passive retention mechanism
-        # (spring, friction, magnet) would also show; nothing here is gravity-aware or
-        # orientation-aware, on purpose. Still a rough starting gain, not a derived one --
-        # retune against real teleop bags before trusting it in production. max_force 5 N is an
-        # arbitrary "light detent" ceiling, several times the bulb's own ~0.34 N weight; also
-        # needs real tuning. release_threshold 2 cm is comfortably past seat_tolerance (4 mm) so
-        # an unheld, resting bulb (which sags a little under gravity) never self-releases, but
-        # well short of a real withdrawal.
+        # hold_force/hold_range (issue #171, revised): a magnet-like axial law, not a spring --
+        # see the module docstring for why. hold_force is the peak/breakaway force AT the seat
+        # (axial=0); hold_range is the distance at which it has decayed to half that. Their
+        # ratio is the LOCAL stiffness at axial=0 (hold_force/hold_range = 50 N/m here), kept
+        # well under the semi-implicit stability bound mass/step_dt^2 (~87 N/m at
+        # step_dt=0.02s; 50 is ~57% of it) -- spring_d is critically damped for that local
+        # stiffness, same derivation as the original spring (d = 2*sqrt(k*m) at the bulb's
+        # ~0.035 kg mass). Sized for the WORST CASE static load, not the average one: a ceiling
+        # mount is inverted, so the bulb's own ~0.34 N weight acts entirely along the (outward)
+        # seat axis there, and the resulting steady-state sag needs to sit clear of
+        # release_threshold with real margin for transients -- at this gain that sag is ~4.6mm
+        # (worst case), against a 20mm threshold. A table/wall-mounted bulb sags less than this
+        # under its own weight, correctly -- that asymmetry is what a real passive retention
+        # mechanism (spring, friction, magnet) would also show; nothing here is gravity-aware or
+        # orientation-aware, on purpose. hold_force ends up modest in absolute terms (~1.5x the
+        # bulb's own weight) because a magnet-like law's peak occurs exactly where its local
+        # stiffness is evaluated (axial=0) -- there is no way to get a much stronger peak AND
+        # keep the gravity margin AND stay under the same stability ceiling at this control
+        # loop's 50 Hz rate all at once. Still rough starting gains, not derived ones -- retune
+        # against real teleop bags before trusting them in production. max_force 5 N is an
+        # overall safety clamp on the combined position+damping force (rarely the binding
+        # constraint from the position term alone, since that never exceeds hold_force by
+        # construction; matters mainly for a large damping contribution at high velocity).
+        # release_threshold 2 cm is comfortably past seat_tolerance (4 mm) so an unheld, resting
+        # bulb (which sags a little under gravity) never self-releases, but well short of a real
+        # withdrawal.
         #
         # lateral_k/lateral_d/max_lateral_force (issue #171): deliberately far gentler than the
         # axial term -- capped at ~3x the bulb's own weight, critically damped the same way --
         # so this damps wobble without fighting real contact or acting as a second authority
         # over lateral position (real contact, not this term, is what actually has to bear a
-        # sideways load). tilt_k/tilt_d/max_torque have no inertia measurement behind them
-        # (unlike spring_k/spring_d's mass-derived critical damping); they are rough starting
-        # points at the same order of magnitude as diagnose_contact_axial.py's own
-        # orientation-hold trial (k_p=0.02, k_d=0.002) shown to function as a soft aligner
-        # there, needing the same real-teleop retuning as every other
-        # gain in this term.
+        # sideways load). Kept as a plain spring-damper (not magnet-shaped): it is an assist to
+        # real contact, not the primary retention the axial term's magnet law models.
+        # tilt_k/tilt_d/max_torque have no inertia measurement behind them (unlike the axial
+        # term's mass-derived critical damping); they are rough starting points at the same
+        # order of magnitude as diagnose_contact_axial.py's own orientation-hold trial
+        # (k_p=0.02, k_d=0.002) shown to function as a soft aligner there, needing the same
+        # real-teleop retuning as every other gain in this term.
         del env_ids
         # old_bulb is absent from insert-only scenes (e.g. the tabletop preset, which has
         # nothing to remove) -- self._phase[_OLD] then never leaves its _FREE default, so
@@ -260,7 +287,8 @@ class bulb_attachment(ManagerTermBase):
             tilt_tolerance=tilt_tolerance,
             seat_tolerance=seat_tolerance,
             release_threshold=release_threshold,
-            spring_k=spring_k,
+            hold_force=hold_force,
+            hold_range=hold_range,
             spring_d=spring_d,
             max_force=max_force,
             lateral_k=lateral_k,
@@ -311,7 +339,8 @@ class bulb_attachment(ManagerTermBase):
         tilt_tolerance: float,
         seat_tolerance: float,
         release_threshold: float,
-        spring_k: float,
+        hold_force: float,
+        hold_range: float,
         spring_d: float,
         max_force: float,
         lateral_k: float,
@@ -358,12 +387,19 @@ class bulb_attachment(ManagerTermBase):
         seated_now = (phase == _SEATED) & ~release
         seated_mask = seated_now.unsqueeze(1)
 
-        # Axial: full-strength retention. A plain spring-damper, deliberately -- no gravity
-        # feedforward (issue #171's second finding rejected that: a passive mechanism doesn't
-        # know about gravity and cancel it, so a stiff-enough spring is what's physical, not an
-        # anti-gravity term). See the module docstring for why spring_k is what it is.
+        # Axial: full-strength retention, shaped like a magnet's force/gap curve, not a
+        # spring's (issue #171 -- see the module docstring for the physical reasoning and the
+        # gravity-margin derivation behind hold_force/hold_range). Magnitude peaks at
+        # hold_force exactly at the seat and decays toward 0 as |axial| grows past hold_range;
+        # direction comes from a smoothed sign (tanh over a deadband far smaller than any
+        # displacement that matters -- seat_tolerance/4 -- rather than a literal sign(), which
+        # would flip direction at full magnitude across an infinitesimal crossing of axial=0,
+        # a chatter risk exactly at rest).
+        deadband = seat_tolerance / 4.0
+        direction = torch.tanh(axial / deadband)
+        magnitude = hold_force / (1.0 + axial.abs() / hold_range)
         axial_rate = (bulb.data.root_lin_vel_w * axis_w).sum(dim=1)
-        axial_force = (-spring_k * axial - spring_d * axial_rate).clamp(-max_force, max_force)
+        axial_force = (-direction * magnitude - spring_d * axial_rate).clamp(-max_force, max_force)
         axial_force_vec = axial_force.unsqueeze(1) * axis_w
 
         # Lateral: a much gentler spring-damper pulling the plug back toward the seat axis

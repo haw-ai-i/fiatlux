@@ -65,7 +65,7 @@ descoping still stands — it is one flat RL episode, chaining is solution struc
     they damp wobble without fighting real contact or affecting insertion (gated on
     `seated_now` exactly like the axial term). Gains are rough starting points, same as the
     original axial ones -- needs real-teleop retuning before trusting the numbers.
-  - **Axial stiffness against gravity (issue #171, second finding, 2026-09-08)**: re-teleop
+  - **Axial retention against gravity (issue #171, second finding, 2026-09-08)**: re-teleop
     after the centering fix found wall mounts hold cleanly, but a ceiling-mounted bulb falls
     out unassisted within under a second, no operator or contact. Cause: a ceiling fixture is
     inverted, so the seat axis points down and the bulb's own weight acts entirely along it,
@@ -75,14 +75,25 @@ descoping still stands — it is one flat RL episode, chaining is solution struc
     feedforward that cancelled it outright (steady-state sag ~0 everywhere) -- rejected on
     review: a passive retention mechanism (spring, friction, magnet) doesn't know its own
     orientation and null out whatever load that implies, so a bulb hanging against gravity
-    SHOULD sag more than one resting with it, same as it would for any real hardware
-    equivalent. Fixed instead by raising `spring_k` (50, from 20; `spring_d` re-derived for
-    critical damping) until the worst-case sag sits comfortably clear of
-    `release_threshold`, while staying well under the documented semi-implicit stability
-    ceiling (~87 N/m). Table/wall mounts still sag less than ceiling ones under their own
-    weight, correctly -- both simply sag much less than before. Needs a regression pass on
-    S11 (screw-in, ceiling) to confirm the insert-then-hold failure reported alongside this
-    is the same root cause.
+    SHOULD sag more than one resting with it. Second attempt just raised the linear spring's
+    stiffness -- also reconsidered: a spring is weakest exactly at the seat and grows with
+    distance, backwards from what this is meant to model (a magnetic/detent catch, strongest
+    at contact, falling off with distance). Landed on a magnet-shaped axial law instead:
+    `F(axial) = -tanh(axial/deadband) * hold_force/(1 + |axial|/hold_range) - spring_d *
+    axial_rate` -- magnitude peaks at `hold_force` right at the seat, decays past
+    `hold_range`, with a small `tanh` deadband replacing a literal `sign()` to avoid a
+    direction-flip chatter risk exactly at rest. `hold_force`/`hold_range` are sized so the
+    local stiffness at the seat (their ratio) stays under the same semi-implicit stability
+    ceiling (~87 N/m) that bounded the spring, and so worst-case ceiling sag (~4.6mm) sits
+    well clear of `release_threshold` -- `hold_force` ends up modest in absolute terms (~1.5x
+    the bulb's weight) as a direct consequence: a magnet-shaped peak occurs exactly where its
+    stability-relevant stiffness is evaluated, unlike a spring's cap sitting far out along an
+    otherwise-gentle curve, so there's no way to get a strong peak, fast falloff, and the same
+    stability margin at once. Table/wall mounts still sag less than ceiling ones under their
+    own weight, correctly. Needs a regression pass on S11 (screw-in, ceiling) to confirm the
+    insert-then-hold failure reported alongside this is the same root cause, and real-teleop
+    validation that the new force-vs-distance shape (firm at contact, easier once separated)
+    actually feels different from the spring it replaced.
   Follow-up: put Remove/Install on the same mechanic; their
   bulbs are already dynamic but currently lift straight out of / drop straight into the
   socket (issue #76 Step 2).

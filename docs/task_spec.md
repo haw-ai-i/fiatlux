@@ -23,18 +23,18 @@ return to it (plus the reset jitter below).
   opt-in that spawns it reachably near the fixture.
 - **Both bulbs are dynamic**, governed by the `mdp.bulb_attachment` state machine
   (unification spec Phase 4; issue #167 superseded the original bayonet design, issue #54).
-  Two states per bulb: `FREE` (unconstrained) and `SEATED` (a continuous spring-damper
-  wrench holds it at the seat: a full-strength axial term plus a much gentler lateral +
-  tilt centering term, issue #171 -- see below). `FREE -> SEATED` fires on reaching the seat
-  aligned (position + tilt tolerance) with the socket empty; real bulb-socket collision --
-  filtered out under the old bayonet, now enabled everywhere -- constrains lateral position
-  and orientation as its primary mechanism, the wrench's lateral/tilt term only assisting.
-  `SEATED -> FREE` (release) fires on a real, physics-driven axial pull past
-  `release_threshold`. No twist/lock/rotation state: this asset has no physical lug or
-  groove, so the old bayonet's clock-angle semantics were never modeling a real feature.
-  `fresh_bulb_attached` and `success` read the attachment state, so every score channel is
-  achievable. Remove/Install do not yet use this mechanic: their bulbs simply lift out of /
-  drop into the socket.
+  Two states per bulb: `FREE` (unconstrained) and `SEATED` (a continuous wrench holds it at
+  the seat: a magnet-shaped axial term, strongest at the seat and decaying with distance
+  -- issue #171, see below -- plus a much gentler lateral + tilt centering term). `FREE ->
+  SEATED` fires on reaching the seat aligned (position + tilt tolerance) with the socket
+  empty; real bulb-socket collision -- filtered out under the old bayonet, now enabled
+  everywhere -- constrains lateral position and orientation as its primary mechanism, the
+  wrench's lateral/tilt term only assisting. `SEATED -> FREE` (release) fires on a real,
+  physics-driven axial pull past `release_threshold`. No twist/lock/rotation state: this
+  asset has no physical lug or groove, so the old bayonet's clock-angle semantics were never
+  modeling a real feature. `fresh_bulb_attached` and `success` read the attachment state, so
+  every score channel is achievable. Remove/Install do not yet use this mechanic: their bulbs
+  simply lift out of / drop into the socket.
   - **Lateral + tilt centering (issue #171)**: the original design left lateral position and
     orientation entirely to real contact. Teleop evidence found a seated bulb visibly
     tilts/swings -- the bore's 2.69mm radial clearance is real, necessary slop (tightening
@@ -42,15 +42,19 @@ return to it (plus the reset jitter below).
     `scripts/diagnose_contact_axial.py`), so the fix is a much gentler additional
     spring-damper on lateral position and tilt while seated, not a tighter bore. Gated on
     the same seated condition as the axial term, so it cannot affect insertion.
-  - **Axial stiffness against gravity (issue #171)**: a ceiling mount is inverted (seat axis
-    points down), so gravity pulls a seated bulb OUTWARD along it -- at the original gain, the
-    steady-state sag under the bulb's own weight left almost no margin before
-    `release_threshold`, and a ceiling-seated bulb fell out unassisted within under a second.
-    Fixed by raising the axial spring's stiffness (not by adding a gravity feedforward -- a
-    passive retention mechanism doesn't cancel gravity outright, and shouldn't hold a
-    ceiling-hung bulb as securely as a resting one, same as any real spring/friction/magnet
-    equivalent) until worst-case sag sits comfortably clear of `release_threshold`. Table/wall
-    mounts sag less than ceiling ones under their own weight, correctly.
+  - **Axial retention is a magnet, not a spring (issue #171)**: a linear spring is weakest
+    exactly at the seat and grows with distance -- backwards from a magnetic/detent catch,
+    which is strongest at contact and falls off with distance. The axial term's shape now
+    matches the latter: peak force (`hold_force`) right at the seat, decaying past
+    `hold_range`. This also fixed a real ceiling-mount failure along the way: a ceiling
+    fixture is inverted (seat axis points down), so gravity pulls a seated bulb OUTWARD
+    along it, and the original linear spring's steady-state sag under that load left almost
+    no margin before `release_threshold` -- a ceiling-seated bulb fell out unassisted within
+    under a second. `hold_force`/`hold_range` are sized (not a gravity feedforward -- a
+    passive mechanism doesn't cancel gravity outright, and a ceiling-hung bulb should sag
+    more than a resting one, same as any real spring/friction/magnet) so worst-case sag sits
+    comfortably clear of `release_threshold`. Table/wall mounts sag less than ceiling ones
+    under their own weight, correctly.
 
 ## Goal
 

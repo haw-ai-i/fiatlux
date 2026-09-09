@@ -130,11 +130,13 @@ SEAT_TOLERANCE = 0.004  # the __call__ default
 RADIAL_TOLERANCE = 0.015
 TILT_TOLERANCE = 0.2
 RELEASE_THRESHOLD = 0.02
-SPRING_K = 50.0
+HOLD_FORCE = 0.5
+HOLD_RANGE = 0.01
 SPRING_D = 2.65
 MAX_FORCE = 5.0
 BULB_MASS = 0.035
 GRAVITY = 9.81
+DEADBAND = SEAT_TOLERANCE / 4.0  # matches attach.py's internal derivation
 LATERAL_K = 5.0
 LATERAL_D = 0.85
 MAX_LATERAL_FORCE = 1.0
@@ -294,13 +296,11 @@ def test_engage_requires_socket_empty():
 
 
 def test_seated_bulb_spring_resists_small_outward_displacement():
-    """A small axial displacement from the seat produces a restoring force back toward it,
-    proportional to the error (the spring term), and does not release. Purely
-    displacement/velocity-driven, deliberately: no gravity or orientation awareness (issue
-    #171's second finding rejected an earlier version that cancelled gravity outright -- a
-    passive mechanism doesn't know its own orientation and null out whatever load that implies;
-    see test_worst_case_gravity_sag_has_margin_before_release for the actual fix, sizing
-    spring_k itself against the worst case instead)."""
+    """A small axial displacement from the seat produces a restoring force back toward the
+    seat -- large near it, decaying with distance (issue #171's magnet-shaped law, not a
+    spring's linear one) -- and does not release."""
+    import math
+
     env, mgr = _make_env()
     _step(mgr, env)  # seats the old bulb
     bulb = env.scene["old_bulb"]
@@ -311,19 +311,43 @@ def test_seated_bulb_spring_resists_small_outward_displacement():
     applied_z = bulb.last_force[0, 0, 2].item()
     assert applied_z < 0.0
     assert abs(applied_z) <= MAX_FORCE + 1e-6
-    expected = -SPRING_K * 0.010
+    direction = math.tanh(0.010 / DEADBAND)
+    magnitude = HOLD_FORCE / (1.0 + 0.010 / HOLD_RANGE)
+    expected = -direction * magnitude
     assert abs(applied_z - expected) < 1e-6  # zero velocity, so damping contributes nothing
+
+
+def test_axial_force_peaks_near_the_seat_and_decays_with_distance():
+    """The defining property of a magnet-shaped law, distinguishing it from a spring's (issue
+    #171): magnitude is LARGEST close to the seat and shrinks monotonically as the bulb moves
+    farther away, the opposite of a spring's weakest-near-the-seat, growing-with-distance
+    shape. (Not sampled at EXACTLY the seat: like the old spring, the net force there is
+    exactly 0 by construction -- no error, nothing to correct -- so "near" starts just past the
+    smoothing deadband, where the direction term has already settled to its full sign.)"""
+    env, mgr = _make_env()
+    _step(mgr, env)  # seats the old bulb
+    bulb = env.scene["old_bulb"]
+    magnitudes = []
+    for offset in (0.002, 0.005, 0.010, 0.015):
+        bulb.data.root_pos_w = torch.tensor([[0.0, 0.0, offset]])
+        _step(mgr, env)
+        assert mgr._phase[OLD, 0] == SEATED  # all within release_threshold (0.02)
+        magnitudes.append(abs(bulb.last_force[0, 0, 2].item()))
+    assert magnitudes == sorted(magnitudes, reverse=True)  # strictly non-increasing with offset
+    assert magnitudes[0] > magnitudes[-1]  # genuinely decayed, not flat
 
 
 def test_worst_case_gravity_sag_has_margin_before_release():
     """Sanity check on the tuned constants themselves, not a simulated scenario (the fake
     harness doesn't integrate dynamics): the worst-case steady-state sag under the bulb's own
-    weight -- spring_k alone holding it, as at an inverted ceiling mount where gravity acts
-    entirely along the release direction -- must sit well clear of release_threshold, or a
-    resting bulb sags into self-release on its own with no operator or contact (issue #171,
-    second finding). At the original 20 N/m gain this margin was razor-thin (~1.7cm sag vs. a
-    2cm threshold) and a ceiling-seated bulb did exactly that."""
-    worst_case_sag = (BULB_MASS * GRAVITY) / SPRING_K
+    weight -- the magnet-shaped axial law alone holding it, as at an inverted ceiling mount
+    where gravity acts entirely along the release direction -- must sit well clear of
+    release_threshold, or a resting bulb sags into self-release on its own with no operator or
+    contact (issue #171). Equilibrium solves hold_force/(1 + sag/hold_range) = weight. At the
+    original linear spring's 20 N/m gain this margin was razor-thin (~1.7cm sag vs. a 2cm
+    threshold) and a ceiling-seated bulb did exactly that."""
+    weight = BULB_MASS * GRAVITY
+    worst_case_sag = HOLD_RANGE * (HOLD_FORCE / weight - 1.0)
     assert worst_case_sag < RELEASE_THRESHOLD * 0.5  # at least 2x margin before any transient
 
 
@@ -370,19 +394,21 @@ def test_seated_bulb_tilt_torque_resists_tilt():
     assert abs(torque[0].item()) <= MAX_TORQUE + 1e-6
 
 
-def test_spring_saturates_at_max_force():
-    """A displacement large enough that k*x would exceed max_force is clamped, not left to
-    grow without bound -- this is what stands in for the bayonet's rate caps."""
+def test_axial_force_saturates_at_max_force():
+    """The commanded force is clamped, not left to grow without bound, whatever drives it
+    there. Unlike the old linear spring, the magnet-shaped position term alone can never
+    approach max_force -- it's bounded by hold_force (0.5 N vs. a 5 N cap) by construction, at
+    any displacement -- so this drives saturation through a large velocity (the damping term)
+    instead, exercising the same clamp from the other side."""
     env, mgr = _make_env()
     _step(mgr, env)
     bulb = env.scene["old_bulb"]
-    bulb.data.root_pos_w = torch.tensor([[0.0, 0.0, 1.0]])  # absurdly far; still SEATED (< release)
-    # release_threshold is 0.02 m by default, so first push it past that separately (below);
-    # here we only check saturation while still within release_threshold.
-    bulb.data.root_pos_w = torch.tensor([[0.0, 0.0, RELEASE_THRESHOLD - 1e-4]])
+    bulb.data.root_lin_vel_w = torch.tensor([[0.0, 0.0, 10.0]])  # large outward kick
     _step(mgr, env)
-    assert mgr._phase[OLD, 0] == SEATED
-    assert abs(bulb.last_force[0, 0, 2].item()) <= MAX_FORCE + 1e-6
+    assert mgr._phase[OLD, 0] == SEATED  # still at the seat; velocity alone doesn't release it
+    applied_z = bulb.last_force[0, 0, 2].item()
+    assert abs(applied_z) <= MAX_FORCE + 1e-6
+    assert abs(applied_z - (-MAX_FORCE)) < 1e-6  # actually pinned at the cap, not just under it
 
 
 def test_release_past_threshold_frees_the_bulb_and_zeroes_the_force():
