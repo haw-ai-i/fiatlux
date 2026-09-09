@@ -60,6 +60,23 @@ its own real contact, `deliberately` gentle so they damp wobble without fighting
 for contact the way the old bayonet's pose overwrite did. Gated on ``seated_now`` exactly like
 the axial term, so a FREE bulb (including one still mid-insertion) is completely unaffected --
 this cannot touch insertion dynamics at all.
+
+**Gravity feedforward (issue #171, second finding)**: the axial spring's steady-state hold
+distance under a constant load is ``load / spring_k`` -- for the bulb's own ~0.34 N weight at
+the shipped gain, ~1.7 cm, uncomfortably close to the 2 cm ``release_threshold`` on its own,
+before any transient. That margin is fine at a WALL mount, where gravity is roughly
+perpendicular to the seat axis (mostly a lateral load, which real contact already bears --
+issue #171's teleop evidence confirmed wall removal now holds cleanly). It is not fine at a
+CEILING mount: the fixture is inverted, so the seat axis points straight down and gravity acts
+entirely along it, in the OUTWARD (release) direction -- confirmed sagging a ceiling-seated
+bulb past ``release_threshold`` and releasing it unassisted within under a second, no operator,
+no contact. Rather than retune ``spring_k`` against the semi-implicit stability ceiling
+(``~mass/step_dt^2``, already not far above the shipped value) to shrink that margin, the axial
+term now also cancels gravity's own component along the seat axis directly, every step, so the
+spring only ever has to correct DEVIATIONS from the seat -- steady-state sag is ~0 at any mount
+orientation, not just tuned to survive the worst one. ``_BULB_MASS``/``_GRAVITY_W`` below are
+the physical constants this needs; the module has no direct access to the sim's configured
+gravity vector, so ``_GRAVITY_W`` assumes Isaac Sim's unmodified default.
 """
 
 from __future__ import annotations
@@ -101,6 +118,11 @@ _FRESH = 1  # state row of the fresh bulb (scene entity "fresh_bulb")
 # over unchanged from the bayonet version -- see its git history for the measurements behind
 # this value (the in-hand carry stage spawns ~0.10-0.13 m from the seat, ~2x this tolerance).
 _SEATED_SPAWN_TOLERANCE = 0.05  # m
+
+# Gravity feedforward inputs (issue #171 -- see the module docstring). World-frame, since the
+# axial force this cancels is computed and applied in world frame throughout.
+_BULB_MASS = 0.035  # kg; matches this module's existing gain-derivation comments elsewhere.
+_GRAVITY_W = (0.0, 0.0, -9.81)  # m/s^2; Isaac Sim's default -- not read from the sim config.
 
 
 def _tilt_error(socket_quat: torch.Tensor, bulb_quat: torch.Tensor, local_axis: torch.Tensor) -> torch.Tensor:
@@ -157,6 +179,7 @@ class bulb_attachment(ManagerTermBase):
         self._axis_l = torch.tensor(SOCKET_SEAT_AXIS, device=dev).expand(n, 3)
         self._seat_offset = torch.tensor(SOCKET_SEAT_OFFSET, device=dev).expand(n, 3)
         self._plug_offset = torch.tensor(BULB_PLUG_OFFSET, device=dev).expand(n, 3)
+        self._gravity_w = torch.tensor(_GRAVITY_W, device=dev).expand(n, 3)
         # Telemetry snapshot, taken at the end of every __call__ and never touched by reset().
         # `ManagerBasedRLEnv.step` auto-resets finished episodes before the next call, so a
         # terminal row must read this snapshot rather than the live tensor, or it would report
@@ -325,9 +348,17 @@ class bulb_attachment(ManagerTermBase):
         seated_now = (phase == _SEATED) & ~release
         seated_mask = seated_now.unsqueeze(1)
 
-        # Axial: full-strength retention, unchanged from the original design.
+        # Axial: full-strength retention, plus a gravity feedforward (issue #171 -- see the
+        # module docstring). `gravity_axial` is the signed component of the bulb's own weight
+        # along the seat axis: positive at a ceiling mount (axis points down, gravity pulls
+        # OUTWARD), ~zero at a wall mount (axis roughly horizontal, gravity mostly lateral --
+        # left to the lateral term/real contact, unchanged). Subtracting it cancels gravity from
+        # the net axial force exactly, so the spring-damper only ever corrects deviations from
+        # the seat instead of also having to hold static weight -- steady-state sag is ~0 at any
+        # orientation, not a margin tuned around whichever mount happened to be tested.
         axial_rate = (bulb.data.root_lin_vel_w * axis_w).sum(dim=1)
-        axial_force = (-spring_k * axial - spring_d * axial_rate).clamp(-max_force, max_force)
+        gravity_axial = _BULB_MASS * (self._gravity_w * axis_w).sum(dim=1)
+        axial_force = (-spring_k * axial - spring_d * axial_rate - gravity_axial).clamp(-max_force, max_force)
         axial_force_vec = axial_force.unsqueeze(1) * axis_w
 
         # Lateral: a much gentler spring-damper pulling the plug back toward the seat axis
