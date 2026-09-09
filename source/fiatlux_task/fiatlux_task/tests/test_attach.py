@@ -143,6 +143,9 @@ MAX_LATERAL_FORCE = 1.0
 TILT_K = 0.05
 TILT_D = 0.01
 MAX_TORQUE = 0.05
+TWIST_FRICTION = 0.5
+TWIST_DEADBAND = 0.1
+MAX_TWIST_TORQUE = 1.0
 
 
 class _FakeBody:
@@ -392,6 +395,62 @@ def test_seated_bulb_tilt_torque_resists_tilt():
     assert expected_x < 0.0
     assert abs(torque[0].item() - expected_x) < 1e-6  # zero ang. velocity, so damping is zero
     assert abs(torque[0].item()) <= MAX_TORQUE + 1e-6
+
+
+def test_twist_friction_opposes_spin_with_its_own_larger_budget():
+    """A seated bulb spinning about the seat axis itself (twist, not tilt -- no misalignment,
+    just rotation about its own axis) gets a friction-like torque from a SEPARATE, much larger
+    budget than tilt's -- issue #171's third finding: a real ceiling-mount spin ran at 1-19
+    rad/s, essentially undamped, because the old code damped twist through tilt's shared, tiny
+    max_torque (0.05 N*m)."""
+    env, mgr = _make_env()
+    _step(mgr, env)  # seats the old bulb
+    bulb = env.scene["old_bulb"]
+    bulb.data.root_ang_vel_w = torch.tensor([[0.0, 0.0, 10.0]])  # spinning about +z, no tilt
+    _step(mgr, env)
+    assert mgr._phase[OLD, 0] == SEATED  # spin alone never releases it
+    torque = bulb.last_torque[0, 0]
+    assert torque[0].item() == 0.0
+    assert torque[1].item() == 0.0  # no tilt misalignment and no tilt angular velocity component
+    assert TWIST_FRICTION > MAX_TORQUE  # would have been clamped away almost entirely before
+    # 10 rad/s is far past the smoothing deadband (0.1 rad/s), so direction has saturated to
+    # ~1.0 -- torque should read essentially the full friction magnitude.
+    assert abs(torque[2].item() - (-TWIST_FRICTION)) < 1e-6
+    assert abs(torque[2].item()) <= MAX_TWIST_TORQUE + 1e-6
+
+
+def test_twist_friction_is_constant_not_velocity_proportional():
+    """The defining property that distinguishes friction from viscous damping (issue #171,
+    third finding): magnitude stays the SAME regardless of how fast the spin is, once well
+    past the smoothing deadband -- unlike a viscous term, which grows with speed. An earlier
+    viscous-only version of this damping showed a chaotic, non-monotonic equilibrium spin
+    under real contact that got WORSE, not better, as its gain was raised -- evidence the
+    force LAW was wrong, not just under-sized; a real socket's contact friction is
+    Coulomb-like (roughly constant), not viscous."""
+    env, mgr = _make_env()
+    _step(mgr, env)
+    bulb = env.scene["old_bulb"]
+    torques = []
+    for rate in (5.0, 20.0, 100.0):
+        bulb.data.root_ang_vel_w = torch.tensor([[0.0, 0.0, rate]])
+        _step(mgr, env)
+        assert mgr._phase[OLD, 0] == SEATED
+        torques.append(bulb.last_torque[0, 0, 2].item())
+    assert all(abs(t - torques[0]) < 1e-4 for t in torques)
+
+
+def test_twist_friction_saturates_at_max_twist_torque():
+    """max_twist_torque is a defensive outer clamp: the default twist_friction (0.5) is
+    already comfortably under it (1.0), so this only binds if twist_friction is configured
+    larger than the cap -- exercised here via an explicit override, not the defaults."""
+    env, mgr = _make_env()
+    _step(mgr, env)
+    bulb = env.scene["old_bulb"]
+    bulb.data.root_ang_vel_w = torch.tensor([[0.0, 0.0, 10.0]])
+    _step(mgr, env, twist_friction=2.0, max_twist_torque=1.0)
+    assert mgr._phase[OLD, 0] == SEATED
+    torque_z = bulb.last_torque[0, 0, 2].item()
+    assert abs(torque_z - (-1.0)) < 1e-6
 
 
 def test_axial_force_saturates_at_max_force():

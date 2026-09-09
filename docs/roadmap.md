@@ -94,6 +94,25 @@ descoping still stands — it is one flat RL episode, chaining is solution struc
     insert-then-hold failure reported alongside this is the same root cause, and real-teleop
     validation that the new force-vs-distance shape (firm at contact, easier once separated)
     actually feels different from the spring it replaced.
+  - **Twist friction (issue #171, third finding, 2026-09-08)**: real teleop found a
+    ceiling-seated bulb spinning about the seat axis at 1-19 rad/s for a sustained ~2.9s, no
+    operator or contact, before abruptly ejecting. Cause: the tilt torque's damping used the
+    FULL angular velocity but shared tilt's tiny `max_torque` (0.05 N*m) budget -- arresting
+    even 10 rad/s needed several times that, so it saturated uselessly every step. Split
+    twist (rotation about the seat axis, no target angle -- issue #90) from tilt
+    (misalignment, which does have a target) and gave twist its own budget. A first, viscous
+    version of that (`-twist_d * twist_rate`) settled into a stable but NONZERO equilibrium
+    spin under real contact, and raising its gain made the equilibrium worse at some tested
+    magnitudes -- evidence of the wrong force law, not just an under-sized one. Replaced with
+    Coulomb-like FRICTION (`twist_friction`, roughly constant magnitude, not
+    velocity-proportional) instead, matching how real contact friction actually behaves.
+    Verified (`scripts/verify_twist_damping.py`): both the viscous and friction versions
+    reliably stop the actual reported failure (self-ejection) across the full 1-19 rad/s
+    range, holding 5+ simulated seconds -- but NEITHER reliably drives the residual spin
+    itself to zero; it persists at some nonzero, sometimes noisy rate. That residual looks
+    like a real 3D contact effect (a loosely-toleranced plug precessing/rattling in the bore)
+    rather than something a single-axis torque law can fully resolve -- open follow-up, not
+    treated as solved, though the critical failure (detachment) is fixed.
   Follow-up: put Remove/Install on the same mechanic; their
   bulbs are already dynamic but currently lift straight out of / drop straight into the
   socket (issue #76 Step 2).

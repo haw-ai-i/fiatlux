@@ -55,6 +55,15 @@ return to it (plus the reset jitter below).
     more than a resting one, same as any real spring/friction/magnet) so worst-case sag sits
     comfortably clear of `release_threshold`. Table/wall mounts sag less than ceiling ones
     under their own weight, correctly.
+  - **Twist friction (issue #171)**: a ceiling-seated bulb was found spinning about the seat
+    axis at 1-19 rad/s for ~2.9s, no operator or contact, before ejecting -- the tilt torque's
+    damping shared tilt's tiny torque budget, which couldn't arrest a real spin. Twist
+    (rotation about the seat axis, no target angle) now gets its own, Coulomb-like friction
+    term (`twist_friction`, roughly constant magnitude, not velocity-proportional -- a
+    viscous version tried first settled into a stable but nonzero spin under real contact and
+    got worse, not better, as its gain was raised). Reliably stops the self-ejection across
+    the full reported range, but does not reliably drive the residual spin itself to zero --
+    that looks like a real 3D contact effect, open follow-up.
 
 ## Goal
 

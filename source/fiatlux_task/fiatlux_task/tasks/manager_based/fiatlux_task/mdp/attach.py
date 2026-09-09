@@ -99,6 +99,47 @@ to get a strong peak AND fast falloff AND stay under the same stability ceiling 
 control loop's rate (50 Hz) all at once; this trades some peak strength for real gravity
 margin and a stable, chatter-free hold. A table/wall-mounted bulb still sags less than a
 ceiling-mounted one under its own weight, correctly.
+
+**Twist friction (issue #171, third finding)**: a ceiling-mounted, seated bulb was found
+spinning about the seat axis at 1-19 rad/s (~2-3 rev/s) for a sustained ~2.9s -- present
+almost from the moment it seats, never decaying, then abruptly destabilizing into a real
+ejection (axial and tilt both blowing up together) with no operator and no hand contact the
+entire time. Cause: the tilt torque's damping term (``-tilt_d * ang_vel``) used the FULL
+angular velocity, including whatever twist (rotation about the seat axis itself) the bulb
+happened to be carrying -- but that damping shared ``max_torque`` with the tilt-ALIGNMENT
+term (``tilt_k * cross(...)``), a deliberately tiny budget (0.05 N*m) sized to stay gentle
+against real contact. Arresting even 10 rad/s of twist needs roughly ``tilt_d * 10`` of
+torque, already several times that budget -- so the damping saturated at a small fraction of
+what the spin needed every single step, doing essentially nothing to it, while contact kept
+the spin fed. Twist was always deliberately left uncorrected FOR ALIGNMENT (issue #90: any
+clock angle is a valid entry, there is no lug/groove to turn into) -- but "no target clock
+angle" was never meant to also mean "no bound on how fast it may spin forever, frictionlessly."
+
+A first fix split angular velocity into its twist component (along the seat axis) and its
+perpendicular (tilt) component, and damped twist separately with its own, much larger torque
+budget -- but as a VISCOUS term (``-twist_d * twist_rate``, proportional to speed, the same
+shape as every other damping term here). Under real contact this settled into a stable but
+nonzero equilibrium spin rather than arresting it, and -- tellingly -- raising the gain made
+the equilibrium WORSE (a higher, not lower, residual rate) at some tested magnitudes, evidence
+of a genuinely nonlinear/chaotic coupling with real contact, not just an under-sized gain.
+Replaced with FRICTION instead: real contact friction is Coulomb-like, roughly CONSTANT
+magnitude opposing the direction of sliding, not scaling with speed -- ``twist_friction`` is
+that constant magnitude, its sign supplied smoothly by ``tanh(twist_rate / twist_deadband)``
+(the same chatter-avoidance reasoning as the axial term's direction) rather than a literal
+``sign()``. Both the viscous and the friction versions reliably stop the actual reported
+failure (self-ejection: verified holding for 5+ simulated seconds at spin rates spanning the
+full 1-19 rad/s reported range, ``scripts/verify_twist_damping.py``) -- but NEITHER reliably
+drives the residual spin itself to zero; it persists at some nonzero, sometimes noisy rate
+that this single-axis torque law does not have consistent authority over. That residual spin
+looks like a real 3D contact effect (a loosely-toleranced cylindrical plug precessing/rattling
+in the bore) rather than something a twist-only force law can fully resolve -- flagged as an
+open follow-up, not treated as solved. ``max_twist_torque`` is a defensive outer clamp, not
+normally binding (``twist_friction`` is already comfortably under it by choice). Safe to make
+this whole term far stronger than tilt's alignment torque specifically because it is PURE
+dissipation, not a restoring force toward any target -- it can only remove existing rotational
+energy, never fight a real contact equilibrium the way a stiff position/orientation lock would
+(the crush-glitch pattern this whole design already avoids elsewhere). Tilt's own alignment
+torque and its (now twist-free) damping are unchanged in spirit, still gentle.
 """
 
 from __future__ import annotations
@@ -233,6 +274,9 @@ class bulb_attachment(ManagerTermBase):
         tilt_k: float = 0.05,
         tilt_d: float = 0.01,
         max_torque: float = 0.05,
+        twist_friction: float = 0.5,
+        twist_deadband: float = 0.1,
+        max_twist_torque: float = 1.0,
     ) -> None:
         # Always operates on all envs: retention must be enforced every step, which the zero
         # interval guarantees.
@@ -275,6 +319,28 @@ class bulb_attachment(ManagerTermBase):
         # order of magnitude as diagnose_contact_axial.py's own orientation-hold trial
         # (k_p=0.02, k_d=0.002) shown to function as a soft aligner there, needing the same
         # real-teleop retuning as every other gain in this term.
+        #
+        # twist_friction/twist_deadband/max_twist_torque (issue #171, third finding): FRICTION
+        # for rotation about the seat axis itself (twist), split out from tilt_d so it gets
+        # its own, much larger torque budget instead of sharing tilt's deliberately tiny
+        # max_torque. Found necessary after a ceiling-seated bulb sustained a 1-19 rad/s twist
+        # for ~2.9s with no decay under a first (viscous, -tilt_d*ang_vel-shaped) attempt --
+        # arresting even 10 rad/s needs several times tilt's max_torque budget, so that shared
+        # clamp was saturating uselessly every step regardless of spin speed. A viscous
+        # twist-only damping term with its own larger budget still wasn't right, though: it
+        # settled into a chaotic, non-monotonic equilibrium spin under real contact that got
+        # WORSE (not better) as the gain was raised -- evidence of a wrong force LAW, not just
+        # an under-sized one. twist_friction models real contact friction instead: roughly
+        # CONSTANT magnitude opposing the direction of rotation (Coulomb-like), not scaling
+        # with speed the way viscous damping does, matching how solid-on-solid friction
+        # actually behaves. Safe to size much larger than the tilt-alignment budget
+        # specifically because this is PURE dissipation, not a restoring force toward any
+        # target -- twist has no target angle (issue #90: any clock angle is a valid entry),
+        # so this can only ever remove existing rotational energy, never fight a real contact
+        # equilibrium the way a stiff position/orientation lock would. Still rough starting
+        # values -- needs real-teleop validation that it's enough to out-damp whatever
+        # contact keeps feeding the spin, without making ordinary handling feel unexpectedly
+        # stiff.
         del env_ids
         # old_bulb is absent from insert-only scenes (e.g. the tabletop preset, which has
         # nothing to remove) -- self._phase[_OLD] then never leaves its _FREE default, so
@@ -297,6 +363,9 @@ class bulb_attachment(ManagerTermBase):
             tilt_k=tilt_k,
             tilt_d=tilt_d,
             max_torque=max_torque,
+            twist_friction=twist_friction,
+            twist_deadband=twist_deadband,
+            max_twist_torque=max_twist_torque,
         )
         if old_bulb is not None:
             self._advance(old_bulb, _OLD, socket_empty=self._phase[_FRESH] == _FREE, **gains)
@@ -347,6 +416,9 @@ class bulb_attachment(ManagerTermBase):
         tilt_k: float,
         tilt_d: float,
         max_torque: float,
+        twist_friction: float,
+        twist_deadband: float,
+        max_twist_torque: float,
     ) -> None:
         socket: RigidObject = self._env.scene["socket"]
         socket_quat = socket.data.root_quat_w
@@ -407,17 +479,45 @@ class bulb_attachment(ManagerTermBase):
         lateral_vel = lin_vel - (lin_vel * axis_w).sum(dim=1, keepdim=True) * axis_w
         lateral_force_vec = _clamp_vector_norm(-lateral_k * lateral_vec - lateral_d * lateral_vel, max_lateral_force)
 
+        # Tilt vs. twist: split angular velocity into its component along the seat axis
+        # (twist -- rotation about the plug's own axis, which has no target angle, issue #90)
+        # and everything perpendicular to it (tilt -- misalignment of the axis itself, which
+        # DOES have a target: aligned with the socket's). Conflating them into one damping
+        # term sharing tilt's tiny max_torque let a real spin go essentially undamped (issue
+        # #171, third finding): arresting it needed several times that budget every step.
+        ang_vel = bulb.data.root_ang_vel_w
+        twist_rate = (ang_vel * axis_w).sum(dim=1)
+        tilt_ang_vel = ang_vel - twist_rate.unsqueeze(1) * axis_w
+
         # Tilt: small torque aligning the plug axis back to the seat axis -- the standard
         # small-angle "rotate A onto B" construction (magnitude ~ sin(tilt), direction the
-        # correct rotation axis), damped against the FULL angular velocity rather than just its
-        # tilt component. That damps a little unwanted twist too, an acceptable simplification
-        # since twist is free by design (issue #90) and nothing anywhere tracks it.
+        # correct rotation axis) -- damped against ONLY the tilt component of angular
+        # velocity now, so twist can get its own, separately-sized budget below.
         plug_axis_w = quat_apply(bulb_quat, self._axis_l)
         tilt_correction = torch.cross(plug_axis_w, axis_w, dim=-1)
-        tilt_torque_vec = _clamp_vector_norm(tilt_k * tilt_correction - tilt_d * bulb.data.root_ang_vel_w, max_torque)
+        tilt_torque_vec = _clamp_vector_norm(tilt_k * tilt_correction - tilt_d * tilt_ang_vel, max_torque)
+
+        # Twist damping: models real socket FRICTION, not a restoring torque toward any target
+        # angle (any clock angle is a valid entry, issue #90 -- "rotation is free" means no
+        # target, it was never meant to mean frictionless). Real contact friction is
+        # Coulomb-like -- roughly CONSTANT magnitude opposing the direction of sliding,
+        # largely independent of speed -- unlike a spring's velocity-proportional (viscous)
+        # damping, which is the wrong shape for this: an earlier viscous-only version showed
+        # a chaotic, non-monotonic equilibrium spin under real contact that got WORSE, not
+        # better, when the gain was raised, evidence this needed a different force law rather
+        # than a bigger version of the same one. twist_direction supplies the sign smoothly
+        # (tanh over twist_deadband, a velocity scale far below any spin that matters) rather
+        # than a literal sign(), the same chatter-avoidance reasoning as the axial term's
+        # direction. Split from tilt's alignment torque so it gets its own, much larger budget
+        # (max_twist_torque): PURE dissipation, safe to size larger than a restoring force
+        # since it can only remove existing rotational energy, never fight a real contact
+        # equilibrium the way a target-seeking torque would.
+        twist_direction = torch.tanh(twist_rate / twist_deadband)
+        twist_torque = (-twist_friction * twist_direction).clamp(-max_twist_torque, max_twist_torque)
+        twist_torque_vec = twist_torque.unsqueeze(1) * axis_w
 
         forces = torch.where(seated_mask, axial_force_vec + lateral_force_vec, torch.zeros_like(axial_force_vec))
-        torques = torch.where(seated_mask, tilt_torque_vec, torch.zeros_like(tilt_torque_vec))
+        torques = torch.where(seated_mask, tilt_torque_vec + twist_torque_vec, torch.zeros_like(tilt_torque_vec))
         bulb.set_external_force_and_torque(forces.unsqueeze(1), torques.unsqueeze(1), is_global=True)
 
 
