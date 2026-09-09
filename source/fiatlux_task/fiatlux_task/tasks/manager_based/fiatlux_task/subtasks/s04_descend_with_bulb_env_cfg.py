@@ -34,7 +34,7 @@ from ..mdp.nav_terms import (
     settle_carried_payload_live,
 )
 from ..replace_env_cfg import OLD_BULB_DROP_HEIGHT
-from ..subtask_env_cfg import FALL_MIN_HEIGHT, FALL_TILT_LIMIT
+from ..subtask_env_cfg import FALL_MIN_HEIGHT, FALL_TILT_LIMIT, SubtaskRewardsCfg
 from ..subtask_tiers.balance import (
     LADDER_FLOOR_STANCE_HEIGHT,
     LADDER_SUCCESS_MAX_SPEED,
@@ -126,7 +126,7 @@ class S04DescendWithBulbEnvCfg(DescendSubtaskCfg):
     success_params: dict | None = {"predicates": DESCENDED_WITH_BULB_CONJUNCTS}
 
     events: S04EventCfg = S04EventCfg()
-    rewards: S04RewardsCfg = S04RewardsCfg()
+    rewards: SubtaskRewardsCfg = SubtaskRewardsCfg()
     terminations: S04TerminationsCfg = S04TerminationsCfg()
 
     def __post_init__(self) -> None:

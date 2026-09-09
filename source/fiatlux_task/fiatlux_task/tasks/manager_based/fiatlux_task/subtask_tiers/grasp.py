@@ -27,7 +27,7 @@ from isaaclab.utils import configclass
 from .. import mdp
 from ..mdp import grasp_terms
 from ..scene_cfg import G1ReplaceSceneCfg
-from ..subtask_env_cfg import SubtaskEnvCfg, SubtaskRewardsCfg
+from ..subtask_env_cfg import SubtaskEnvCfg, SubtaskRewardsCfg, SubtaskShapingRewardsCfg
 
 # Shorter than ``place``'s 1.0 s: proving a hold isn't a glance, not that the object has settled.
 GRASP_SUSTAIN_SECONDS = 0.5
@@ -64,7 +64,7 @@ def add_grasp_contact_sensor(scene: G1ReplaceSceneCfg, target_prim_path: str) ->
 
 
 @configclass
-class GraspRewardsCfg(SubtaskRewardsCfg):
+class GraspRewardsCfg(SubtaskShapingRewardsCfg):
     """Reach + bootstrap + grip-force discipline; ``distance_fn`` comes from the leaf."""
 
     reach_progress = RewTerm(
@@ -85,10 +85,11 @@ class GraspSubtaskCfg(SubtaskEnvCfg):
     """A subtask whose job is to grasp an object and take its weight."""
 
     progress_distance_fn: Callable | None = None
-    rewards: GraspRewardsCfg = GraspRewardsCfg()
+    rewards: SubtaskRewardsCfg = SubtaskRewardsCfg()
 
     def __post_init__(self) -> None:
         super().__post_init__()
         if self.progress_distance_fn is None:
             raise ValueError(f"{type(self).__name__} must set progress_distance_fn")
-        self.rewards.reach_progress.params["distance_fn"] = self.progress_distance_fn
+        if hasattr(self.rewards, "reach_progress"):
+            self.rewards.reach_progress.params["distance_fn"] = self.progress_distance_fn

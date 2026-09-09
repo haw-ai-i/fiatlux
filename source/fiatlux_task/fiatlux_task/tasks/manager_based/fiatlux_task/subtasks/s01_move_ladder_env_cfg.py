@@ -49,7 +49,7 @@ from ..scene_cfg import (
     face_robot_at,
     frame_viewer_between,
 )
-from ..subtask_env_cfg import FALL_MIN_HEIGHT, FALL_TILT_LIMIT, SubtaskTerminationsCfg
+from ..subtask_env_cfg import FALL_MIN_HEIGHT, FALL_TILT_LIMIT, SubtaskRewardsCfg, SubtaskTerminationsCfg
 from ..subtask_tiers.balance import BulbAttachmentEventCfg
 from ..subtask_tiers.place import (
     AT_REST_ANG_VEL_LIMIT,
@@ -115,7 +115,7 @@ class S01MoveLadderEnvCfg(PlaceSubtaskCfg):
     }
     progress_distance_fn = mdp.ladder_fixture_distance
 
-    rewards: S01RewardsCfg = S01RewardsCfg()
+    rewards: SubtaskRewardsCfg = SubtaskRewardsCfg()
     terminations: S01TerminationsCfg = S01TerminationsCfg()
     # Lock the socketed old bulb into the overhead fixture with the bayonet FSM (#108). The Place
     # tier wires no events, so a dynamic bulb in the inverted socket just falls out at spawn; this

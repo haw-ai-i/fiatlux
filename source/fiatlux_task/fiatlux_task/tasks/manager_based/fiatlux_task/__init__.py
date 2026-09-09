@@ -245,6 +245,95 @@ gym.register(
     kwargs={"env_cfg_entry_point": f"{__name__}.subtasks.s12_climb_down_env_cfg:S12ClimbDownEnvCfg"},
 )
 
+##
+# Training twins: the same subtask plus reward shaping (issue #169). The benchmark ids above
+# carry only the channel a score reads, so a shaping weight cannot move a benchmark number.
+##
+
+gym.register(
+    id="FIATLUX-S01-MoveLadder-Training-v0",
+    entry_point="isaaclab.envs:ManagerBasedRLEnv",
+    disable_env_checker=True,
+    kwargs={"env_cfg_entry_point": f"{__name__}.subtasks.training_env_cfg:S01MoveLadderTrainingEnvCfg"},
+)
+
+gym.register(
+    id="FIATLUX-S02-ClimbLadder-Training-v0",
+    entry_point="isaaclab.envs:ManagerBasedRLEnv",
+    disable_env_checker=True,
+    kwargs={"env_cfg_entry_point": f"{__name__}.subtasks.training_env_cfg:S02ClimbLadderTrainingEnvCfg"},
+)
+
+gym.register(
+    id="FIATLUX-S03-RemoveOldBulb-Training-v0",
+    entry_point="isaaclab.envs:ManagerBasedRLEnv",
+    disable_env_checker=True,
+    kwargs={"env_cfg_entry_point": f"{__name__}.subtasks.training_env_cfg:S03RemoveOldBulbTrainingEnvCfg"},
+)
+
+gym.register(
+    id="FIATLUX-S04-DescendWithBulb-Training-v0",
+    entry_point="isaaclab.envs:ManagerBasedRLEnv",
+    disable_env_checker=True,
+    kwargs={"env_cfg_entry_point": f"{__name__}.subtasks.training_env_cfg:S04DescendWithBulbTrainingEnvCfg"},
+)
+
+gym.register(
+    id="FIATLUX-S05-CarryBulbToDisposal-Training-v0",
+    entry_point="isaaclab.envs:ManagerBasedRLEnv",
+    disable_env_checker=True,
+    kwargs={"env_cfg_entry_point": f"{__name__}.subtasks.training_env_cfg:S05CarryBulbToDisposalTrainingEnvCfg"},
+)
+
+gym.register(
+    id="FIATLUX-S06-DisposeBulb-Training-v0",
+    entry_point="isaaclab.envs:ManagerBasedRLEnv",
+    disable_env_checker=True,
+    kwargs={"env_cfg_entry_point": f"{__name__}.subtasks.training_env_cfg:S06DisposeBulbTrainingEnvCfg"},
+)
+
+gym.register(
+    id="FIATLUX-S07-ApproachNewBulb-Training-v0",
+    entry_point="isaaclab.envs:ManagerBasedRLEnv",
+    disable_env_checker=True,
+    kwargs={"env_cfg_entry_point": f"{__name__}.subtasks.training_env_cfg:S07ApproachNewBulbTrainingEnvCfg"},
+)
+
+gym.register(
+    id="FIATLUX-S08-GrabNewBulb-Training-v0",
+    entry_point="isaaclab.envs:ManagerBasedRLEnv",
+    disable_env_checker=True,
+    kwargs={"env_cfg_entry_point": f"{__name__}.subtasks.training_env_cfg:S08GrabNewBulbTrainingEnvCfg"},
+)
+
+gym.register(
+    id="FIATLUX-S09-CarryBulbToLadder-Training-v0",
+    entry_point="isaaclab.envs:ManagerBasedRLEnv",
+    disable_env_checker=True,
+    kwargs={"env_cfg_entry_point": f"{__name__}.subtasks.training_env_cfg:S09CarryBulbToLadderTrainingEnvCfg"},
+)
+
+gym.register(
+    id="FIATLUX-S10-ClimbWithBulb-Training-v0",
+    entry_point="isaaclab.envs:ManagerBasedRLEnv",
+    disable_env_checker=True,
+    kwargs={"env_cfg_entry_point": f"{__name__}.subtasks.training_env_cfg:S10ClimbWithBulbTrainingEnvCfg"},
+)
+
+gym.register(
+    id="FIATLUX-S11-ScrewInBulb-Training-v0",
+    entry_point="isaaclab.envs:ManagerBasedRLEnv",
+    disable_env_checker=True,
+    kwargs={"env_cfg_entry_point": f"{__name__}.subtasks.training_env_cfg:S11ScrewInBulbTrainingEnvCfg"},
+)
+
+gym.register(
+    id="FIATLUX-S12-ClimbDown-Training-v0",
+    entry_point="isaaclab.envs:ManagerBasedRLEnv",
+    disable_env_checker=True,
+    kwargs={"env_cfg_entry_point": f"{__name__}.subtasks.training_env_cfg:S12ClimbDownTrainingEnvCfg"},
+)
+
 SUBTASK_IDS = [
     "FIATLUX-S01-MoveLadder-v0",
     "FIATLUX-S02-ClimbLadder-v0",
@@ -270,4 +359,19 @@ TASK_IDS = [
     "FIATLUX-Remove-v0",
     "FIATLUX-Install-v0",
     "FIATLUX-Replace-v0",
+]
+
+SUBTASK_TRAINING_IDS = [
+    "FIATLUX-S01-MoveLadder-Training-v0",
+    "FIATLUX-S02-ClimbLadder-Training-v0",
+    "FIATLUX-S03-RemoveOldBulb-Training-v0",
+    "FIATLUX-S04-DescendWithBulb-Training-v0",
+    "FIATLUX-S05-CarryBulbToDisposal-Training-v0",
+    "FIATLUX-S06-DisposeBulb-Training-v0",
+    "FIATLUX-S07-ApproachNewBulb-Training-v0",
+    "FIATLUX-S08-GrabNewBulb-Training-v0",
+    "FIATLUX-S09-CarryBulbToLadder-Training-v0",
+    "FIATLUX-S10-ClimbWithBulb-Training-v0",
+    "FIATLUX-S11-ScrewInBulb-Training-v0",
+    "FIATLUX-S12-ClimbDown-Training-v0",
 ]

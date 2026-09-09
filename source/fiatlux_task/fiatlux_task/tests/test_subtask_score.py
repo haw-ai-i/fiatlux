@@ -218,6 +218,11 @@ def test_score_subtasks_script_load_results_errors(tmp_path):
     }
 
 
+def test_training_twin_scores_as_its_subtask():
+    assert base_subtask_id("FIATLUX-S11-ScrewInBulb-Training-v0") == "FIATLUX-S11-ScrewInBulb-v0"
+    assert subtask_weight("FIATLUX-S11-ScrewInBulb-Training-v0") == subtask_weight("FIATLUX-S11-ScrewInBulb-v0")
+
+
 def test_none_task_id_handled_gracefully():
     assert base_subtask_id(None) is None
     with pytest.raises(KeyError):

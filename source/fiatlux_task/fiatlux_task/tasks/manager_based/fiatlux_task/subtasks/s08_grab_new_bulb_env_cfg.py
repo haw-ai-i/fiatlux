@@ -34,7 +34,7 @@ from ..scene_cfg import (
     park_old_bulb_in_crate,
     stand_robot_at_offset,
 )
-from ..subtask_env_cfg import FALL_MIN_HEIGHT, FALL_TILT_LIMIT, SubtaskTerminationsCfg
+from ..subtask_env_cfg import FALL_MIN_HEIGHT, FALL_TILT_LIMIT, SubtaskRewardsCfg, SubtaskTerminationsCfg
 from ..subtask_tiers.grasp import GRASP_SUSTAIN_SECONDS, GraspRewardsCfg, GraspSubtaskCfg, add_grasp_contact_sensor
 
 # Clearance above the table the whole bulb must reach to count as lifted. PROVISIONAL.
@@ -108,7 +108,7 @@ class S08GrabNewBulbEnvCfg(GraspSubtaskCfg):
     }
     progress_distance_fn = grasp_terms.hand_bulb_distance
 
-    rewards: S08RewardsCfg = S08RewardsCfg()
+    rewards: SubtaskRewardsCfg = SubtaskRewardsCfg()
     terminations: S08TerminationsCfg = S08TerminationsCfg()
 
     def __post_init__(self) -> None:

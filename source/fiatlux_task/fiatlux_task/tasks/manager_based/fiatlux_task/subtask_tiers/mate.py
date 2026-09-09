@@ -31,6 +31,7 @@ from fiatlux_task.grasp_poses import GLASS_CONTACT_LIMIT_N
 
 from .. import mdp
 from ..mdp import mate_terms
+from ..subtask_env_cfg import SubtaskRewardsCfg
 from .balance import BalanceSubtaskCfg, BalanceTerminationsCfg, OnLadderRewardsCfg, stand_robot_on_ladder_top
 
 # Dense alignment kernel width, in radians of mating-axis error: the family's existing value for
@@ -90,7 +91,7 @@ class MateTerminationsCfg(BalanceTerminationsCfg):
 class MateSubtaskCfg(BalanceSubtaskCfg):
     """Manipulation at the fixture from the ladder's upper steps."""
 
-    rewards: MateRewardsCfg = MateRewardsCfg()
+    rewards: SubtaskRewardsCfg = SubtaskRewardsCfg()
     terminations: MateTerminationsCfg = MateTerminationsCfg()
 
     def __post_init__(self) -> None:

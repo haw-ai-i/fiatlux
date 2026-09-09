@@ -35,7 +35,7 @@ from ..mdp.nav_terms import (
 )
 from ..replace_env_cfg import FRESH_BULB_DROP_HEIGHT
 from ..scene_cfg import park_old_bulb_in_crate
-from ..subtask_env_cfg import FALL_MIN_HEIGHT, FALL_TILT_LIMIT
+from ..subtask_env_cfg import FALL_MIN_HEIGHT, FALL_TILT_LIMIT, SubtaskRewardsCfg
 from ..subtask_tiers.balance import (
     LADDER_SUCCESS_MAX_SPEED,
     LADDER_SUCCESS_XY_RADIUS,
@@ -121,7 +121,7 @@ class S10ClimbWithBulbEnvCfg(ClimbSubtaskCfg):
     success_params: dict | None = {"predicates": CLIMBED_WITH_BULB_CONJUNCTS}
 
     events: S10EventCfg = S10EventCfg()
-    rewards: S10RewardsCfg = S10RewardsCfg()
+    rewards: SubtaskRewardsCfg = SubtaskRewardsCfg()
     terminations: S10TerminationsCfg = S10TerminationsCfg()
 
     def __post_init__(self) -> None:

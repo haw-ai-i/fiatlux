@@ -54,7 +54,13 @@ from ..scene_cfg import (
     face_robot_at,
     frame_viewer_on,
 )
-from ..subtask_env_cfg import SubtaskEnvCfg, SubtaskEventCfg, SubtaskRewardsCfg, SubtaskTerminationsCfg
+from ..subtask_env_cfg import (
+    SubtaskEnvCfg,
+    SubtaskEventCfg,
+    SubtaskRewardsCfg,
+    SubtaskShapingRewardsCfg,
+    SubtaskTerminationsCfg,
+)
 
 
 @configclass
@@ -145,13 +151,11 @@ def stand_robot_on_ladder_top(scene: G1ReplaceSceneCfg) -> None:
     dx = local_x * math.cos(yaw) - local_y * math.sin(yaw)
     dy = local_x * math.sin(yaw) + local_y * math.cos(yaw)
     scene.robot.init_state.pos = (ladder_x + dx, ladder_y + dy, platform_z + TOP_STANCE_PELVIS_OFFSET)
-    scene.robot.init_state.rot = _quat_mul(
-        scene.ladder.init_state.rot, _quat_z_deg(TOP_STANCE_YAW_OFFSET_DEG)
-    )
+    scene.robot.init_state.rot = _quat_mul(scene.ladder.init_state.rot, _quat_z_deg(TOP_STANCE_YAW_OFFSET_DEG))
 
 
 @configclass
-class OnLadderRewardsCfg(SubtaskRewardsCfg):
+class OnLadderRewardsCfg(SubtaskShapingRewardsCfg):
     """No ``flat_orientation_l2``: working on the ladder requires a sustained forward lean, so
     an upright-torso term fights the task."""
 
@@ -194,7 +198,7 @@ class BalanceSubtaskCfg(SubtaskEnvCfg):
     orbit_height: float = 2.4
 
     events: BalanceEventCfg = BalanceEventCfg()
-    rewards: OnLadderRewardsCfg = OnLadderRewardsCfg()
+    rewards: SubtaskRewardsCfg = SubtaskRewardsCfg()
     terminations: BalanceTerminationsCfg = BalanceTerminationsCfg()
 
     def __post_init__(self) -> None:
@@ -225,7 +229,7 @@ class ClimbSubtaskCfg(BalanceSubtaskCfg):
     """Starts on the floor at the ladder's steps."""
 
     ladder_contact_bodies: list[str] | None = None
-    rewards: ClimbRewardsCfg = ClimbRewardsCfg()
+    rewards: SubtaskRewardsCfg = SubtaskRewardsCfg()
 
     def __post_init__(self) -> None:
         super().__post_init__()
@@ -238,7 +242,7 @@ class DescendSubtaskCfg(BalanceSubtaskCfg):
     """Starts on the tread."""
 
     ladder_contact_bodies: list[str] | None = None
-    rewards: DescendRewardsCfg = DescendRewardsCfg()
+    rewards: SubtaskRewardsCfg = SubtaskRewardsCfg()
 
     def __post_init__(self) -> None:
         super().__post_init__()
