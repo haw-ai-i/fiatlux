@@ -72,10 +72,19 @@ def bulb_axis_alignment_tanh(
     return 1.0 - torch.tanh(bulb_mating_axis_angle(env, asset_cfg, socket_cfg) / std)
 
 
-def grip_force_exceeded(env: ManagerBasedRLEnv, sensor_cfg: SceneEntityCfg, limit: float) -> torch.Tensor:
+def grip_force_exceeded(
+    env: ManagerBasedRLEnv,
+    sensor_cfg: SceneEntityCfg,
+    limit: float,
+    other_sensor_cfg: SceneEntityCfg | None = None,
+) -> torch.Tensor:
     """True where any hand body's filtered contact force on the payload exceeds ``limit`` (N).
 
     The termination form of ``grasp_terms.grasp_force_within``: crossing the bound is a physical
-    event that ends the episode, not a condition re-read at scoring time.
+    event that ends the episode, not a condition re-read at scoring time. With
+    ``other_sensor_cfg`` it watches both hands -- either one can crush the bulb (issue #151).
     """
-    return _filtered_hand_force(env, sensor_cfg).max(dim=1).values > limit
+    worst = _filtered_hand_force(env, sensor_cfg).max(dim=1).values
+    if other_sensor_cfg is not None:
+        worst = torch.maximum(worst, _filtered_hand_force(env, other_sensor_cfg).max(dim=1).values)
+    return worst > limit

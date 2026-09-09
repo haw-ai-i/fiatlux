@@ -126,21 +126,45 @@ def grasp_contact_bootstrap(
     return torch.tanh(force / saturation_force)
 
 
-def grasp_force_within(env: ManagerBasedRLEnv, sensor_cfg: SceneEntityCfg, limit: float) -> torch.Tensor:
-    """True where no hand body's filtered contact force exceeds ``limit`` (a fragility bound)."""
-    return _filtered_hand_force(env, sensor_cfg).max(dim=1).values <= limit
+def grasp_force_within(
+    env: ManagerBasedRLEnv,
+    sensor_cfg: SceneEntityCfg,
+    limit: float,
+    other_sensor_cfg: SceneEntityCfg | None = None,
+) -> torch.Tensor:
+    """True where no hand body's filtered contact force exceeds ``limit`` (a fragility bound).
+
+    With ``other_sensor_cfg`` the bound covers BOTH hands: either one can crush the bulb, so the
+    limit has to hold for both (issue #151).
+    """
+    worst = _filtered_hand_force(env, sensor_cfg).max(dim=1).values
+    if other_sensor_cfg is not None:
+        worst = torch.maximum(worst, _filtered_hand_force(env, other_sensor_cfg).max(dim=1).values)
+    return worst <= limit
 
 
 def hand_bodies_in_contact(
-    env: ManagerBasedRLEnv, sensor_cfg: SceneEntityCfg, min_bodies: int, force_threshold: float
+    env: ManagerBasedRLEnv,
+    sensor_cfg: SceneEntityCfg,
+    min_bodies: int,
+    force_threshold: float,
+    other_sensor_cfg: SceneEntityCfg | None = None,
 ) -> torch.Tensor:
     """True where at least ``min_bodies`` sensor bodies register filtered force above ``force_threshold``.
 
     A single contact point (a fingertip grazing the object) is touching, not holding; requiring
     several bodies is the cheap proxy for "wrapped by the hand" without needing per-finger grasp
     geometry.
+
+    With ``other_sensor_cfg`` EITHER hand qualifies on its own (issue #151). Counted per hand
+    rather than pooled: the bodies have to be wrapped round the object by one hand, and pooling
+    would let two fingers of each count as a grasp.
     """
-    return (_filtered_hand_force(env, sensor_cfg) > force_threshold).sum(dim=1) >= min_bodies
+    held = (_filtered_hand_force(env, sensor_cfg) > force_threshold).sum(dim=1) >= min_bodies
+    if other_sensor_cfg is not None:
+        other = (_filtered_hand_force(env, other_sensor_cfg) > force_threshold).sum(dim=1) >= min_bodies
+        held = held | other
+    return held
 
 
 # ---------------------------------------------------------------------------

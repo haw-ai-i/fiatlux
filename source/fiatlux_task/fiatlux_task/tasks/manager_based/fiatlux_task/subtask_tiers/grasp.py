@@ -52,6 +52,15 @@ def add_grasp_contact_sensor(scene: G1ReplaceSceneCfg, target_prim_path: str) ->
         history_length=1,
         track_air_time=False,
     )
+    # The same channel for the left hand (issue #151). A separate sensor, like the scene's
+    # left_hand_contact: the gate reads both, while hand_contact's fragility scoring stays
+    # right-only until #93 decides whether it should count two arms.
+    scene.grasp_contact_left = ContactSensorCfg(
+        prim_path=scene.left_hand_contact.prim_path,
+        filter_prim_paths_expr=[target_prim_path],
+        history_length=1,
+        track_air_time=False,
+    )
 
 
 @configclass

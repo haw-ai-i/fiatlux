@@ -58,13 +58,18 @@ BULB_GRASPED_CONJUNCTS = [
         grasp_terms.hand_bodies_in_contact,
         {
             "sensor_cfg": SceneEntityCfg("grasp_contact"),
+            "other_sensor_cfg": SceneEntityCfg("grasp_contact_left"),
             "min_bodies": BULB_HELD_MIN_HAND_BODIES,
             "force_threshold": BULB_HAND_CONTACT_THRESHOLD_N,
         },
     ),
     (
         grasp_terms.grasp_force_within,
-        {"sensor_cfg": SceneEntityCfg("grasp_contact"), "limit": GLASS_CONTACT_LIMIT_N},
+        {
+            "sensor_cfg": SceneEntityCfg("grasp_contact"),
+            "other_sensor_cfg": SceneEntityCfg("grasp_contact_left"),
+            "limit": GLASS_CONTACT_LIMIT_N,
+        },
     ),
     (place_terms.robot_standing, {"minimum_height": FALL_MIN_HEIGHT, "limit_angle": FALL_TILT_LIMIT}),
 ]

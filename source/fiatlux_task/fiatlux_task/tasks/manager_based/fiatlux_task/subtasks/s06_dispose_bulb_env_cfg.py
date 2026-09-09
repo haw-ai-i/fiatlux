@@ -52,7 +52,11 @@ OLD_BULB_DISPOSED_CONJUNCTS = [
     ),
     (
         place_terms.object_released,
-        {"sensor_cfg": SceneEntityCfg("release_contact"), "force_threshold": RELEASE_FORCE_THRESHOLD_N},
+        {
+            "sensor_cfg": SceneEntityCfg("release_contact"),
+            "other_sensor_cfg": SceneEntityCfg("release_contact_left"),
+            "force_threshold": RELEASE_FORCE_THRESHOLD_N,
+        },
     ),
     (place_terms.robot_standing, {"minimum_height": FALL_MIN_HEIGHT, "limit_angle": FALL_TILT_LIMIT}),
 ]
