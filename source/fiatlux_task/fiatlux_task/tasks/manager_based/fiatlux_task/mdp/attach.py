@@ -184,6 +184,61 @@ one sound part of the first attempt: damping the full angular velocity through t
 0.05 N*m budget meant any carried twist saturated that clamp every step, spending the whole
 tilt-alignment budget on a rotation it had no authority over and no target for. Tilt's own
 alignment torque and its (twist-free) damping are otherwise unchanged, still gentle.
+
+**Wall-mount tilt was too weak to matter, and recovering it does not un-jam a bulb already
+tilted too far (issue #171, fourth finding)**: ``a321061`` fixed the ceiling case, where gravity
+acts along the seat axis. On a WALL mount the seat axis is roughly horizontal, so gravity instead
+loads the lateral/tilt centering terms this docstring's earlier section calls "deliberately far
+gentler than the axial term... rough starting points... needing the same real-teleop retuning as
+every other gain." Real S11 insert teleop (wall mount, seed 2, 4 independent episodes) found
+every one of 6 SEATED windows (0.2-5.7 s) settled with tilt parked at 0.15-0.26 rad against this
+term's own 0.2 rad ``tilt_tolerance`` -- right at the boundary the seat admission gate uses, with
+no margin -- and every window ended in a release triggered by a single-step axial jump
+coincident with a hand-contact transient (see the release-debounce finding below), from which the
+bulb could never re-seat because re-seating also needs ``tilt < tilt_tolerance`` and that budget
+was already spent.
+
+``scripts/verify_wall_hold.py`` (new) isolates whether that near-tolerance tilt is a PASSIVE
+property of the mechanism or an artifact of teleop noise, the same isolation
+``verify_ceiling_hold.py`` did for the axial defect: force a wall mount, spawn the bulb already
+seated and perfectly aligned, and watch under gravity alone, no hand, no disturbance. That
+baseline is NOT the bug -- a perfectly-aligned spawn holds tilt under 0.01 rad indefinitely at
+the old gains. The bug shows up once the bulb is perturbed even slightly: a one-time bump of
+just 0.05-0.10 rad (``--tilt_perturb``, applied about world Y after the aligned spawn, standing
+in for a hand knock or an imperfect approach during insertion) does not decay back toward the
+spawn tilt at the old gains -- it GROWS to 0.16-0.21 rad and sits there, matching the bags almost
+exactly. A larger 0.15 rad bump is actively unstable and ejects the bulb outright at 0.1 s. So
+the old tilt/lateral gains were not merely gentle, they failed to actually restore alignment
+after any real disturbance at all, and their own docstring already flagged them as unvalidated.
+
+Raising ``tilt_k``/``max_torque`` from 0.05 to 0.25 (``tilt_d`` from 0.01 to 0.003, both within
+the stability bounds recorded next to the gains above) fixes RECOVERY from a small bump: the same
+0.10 rad perturbation that grew to 0.21 rad at the old gains now decays to 0.07-0.10 rad instead.
+But sweeping ``tilt_k``/``max_torque`` up to 0.5 against a LARGER starting tilt (0.15-0.19 rad,
+already in the band the bags got stuck at) makes essentially no difference -- max tilt stays
+within a few percent of the starting value regardless of how much torque authority is given.
+That is real contact GEOMETRY, not gain magnitude: past some angle the plug mechanically wedges
+against the bore rim (the same category of effect the module docstring's radial-clearance section
+already documents for lateral -- "the wobble cannot be fixed by shrinking the gap" -- but for
+tilt, and this time not fixable by a bigger torque either). So this fix raises the basin a small
+disturbance can be recovered from (making it less likely insertion noise tips the bulb into the
+jammed regime to begin with); it does not claim to rescue a bulb that is already jammed there.
+That is the release-debounce fix's job, below, and a bulb sitting jammed but STILL SEATED (as
+every evidence-bag window in fact was, for up to 5.7 s) is not itself a failure.
+
+**Release was a single-frame position test despite being documented as sustained (issue #171,
+fifth finding)**: `` release = was_seated & (axial.abs() > release_threshold) `` fires the instant
+one control step reads past threshold, with no debounce -- despite this module's own long-standing
+language calling ``release_threshold`` "a deliberate, sustained pull... so a light knock does not
+release it but a genuine withdrawal does." That was aspirational, not implemented. Every one of
+the 6 real S11 SEATED windows above ends the same way: axial sits at 5-8 mm (under the 8 mm
+threshold) for the whole hold, then jumps past it in exactly ONE 20 ms step, coincident with the
+hand's recorded contact force either spiking (up to 123 N) or dropping to ~0 N as it lets go --
+never a multi-step trend. ``_release_streak`` now counts consecutive over-threshold steps per
+bulb and only releases at ``release_debounce_steps`` (3, 60 ms) of them, resetting to 0 on any
+step that reads back under threshold -- so a one-frame contact jolt cannot release the bulb, but
+a real withdrawal (which stays past threshold for many steps as the hand keeps pulling) still
+does, just 60 ms later.
 """
 
 from __future__ import annotations
@@ -276,6 +331,9 @@ class bulb_attachment(ManagerTermBase):
         n, dev = env.num_envs, env.device
         # Row 0 = old bulb, row 1 = fresh bulb; the bulbs differ only in reset phase.
         self._phase = torch.zeros(2, n, dtype=torch.int8, device=dev)
+        # Consecutive steps a SEATED bulb has read axial past release_threshold (issue #171,
+        # wall-mount finding). See _advance's release-debounce comment.
+        self._release_streak = torch.zeros(2, n, dtype=torch.int32, device=dev)
         # Envs whose spawn phase has not been read off the scene yet. See _resolve_spawn_phase.
         self._pending = torch.zeros(n, dtype=torch.bool, device=dev)
         self._axis_l = torch.tensor(SOCKET_SEAT_AXIS, device=dev).expand(n, 3)
@@ -298,6 +356,7 @@ class bulb_attachment(ManagerTermBase):
         # `_resolve_spawn_phase` on the first step -- see that method for why the decision
         # cannot be made here.
         self._phase[:, ids] = _FREE
+        self._release_streak[:, ids] = 0
         self._pending[ids] = True
 
     def __call__(
@@ -308,6 +367,7 @@ class bulb_attachment(ManagerTermBase):
         tilt_tolerance: float = 0.2,
         seat_tolerance: float = 0.004,
         release_threshold: float = 0.008,
+        release_debounce_steps: int = 3,
         hold_force: float = 1.5,
         bore_depth: float = 0.025,
         spring_d: float = 1.5,
@@ -315,9 +375,9 @@ class bulb_attachment(ManagerTermBase):
         lateral_k: float = 5.0,
         lateral_d: float = 0.85,
         max_lateral_force: float = 1.0,
-        tilt_k: float = 0.05,
-        tilt_d: float = 0.01,
-        max_torque: float = 0.05,
+        tilt_k: float = 0.25,
+        tilt_d: float = 0.003,
+        max_torque: float = 0.25,
     ) -> None:
         # Always operates on all envs: retention must be enforced every step, which the zero
         # interval guarantees.
@@ -353,6 +413,16 @@ class bulb_attachment(ManagerTermBase):
         #                        slope, past the stability bound; and 20 mm was 80% of the way
         #                        out of the bore anyway. 8 mm is still 2x seat_tolerance, so a
         #                        real withdrawal reads as one and a knock does not.
+        #   release_debounce_steps 3 (issue #171, wall-mount finding) = requires axial to read
+        #                        past release_threshold for 3 CONSECUTIVE steps (60 ms at the
+        #                        50 Hz control rate) before releasing, not just one. Real S11
+        #                        insert teleop (wall mount, seed 2, 4 episodes, 6 SEATED windows)
+        #                        found every release was a single-step axial jump coincident
+        #                        with a hand-contact transient (a grip spike up to 123 N, or the
+        #                        hand losing contact entirely) -- axial sat at 5-8 mm for the
+        #                        whole hold, then jumped past 8 mm in exactly one 20 ms step. A
+        #                        genuine withdrawal stays past threshold for many steps as the
+        #                        hand keeps pulling, so it is unaffected; a one-frame jolt is not.
         #
         # max_force 5 N is an overall safety clamp on the combined attraction + damping (the
         # attraction alone never exceeds hold_force by construction; this matters mainly for a
@@ -365,11 +435,17 @@ class bulb_attachment(ManagerTermBase):
         # over lateral position (real contact, not this term, is what actually has to bear a
         # sideways load). Kept as a plain spring-damper (not magnet-shaped): it is an assist to
         # real contact, not the primary retention the axial term's magnet law models.
-        # tilt_k/tilt_d/max_torque have no inertia measurement behind them (unlike the axial
-        # term's mass-derived critical damping); they are rough starting points at the same
-        # order of magnitude as diagnose_contact_axial.py's own orientation-hold trial
-        # (k_p=0.02, k_d=0.002) shown to function as a soft aligner there, needing the same
-        # real-teleop retuning as every other gain in this term.
+        # tilt_k/max_torque 0.25 N*m/0.25 N*m, tilt_d 0.003 (issue #171, wall-mount finding,
+        # up from 0.05/0.05/0.01): the original values were rough starting points, and real S11
+        # insert teleop (wall mount) found them too weak to matter -- see the module docstring
+        # for scripts/verify_wall_hold.py's measurements. Not sized by a closed-form margin like
+        # the axial term (real bore contact dominates the tilt dynamics far more than it does the
+        # axial ones, so this was tuned empirically against that script rather than derived), but
+        # bounded the same way: 0.25 stays under the semi-implicit slope ceiling I_perp/step_dt^2
+        # (~0.16-2.56 N*m/rad depending on whether the control or physics step is the relevant
+        # one; 0.25 sits inside both readings tried) and tilt_d 0.003 is near I_perp/step_dt
+        # (~0.0032), the same impulse-vs-momentum cap the axial spring_d respects, using
+        # I_perp ~= 6.4e-5 kg*m^2 (the tilt-plane principal moments, see the twist finding below).
         #
         # There is deliberately NO twist gain here (issue #171, third finding). A 0.5 N*m
         # Coulomb twist friction used to sit alongside these, and it turned out to BE the
@@ -390,6 +466,7 @@ class bulb_attachment(ManagerTermBase):
             tilt_tolerance=tilt_tolerance,
             seat_tolerance=seat_tolerance,
             release_threshold=release_threshold,
+            release_debounce_steps=release_debounce_steps,
             hold_force=hold_force,
             bore_depth=bore_depth,
             spring_d=spring_d,
@@ -440,6 +517,7 @@ class bulb_attachment(ManagerTermBase):
         tilt_tolerance: float,
         seat_tolerance: float,
         release_threshold: float,
+        release_debounce_steps: int,
         hold_force: float,
         bore_depth: float,
         spring_d: float,
@@ -476,7 +554,24 @@ class bulb_attachment(ManagerTermBase):
         # A real, physics-driven excursion past the seat -- not a force threshold -- releases
         # it. This is deliberately readable straight off real contact: nothing here overwrites
         # position, so `axial` is exactly what the solver produced.
-        release = was_seated & (axial.abs() > release_threshold)
+        #
+        # DEBOUNCED (issue #171, wall-mount finding): real teleop evidence found every observed
+        # release was a single control-STEP axial jump coincident with a hand-contact transient
+        # (a grip spike or the hand losing contact entirely as it opened), not a sustained
+        # withdrawal -- see the module docstring. The module's own long-standing description of
+        # release_threshold as "a deliberate, sustained pull... so a light knock does not release
+        # it" was aspirational until now: the check was a bare single-frame position test, so any
+        # one-step contact jolt big enough already released it, exactly as those bags show.
+        # `_release_streak` counts CONSECUTIVE steps a SEATED bulb has read past threshold and
+        # only releases once that streak reaches `release_debounce_steps`; it resets to 0 the
+        # instant a step reads back under threshold, so a momentary jolt cannot accumulate across
+        # separate excursions. A genuine withdrawal stays past threshold for many steps as the
+        # hand keeps pulling, so it still releases -- just `release_debounce_steps` steps later.
+        streak = self._release_streak[row]
+        over_threshold = was_seated & (axial.abs() > release_threshold)
+        streak.copy_(torch.where(over_threshold, streak + 1, torch.zeros_like(streak)))
+        release = over_threshold & (streak >= release_debounce_steps)
+        streak[release] = 0
 
         phase[seat_now] = _SEATED
         phase[release] = _FREE

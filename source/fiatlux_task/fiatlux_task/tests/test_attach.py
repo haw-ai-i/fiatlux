@@ -132,6 +132,7 @@ SEAT_TOLERANCE = 0.004  # the __call__ default
 RADIAL_TOLERANCE = 0.015
 TILT_TOLERANCE = 0.2
 RELEASE_THRESHOLD = 0.008
+RELEASE_DEBOUNCE_STEPS = 3
 HOLD_FORCE = 1.5
 BORE_DEPTH = 0.025
 SPRING_D = 1.5
@@ -142,9 +143,9 @@ STEP_DT = 0.02  # the 50 Hz control rate the gain bounds below are derived again
 LATERAL_K = 5.0
 LATERAL_D = 0.85
 MAX_LATERAL_FORCE = 1.0
-TILT_K = 0.05
-TILT_D = 0.01
-MAX_TORQUE = 0.05
+TILT_K = 0.25
+TILT_D = 0.003
+MAX_TORQUE = 0.25
 # No TWIST_* constants: there is no twist term. See test_no_twist_torque_at_any_spin_rate.
 
 
@@ -272,7 +273,9 @@ def test_engage_requires_alignment_not_just_axial_proximity():
     # still occupies it.
     old = env.scene["old_bulb"]
     old.data.root_pos_w = torch.tensor([[0.0, 0.0, 1.0]])  # withdrawn along the seat axis
-    _step(mgr, env)
+    # release_debounce_steps=1 here: this test isolates the ALIGNMENT gate, not the release
+    # debounce (test_release_requires_consecutive_over_threshold_steps covers that on its own).
+    _step(mgr, env, release_debounce_steps=1)
     assert mgr._phase[OLD, 0] == FREE
 
     fresh = env.scene["fresh_bulb"]
@@ -539,14 +542,39 @@ def test_axial_force_saturates_at_max_force():
 def test_release_past_threshold_frees_the_bulb_and_zeroes_the_force():
     """A real, physics-driven excursion past ``release_threshold`` releases the bulb -- not a
     force reading, a displacement one, so it is directly legible off real contact with nothing
-    overwritten. The very next step applies zero force, since nothing is SEATED anymore."""
+    overwritten -- once it has persisted for ``release_debounce_steps`` consecutive steps (issue
+    #171: real teleop found every observed release was a single-step contact jolt, not a
+    sustained pull, so a bare one-frame test no longer matches what release means here). The
+    step after release applies zero force, since nothing is SEATED anymore."""
     env, mgr = _make_env()
     _step(mgr, env)
     bulb = env.scene["old_bulb"]
     bulb.data.root_pos_w = torch.tensor([[0.0, 0.0, RELEASE_THRESHOLD + 0.001]])
-    _step(mgr, env)
+    for _ in range(RELEASE_DEBOUNCE_STEPS - 1):
+        _step(mgr, env)
+        assert mgr._phase[OLD, 0] == SEATED  # still within the debounce window
+    _step(mgr, env)  # the Nth consecutive over-threshold step
     assert mgr._phase[OLD, 0] == FREE
     assert torch.allclose(bulb.last_force, torch.zeros_like(bulb.last_force))
+
+
+def test_release_requires_consecutive_over_threshold_steps_not_one_frame():
+    """A single-step excursion past ``release_threshold`` that reads back under it the very next
+    step does NOT release the bulb -- issue #171's fifth finding: real S11 insert teleop showed
+    every release was exactly this shape (one contact-jolt frame), which the bare pre-debounce
+    check could not tell apart from a genuine sustained withdrawal. This is the "light knock"
+    the module docstring always claimed ``release_threshold`` alone would resist but did not,
+    until the debounce counter existed to actually enforce it."""
+    env, mgr = _make_env()
+    _step(mgr, env)
+    bulb = env.scene["old_bulb"]
+    for _ in range(5):  # several separate one-frame jolts, well past RELEASE_DEBOUNCE_STEPS calls
+        bulb.data.root_pos_w = torch.tensor([[0.0, 0.0, RELEASE_THRESHOLD + 0.001]])
+        _step(mgr, env)
+        assert mgr._phase[OLD, 0] == SEATED  # the jolt frame itself never releases on its own
+        bulb.data.root_pos_w = torch.tensor([[0.0, 0.0, 0.0]])  # back at the seat the next frame
+        _step(mgr, env)
+        assert mgr._phase[OLD, 0] == SEATED  # streak reset -- no accumulation across jolts
 
 
 def test_small_resting_sag_does_not_self_release():
