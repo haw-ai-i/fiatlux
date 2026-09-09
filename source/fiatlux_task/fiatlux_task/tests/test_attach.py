@@ -11,10 +11,12 @@ overwrite enforced. That mechanism is gone: two independent diagnostics found re
 contact geometry blocked both the release-twist and the axial-insertion motions it assumed
 were unobstructed (see ``plans/bayonet-force-based-attachment.md``), and fixing that geometry
 made the whole apparatus unnecessary -- with real collision enabled, the socket confines the
-bulb laterally and angularly on its own. What replaced it is a continuous axial spring-damper
-FORCE, applied alongside (never instead of) real contact, plus a much smaller FREE/SEATED
-admission gate. These tests cover that: the spring's sign and saturation, the seat/release
-gates, and that nothing here ever falls back to a pose/velocity overwrite.
+bulb laterally and angularly on its own. What replaced it is a continuous axial MAGNET force
+pulling the plug to the bottom of the bore, applied alongside (never instead of) real contact,
+plus a much smaller FREE/SEATED admission gate. These tests cover that: the magnet's shape
+(strongest at the bottom, never outward-pushing), that it beats gravity across the whole range
+it has to hold and that its gains respect the control rate's stability bounds, the seat/release
+and in-the-bore gates, and that nothing here ever falls back to a pose/velocity overwrite.
 
 The state machine is pure torch, but ``attach.py`` imports Isaac Lab symbols, so the module is
 loaded standalone: ``isaaclab`` is stubbed (with real wxyz quaternion math) when it is not
@@ -129,14 +131,14 @@ _IDENTITY = (1.0, 0.0, 0.0, 0.0)
 SEAT_TOLERANCE = 0.004  # the __call__ default
 RADIAL_TOLERANCE = 0.015
 TILT_TOLERANCE = 0.2
-RELEASE_THRESHOLD = 0.02
-HOLD_FORCE = 0.5
-HOLD_RANGE = 0.01
-SPRING_D = 2.65
+RELEASE_THRESHOLD = 0.008
+HOLD_FORCE = 1.5
+BORE_DEPTH = 0.025
+SPRING_D = 1.5
 MAX_FORCE = 5.0
 BULB_MASS = 0.035
 GRAVITY = 9.81
-DEADBAND = SEAT_TOLERANCE / 4.0  # matches attach.py's internal derivation
+STEP_DT = 0.02  # the 50 Hz control rate the gain bounds below are derived against
 LATERAL_K = 5.0
 LATERAL_D = 0.85
 MAX_LATERAL_FORCE = 1.0
@@ -296,60 +298,125 @@ def test_engage_requires_socket_empty():
     assert mgr._phase[OLD, 0] == SEATED
 
 
-def test_seated_bulb_spring_resists_small_outward_displacement():
-    """A small axial displacement from the seat produces a restoring force back toward the
-    seat -- large near it, decaying with distance (issue #171's magnet-shaped law, not a
-    spring's linear one) -- and does not release."""
-    import math
-
+def test_seated_bulb_magnet_pulls_inward_at_a_small_displacement():
+    """A small axial displacement from the seat produces an inward attraction, of exactly the
+    magnitude the linear falloff predicts, and does not release (issue #171)."""
     env, mgr = _make_env()
     _step(mgr, env)  # seats the old bulb
     bulb = env.scene["old_bulb"]
-    bulb.data.root_pos_w = torch.tensor([[0.0, 0.0, 0.010]])  # 10 mm out, past seat_tolerance
+    bulb.data.root_pos_w = torch.tensor([[0.0, 0.0, 0.005]])  # 5 mm out, past seat_tolerance
     _step(mgr, env)
     assert mgr._phase[OLD, 0] == SEATED
-    # axis is +z (SOCKET_SEAT_AXIS in the real module is (0,0,1)); force should pull -z.
+    # axis is +z (SOCKET_SEAT_AXIS in the real module is (0,0,1)); attraction pulls -z.
     applied_z = bulb.last_force[0, 0, 2].item()
     assert applied_z < 0.0
     assert abs(applied_z) <= MAX_FORCE + 1e-6
-    direction = math.tanh(0.010 / DEADBAND)
-    magnitude = HOLD_FORCE / (1.0 + 0.010 / HOLD_RANGE)
-    expected = -direction * magnitude
+    expected = -HOLD_FORCE * (1.0 - 0.005 / BORE_DEPTH)
     assert abs(applied_z - expected) < 1e-6  # zero velocity, so damping contributes nothing
 
 
-def test_axial_force_peaks_near_the_seat_and_decays_with_distance():
-    """The defining property of a magnet-shaped law, distinguishing it from a spring's (issue
-    #171): magnitude is LARGEST close to the seat and shrinks monotonically as the bulb moves
-    farther away, the opposite of a spring's weakest-near-the-seat, growing-with-distance
-    shape. (Not sampled at EXACTLY the seat: like the old spring, the net force there is
-    exactly 0 by construction -- no error, nothing to correct -- so "near" starts just past the
-    smoothing deadband, where the direction term has already settled to its full sign.)"""
+def test_magnet_is_strongest_at_the_bore_bottom_and_fades_outward():
+    """The defining shape of a magnet sunk in the bore bottom (issue #171): STRONGEST exactly
+    at the bottom and monotonically weaker as the plug withdraws -- the opposite of a spring,
+    which is weakest at the seat and grows with distance.
+
+    Sampled AT the seat too, unlike the previous signed version: this law has no direction flip
+    at zero, so the force there is the full peak rather than zero by construction."""
     env, mgr = _make_env()
     _step(mgr, env)  # seats the old bulb
     bulb = env.scene["old_bulb"]
     magnitudes = []
-    for offset in (0.002, 0.005, 0.010, 0.015):
+    for offset in (0.0, 0.002, 0.004, 0.006, 0.008):
         bulb.data.root_pos_w = torch.tensor([[0.0, 0.0, offset]])
         _step(mgr, env)
-        assert mgr._phase[OLD, 0] == SEATED  # all within release_threshold (0.02)
         magnitudes.append(abs(bulb.last_force[0, 0, 2].item()))
-    assert magnitudes == sorted(magnitudes, reverse=True)  # strictly non-increasing with offset
-    assert magnitudes[0] > magnitudes[-1]  # genuinely decayed, not flat
+    assert magnitudes[0] == max(magnitudes)  # strongest at the bore bottom
+    assert abs(magnitudes[0] - HOLD_FORCE) < 1e-6  # and that peak IS hold_force
+    assert magnitudes == sorted(magnitudes, reverse=True)  # fades monotonically outward
+    assert magnitudes[-1] < magnitudes[0]  # genuinely faded, not flat
 
 
-def test_worst_case_gravity_sag_has_margin_before_release():
-    """Sanity check on the tuned constants themselves, not a simulated scenario (the fake
-    harness doesn't integrate dynamics): the worst-case steady-state sag under the bulb's own
-    weight -- the magnet-shaped axial law alone holding it, as at an inverted ceiling mount
-    where gravity acts entirely along the release direction -- must sit well clear of
-    release_threshold, or a resting bulb sags into self-release on its own with no operator or
-    contact (issue #171). Equilibrium solves hold_force/(1 + sag/hold_range) = weight. At the
-    original linear spring's 20 N/m gain this margin was razor-thin (~1.7cm sag vs. a 2cm
-    threshold) and a ceiling-seated bulb did exactly that."""
+def test_magnet_never_pushes_outward_however_deep_the_plug_sits():
+    """Being pressed PAST the seat reference must not weaken or reverse the attraction.
+
+    A magnet has no outward-pushing side: what stops the plug going deeper is contact bottoming
+    it out, not the field turning around. This is also why there is no sign flip left to
+    chatter across -- the failure mode that made the twist term below eject the bulb.
+
+    Stops at ``release_threshold``: release is ``|axial| > release_threshold``, symmetric, so
+    an offset deeper than that reads as a release and zeroes the whole wrench. That symmetry is
+    moot in practice (contact bottoms the plug out ~2 mm past the seat, nowhere near 8 mm
+    deeper) and is left as it was; it just means this sweep has nothing to say beyond it."""
+    env, mgr = _make_env()
+    _step(mgr, env)
+    bulb = env.scene["old_bulb"]
+    for offset in (0.0, -0.001, -0.004, -0.007):  # strictly inside release_threshold (8 mm)
+        bulb.data.root_pos_w = torch.tensor([[0.0, 0.0, offset]])
+        _step(mgr, env)
+        applied_z = bulb.last_force[0, 0, 2].item()
+        assert applied_z < 0.0, f"attraction reversed at axial={offset}"
+        assert abs(applied_z - (-HOLD_FORCE)) < 1e-6  # full strength, not tapered by depth
+
+
+def test_magnet_beats_gravity_everywhere_it_has_to_hold():
+    """The property the previous version lacked, checked on the constants themselves (the fake
+    harness integrates no dynamics).
+
+    A magnitude that DECAYS with distance has an UNSTABLE balance point against constant
+    gravity: inside it the bulb recovers, past it gravity wins and it accelerates out. So the
+    requirement is not "the sag is small" but "the attraction exceeds the weight across the
+    whole travel where the bulb is supposed to be held" -- otherwise there is a distance past
+    which nothing catches it. The shipped 0.5 N / 0.01 m magnet crossed gravity at 4.6 mm with
+    a peak of only 1.46x weight, and a ceiling-mounted bulb went over that cliff and fell out
+    in 0.64 s; the docstring of the day mistook the 4.6 mm crossing for a resting sag."""
     weight = BULB_MASS * GRAVITY
-    worst_case_sag = HOLD_RANGE * (HOLD_FORCE / weight - 1.0)
-    assert worst_case_sag < RELEASE_THRESHOLD * 0.5  # at least 2x margin before any transient
+    assert HOLD_FORCE / weight > 4.0  # firm breakaway at the bore bottom
+    # Attraction at the release threshold -- the far end of the held range -- with real margin.
+    at_release = HOLD_FORCE * (1.0 - RELEASE_THRESHOLD / BORE_DEPTH)
+    assert at_release / weight > 2.0
+    # And the gravity crossing itself sits far outside the held range, so gravity alone cannot
+    # walk the bulb out to release, let alone out of the bore.
+    crossing = BORE_DEPTH * (1.0 - weight / HOLD_FORCE)
+    assert crossing / RELEASE_THRESHOLD > 2.0
+
+
+def test_axial_gains_respect_the_solver_stability_bounds():
+    """Both axial gains are bounded by the 50 Hz control rate, not chosen freely (issue #171).
+
+    The falloff slope is a stiffness and must stay under the semi-implicit bound
+    ``mass/step_dt^2``. ``spring_d`` is bounded more tightly, by ``mass/step_dt``: one control
+    step of damping must not be able to reverse the velocity it opposes. That second rule is
+    the lesson of the twist-friction bug -- an impulse larger than the momentum it opposes does
+    not dissipate, it chatters -- so it is asserted here rather than left to critical-damping
+    arithmetic, which would allow 2.90 and be wrong."""
+    stiffness = HOLD_FORCE / BORE_DEPTH
+    assert stiffness < BULB_MASS / STEP_DT**2
+    assert SPRING_D <= BULB_MASS / STEP_DT
+    # Deliberately under-damped for the slope above; real contact supplies the rest.
+    critically_damped = 2.0 * (stiffness * BULB_MASS) ** 0.5
+    assert SPRING_D / critically_damped < 1.0
+
+
+def test_wrench_is_zero_once_the_plug_has_left_the_bore():
+    """The whole wrench is gated on the plug being IN the bore, not merely SEATED (issue #171).
+
+    A magnet in the bore bottom acts on a plug inside that bore and on nothing else. Normally
+    the phase gate fires first (release_threshold 8 mm is far inside bore_depth 25 mm), so this
+    is exercised with an explicit release_threshold override deeper than the bore -- the
+    misconfiguration the gate exists to contain."""
+    env, mgr = _make_env()
+    _step(mgr, env)
+    bulb = env.scene["old_bulb"]
+    # Past the bore mouth, but told not to release, so only the geometric gate can zero it.
+    bulb.data.root_pos_w = torch.tensor([[0.0, 0.0, BORE_DEPTH + 0.001]])
+    _step(mgr, env, release_threshold=BORE_DEPTH + 0.01)
+    assert mgr._phase[OLD, 0] == SEATED  # still nominally seated...
+    assert torch.count_nonzero(bulb.last_force) == 0  # ...but out of the bore, so no force
+    assert torch.count_nonzero(bulb.last_torque) == 0
+    # Radially outside the bore is gated the same way, at the seat depth.
+    bulb.data.root_pos_w = torch.tensor([[0.0, RADIAL_TOLERANCE + 0.001, 0.0]])
+    _step(mgr, env)
+    assert torch.count_nonzero(bulb.last_force) == 0
 
 
 def test_seated_bulb_lateral_spring_resists_lateral_displacement():
@@ -455,10 +522,9 @@ def test_tilt_damping_ignores_twist_so_it_keeps_its_budget():
 
 def test_axial_force_saturates_at_max_force():
     """The commanded force is clamped, not left to grow without bound, whatever drives it
-    there. Unlike the old linear spring, the magnet-shaped position term alone can never
-    approach max_force -- it's bounded by hold_force (0.5 N vs. a 5 N cap) by construction, at
-    any displacement -- so this drives saturation through a large velocity (the damping term)
-    instead, exercising the same clamp from the other side."""
+    there. The attraction alone can never approach max_force -- it's bounded by hold_force
+    (1.5 N vs. a 5 N cap) by construction, at any depth -- so this drives saturation through a
+    large velocity (the damping term) instead, exercising the same clamp from the other side."""
     env, mgr = _make_env()
     _step(mgr, env)
     bulb = env.scene["old_bulb"]
@@ -484,9 +550,9 @@ def test_release_past_threshold_frees_the_bulb_and_zeroes_the_force():
 
 
 def test_small_resting_sag_does_not_self_release():
-    """release_threshold (2 cm) sits comfortably above what an unheld bulb sags under gravity
-    at rest, so a bulb the spring is actively holding does not flicker in and out of SEATED
-    from ordinary settling."""
+    """release_threshold (8 mm) sits comfortably above what a held bulb sits at once contact
+    has bottomed it out (~2 mm in the real sim), so a bulb the magnet is actively holding does
+    not flicker in and out of SEATED from ordinary settling."""
     env, mgr = _make_env()
     _step(mgr, env)
     bulb = env.scene["old_bulb"]

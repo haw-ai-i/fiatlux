@@ -30,24 +30,20 @@ step, not a rotating body. So this checks BOTH magnitude and the alternation rat
 merely reduced the amplitude while still chattering every step would not have addressed the
 cause.
 
-**Expect a FAIL at default gains, for a DIFFERENT reason -- read the metrics, not the verdict.**
-As of dropping the twist torque, this script's three criteria split:
+**History of this script's own verdict**, since it is the record of two separate fixes:
 
-- ``no_chatter`` and the spin magnitudes PASS. Sign-flip fraction 0.16 vs the bag's 0.98,
-  peak 11.6 rad/s vs 22.9. Held artificially seated (``--hold_force 2.0 --hold_range 0.04``)
-  so there is a long window to judge, it is emphatic: 750/750 steps seated over 15s, peak
-  |twist| 0.71 rad/s, mean 0.09, and 0.02 over the final second -- i.e. it decays to nothing
-  and stays there, where the bag sustained 15.23 indefinitely. The reported spin is gone.
-- ``held`` FAILS: the bulb leaves this ceiling seat at t=0.64s (the bag ejected at 2.88s).
-  That is a SEPARATE, pre-existing defect in the axial term, not a consequence of removing the
-  twist one -- the magnet-shaped law's magnitude DECREASES with distance, so its balance point
-  against constant gravity is UNSTABLE: at ``hold_force=0.5``/``hold_range=0.01`` the crossing
-  sits at 4.6 mm (peak only 1.46x the bulb's 0.343 N weight), and past it gravity wins and the
-  bulb accelerates out. The module docstring's "worst-case sag ~4.6mm against a 20mm threshold"
-  reads that number as a resting point; it is a cliff edge. Widening the basin (peak/weight
-  5.8, crossing at 193 mm, same 50 N/m local stiffness) holds it indefinitely, which is what
-  the ``--hold_force``/``--hold_range`` overrides above demonstrate -- they are a diagnosis of
-  that defect, not a proposed fix for it.
+- With the twist friction still in (the bags' own code): every criterion failed. Sign-flip
+  fraction 0.98, mean |twist| 15.23 rad/s sustained, ejected at t=2.88s.
+- Twist friction dropped, old axial law: the spin criteria passed (sign-flip 0.16, peak 11.6
+  rad/s) but ``held`` still failed -- the bulb left the seat at t=0.64s, on a SEPARATE defect
+  in the axial term, whose decaying magnitude gave it an unstable balance point against
+  gravity 4.6 mm out. Forcing a wider basin via the overrides below made the spin verdict
+  emphatic (750/750 steps seated over 15s, peak |twist| 0.71, mean 0.09, 0.02 over the final
+  second) and confirmed the two defects were independent.
+- Both fixed (current): expected to PASS outright at default gains.
+
+The ``--hold_force``/``--bore_depth`` overrides are kept for exactly the job they did above --
+separating "does it spin" from "does it stay in" when one of the two is broken.
 
 Run via ./pyrun (repo root), not a bare .venv/bin/python -- see verify_twist_damping.py's
 docstring for why.
@@ -55,7 +51,7 @@ docstring for why.
 Example
 -------
     ./pyrun scripts/verify_no_twist_spin.py --headless
-    ./pyrun scripts/verify_no_twist_spin.py --headless --seconds 15 --hold_force 2.0 --hold_range 0.04
+    ./pyrun scripts/verify_no_twist_spin.py --headless --seconds 15
 """
 
 """Launch Isaac Sim Simulator first."""
@@ -86,19 +82,28 @@ parser.add_argument(
     help="Report even if the reconstructed start does not match the bag. For diagnosing the setup only.",
 )
 parser.add_argument(
+    "--pull_n",
+    type=float,
+    default=1.5,
+    help="After the hold window, apply this steady outward force (N) and check the bulb still "
+    "comes OUT -- a retention force that cannot be undone has broken the task. Needs to exceed "
+    "the magnet's peak (hold_force) less the weight already pulling outward at a ceiling mount. "
+    "0 skips the check.",
+)
+parser.add_argument(
     "--hold_force",
     type=float,
     default=None,
-    help="Override the axial hold_force (N). Needed to answer the SPIN question separately from "
-    "the axial-hold one: at the shipped 0.5 N the bulb leaves this ceiling seat in ~0.6s, which "
-    "is too short a window to call a spin persistent or not. Pair with --hold_range.",
+    help="Override the axial magnet's peak attraction (N), to answer the SPIN question "
+    "separately from the axial-hold one -- if the bulb leaves the seat too fast there is no "
+    "window in which a spin can be called persistent. Pair with --bore_depth.",
 )
 parser.add_argument(
-    "--hold_range",
+    "--bore_depth",
     type=float,
     default=None,
-    help="Override the axial hold_range (m). Raise it alongside --hold_force to keep the local "
-    "stiffness (hold_force/hold_range) under the semi-implicit bound mass/step_dt^2 (~88 N/m).",
+    help="Override the axial magnet's range (m). Raise it alongside --hold_force to keep the "
+    "falloff slope (hold_force/bore_depth) under the semi-implicit bound mass/step_dt^2 (~88 N/m).",
 )
 AppLauncher.add_app_launcher_args(parser)
 args_cli = parser.parse_args()
@@ -115,6 +120,7 @@ simulation_app = app_launcher.app
 """Everything else follows."""
 
 import importlib
+import inspect
 import sys
 
 import fiatlux_task.tasks  # noqa: F401  -- registers the FIATLUX benchmark environments
@@ -273,28 +279,30 @@ def main() -> int:
         return 1
     probe = SeatProbe(env)
 
-    overrides = {k: v for k, v in (("hold_force", args_cli.hold_force), ("hold_range", args_cli.hold_range)) if v}
+    term_params = env.event_manager.get_term_cfg("bulb_attachment").params
+    overrides = {k: v for k, v in (("hold_force", args_cli.hold_force), ("bore_depth", args_cli.bore_depth)) if v}
+    term_params.update(overrides)
+    weight = 0.035 * 9.81
+    defaults = inspect.signature(task_attach.bulb_attachment.__call__).parameters
+    live = {k: term_params.get(k, defaults[k].default) for k in ("hold_force", "bore_depth", "release_threshold")}
+    hf, bd, rt = live["hold_force"], live["bore_depth"], live["release_threshold"]
+    print(f"\n=== AXIAL MAGNET {'(OVERRIDDEN: ' + str(overrides) + ')' if overrides else '(defaults)'} ===", flush=True)
+    print(f"  hold_force={hf} N  bore_depth={bd} m  release_threshold={rt} m", flush=True)
+    # The attraction fades with distance while gravity does not, so the number that decides
+    # whether it HOLDS is where the two cross relative to the range it has to hold over -- not
+    # the peak, and not a steady-state sag (there is no stable one for a decaying law).
+    print(
+        f"  peak/weight={hf / weight:.2f}  at release_threshold={hf * max(0.0, 1 - rt / bd) / weight:.2f}x weight  "
+        f"gravity crossing at {1000 * bd * (1 - weight / hf):.1f} mm  "
+        f"slope={hf / bd:.0f} N/m (bound mass/step_dt^2 ~= {0.035 / env.step_dt**2:.0f} N/m)",
+        flush=True,
+    )
     if overrides:
-        env.event_manager.get_term_cfg("bulb_attachment").params.update(overrides)
-        weight = 0.035 * 9.81
-        hf, hr = args_cli.hold_force, args_cli.hold_range
-        print(f"\n=== AXIAL HOLD OVERRIDDEN: {overrides} ===", flush=True)
         print(
-            "  Isolating the spin question from the axial-hold one. NOT a proposed fix -- it only\n"
-            "  keeps the bulb seated long enough for 'persistent spin' to mean something.",
+            "  Overridden to isolate the spin question from the axial-hold one -- not the shipped\n"
+            "  configuration. See this script's docstring for when that was necessary.",
             flush=True,
         )
-        if hf and hr:
-            # This law's magnitude DECREASES with distance, so its equilibrium against constant
-            # gravity is unstable: inside it the bulb recovers, outside it accelerates away. The
-            # useful number is therefore where that crossing sits relative to release_threshold.
-            print(
-                f"  peak/weight={hf / weight:.2f}  gravity crossing at "
-                f"{1000 * hr * (hf / weight - 1):.1f} mm (release_threshold 20 mm)  "
-                f"local stiffness={hf / hr:.0f} N/m (bound mass/step_dt^2 ~= "
-                f"{0.035 / env.step_dt**2:.0f} N/m)",
-                flush=True,
-            )
 
     # The preset spawns the old bulb seated; the manager reads that on its first step. Nothing
     # here writes pose or velocity -- unlike the earlier verify_* scripts, the start state is
@@ -315,7 +323,7 @@ def main() -> int:
         return 1
 
     steps = int(round(args_cli.seconds / env.step_dt))
-    release_threshold = 0.02  # attach.py's default; not exposed on the manager
+    release_threshold = rt  # read off the live term params above, not hardcoded
     twists, trace = [], []
     max_abs_axial = max_abs_twist = max_tilt = 0.0
     left_seat_at = None
@@ -368,11 +376,67 @@ def main() -> int:
         print(f"  {label:28s} {bag_value:>16s} {here:>16s}", flush=True)
     print(f"  trace (t, axial, twist, tilt): {trace}", flush=True)
 
-    verdict = "PASS" if (held and quiet and no_chatter) else "FAIL"
+    # A retention mechanism that holds but cannot be undone has broken the task, whose entire
+    # point is taking the bulb OUT. So after the hold window, pull: apply a steady outward force
+    # (the axial component of what a gripping hand would supply) and check the bulb actually
+    # releases, and at roughly the force the magnet's peak predicts.
+    removable = None
+    if held and args_cli.pull_n > 0.0:
+        weight_axial = -0.035 * 9.81 * float(probe.axis_w()[0, 2].item())  # +ve when gravity helps
+        pull = torch.zeros((1, 1, 3), device=env.device)
+        pull[0, 0] = args_cli.pull_n * probe.axis_w()[0]  # outward, along the seat axis
+
+        # The pull has to be ADDED to the retention wrench, not written over it. The manager
+        # sets the bulb's external wrench in an interval event at the END of every env.step, so
+        # a plain write here would simply be replaced -- measuring the pull against nothing, and
+        # "releasing" instantly for any pull at all. Instead, shadow the setter on the instance
+        # (a normal method call, so an instance attribute wins) to capture what the manager
+        # asked for, and re-issue that plus the pull before each step. The retention term is
+        # then one control step stale, which at 20 ms of a quasi-static pull is immaterial.
+        captured: dict[str, torch.Tensor] = {}
+        real_setter = probe.bulb.set_external_force_and_torque
+
+        def capture(forces, torques, **kwargs):
+            captured["forces"], captured["torques"] = forces.clone(), torques.clone()
+            return real_setter(forces, torques, **kwargs)
+
+        probe.bulb.set_external_force_and_torque = capture
+        env.step(zero_action)  # prime `captured` with a genuine retention wrench
+
+        released_at = None
+        pull_steps = int(round(3.0 / env.step_dt))
+        for i in range(pull_steps):
+            real_setter(captured["forces"] + pull, captured["torques"], is_global=True)
+            env.step(zero_action)
+            if probe.read()["phase"] != task_attach._SEATED:
+                released_at = i * env.step_dt
+                break
+        probe.bulb.set_external_force_and_torque = real_setter
+        removable = released_at is not None
+        breakout = max(0.0, hf - weight_axial)
+        print(f"\n=== REMOVAL: {args_cli.pull_n:.2f} N steady outward pull, on top of retention ===", flush=True)
+        print(
+            f"  magnet peak {hf:.2f} N, less the {weight_axial:+.3f} N of weight already acting "
+            f"outward at this (ceiling) mount => ~{breakout:.2f} N breaks it out",
+            flush=True,
+        )
+        print(
+            f"  released={removable}"
+            + (f" at t={released_at:.2f}s after the pull began" if removable else " within 3.0s"),
+            flush=True,
+        )
+        if args_cli.pull_n < breakout:
+            print(
+                "  NOTE this pull is BELOW the predicted breakout, so not releasing is the "
+                "correct outcome -- the FAIL verdict below is the flag's fault, not the code's.",
+                flush=True,
+            )
+
+    verdict = "PASS" if (held and quiet and no_chatter and removable is not False) else "FAIL"
     print(
         f"\nRESULT {verdict} held={held} quiet={quiet} (mean |twist| last 1s {mean_tail:.2f} < "
         f"{MAX_MEAN_TWIST_LAST_SECOND}) no_chatter={no_chatter} (sign-flip fraction "
-        f"{flip_fraction:.2f} < {MAX_SIGN_FLIP_FRACTION})",
+        f"{flip_fraction:.2f} < {MAX_SIGN_FLIP_FRACTION}) removable={removable}",
         flush=True,
     )
     env.close()

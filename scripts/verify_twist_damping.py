@@ -52,6 +52,7 @@ simulation_app = app_launcher.app
 """Everything else follows."""
 
 import importlib
+import inspect
 import sys
 
 import fiatlux_task.tasks  # noqa: F401  -- registers the FIATLUX Gym environments
@@ -115,7 +116,10 @@ def main() -> int:
     seat_axis = torch.tensor(SOCKET_SEAT_AXIS, device=device)
     seat_offset = torch.tensor(SOCKET_SEAT_OFFSET, device=device)
     plug_offset = torch.tensor(BULB_PLUG_OFFSET, device=device)
-    release_threshold = 0.02  # matches attach.py's default; not exposed on the manager
+    # Read off attach.py's own signature rather than duplicated: the default changed from
+    # 0.02 to 0.008 (issue #171 -- the bore is only ~25mm deep, so 20mm was most of the way
+    # out), and a stale copy here would silently grade a fallen-out bulb as still held.
+    release_threshold = inspect.signature(task_attach.bulb_attachment.__call__).parameters["release_threshold"].default
 
     def seated_pose() -> tuple[torch.Tensor, torch.Tensor]:
         socket_quat = socket.data.root_quat_w[0]

@@ -113,22 +113,22 @@ from isaaclab_tasks.utils import parse_env_cfg
 # scale that term alone -- zeroing them removes exactly that term and nothing else, which is
 # what makes a gain override a faithful ablation rather than an approximation of one.
 #
-# Not listed because they are not terms: max_force / max_lateral_force / max_torque /
-# max_twist_torque are saturation clamps on the sums below, and deadband / twist_deadband are
-# smoothing widths on two terms' direction (a signum shape), not magnitudes of their own.
+# Not listed because they are not terms: max_force / max_lateral_force / max_torque are
+# saturation clamps on the sums below, and bore_depth is the magnet's range (it sets where the
+# attraction reaches zero, not how strong it is).
 TERMS = (
     (
         "axial_magnet",
         "force",
-        "-tanh(axial/deadband) * hold_force/(1+|axial|/hold_range) * seat_axis",
-        "Primary retention: peak pull-in at the seat, decaying with distance (magnet-shaped).",
+        "-hold_force * max(1 - max(axial,0)/bore_depth, 0) * seat_axis",
+        "Primary retention: an inward attraction, strongest at the bore bottom, zero at its mouth.",
         ("hold_force",),
     ),
     (
         "axial_damping",
         "force",
         "-spring_d * axial_rate * seat_axis",
-        "Viscous damping of motion along the seat axis; critically damps the magnet's local stiffness.",
+        "Viscous damping of motion along the seat axis; bounded by mass/step_dt, not critical damping.",
         ("spring_d",),
     ),
     (
@@ -159,14 +159,12 @@ TERMS = (
         "Viscous damping of the tilt (axis-perpendicular) part of angular velocity only.",
         ("tilt_d",),
     ),
-    (
-        "twist_friction",
-        "torque",
-        "-twist_friction * tanh(twist_rate/twist_deadband) * seat_axis",
-        "Coulomb-style friction opposing rotation ABOUT the seat axis. The 0ac1836 fix.",
-        ("twist_friction",),
-    ),
 )
+# There is no seventh, twist term any more. A 0.5 N*m Coulomb twist friction used to sit here
+# and this very sweep is what identified it as the CAUSE of the reported ceiling spin rather
+# than a fix for it (see mdp/attach.py's docstring); it was removed in the same change. Nothing
+# to ablate, so nothing to list -- but the sweep still reports every term's per-step authority
+# against the bulb's real inertia, which is the check that would have caught it up front.
 
 # One ablation per term, plus the per-axis groupings (a pair of terms can only be blamed jointly
 # if neither alone reproduces it) and the two controls: `baseline` unmodified, `zero_wrench` with
@@ -256,16 +254,18 @@ def print_authority(env, params: dict) -> None:
     )
     for label, peak, unit, denom, vel_unit in (
         ("axial_magnet", live["hold_force"], "N", mass, "m/s"),
+        ("axial_damping (at 1 m/s)", live["spring_d"], "N", mass, "m/s"),
         ("lateral_spring (clamp)", live["max_lateral_force"], "N", mass, "m/s"),
         ("tilt_alignment (clamp)", live["max_torque"], "N*m", inertia_twist, "rad/s"),
-        ("twist_friction", live["twist_friction"], "N*m", inertia_twist, "rad/s"),
     ):
         delta = peak / denom * dt
         print(f"  {label:24s} peak {peak:>7.4g} {unit:4s} -> delta_v {delta:>12.4g} {vel_unit} per step", flush=True)
     print(
-        f"  twist_friction reverses direction whenever |twist_rate| crosses twist_deadband="
-        f"{live['twist_deadband']} rad/s, so any delta_v above that per step cannot settle -- it "
-        "flips sign and re-accelerates the other way.",
+        "  A term whose delta_v per step exceeds the velocity it is meant to cancel does not\n"
+        "  dissipate -- it overshoots and reverses. That is what the removed twist friction did\n"
+        "  (0.5 N*m against 2.9e-05 kg*m^2 = 344 rad/s per step, sign-flipping at 0.1 rad/s), and\n"
+        "  it is why spring_d is capped at mass/step_dt = "
+        f"{mass / dt:.3g} rather than at critical damping.",
         flush=True,
     )
 
@@ -280,10 +280,10 @@ def print_force_inventory(params: dict) -> None:
         print(f"  {i}. [{kind:6s}] {name:16s} {formula}", flush=True)
         print(f"                              {why}", flush=True)
         print(f"                              ablated by: {shown}", flush=True)
-    clamps = ("max_force", "max_lateral_force", "max_torque", "max_twist_torque")
-    smoothing = ("seat_tolerance", "twist_deadband")
-    print(f"  clamps (not terms):   {' '.join(f'{c}={live.get(c)}' for c in clamps)}", flush=True)
-    print(f"  smoothing (not terms): {' '.join(f'{s}={live.get(s)}' for s in smoothing)}", flush=True)
+    clamps = ("max_force", "max_lateral_force", "max_torque")
+    gates = ("seat_tolerance", "release_threshold", "bore_depth", "radial_tolerance")
+    print(f"  clamps (not terms): {' '.join(f'{c}={live.get(c)}' for c in clamps)}", flush=True)
+    print(f"  gates  (not terms): {' '.join(f'{g}={live.get(g)}' for g in gates)}", flush=True)
     print(
         "  NOT from attach.py, always present: gravity; real PhysX bulb<->socket contact "
         "(normal + friction). No hand contact in this scenario (zero action).",

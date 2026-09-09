@@ -31,9 +31,11 @@ a plain round bore under gravity or a knock. This module supplies exactly that, 
 else. Two states per bulb, per env:
 
 - ``FREE`` -- unconstrained rigid body; physics owns it entirely.
-- ``SEATED`` -- held by a continuous spring-damper WRENCH (world-frame, applied through
+- ``SEATED`` -- held by a continuous WRENCH (world-frame, applied through
   ``set_external_force_and_torque``), not a pose or velocity overwrite: a full-strength axial
-  term plus a deliberately much gentler lateral + tilt centering term (issue #171).
+  magnet pulling the plug to the bottom of the bore, plus a deliberately much gentler lateral
+  + tilt centering term (issue #171). The wrench is gated on being IN THE BORE as well as
+  SEATED -- a magnet in the bore bottom acts on a plug inside that bore and nothing else.
 
 ``FREE -> SEATED`` fires on reaching the seat (within ``seat_tolerance``) while reasonably
 aligned (``radial_tolerance``, ``tilt_tolerance``) with the socket unoccupied by the other bulb.
@@ -61,44 +63,77 @@ for contact the way the old bayonet's pose overwrite did. Gated on ``seated_now`
 the axial term, so a FREE bulb (including one still mid-insertion) is completely unaffected --
 this cannot touch insertion dynamics at all.
 
-**Axial retention is a magnet, not a spring (issue #171, revised)**: a first pass held the
-bulb with a linear spring (``F = -k*axial``) -- weakest exactly at the seat, growing the
-farther out the bulb is pulled. That was flagged as physically backwards for what this is
-meant to model: a magnetic (or friction/detent) catch is STRONGEST at contact and falls off
-with distance, the opposite shape. The practical difference matters -- a spring makes removal
-progressively harder the more you pull (hardest right before release); a magnet gives a firm
-breakaway resistance right at full contact, then gets EASIER to keep separating once past it,
-and the force-to-zero jump at ``release_threshold`` is smaller since it was already decaying
-into that boundary rather than sitting near its peak.
+**Axial retention is a magnet at the bottom of the bore (issue #171, revised twice)**: this
+models a magnetic catch, so the force is an ATTRACTION toward the bottom of the bore --
+strongest there, fading as the plug withdraws, and absent once the plug is out of the bore
+altogether. Two earlier shapes were wrong, in opposite ways, and both are worth recording
+because the second failure is subtle.
 
-The axial force is now ``F(axial) = -tanh(axial / deadband) * hold_force / (1 + |axial| /
-hold_range) - spring_d * axial_rate``: magnitude peaks at ``hold_force`` exactly at the seat
-and decays toward 0 as ``|axial|`` grows past ``hold_range`` (the "half-strength distance");
-``tanh(.../deadband)`` supplies the sign smoothly (a plain ``sign(axial)`` would flip
-direction at full magnitude across an infinitesimal crossing of ``axial=0``, a chatter risk at
-rest -- ``deadband`` is far smaller than any displacement that matters, so this is
-indistinguishable from a sign flip everywhere except in a sub-millimeter dead zone at the
-seat). ``spring_d`` (still linear velocity damping, critically-damped for the LOCAL stiffness
-``hold_force/hold_range`` at ``axial=0``, the region where the bulb actually spends most of
-its time) is unchanged in form.
+A first pass used a linear spring (``F = -k*axial``): weakest exactly at the seat, growing the
+farther out you pull. Backwards for a magnet, which is strongest at contact. It also makes
+removal progressively harder the more you pull, where a magnet gives a firm breakaway right at
+contact and then gets easier.
 
-An earlier version of the ceiling-mount fix (before this model change) added a feedforward
-that cancelled gravity's axial component outright, making steady-state sag ~0 at every
-orientation. That was rejected on review: a passive mechanism doesn't know about gravity and
-null it out, so a bulb hanging against gravity SHOULD sag more than one resting with it, the
-same as any real spring/friction/magnet would -- that asymmetry is physically correct, not a
-bug. The magnet model's own gravity margin is sized the same way the spring's was: ``hold_force``
-and ``hold_range`` are chosen so the worst-case (ceiling, full weight, gravity entirely along
-the release direction) steady-state sag sits well clear of ``release_threshold``, while keeping
-the local stiffness at ``axial=0`` well under the documented semi-implicit stability ceiling
-(``~mass/step_dt^2``). That ceiling is also why ``hold_force`` ends up modest in absolute terms
-(a fraction of a newton, not the old spring's several-newton cap): a magnet-like law's peak
-force occurs exactly where its local stiffness is evaluated (``axial=0``), unlike a linear
-spring whose cap can sit far out along an otherwise-gentle-near-zero curve -- there is no way
-to get a strong peak AND fast falloff AND stay under the same stability ceiling at this
-control loop's rate (50 Hz) all at once; this trades some peak strength for real gravity
-margin and a stable, chatter-free hold. A table/wall-mounted bulb still sags less than a
-ceiling-mounted one under its own weight, correctly.
+The second pass fixed the shape but not the ARITHMETIC: ``F = -sign(axial) * hold_force /
+(1 + |axial|/hold_range)`` with ``hold_force = 0.5 N``, ``hold_range = 0.01 m``. Because that
+magnitude DECREASES with distance while gravity does not, its balance point against gravity is
+an UNSTABLE one -- inside it the bulb is pulled home, outside it gravity wins and the bulb
+accelerates out, with nothing to catch it. At those gains the peak was only 1.46x the bulb's
+0.343 N weight and the crossing sat at 4.6 mm. The version of this docstring that shipped it
+described that 4.6 mm as a "worst-case steady-state sag" sitting safely inside a 20 mm
+``release_threshold``; it is not a sag the bulb settles at, it is a cliff edge, and on a
+ceiling mount at the reported seed the bulb went over it and fell out in 0.64 s. A decaying
+attraction is only a retention mechanism if it stays above the load it has to hold across the
+whole travel where it is supposed to hold -- otherwise the shape is right and the mechanism
+still does not work.
+
+The law now is::
+
+    depth = max(axial, 0)  # outward travel only
+    falloff = max(1 - depth / bore_depth, 0)  # 1 at the bore bottom, 0 at the mouth
+    F = (-hold_force * falloff - spring_d * axial_rate) * seat_axis  # always inward
+
+Three properties, each load-bearing:
+
+- **Always inward, never signed.** The magnitude never changes direction, so unlike the old
+  ``sign()``/``tanh()`` construction there is no direction flip to chatter across, at the seat
+  or anywhere else. What stops the plug going deeper is real contact bottoming it out, exactly
+  as a real plug bottoms out on a real magnet's face -- the attraction is then balanced by the
+  contact normal force, and the bulb sits at ``axial`` ~ 2 mm rather than at a force
+  equilibrium. ``depth`` clamps at 0 so being pressed slightly past the seat reference does not
+  weaken the hold.
+- **Above the load everywhere it has to hold.** ``hold_force`` (1.5 N) is 4.4x the bulb's
+  weight at the bore bottom and still 3.0x it at ``release_threshold`` (8 mm). Solving
+  ``F(a) = weight`` puts the gravity crossing at 19.3 mm -- 2.4x the release threshold -- so on
+  a ceiling mount gravity alone cannot walk the bulb out at all, let alone reach release. That
+  is the margin the previous version lacked.
+- **Zero outside the bore.** ``bore_depth`` (0.025 m) is measured, not chosen:
+  ``scripts/measure_bore_geometry.py`` profiles both meshes in this seat frame and finds the
+  socket's 20.2 mm throat spanning axial +29.1..+34.2 mm and the plug's guided body (r ~17.0
+  -17.5 mm) spanning +9..+35.6 mm when home, so the plug clears the throat after ~25 mm of
+  withdrawal. Past that there is no bore to be inside of and the whole wrench is zero. (With
+  ``release_threshold`` at 8 mm the phase gate always fires first, so this bound is a safety
+  net rather than an operating condition -- it binds only if someone configures a release
+  threshold deeper than the bore.)
+
+``release_threshold`` came down from 20 mm to 8 mm as part of this, and it had to: holding 2x
+the weight all the way out to 20 mm while still vanishing by the bore mouth at 25 mm needs a
+falloff slope of ~137 N/m, well past the semi-implicit stability ceiling ``mass/step_dt^2``
+(~88 N/m at 50 Hz). 20 mm was also 80% of the way out of a 25 mm bore -- by then the bulb has
+essentially left. At 8 mm the slope is 60 N/m (69% of the ceiling), and 8 mm is still twice
+``seat_tolerance``, so a genuine withdrawal reads as one and a knock does not.
+
+``spring_d`` (1.5 N*s/m) is capped by ``mass / step_dt`` = 1.75, NOT by critical damping for
+the 60 N/m slope (which would be 2.90): one control step of damping must not be able to
+reverse the velocity it opposes, which is the same impulse-vs-momentum rule the twist-friction
+bug below is a case study in. It is therefore deliberately under-damped on paper; real contact
+supplies the rest of the dissipation.
+
+Nothing here is gravity-aware or orientation-aware, on purpose: an earlier ceiling fix added a
+feedforward that cancelled gravity's axial component outright, and that was rejected on review
+because a passive mechanism doesn't know about gravity and null it out. The asymmetry is kept
+-- what changed is that the hold is now strong enough that the asymmetry shows up as a
+slightly different contact pressure rather than as the bulb leaving.
 
 **No twist torque at all, and why one was tried twice and removed (issue #171, third
 finding)**: a ceiling-mounted, seated bulb was found "spinning" about the seat axis at 1-19
@@ -272,10 +307,10 @@ class bulb_attachment(ManagerTermBase):
         radial_tolerance: float = 0.015,
         tilt_tolerance: float = 0.2,
         seat_tolerance: float = 0.004,
-        release_threshold: float = 0.02,
-        hold_force: float = 0.5,
-        hold_range: float = 0.01,
-        spring_d: float = 2.65,
+        release_threshold: float = 0.008,
+        hold_force: float = 1.5,
+        bore_depth: float = 0.025,
+        spring_d: float = 1.5,
         max_force: float = 5.0,
         lateral_k: float = 5.0,
         lateral_d: float = 0.85,
@@ -287,32 +322,42 @@ class bulb_attachment(ManagerTermBase):
         # Always operates on all envs: retention must be enforced every step, which the zero
         # interval guarantees.
         #
-        # hold_force/hold_range (issue #171, revised): a magnet-like axial law, not a spring --
-        # see the module docstring for why. hold_force is the peak/breakaway force AT the seat
-        # (axial=0); hold_range is the distance at which it has decayed to half that. Their
-        # ratio is the LOCAL stiffness at axial=0 (hold_force/hold_range = 50 N/m here), kept
-        # well under the semi-implicit stability bound mass/step_dt^2 (~87 N/m at
-        # step_dt=0.02s; 50 is ~57% of it) -- spring_d is critically damped for that local
-        # stiffness, same derivation as the original spring (d = 2*sqrt(k*m) at the bulb's
-        # ~0.035 kg mass). Sized for the WORST CASE static load, not the average one: a ceiling
-        # mount is inverted, so the bulb's own ~0.34 N weight acts entirely along the (outward)
-        # seat axis there, and the resulting steady-state sag needs to sit clear of
-        # release_threshold with real margin for transients -- at this gain that sag is ~4.6mm
-        # (worst case), against a 20mm threshold. A table/wall-mounted bulb sags less than this
-        # under its own weight, correctly -- that asymmetry is what a real passive retention
-        # mechanism (spring, friction, magnet) would also show; nothing here is gravity-aware or
-        # orientation-aware, on purpose. hold_force ends up modest in absolute terms (~1.5x the
-        # bulb's own weight) because a magnet-like law's peak occurs exactly where its local
-        # stiffness is evaluated (axial=0) -- there is no way to get a much stronger peak AND
-        # keep the gravity margin AND stay under the same stability ceiling at this control
-        # loop's 50 Hz rate all at once. Still rough starting gains, not derived ones -- retune
-        # against real teleop bags before trusting them in production. max_force 5 N is an
-        # overall safety clamp on the combined position+damping force (rarely the binding
-        # constraint from the position term alone, since that never exceeds hold_force by
-        # construction; matters mainly for a large damping contribution at high velocity).
-        # release_threshold 2 cm is comfortably past seat_tolerance (4 mm) so an unheld, resting
-        # bulb (which sags a little under gravity) never self-releases, but well short of a real
-        # withdrawal.
+        # hold_force/bore_depth (issue #171, revised twice): the axial term is a MAGNET AT THE
+        # BOTTOM OF THE BORE -- an attraction that is strongest there, fades linearly as the
+        # plug withdraws, and is gone once the plug has left the bore. See the module docstring
+        # for the two shapes this replaces and why the second one (a decaying magnitude whose
+        # gravity balance point is UNSTABLE) let a ceiling-mounted bulb fall out despite having
+        # the right shape. Sizing, against the bulb's 0.035 kg / 0.343 N:
+        #
+        #   hold_force 1.5 N   = 4.4x weight at the bore bottom, 3.0x at release_threshold.
+        #                        Solving F(a) = weight puts the gravity crossing at 19.3 mm,
+        #                        2.4x release_threshold -- so on a ceiling mount (worst case:
+        #                        inverted, full weight along the outward seat axis) gravity
+        #                        alone cannot walk the bulb out, which is the whole point.
+        #   bore_depth 0.025 m = MEASURED, not chosen (scripts/measure_bore_geometry.py): the
+        #                        socket's 20.2 mm throat spans axial +29.1..+34.2 mm and the
+        #                        plug's guided body spans +9..+35.6 mm when home, so the plug
+        #                        clears the throat after ~25 mm of withdrawal. The attraction
+        #                        reaches 0 exactly there because past it there is no bore for
+        #                        the plug to be inside of.
+        #   slope 60 N/m       = hold_force/bore_depth, the steepest this law ever gets. Under
+        #                        the semi-implicit stability bound mass/step_dt^2 (~88 N/m at
+        #                        step_dt=0.02 s, 50 Hz) with 31% to spare.
+        #   spring_d 1.5       = capped by mass/step_dt (1.75), NOT by critical damping for
+        #                        60 N/m (2.90): one control step of damping must not be able to
+        #                        reverse the velocity it opposes. Same impulse-vs-momentum rule
+        #                        the twist-friction bug violated by ~350x. Deliberately
+        #                        under-damped on paper; real contact supplies the rest.
+        #   release_threshold 0.008 m = down from 0.02. Holding 2x weight out to 20 mm while
+        #                        still vanishing by the 25 mm bore mouth needs a ~137 N/m
+        #                        slope, past the stability bound; and 20 mm was 80% of the way
+        #                        out of the bore anyway. 8 mm is still 2x seat_tolerance, so a
+        #                        real withdrawal reads as one and a knock does not.
+        #
+        # max_force 5 N is an overall safety clamp on the combined attraction + damping (the
+        # attraction alone never exceeds hold_force by construction; this matters mainly for a
+        # large damping contribution at high velocity). Nothing here is gravity-aware or
+        # orientation-aware, on purpose -- see the docstring on the rejected feedforward.
         #
         # lateral_k/lateral_d/max_lateral_force (issue #171): deliberately far gentler than the
         # axial term -- capped at ~3x the bulb's own weight, critically damped the same way --
@@ -346,7 +391,7 @@ class bulb_attachment(ManagerTermBase):
             seat_tolerance=seat_tolerance,
             release_threshold=release_threshold,
             hold_force=hold_force,
-            hold_range=hold_range,
+            bore_depth=bore_depth,
             spring_d=spring_d,
             max_force=max_force,
             lateral_k=lateral_k,
@@ -396,7 +441,7 @@ class bulb_attachment(ManagerTermBase):
         seat_tolerance: float,
         release_threshold: float,
         hold_force: float,
-        hold_range: float,
+        bore_depth: float,
         spring_d: float,
         max_force: float,
         lateral_k: float,
@@ -436,26 +481,34 @@ class bulb_attachment(ManagerTermBase):
         phase[seat_now] = _SEATED
         phase[release] = _FREE
 
-        # Continuous spring-damper wrench, world-frame, applied alongside (never instead of)
-        # real contact -- zero everywhere a bulb is not seated, so a bulb that just released or
-        # was never seated is completely untouched by this term (including mid-insertion: this
-        # cannot affect the FREE-phase dynamics diagnose_contact_axial.py exercises).
-        seated_now = (phase == _SEATED) & ~release
+        # Continuous wrench, world-frame, applied alongside (never instead of) real contact --
+        # zero everywhere a bulb is not seated, so a bulb that just released or was never
+        # seated is completely untouched by this term (including mid-insertion: this cannot
+        # affect the FREE-phase dynamics diagnose_contact_axial.py exercises).
+        #
+        # IN THE BORE is a second, geometric gate on top of the phase: a magnet sunk in the
+        # bottom of a bore acts on a plug inside that bore and on nothing else, so the wrench
+        # is zero once the plug has cleared the throat axially (`bore_depth`, measured -- see
+        # the module docstring) or wandered outside it radially. With release_threshold (8 mm)
+        # far inside bore_depth (25 mm) the phase gate always fires first in practice, and the
+        # bore itself pins `lateral` to a couple of mm against a 15 mm radial_tolerance, so
+        # neither half of this normally binds -- it is here so the force cannot outlive the
+        # geometry that justifies it if either bound is ever reconfigured.
+        in_bore = (axial < bore_depth) & (lateral < radial_tolerance)
+        seated_now = (phase == _SEATED) & ~release & in_bore
         seated_mask = seated_now.unsqueeze(1)
 
-        # Axial: full-strength retention, shaped like a magnet's force/gap curve, not a
-        # spring's (issue #171 -- see the module docstring for the physical reasoning and the
-        # gravity-margin derivation behind hold_force/hold_range). Magnitude peaks at
-        # hold_force exactly at the seat and decays toward 0 as |axial| grows past hold_range;
-        # direction comes from a smoothed sign (tanh over a deadband far smaller than any
-        # displacement that matters -- seat_tolerance/4 -- rather than a literal sign(), which
-        # would flip direction at full magnitude across an infinitesimal crossing of axial=0,
-        # a chatter risk exactly at rest).
-        deadband = seat_tolerance / 4.0
-        direction = torch.tanh(axial / deadband)
-        magnitude = hold_force / (1.0 + axial.abs() / hold_range)
+        # Axial: the magnet. An ATTRACTION toward the bottom of the bore -- always inward,
+        # never signed, strongest at the bottom, fading linearly to nothing at the bore mouth
+        # (issue #171; see the module docstring for the two earlier shapes and the sizing).
+        # `depth` clamps at 0 so being pressed slightly past the seat reference does not weaken
+        # the hold, and because the magnitude never changes direction there is no sign flip to
+        # chatter across -- what stops the plug going deeper is real contact bottoming it out,
+        # the same way a plug bottoms out on a real magnet's face.
+        depth = axial.clamp(min=0.0)
+        falloff = (1.0 - depth / bore_depth).clamp(min=0.0)
         axial_rate = (bulb.data.root_lin_vel_w * axis_w).sum(dim=1)
-        axial_force = (-direction * magnitude - spring_d * axial_rate).clamp(-max_force, max_force)
+        axial_force = (-hold_force * falloff - spring_d * axial_rate).clamp(-max_force, max_force)
         axial_force_vec = axial_force.unsqueeze(1) * axis_w
 
         # Lateral: a much gentler spring-damper pulling the plug back toward the seat axis

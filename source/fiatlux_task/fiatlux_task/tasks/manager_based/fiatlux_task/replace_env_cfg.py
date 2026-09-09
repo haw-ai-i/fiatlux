@@ -83,7 +83,12 @@ OLD_BULB_DROP_HEIGHT = 0.15  # m; must clear a bulb resting *inside* the floor c
 # own constant since #90: it used to borrow SEAT_ORI_THRESHOLD, a seating-SUCCESS threshold,
 # which measures the full frame and would count the bulb's own resting roll as misalignment.
 BULB_ENTRY_TILT = 0.2
-BULB_RELEASE_THRESHOLD = 0.02  # m; axial pull past the seat that releases a seated bulb
+# m; axial pull past the seat that releases a seated bulb. 8mm, down from 20mm (issue #171):
+# the socket's throat is only ~25mm deep (measured, scripts/measure_bore_geometry.py), so 20mm
+# was 80% of the way out of the bore, and holding the bulb against gravity with real margin that
+# far out needs an axial slope past the solver's stability ceiling. See mdp/attach.py's docstring.
+# Still 2x seat_tolerance (4mm), so a genuine withdrawal reads as one and a knock does not.
+BULB_RELEASE_THRESHOLD = 0.008
 
 ##
 # MDP settings
