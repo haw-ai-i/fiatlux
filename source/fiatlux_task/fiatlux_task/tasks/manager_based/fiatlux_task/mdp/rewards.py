@@ -36,8 +36,8 @@ Bulb removal (``FIATLUX-Remove-v0``) — the old-bulb clearance/disposal channel
 standalone: the ``old_bulb_*`` functions take an ``asset_cfg`` (default Replace's
 ``old_bulb``) so Remove's single-bulb scene can point them at its own ``bulb`` entity.
 Achievable: Remove's bulb is dynamic and rests in the socket's open hole, so it lifts
-straight out. What is missing there is the *unscrew gate* -- Replace routes these channels
-through ``mdp.bulb_attachment`` (issue #54), Remove does not yet.
+straight out. What is missing there is the *retention gate* -- Replace routes these channels
+through ``mdp.bulb_attachment`` (issue #167), Remove does not yet.
 """
 
 from __future__ import annotations

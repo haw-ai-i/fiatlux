@@ -218,7 +218,7 @@ class TrajectoryRecorder:
         self._left_ee_name = left_names[0] if left_names else None
         self._left_contact = env.scene.sensors.get("left_hand_contact")
 
-        # Resolve the bayonet manager once, not per step: whether a task wires
+        # Resolve the retention manager once, not per step: whether a task wires
         # mdp.bulb_attachment is fixed for the whole run, and a key that appeared midway
         # through would give the buffers ragged lengths. Tasks without the term (Remove,
         # Install, Carry today) simply record no lock columns.
@@ -434,7 +434,7 @@ class TrajectoryRecorder:
         step.update(self.object_state_fields())
         step.update(self.contact_fields())
         step.update(self.gate_fields())
-        # Bayonet lock state (issue #77). Only tasks that wire mdp.bulb_attachment have it.
+        # Seated state (issue #167). Only tasks that wire mdp.bulb_attachment have it.
         if self._attachment is not None:
             step.update(_attach.bulb_lock_telemetry(env))
         for key, value in step.items():
@@ -583,10 +583,9 @@ class TrajectoryRecorder:
             "success_pos_threshold": float(success_params.get("pos_threshold", 0.015)),
             "success_ori_threshold": float(success_params.get("ori_threshold", 0.2)),
             "drop_min_height": float(drop_params.get("min_height", 0.4)),
-            # Issue #77: says whether the *_phase / *_theta columns are present, so an
-            # offline reader does not have to probe the arrays to find out.
+            # Issue #167: says whether the *_phase columns are present, so an offline reader
+            # does not have to probe the arrays to find out.
             "has_bulb_attachment": self._attachment is not None,
-            "bulb_rotation_sign": (None if self._attachment is None else self._attachment.rotation_sign),
         }
 
 

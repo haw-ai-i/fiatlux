@@ -117,9 +117,9 @@ class S01MoveLadderEnvCfg(PlaceSubtaskCfg):
 
     rewards: SubtaskRewardsCfg = SubtaskRewardsCfg()
     terminations: S01TerminationsCfg = S01TerminationsCfg()
-    # Lock the socketed old bulb into the overhead fixture with the bayonet FSM (#108). The Place
-    # tier wires no events, so a dynamic bulb in the inverted socket just falls out at spawn; this
-    # is the same attach term the Balance/Descend tiers already use to hold their seated bulbs.
+    # Retain the socketed old bulb in the overhead fixture (#108, #167). The Place tier wires
+    # no events, so a dynamic bulb in the inverted socket just falls out at spawn; this is the
+    # same attach term the Balance/Descend tiers already use to hold their seated bulbs.
     events: BulbAttachmentEventCfg = BulbAttachmentEventCfg()
 
     def __post_init__(self) -> None:
