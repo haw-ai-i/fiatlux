@@ -402,6 +402,50 @@ def _spawn_open_container(prim_path, cfg, translation=None, orientation=None):
 
 
 @clone
+def _spawn_collidable_bench(prim_path, cfg, translation=None, orientation=None):
+    """Spawn the packing table with colliders on its OWN geometry (issue #176).
+
+    As authored, only ``container_h20``'s five box colliders (z 0.993-1.083, the tray on the
+    work surface) collide. The table's frame, legs and lower shelf, and every crate and box on
+    that shelf, are drawn but have no collider: a bulb or an arm passes straight through them.
+    A camera therefore sees a loaded bench the solver does not have.
+
+    The asset does carry ``CollisionAPI`` on ``SM_HeavyDutyPackingTable_C02_01``, but it sits on
+    an Xform whose meshes are instance proxies, so it never reaches real geometry. De-instancing
+    first is what makes the collider authorable.
+
+    Exact mesh (``none``): the crates are thin-walled, and ``convexDecomposition`` leaves their
+    floors porous -- a prop dropped into a crate falls through it. Legal because the table is
+    static (``AssetBaseCfg``, no RigidBodyAPI); PhysX rejects triangle meshes only on dynamic
+    bodies, the same reasoning ``_spawn_open_container`` records for the crate in #131.
+
+    Each corrugated box carries its body mesh plus two ``trans__decal__*`` overlay meshes
+    (trim + print, both within ~1-2% of the body's own bounding box -- not thin decals, near-full
+    duplicates of it). Colliding all three would stack 3 coincident exact-mesh colliders on one
+    box, which PhysX resolves as redundant/conflicting contact normals; only the body mesh needs
+    one.
+
+    Both passes traverse with ``Usd.TraverseInstanceProxies()``: the default predicate skips
+    instance-proxy descendants, so a de-instanceable prim nested under another (none exist in the
+    current asset, but the same instancing scheme is shared across this BEHAVIOR-1K/SimReady
+    asset family) would otherwise be invisible to this walk and keep its collider-blocking
+    instancing -- the same failure mode #176 was filed for, just one level deeper. See
+    ``scripts/omniverse/omniverse_ladder_collision.py`` for the same predicate on a different asset.
+    """
+    from pxr import Usd, UsdGeom, UsdPhysics
+
+    prim = _spawn_from_usd_file(prim_path, cfg.usd_path, cfg, translation, orientation)
+    for p in Usd.PrimRange(prim, Usd.TraverseInstanceProxies()):
+        if p.IsInstanceable():
+            p.SetInstanceable(False)
+    for p in Usd.PrimRange(prim, Usd.TraverseInstanceProxies()):
+        if p.IsA(UsdGeom.Mesh) and not p.HasAPI(UsdPhysics.CollisionAPI) and "decal" not in p.GetName().lower():
+            UsdPhysics.CollisionAPI.Apply(p)
+            UsdPhysics.MeshCollisionAPI.Apply(p).CreateApproximationAttr().Set("none")
+    return prim
+
+
+@clone
 def _spawn_usd_as_rigid_body_frictional(prim_path, cfg, translation=None, orientation=None):
     """Tune rigid/mass props on a *preconfigured* rigid asset + bind a high-friction grip material.
 
@@ -667,7 +711,7 @@ def apply_tabletop_preset(scene: G1ReplaceSceneCfg) -> None:
         # STATIC, not kinematic: the USD authors colliders but no RigidBodyAPI, so it is
         # already a static collider -- immovable, and cheaper. Note rigid_props here would be
         # a no-op (modify_rigid_body_properties returns False without a RigidBodyAPI).
-        spawn=sim_utils.UsdFileCfg(usd_path=TABLE_USD),
+        spawn=sim_utils.UsdFileCfg(usd_path=TABLE_USD, func=_spawn_collidable_bench),
     )
     scene.robot.init_state.pos = TABLETOP_ROBOT_POSITION
     scene.robot.init_state.rot = _quat_z_deg(TABLETOP_ROBOT_YAW_DEG)
@@ -1282,7 +1326,7 @@ def apply_replace_preset(
     # Table: holds the fresh bulb. The elevated fixture is the insertion target.
     scene.table = AssetBaseCfg(
         prim_path="{ENV_REGEX_NS}/Table",
-        spawn=sim_utils.UsdFileCfg(usd_path=TABLE_USD),  # static collider; see apply_tabletop_preset
+        spawn=sim_utils.UsdFileCfg(usd_path=TABLE_USD, func=_spawn_collidable_bench),  # see apply_tabletop_preset
         init_state=AssetBaseCfg.InitialStateCfg(),
     )
     scene.fixture = None  # the task fixture owns the ceiling/wall in this scene
