@@ -141,12 +141,15 @@ def object_settled(
     # so the dt block below is skipped and would otherwise hand back the dying episode's stale
     # cached speed. Snap those envs' baseline to the just-written pose directly, independent of
     # the step dedup; the next regular call, one step later, computes real motion from there.
+    # Masked writes are no-ops when just_reset is all-False, so this skips the `if` a
+    # `bool(just_reset.any())` guard would need -- that call forces a CPU<->GPU sync, and this
+    # runs on the hot per-step vectorized path (evaluated at least twice per step: the
+    # termination gate and the teleop recorder, per every parallel env).
     just_reset = env.episode_length_buf == 0
-    if bool(just_reset.any()):
-        st["pos"][just_reset] = pos[just_reset]
-        st["quat"][just_reset] = quat[just_reset]
-        st["lin"][just_reset] = 0.0
-        st["ang"][just_reset] = 0.0
+    st["pos"][just_reset] = pos[just_reset]
+    st["quat"][just_reset] = quat[just_reset]
+    st["lin"][just_reset] = 0.0
+    st["ang"][just_reset] = 0.0
     if step != st["step"]:
         dt = env.step_dt * (step - st["step"])
         lin_fd = torch.norm(pos - st["pos"], dim=-1) / dt
