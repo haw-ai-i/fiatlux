@@ -84,6 +84,75 @@ def object_at_rest(
     return at_rest
 
 
+# Time constant (s) of the pose-derived speed estimate object_settled uses. 0.1 s = five control
+# steps: long enough to average the solver's substep contact bounce out (see below), short enough
+# that a bulb that starts moving again reads as moving well inside the gates' 1 s sustain window.
+SETTLED_SPEED_TAU_S = 0.1
+_SETTLED_STATE_ATTR = "_fiatlux_object_settled_state"
+
+
+def object_settled(
+    env: ManagerBasedRLEnv,
+    asset_cfg: SceneEntityCfg,
+    lin_vel_limit: float,
+    ang_vel_limit: float | None = None,
+) -> torch.Tensor:
+    """``object_at_rest`` for an object HELD IN CONTACT by a force: speeds from the pose over time.
+
+    Same limits and meaning as :func:`object_at_rest`, but the speeds are estimated from the
+    object's pose (finite difference between control steps, low-passed with
+    ``SETTLED_SPEED_TAU_S``) instead of read from ``root_lin_vel_w`` / ``root_ang_vel_w``. For a
+    free object the two agree (a bulb resting in a crate reads 0.02 rad/s either way). For a body
+    pressed into stiff contact by an external wrench they do not: PhysX pushes it back out of the
+    contact every substep (200 Hz) while the wrench pushes it in, and the 50 Hz sample of that
+    bounce reads as a steady 0.05-0.1 m/s / 0.5-2 rad/s on a body whose pose is changing by
+    microns (S11 insert teleop bags, issue #171: reported |w| 0.5-2.0 rad/s against 0.000 rad/s
+    from the recorded poses, tilt std 0.05 deg). Used by S11's gate, where the seated bulb is
+    exactly that body; S01/S06 keep ``object_at_rest`` (their objects rest free, and the
+    instantaneous read has no lag).
+
+    State lives on the env keyed by asset name, indexed by ``common_step_counter`` so that being
+    evaluated more than once per step (terminations + the teleop recorder) does not read a zero
+    difference on the second call. An env that just reset restarts its estimate from zero.
+    """
+    asset: RigidObject = env.scene[asset_cfg.name]
+    pos = asset.data.root_pos_w
+    quat = asset.data.root_quat_w
+    store = getattr(env, _SETTLED_STATE_ATTR, None)
+    if store is None:
+        store = {}
+        setattr(env, _SETTLED_STATE_ATTR, store)
+    step = int(env.common_step_counter)
+    st = store.get(asset_cfg.name)
+    if st is None or st["step"] > step:
+        st = {
+            "step": step,
+            "pos": pos.clone(),
+            "quat": quat.clone(),
+            "lin": torch.zeros(pos.shape[0], device=pos.device),
+            "ang": torch.zeros(pos.shape[0], device=pos.device),
+        }
+        store[asset_cfg.name] = st
+    if step != st["step"]:
+        dt = env.step_dt * (step - st["step"])
+        lin_fd = torch.norm(pos - st["pos"], dim=-1) / dt
+        dot = (quat * st["quat"]).sum(dim=-1).abs().clamp(max=1.0)
+        ang_fd = 2.0 * torch.acos(dot) / dt
+        alpha = min(1.0, dt / SETTLED_SPEED_TAU_S)
+        st["lin"] = st["lin"] + alpha * (lin_fd - st["lin"])
+        st["ang"] = st["ang"] + alpha * (ang_fd - st["ang"])
+        fresh = env.episode_length_buf == 0  # just reset: the pose jump is a teleport, not motion
+        st["lin"][fresh] = 0.0
+        st["ang"][fresh] = 0.0
+        st["pos"].copy_(pos)
+        st["quat"].copy_(quat)
+        st["step"] = step
+    settled = st["lin"] < lin_vel_limit
+    if ang_vel_limit is not None:
+        settled = settled & (st["ang"] < ang_vel_limit)
+    return settled
+
+
 def object_released(
     env: ManagerBasedRLEnv,
     sensor_cfg: SceneEntityCfg,
