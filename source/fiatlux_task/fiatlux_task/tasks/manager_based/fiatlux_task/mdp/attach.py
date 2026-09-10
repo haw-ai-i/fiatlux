@@ -509,7 +509,7 @@ class bulb_attachment(ManagerTermBase):
         # old_bulb is absent from insert-only scenes (e.g. the tabletop preset, which has
         # nothing to remove) -- self._phase[_OLD] then never leaves its _FREE default, so
         # fresh_bulb's own socket_empty check below is correct with no further change.
-        old_bulb: RigidObject | None = env.scene["old_bulb"] if "old_bulb" in env.scene.keys() else None
+        old_bulb: RigidObject | None = env.scene["old_bulb"] if "old_bulb" in env.scene.rigid_objects else None
         fresh_bulb: RigidObject = env.scene["fresh_bulb"]
         self._resolve_spawn_phase(env, old_bulb, fresh_bulb)
         gains = dict(
