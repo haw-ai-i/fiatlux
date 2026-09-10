@@ -13,7 +13,7 @@ termination and a penalty in every subtask in this file, and absent from
 anywhere, so the stances and success gates read its live pose, not ``LADDER_POSITION``.
 
 ``mdp.bulb_attachment`` is wired here (as ``BulbAttachmentEventCfg``) rather than on the mate
-tier: the old bulb starts locked in the inverted fixture on every subtask in this file, and
+tier: the old bulb starts seated in the inverted fixture on every subtask in this file, and
 nothing else keeps it from falling out under gravity. Only S03 and S11 score against it.
 ``BulbAttachmentEventCfg`` is standalone from the on-the-ladder tier for that reason: S01 (Place
 tier, off-ladder) wires it in too, for the same falling-bulb problem, and must not inherit
@@ -23,7 +23,6 @@ subtasks, and is where any on-the-ladder-only event term belongs.
 
 import math
 
-from isaaclab.managers import EventTermCfg as EventTerm
 from isaaclab.managers import RewardTermCfg as RewTerm
 from isaaclab.managers import SceneEntityCfg
 from isaaclab.managers import TerminationTermCfg as DoneTerm
@@ -34,12 +33,7 @@ from fiatlux_task.robots.g1 import G1_DEX3_PALM_BODIES, G1_FOOT_BODIES, G1_PALM_
 
 from .. import mdp
 from ..mdp.place_terms import step_face_dir_from_yaw, yaw_from_quat
-from ..replace_env_cfg import (
-    BAYONET_ENTRY_TILT,
-    BAYONET_INSERTION_DEPTH,
-    BAYONET_ROTATION_ANGLE,
-    SEAT_POS_THRESHOLD,
-)
+from ..replace_env_cfg import bulb_attachment_event
 from ..scene_cfg import (
     CLIMB_ROBOT_POSITION,
     LADDER_POSITION,
@@ -59,24 +53,13 @@ from ..subtask_env_cfg import SubtaskEnvCfg, SubtaskEventCfg, SubtaskRewardsCfg,
 
 @configclass
 class BulbAttachmentEventCfg(SubtaskEventCfg):
-    """Bayonet channel enforcement, with ``FIATLUX-Replace-v0``'s parameters.
+    """Axial retention spring, with ``FIATLUX-Replace-v0``'s parameters.
 
     Nothing ladder-specific: S01 (Place tier, off-ladder) wires this in directly, so it must stay
     usable on its own, without whatever ``BalanceEventCfg`` adds for the on-the-ladder tier.
     """
 
-    bulb_attachment = EventTerm(
-        func=mdp.bulb_attachment,
-        mode="interval",
-        interval_range_s=(0.0, 0.0),
-        params={
-            "insertion_depth": BAYONET_INSERTION_DEPTH,
-            "rotation_angle": BAYONET_ROTATION_ANGLE,
-            "rotation_sign": -1.0,
-            "radial_tolerance": SEAT_POS_THRESHOLD,
-            "tilt_tolerance": BAYONET_ENTRY_TILT,
-        },
-    )
+    bulb_attachment = bulb_attachment_event()
 
 
 @configclass
