@@ -141,7 +141,11 @@ def object_settled(
         alpha = min(1.0, dt / SETTLED_SPEED_TAU_S)
         st["lin"] = st["lin"] + alpha * (lin_fd - st["lin"])
         st["ang"] = st["ang"] + alpha * (ang_fd - st["ang"])
-        fresh = env.episode_length_buf == 0  # just reset: the pose jump is a teleport, not motion
+        # just reset: the pose jump is a teleport, not motion. Not == 0 -- ManagerBasedRLEnv.step()
+        # increments episode_length_buf before termination/reward terms run, on every step
+        # including the first one after a reset, so this term never observes 0; 1 is the value
+        # it actually sees on that first pass (see nav_terms.py's identical note).
+        fresh = env.episode_length_buf == 1
         st["lin"][fresh] = 0.0
         st["ang"][fresh] = 0.0
         st["pos"].copy_(pos)
