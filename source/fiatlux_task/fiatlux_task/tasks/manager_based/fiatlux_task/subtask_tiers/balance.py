@@ -23,7 +23,6 @@ subtasks, and is where any on-the-ladder-only event term belongs.
 
 import math
 
-from isaaclab.managers import EventTermCfg as EventTerm
 from isaaclab.managers import RewardTermCfg as RewTerm
 from isaaclab.managers import SceneEntityCfg
 from isaaclab.managers import TerminationTermCfg as DoneTerm
@@ -34,11 +33,7 @@ from fiatlux_task.robots.g1 import G1_DEX3_PALM_BODIES, G1_FOOT_BODIES, G1_PALM_
 
 from .. import mdp
 from ..mdp.place_terms import step_face_dir_from_yaw, yaw_from_quat
-from ..replace_env_cfg import (
-    BULB_ENTRY_TILT,
-    BULB_RELEASE_THRESHOLD,
-    SEAT_POS_THRESHOLD,
-)
+from ..replace_env_cfg import bulb_attachment_event
 from ..scene_cfg import (
     CLIMB_ROBOT_POSITION,
     LADDER_POSITION,
@@ -64,16 +59,7 @@ class BulbAttachmentEventCfg(SubtaskEventCfg):
     usable on its own, without whatever ``BalanceEventCfg`` adds for the on-the-ladder tier.
     """
 
-    bulb_attachment = EventTerm(
-        func=mdp.bulb_attachment,
-        mode="interval",
-        interval_range_s=(0.0, 0.0),
-        params={
-            "radial_tolerance": SEAT_POS_THRESHOLD,
-            "tilt_tolerance": BULB_ENTRY_TILT,
-            "release_threshold": BULB_RELEASE_THRESHOLD,
-        },
-    )
+    bulb_attachment = bulb_attachment_event()
 
 
 @configclass

@@ -92,6 +92,28 @@ BULB_ENTRY_TILT = 0.2
 # ceiling-mounted bulb really is leaving. See mdp/attach.py's docstring for the full sizing.
 BULB_RELEASE_THRESHOLD = 0.015
 
+
+def bulb_attachment_event() -> EventTerm:
+    """The axial retention spring event term, with this task's parameters.
+
+    A factory, not a shared instance, so each caller gets its own ``EventTermCfg`` to attach to
+    its own config class -- ``EventCfg`` here, ``BulbAttachmentEventCfg``
+    (``subtask_tiers/balance.py``, also used standalone by S01), and ``g1_bulb_env_cfg.py``'s
+    ``EventCfg`` all wire in the identical term; before this they each hand-duplicated the same
+    ``EventTerm(...)`` block, with nothing enforcing the three stayed in sync on a future change.
+    """
+    return EventTerm(
+        func=mdp.bulb_attachment,
+        mode="interval",
+        interval_range_s=(0.0, 0.0),
+        params={
+            "radial_tolerance": SEAT_POS_THRESHOLD,
+            "tilt_tolerance": BULB_ENTRY_TILT,
+            "release_threshold": BULB_RELEASE_THRESHOLD,
+        },
+    )
+
+
 ##
 # MDP settings
 ##
@@ -184,16 +206,7 @@ class EventCfg:
     """Reset-time randomization (the room layout itself randomizes per scene build)."""
 
     # Axial retention spring (issue #167). Zero interval -> enforce it every env step.
-    bulb_attachment = EventTerm(
-        func=mdp.bulb_attachment,
-        mode="interval",
-        interval_range_s=(0.0, 0.0),
-        params={
-            "radial_tolerance": SEAT_POS_THRESHOLD,
-            "tilt_tolerance": BULB_ENTRY_TILT,
-            "release_threshold": BULB_RELEASE_THRESHOLD,
-        },
-    )
+    bulb_attachment = bulb_attachment_event()
     reset_all = EventTerm(func=mdp.reset_scene_to_default, mode="reset")
     reset_robot_joints = EventTerm(
         func=mdp.reset_joints_by_offset,
