@@ -424,14 +424,21 @@ def _spawn_collidable_bench(prim_path, cfg, translation=None, orientation=None):
     duplicates of it). Colliding all three would stack 3 coincident exact-mesh colliders on one
     box, which PhysX resolves as redundant/conflicting contact normals; only the body mesh needs
     one.
+
+    Both passes traverse with ``Usd.TraverseInstanceProxies()``: the default predicate skips
+    instance-proxy descendants, so a de-instanceable prim nested under another (none exist in the
+    current asset, but the same instancing scheme is shared across this BEHAVIOR-1K/SimReady
+    asset family) would otherwise be invisible to this walk and keep its collider-blocking
+    instancing -- the same failure mode #176 was filed for, just one level deeper. See
+    ``scripts/omniverse/omniverse_ladder_collision.py`` for the same predicate on a different asset.
     """
     from pxr import Usd, UsdGeom, UsdPhysics
 
     prim = _spawn_from_usd_file(prim_path, cfg.usd_path, cfg, translation, orientation)
-    for p in Usd.PrimRange(prim):
+    for p in Usd.PrimRange(prim, Usd.TraverseInstanceProxies()):
         if p.IsInstanceable():
             p.SetInstanceable(False)
-    for p in Usd.PrimRange(prim):
+    for p in Usd.PrimRange(prim, Usd.TraverseInstanceProxies()):
         if p.IsA(UsdGeom.Mesh) and not p.HasAPI(UsdPhysics.CollisionAPI) and "decal" not in p.GetName().lower():
             UsdPhysics.CollisionAPI.Apply(p)
             UsdPhysics.MeshCollisionAPI.Apply(p).CreateApproximationAttr().Set("none")
