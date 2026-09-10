@@ -41,7 +41,11 @@ def apply_dex3_hands(env_cfg) -> None:
     )
 
     swap_robot_variant(env_cfg, "dex3")
-    env_cfg.scene.robot.spawn.articulation_props.enabled_self_collisions = False
+    # Self-collisions are left as the cfg authors them. This helper is task-agnostic (see the
+    # module docstring) and free-base grasp subtasks need them ON -- with them off, the fingers
+    # close through the thumb (subtask_teleop.py's apply_subtask_teleop documents the same
+    # finding). A fixed-base task that wants the Insert-Teleop-style finger-jitter calming should
+    # set enabled_self_collisions itself, as insert_teleop_env_cfg.apply_dex3_hands already does.
     _repoint_grips(env_cfg,
                    G1_DEX3_LEFT_HAND_JOINTS, G1_DEX3_LEFT_HAND_OPEN, G1_DEX3_LEFT_HAND_GRASP,
                    G1_DEX3_RIGHT_HAND_JOINTS, G1_DEX3_HAND_OPEN, G1_DEX3_HAND_GRASP)
@@ -62,7 +66,7 @@ def apply_inspire_hands(env_cfg) -> None:
     _left_open = dict.fromkeys(G1_LEFT_HAND_JOINTS, 0.0)
     _left_grasp = {k.replace("R_", "L_", 1): v for k, v in G1_HAND_GRASP.items()}
     swap_robot_variant(env_cfg, "inspire")
-    env_cfg.scene.robot.spawn.articulation_props.enabled_self_collisions = False
+    # See the matching comment in apply_dex3_hands above: self-collisions stay as authored.
     _repoint_grips(env_cfg,
                    G1_LEFT_HAND_JOINTS, _left_open, _left_grasp,
                    G1_HAND_JOINTS, G1_HAND_OPEN, G1_HAND_GRASP)
