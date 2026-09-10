@@ -59,6 +59,31 @@ parser.add_argument("--lateral_k", type=float, default=None, help="Override the 
 parser.add_argument("--lateral_d", type=float, default=None, help="Override the lateral damping gain.")
 parser.add_argument("--max_lateral_force", type=float, default=None, help="Override the lateral force saturation (N).")
 parser.add_argument(
+    "--release_threshold",
+    type=float,
+    default=None,
+    help="Override the axial excursion (m) that releases a seated bulb. Pair with --axial_kick "
+    "to show the before/after directly: the same brush that the shipped 15 mm threshold rides "
+    "out releases the bulb at the 8 mm one it replaced.",
+)
+parser.add_argument(
+    "--axial_kick",
+    type=float,
+    default=0.0,
+    help="Spawn the plug this many METRES out along the seat axis -- a finger-brush that has "
+    "dragged the bulb part-way out. Checks that the magnet is still engaged there and pulls it "
+    "home, rather than having switched off mid-excursion. Pair with --axial_kick_vel.",
+)
+parser.add_argument(
+    "--axial_kick_vel",
+    type=float,
+    default=0.0,
+    help="Outward axial velocity (m/s) to give the plug at spawn. A real brush does not leave "
+    "the bulb at rest -- it drags it out and lets go while it is still moving, which is why a "
+    "positional kick alone understates it. Measured off the real bags at the moment each "
+    "knock-out crossed the threshold: median 0.10 m/s, worst 0.25 m/s.",
+)
+parser.add_argument(
     "--tilt_perturb",
     type=float,
     default=0.0,
@@ -160,6 +185,7 @@ def main() -> int:
             ("lateral_k", args_cli.lateral_k),
             ("lateral_d", args_cli.lateral_d),
             ("max_lateral_force", args_cli.max_lateral_force),
+            ("release_threshold", args_cli.release_threshold),
         )
         if v is not None
     }
@@ -209,6 +235,14 @@ def main() -> int:
     # is therefore produced by the mechanism (gravity + real contact + this term's own wrench),
     # not carried over from a sloppy spawn.
     pos, quat = seated_pose()
+    if args_cli.axial_kick:
+        # Park the plug this far out along the seat axis, at rest -- what a teleop finger-brush
+        # leaves behind (issue #171, sixth finding: 12 of 14 real knock-outs were brushes that
+        # parked between 8.9 and 13.8 mm, with the hand already off the bulb). The question this
+        # answers is whether the magnet, still engaged at 15 mm, actually pulls it home under real
+        # contact -- not just whether the force arithmetic says it should.
+        axis_w0 = quat_apply(socket.data.root_quat_w, seat_axis.unsqueeze(0))[0]
+        pos = pos + args_cli.axial_kick * axis_w0
     if args_cli.tilt_perturb:
         # A one-time bump about world Y -- the gravity-relevant tipping direction for a roughly
         # world-X seat axis -- applied AFTER computing the aligned seated pose, so `pos` still
@@ -218,7 +252,10 @@ def main() -> int:
         bump = torch.tensor(_quat_y_deg(math.degrees(args_cli.tilt_perturb)), device=device)
         quat = quat_mul(bump.unsqueeze(0), quat.unsqueeze(0))[0]
     old_bulb.write_root_pose_to_sim(torch.cat([pos, quat]).unsqueeze(0))
-    old_bulb.write_root_velocity_to_sim(torch.zeros((1, 6), device=device))
+    vel = torch.zeros((1, 6), device=device)
+    if args_cli.axial_kick_vel:
+        vel[0, :3] = args_cli.axial_kick_vel * quat_apply(socket.data.root_quat_w, seat_axis.unsqueeze(0))[0]
+    old_bulb.write_root_velocity_to_sim(vel)
     env.step(zero_action)  # resolves spawn phase -> SEATED, since it's within tolerance of the seat
     axial0, lateral0, tilt0, phase0 = state()
     axis_z = float(quat_apply(socket.data.root_quat_w, seat_axis.unsqueeze(0))[0, 2].item())

@@ -103,25 +103,27 @@ Three properties, each load-bearing:
   equilibrium. ``depth`` clamps at 0 so being pressed slightly past the seat reference does not
   weaken the hold.
 - **Above the load everywhere it has to hold.** ``hold_force`` (1.5 N) is 4.4x the bulb's
-  weight at the bore bottom and still 3.0x it at ``release_threshold`` (8 mm). Solving
-  ``F(a) = weight`` puts the gravity crossing at 19.3 mm -- 2.4x the release threshold -- so on
+  weight at the bore bottom and still 1.75x it at ``release_threshold`` (15 mm). Solving
+  ``F(a) = weight`` puts the gravity crossing at 19.3 mm, outside the release threshold, so on
   a ceiling mount gravity alone cannot walk the bulb out at all, let alone reach release. That
-  is the margin the previous version lacked.
+  is the margin the previous version lacked. (The threshold was 8 mm, where the same law gives
+  3.0x weight, until the brush finding below traded some of that margin for reach.)
 - **Zero outside the bore.** ``bore_depth`` (0.025 m) is measured, not chosen:
   ``scripts/measure_bore_geometry.py`` profiles both meshes in this seat frame and finds the
   socket's 20.2 mm throat spanning axial +29.1..+34.2 mm and the plug's guided body (r ~17.0
   -17.5 mm) spanning +9..+35.6 mm when home, so the plug clears the throat after ~25 mm of
   withdrawal. Past that there is no bore to be inside of and the whole wrench is zero. (With
-  ``release_threshold`` at 8 mm the phase gate always fires first, so this bound is a safety
+  ``release_threshold`` at 15 mm the phase gate still fires first, so this bound is a safety
   net rather than an operating condition -- it binds only if someone configures a release
   threshold deeper than the bore.)
 
-``release_threshold`` came down from 20 mm to 8 mm as part of this, and it had to: holding 2x
-the weight all the way out to 20 mm while still vanishing by the bore mouth at 25 mm needs a
-falloff slope of ~137 N/m, well past the semi-implicit stability ceiling ``mass/step_dt^2``
-(~88 N/m at 50 Hz). 20 mm was also 80% of the way out of a 25 mm bore -- by then the bulb has
-essentially left. At 8 mm the slope is 60 N/m (69% of the ceiling), and 8 mm is still twice
-``seat_tolerance``, so a genuine withdrawal reads as one and a knock does not.
+``release_threshold`` came down from 20 mm to 8 mm as part of this, and it had to at the time:
+holding 2x the weight all the way out to 20 mm while still vanishing by the bore mouth at 25 mm
+needs a falloff slope of ~137 N/m, well past the semi-implicit stability ceiling
+``mass/step_dt^2`` (~88 N/m at 50 Hz). What that reasoning fixed was the SLOPE; the threshold
+itself only has to sit where the magnet can still hold the load, which is the gravity crossing
+at 19.3 mm, not the 2x-weight point at 8 mm. It went back out to 15 mm for the brush finding
+below, at an unchanged 60 N/m slope (69% of the ceiling).
 
 ``spring_d`` (1.5 N*s/m) is capped by ``mass / step_dt`` = 1.75, NOT by critical damping for
 the 60 N/m slope (which would be 2.90): one control step of damping must not be able to
@@ -239,6 +241,48 @@ bulb and only releases at ``release_debounce_steps`` (3, 60 ms) of them, resetti
 step that reads back under threshold -- so a one-frame contact jolt cannot release the bulb, but
 a real withdrawal (which stays past threshold for many steps as the hand keeps pulling) still
 does, just 60 ms later.
+
+**The magnet was switching off mid-brush, which is what actually cost the task (issue #171,
+sixth finding)**: with the two fixes above in, real VR teleop confirmed the mechanism itself
+holds -- the bulb seats and stays locked for up to 10.6 s. What still scored 0 is that a dex3
+operator cannot let go cleanly. Across 33 s of seated time in four takes the fingers were fully
+off the bulb for 0.6 s total (19-22 separate touches per take, up to 15 in one 6 s stretch), so
+every hold ends in a brush, and the brush ended the hold.
+
+The bags say precisely how. Over all 14 knock-outs, the excursion the brush actually caused
+peaked at 8.9, 9.8, 9.9, 10.5, 10.8, 10.8, 11.2, 11.3, 11.6, 11.8, 12.9 and 13.8 mm -- twelve of
+them, every one inside 15 mm. (The remaining two reached 78 and 139 mm: the hand had 32-36 N on
+the bulb just beforehand and genuinely threw it out. Those must release, and still do.) And 11
+of the 14 crossed the threshold with under 1 N of hand force on the bulb -- 7 of them with
+exactly 0.00 N. The hand was already gone; the bulb was coasting on momentum from a brush that
+had ended.
+
+A magnet recaptures a coast like that. This one could not, because at 8 mm the phase had already
+flipped to FREE and the whole wrench with it -- so the bulb crossed 8 mm still moving outward
+(0.10 m/s at the crossing typically, 0.25 m/s worst) with nothing left to decelerate it, and
+parked out at 10-14 mm where, had the magnet still been on, it would have been pulled home by
+0.66-0.90 N, 1.9-2.6x its own weight. The defect was not too little holding force. It was
+switching the holding force off in the middle of the excursion it existed to arrest.
+
+So ``release_threshold`` goes 8 mm -> 15 mm, and nothing else changes: same law, same
+``hold_force``, same 60 N/m slope, same debounce. What sets the ceiling on it is the magnet's own
+gravity crossing at 19.3 mm -- past there the attraction really is weaker than the bulb's weight
+and a ceiling-mounted bulb really is on its way out, so releasing is correct. 15 mm keeps 4.3 mm
+of margin under that, still holds 1.75x weight at the threshold itself, is still well inside the
+25 mm bore mouth, and is still ~4x ``seat_tolerance`` so seat and release stay firmly separated.
+Pushing it further buys nothing measurable anyway: 18 mm and 20 mm avoid exactly the same 12
+knock-outs 15 mm does, while spending the margin.
+
+Deliberately NOT done, though the bags support it: gating release on the hand still being in
+contact with the bulb (which would have caught 11 of the 14 on its own). It needs a contact
+sensor this module does not take and would not have on every scene that wires it; it needs a
+geometric override anyway, or a bulb flung 139 mm clear with no hand on it stays SEATED forever
+and ``fresh_bulb_attached`` reports an installed bulb lying on the floor; and it would make a
+passive detent's behaviour depend on whether an agent happens to be touching it, which is the
+same objection that got the gravity feedforward rejected further up this docstring. The
+threshold change covers all 12 recoverable cases without any of that. Raising ``hold_force``
+was also rejected: it would lift the removal breakout past the 1.5 N that ``verify_no_twist_spin
+.py --pull_n`` requires to still take the bulb OUT, trading an insert failure for a remove one.
 """
 
 from __future__ import annotations
@@ -366,7 +410,7 @@ class bulb_attachment(ManagerTermBase):
         radial_tolerance: float = 0.015,
         tilt_tolerance: float = 0.2,
         seat_tolerance: float = 0.004,
-        release_threshold: float = 0.008,
+        release_threshold: float = 0.015,
         release_debounce_steps: int = 3,
         hold_force: float = 1.5,
         bore_depth: float = 0.025,
@@ -389,9 +433,9 @@ class bulb_attachment(ManagerTermBase):
         # gravity balance point is UNSTABLE) let a ceiling-mounted bulb fall out despite having
         # the right shape. Sizing, against the bulb's 0.035 kg / 0.343 N:
         #
-        #   hold_force 1.5 N   = 4.4x weight at the bore bottom, 3.0x at release_threshold.
+        #   hold_force 1.5 N   = 4.4x weight at the bore bottom, 1.75x at release_threshold.
         #                        Solving F(a) = weight puts the gravity crossing at 19.3 mm,
-        #                        2.4x release_threshold -- so on a ceiling mount (worst case:
+        #                        outside release_threshold -- so on a ceiling mount (worst case:
         #                        inverted, full weight along the outward seat axis) gravity
         #                        alone cannot walk the bulb out, which is the whole point.
         #   bore_depth 0.025 m = MEASURED, not chosen (scripts/measure_bore_geometry.py): the
@@ -408,11 +452,18 @@ class bulb_attachment(ManagerTermBase):
         #                        reverse the velocity it opposes. Same impulse-vs-momentum rule
         #                        the twist-friction bug violated by ~350x. Deliberately
         #                        under-damped on paper; real contact supplies the rest.
-        #   release_threshold 0.008 m = down from 0.02. Holding 2x weight out to 20 mm while
-        #                        still vanishing by the 25 mm bore mouth needs a ~137 N/m
-        #                        slope, past the stability bound; and 20 mm was 80% of the way
-        #                        out of the bore anyway. 8 mm is still 2x seat_tolerance, so a
-        #                        real withdrawal reads as one and a knock does not.
+        #   release_threshold 0.015 m = 0.02 -> 0.008 -> 0.015. The 8 mm step fixed the SLOPE
+        #                        problem (2x weight out to 20 mm needs ~137 N/m, past the
+        #                        stability bound); it also switched the magnet off mid-brush,
+        #                        which is what cost the insert task in real VR. Real bags: 12 of
+        #                        14 knock-outs were finger-brushes parking at 8.9-13.8 mm, every
+        #                        one inside 15 mm, with the hand already off the bulb (under 1 N)
+        #                        at the crossing in 11 of the 14 -- coasts a still-engaged magnet
+        #                        would have pulled home at 0.66-0.90 N. Bounded above by the
+        #                        gravity crossing (19.3 mm): past there the attraction is under
+        #                        the bulb's weight and releasing is correct. 18 and 20 mm avoid
+        #                        exactly the same 12, so the extra reach buys nothing. Still
+        #                        ~4x seat_tolerance, so seat and release stay well separated.
         #   release_debounce_steps 3 (issue #171, wall-mount finding) = requires axial to read
         #                        past release_threshold for 3 CONSECUTIVE steps (60 ms at the
         #                        50 Hz control rate) before releasing, not just one. Real S11

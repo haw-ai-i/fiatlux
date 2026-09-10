@@ -131,7 +131,7 @@ _IDENTITY = (1.0, 0.0, 0.0, 0.0)
 SEAT_TOLERANCE = 0.004  # the __call__ default
 RADIAL_TOLERANCE = 0.015
 TILT_TOLERANCE = 0.2
-RELEASE_THRESHOLD = 0.008
+RELEASE_THRESHOLD = 0.015
 RELEASE_DEBOUNCE_STEPS = 3
 HOLD_FORCE = 1.5
 BORE_DEPTH = 0.025
@@ -375,12 +375,18 @@ def test_magnet_beats_gravity_everywhere_it_has_to_hold():
     weight = BULB_MASS * GRAVITY
     assert HOLD_FORCE / weight > 4.0  # firm breakaway at the bore bottom
     # Attraction at the release threshold -- the far end of the held range -- with real margin.
+    # 1.75x, not the 2x this asserted while release_threshold was 8 mm: the threshold moved out
+    # to 15 mm to keep the magnet engaged through a teleop finger-brush (issue #171, sixth
+    # finding), which spends some of this margin on purpose. What may NOT be spent is the
+    # crossing itself -- see below.
     at_release = HOLD_FORCE * (1.0 - RELEASE_THRESHOLD / BORE_DEPTH)
-    assert at_release / weight > 2.0
-    # And the gravity crossing itself sits far outside the held range, so gravity alone cannot
-    # walk the bulb out to release, let alone out of the bore.
+    assert at_release / weight > 1.5
+    # The load-bearing property, and the real bound on how far release_threshold may move: the
+    # gravity crossing must stay OUTSIDE it, so that everywhere the bulb still counts as held,
+    # the attraction beats its weight and gravity alone cannot walk it out to release.
     crossing = BORE_DEPTH * (1.0 - weight / HOLD_FORCE)
-    assert crossing / RELEASE_THRESHOLD > 2.0
+    assert crossing > RELEASE_THRESHOLD
+    assert RELEASE_THRESHOLD < BORE_DEPTH  # and the phase gate still fires before the bore gate
 
 
 def test_axial_gains_respect_the_solver_stability_bounds():
@@ -578,7 +584,7 @@ def test_release_requires_consecutive_over_threshold_steps_not_one_frame():
 
 
 def test_small_resting_sag_does_not_self_release():
-    """release_threshold (8 mm) sits comfortably above what a held bulb sits at once contact
+    """release_threshold (15 mm) sits comfortably above what a held bulb sits at once contact
     has bottomed it out (~2 mm in the real sim), so a bulb the magnet is actively holding does
     not flicker in and out of SEATED from ordinary settling."""
     env, mgr = _make_env()
@@ -587,6 +593,32 @@ def test_small_resting_sag_does_not_self_release():
     bulb.data.root_pos_w = torch.tensor([[0.0, 0.0, 0.002]])  # a couple mm of sag
     _step(mgr, env)
     assert mgr._phase[OLD, 0] == SEATED
+
+
+def test_teleop_sized_finger_brush_stays_seated_and_is_pulled_home():
+    """A brush the size real VR teleop actually produces neither releases the bulb nor loses the
+    magnet (issue #171, sixth finding).
+
+    The dex3 operator cannot let go cleanly -- across 33 s of seated time the fingers were fully
+    off the bulb for 0.6 s -- so every hold ends in a brush. Measured across 14 knock-outs in the
+    real bags, the excursion each brush caused peaked between 8.9 and 13.8 mm. At the old 8 mm
+    threshold every one of those crossed it, the phase went FREE, and the wrench went to zero
+    mid-excursion, leaving the bulb coasting outward with nothing to arrest it. The property
+    that fixes that is checked here at both ends of the measured range: still SEATED, and still
+    being pulled home by more than the bulb's own weight."""
+    weight = BULB_MASS * GRAVITY
+    for excursion in (0.0089, 0.0120, 0.0138):  # min, middle and max of the measured brushes
+        env, mgr = _make_env()
+        _step(mgr, env)
+        bulb = env.scene["old_bulb"]
+        bulb.data.root_pos_w = torch.tensor([[0.0, 0.0, excursion]])
+        # Several steps, not one: a brush parks the bulb out there rather than bouncing it, so
+        # the debounce must not be what is carrying this -- the threshold has to.
+        for _ in range(RELEASE_DEBOUNCE_STEPS + 2):
+            _step(mgr, env)
+        assert mgr._phase[OLD, 0] == SEATED, f"a {excursion * 1000:.1f} mm brush released the bulb"
+        applied_z = bulb.last_force[0, 0, 2].item()
+        assert applied_z < -weight, f"a {excursion * 1000:.1f} mm brush is not pulled home against its own weight"
 
 
 def test_damping_opposes_outward_velocity():

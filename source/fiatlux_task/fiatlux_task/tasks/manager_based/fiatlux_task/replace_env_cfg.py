@@ -83,12 +83,14 @@ OLD_BULB_DROP_HEIGHT = 0.15  # m; must clear a bulb resting *inside* the floor c
 # own constant since #90: it used to borrow SEAT_ORI_THRESHOLD, a seating-SUCCESS threshold,
 # which measures the full frame and would count the bulb's own resting roll as misalignment.
 BULB_ENTRY_TILT = 0.2
-# m; axial pull past the seat that releases a seated bulb. 8mm, down from 20mm (issue #171):
-# the socket's throat is only ~25mm deep (measured, scripts/measure_bore_geometry.py), so 20mm
-# was 80% of the way out of the bore, and holding the bulb against gravity with real margin that
-# far out needs an axial slope past the solver's stability ceiling. See mdp/attach.py's docstring.
-# Still 2x seat_tolerance (4mm), so a genuine withdrawal reads as one and a knock does not.
-BULB_RELEASE_THRESHOLD = 0.008
+# m; axial pull past the seat that releases a seated bulb. 15mm (issue #171): far enough out
+# that the magnet stays engaged through a teleop finger-brush and pulls the bulb back, instead
+# of switching off mid-excursion and letting it coast out. Measured against real VR bags: 12 of
+# 14 knock-outs were brushes that parked at 8.9-13.8mm, all of them inside 15mm; the other 2 were
+# genuine ejections (78mm, 139mm) that must still release. Bounded above by the magnet's own
+# gravity crossing at 19.3mm -- past there the attraction is weaker than the bulb's weight and a
+# ceiling-mounted bulb really is leaving. See mdp/attach.py's docstring for the full sizing.
+BULB_RELEASE_THRESHOLD = 0.015
 
 ##
 # MDP settings
