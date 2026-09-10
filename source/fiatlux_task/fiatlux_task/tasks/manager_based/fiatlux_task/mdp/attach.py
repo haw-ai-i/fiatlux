@@ -512,6 +512,12 @@ class bulb_attachment(ManagerTermBase):
         old_bulb: RigidObject | None = env.scene["old_bulb"] if "old_bulb" in env.scene.rigid_objects else None
         fresh_bulb: RigidObject = env.scene["fresh_bulb"]
         self._resolve_spawn_phase(env, old_bulb, fresh_bulb)
+        # Shared by both bulbs on a two-bulb (Replace) task -- both sit at the SAME socket in
+        # the SAME step, so compute this once here rather than once per _advance call.
+        socket: RigidObject = env.scene["socket"]
+        socket_quat = socket.data.root_quat_w
+        axis_w = quat_apply(socket_quat, self._axis_l)
+        seat = socket.data.root_pos_w + quat_apply(socket_quat, self._seat_offset)
         gains = dict(
             radial_tolerance=radial_tolerance,
             tilt_tolerance=tilt_tolerance,
@@ -530,8 +536,10 @@ class bulb_attachment(ManagerTermBase):
             max_torque=max_torque,
         )
         if old_bulb is not None:
-            self._advance(old_bulb, _OLD, socket_empty=self._phase[_FRESH] == _FREE, **gains)
-        self._advance(fresh_bulb, _FRESH, socket_empty=self._phase[_OLD] == _FREE, **gains)
+            self._advance(
+                old_bulb, _OLD, socket_quat, axis_w, seat, socket_empty=self._phase[_FRESH] == _FREE, **gains
+            )
+        self._advance(fresh_bulb, _FRESH, socket_quat, axis_w, seat, socket_empty=self._phase[_OLD] == _FREE, **gains)
         self._take_snapshot()
 
     def _resolve_spawn_phase(self, env: ManagerBasedEnv, old_bulb: RigidObject | None, fresh_bulb: RigidObject) -> None:
@@ -563,6 +571,9 @@ class bulb_attachment(ManagerTermBase):
         self,
         bulb: RigidObject,
         row: int,
+        socket_quat: torch.Tensor,
+        axis_w: torch.Tensor,
+        seat: torch.Tensor,
         socket_empty: torch.Tensor,
         radial_tolerance: float,
         tilt_tolerance: float,
@@ -580,11 +591,7 @@ class bulb_attachment(ManagerTermBase):
         tilt_d: float,
         max_torque: float,
     ) -> None:
-        socket: RigidObject = self._env.scene["socket"]
-        socket_quat = socket.data.root_quat_w
         bulb_quat = bulb.data.root_quat_w
-        axis_w = quat_apply(socket_quat, self._axis_l)
-        seat = socket.data.root_pos_w + quat_apply(socket_quat, self._seat_offset)
         plug = bulb.data.root_pos_w + quat_apply(bulb_quat, self._plug_offset)
         displacement = plug - seat
         axial = (displacement * axis_w).sum(dim=1)
