@@ -618,8 +618,15 @@ class bulb_attachment(ManagerTermBase):
         # instant a step reads back under threshold, so a momentary jolt cannot accumulate across
         # separate excursions. A genuine withdrawal stays past threshold for many steps as the
         # hand keeps pulling, so it still releases -- just `release_debounce_steps` steps later.
+        # Directional, not absolute: only OUTWARD travel past release_threshold releases. axial
+        # is signed positive outward (see the magnet law above, `depth = axial.clamp(min=0.0)`),
+        # so `axial.abs()` here used to also release on excessive INWARD travel -- a hard crush
+        # driving the plug past the seat reference in the other direction, which real contact is
+        # supposed to arrest (see "what stops the plug going deeper" above), not this term. That
+        # reintroduced the exact "retention switches off under a disturbance" failure this
+        # debounce was built to fix, just from a crush instead of a withdrawal.
         streak = self._release_streak[row]
-        over_threshold = was_seated & (axial.abs() > release_threshold)
+        over_threshold = was_seated & (axial > release_threshold)
         streak.copy_(torch.where(over_threshold, streak + 1, torch.zeros_like(streak)))
         release = over_threshold & (streak >= release_debounce_steps)
         streak[release] = 0

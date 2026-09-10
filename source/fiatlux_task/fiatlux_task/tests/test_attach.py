@@ -346,10 +346,10 @@ def test_magnet_never_pushes_outward_however_deep_the_plug_sits():
     it out, not the field turning around. This is also why there is no sign flip left to
     chatter across -- the failure mode that made the twist term below eject the bulb.
 
-    Stops at ``release_threshold``: release is ``|axial| > release_threshold``, symmetric, so
-    an offset deeper than that reads as a release and zeroes the whole wrench. That symmetry is
-    moot in practice (contact bottoms the plug out ~2 mm past the seat, nowhere near 8 mm
-    deeper) and is left as it was; it just means this sweep has nothing to say beyond it."""
+    Release is now directional (``axial > release_threshold``, not ``|axial| > release_threshold``):
+    an offset deeper than the seat no longer reads as a release on its own, so this sweep is not
+    bounded by ``release_threshold`` the way the outward direction is -- it is bounded instead by
+    contact, which bottoms the plug out ~2 mm past the seat, nowhere near 8 mm deeper."""
     env, mgr = _make_env()
     _step(mgr, env)
     bulb = env.scene["old_bulb"]
@@ -581,6 +581,25 @@ def test_release_requires_consecutive_over_threshold_steps_not_one_frame():
         bulb.data.root_pos_w = torch.tensor([[0.0, 0.0, 0.0]])  # back at the seat the next frame
         _step(mgr, env)
         assert mgr._phase[OLD, 0] == SEATED  # streak reset -- no accumulation across jolts
+
+
+def test_crush_past_release_threshold_inward_does_not_release():
+    """A hard crush that drives the plug INWARD past the seat by more than ``release_threshold``
+    must not release the bulb -- only outward withdrawal past the threshold should. Release used
+    to be gated on ``axial.abs() > release_threshold``, symmetric, so a crush event deep enough
+    on the inward side flipped SEATED -> FREE and zeroed the retention wrench mid-crush: the same
+    "retention switches off under a disturbance" failure issue #171's debounce was built to fix,
+    just triggered from the opposite direction. What is supposed to stop the plug going deeper is
+    real contact bottoming it out (see the module docstring), not this release check."""
+    env, mgr = _make_env()
+    _step(mgr, env)
+    bulb = env.scene["old_bulb"]
+    bulb.data.root_pos_w = torch.tensor([[0.0, 0.0, -(RELEASE_THRESHOLD + 0.001)]])
+    for _ in range(RELEASE_DEBOUNCE_STEPS + 2):  # well past the debounce window, if it counted at all
+        _step(mgr, env)
+        assert mgr._phase[OLD, 0] == SEATED
+    applied_z = bulb.last_force[0, 0, 2].item()
+    assert applied_z < 0.0  # still held, full-strength inward attraction
 
 
 def test_small_resting_sag_does_not_self_release():
