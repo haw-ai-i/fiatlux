@@ -418,6 +418,12 @@ def _spawn_collidable_bench(prim_path, cfg, translation=None, orientation=None):
     floors porous -- a prop dropped into a crate falls through it. Legal because the table is
     static (``AssetBaseCfg``, no RigidBodyAPI); PhysX rejects triangle meshes only on dynamic
     bodies, the same reasoning ``_spawn_open_container`` records for the crate in #131.
+
+    Each corrugated box carries its body mesh plus two ``trans__decal__*`` overlay meshes
+    (trim + print, both within ~1-2% of the body's own bounding box -- not thin decals, near-full
+    duplicates of it). Colliding all three would stack 3 coincident exact-mesh colliders on one
+    box, which PhysX resolves as redundant/conflicting contact normals; only the body mesh needs
+    one.
     """
     from pxr import Usd, UsdGeom, UsdPhysics
 
@@ -426,7 +432,7 @@ def _spawn_collidable_bench(prim_path, cfg, translation=None, orientation=None):
         if p.IsInstanceable():
             p.SetInstanceable(False)
     for p in Usd.PrimRange(prim):
-        if p.IsA(UsdGeom.Mesh) and not p.HasAPI(UsdPhysics.CollisionAPI):
+        if p.IsA(UsdGeom.Mesh) and not p.HasAPI(UsdPhysics.CollisionAPI) and "decal" not in p.GetName().lower():
             UsdPhysics.CollisionAPI.Apply(p)
             UsdPhysics.MeshCollisionAPI.Apply(p).CreateApproximationAttr().Set("none")
     return prim
