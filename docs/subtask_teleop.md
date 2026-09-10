@@ -112,7 +112,7 @@ are what appear in a bag's columns and in error messages.
 |---|---|---|
 | Step ladder | `ladder` | A **free rigid body** — nothing bolts it down. It can tip, and `ladder_tipped` is a real termination. |
 | Ceiling/wall fixture | `socket` | Where bulbs go. Mounted at **2.2 m**, ceiling- or wall-mounted per draw. |
-| Old bulb | `old_bulb` | Starts **locked in the fixture** (bayonet). The one you remove and throw away. |
+| Old bulb | `old_bulb` | Starts **seated in the fixture** (axial-detent retention spring, issue #167). The one you remove and throw away. |
 | Fresh bulb | `bulb` | Starts **on the bench**. The one you install. |
 | Disposal crate | `bin` | The **only** container in the scene. The old bulb goes in here. Not the bench. |
 | Bench | `table` | Holds the fresh bulb. Not a target for anything. |
@@ -143,7 +143,7 @@ Shared thresholds: **robot standing** = pelvis above 0.35 m and tilt under 1.0 r
 | S08 | GrabNewBulb | sustained | fresh bulb lifted **3 cm** off the bench · **≥2 hand bodies** in contact (>1 N each) · total grip force under **50 N** · standing |
 | S09 | CarryBulbToLadder | all_of | within mounting range of the ladder · facing it within **0.5 rad** · under **1.0 m/s** · bulb held · ladder upright |
 | S10 | ClimbWithBulb | all_of | at top stance (as S02) · bulb held · lifted · standing · ladder vertical |
-| S11 | ScrewInBulb | sustained | fresh bulb **attached** in the fixture's bayonet · at rest · **released** (grip <1 N) · standing · ladder vertical |
+| S11 | ScrewInBulb | sustained | fresh bulb **attached** (seated, retention spring holding it) · at rest · **released** (grip <1 N) · standing · ladder vertical |
 | S12 | ClimbDown | all_of | descended to floor stance (as S04) · **fresh bulb still seated** in the fixture · standing · ladder vertical |
 
 Three patterns worth internalising before operating:

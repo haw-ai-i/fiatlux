@@ -50,6 +50,7 @@ from fiatlux_task.robots.g1 import (
 
 from . import mdp
 from .climb_env_cfg import FALL_MIN_HEIGHT, FALL_TILT_LIMIT
+from .replace_env_cfg import bulb_attachment_event
 from .scene_cfg import (
     ROOM_ENV_SPACING,
     G1ReplaceSceneCfg,
@@ -147,6 +148,10 @@ class EventCfg:
     same layering Climb/Carry/Replace use.
     """
 
+    # Axial retention spring (issue #167), same parameters as Replace/the on-the-ladder
+    # subtasks. This scene has no old_bulb (nothing to remove), which bulb_attachment
+    # handles on its own -- see attach.py. Zero interval -> enforce it every env step.
+    bulb_attachment = bulb_attachment_event()
     # Restores every entity -- including the robot root -- to init_state; must run first (cfg
     # order) so the per-asset randomizations below apply on top. Isaac Lab restores sim state
     # only through reset events, so without this a fallen robot stays fallen across resets.

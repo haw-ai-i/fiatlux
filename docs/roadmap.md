@@ -43,14 +43,79 @@ descoping still stands — it is one flat RL episode, chaining is solution struc
   smoke-test policies.~~ DONE (2026-07-09): `replace_env_cfg.py`, see
   `docs/task_spec.md` / `docs/scoring.md`.
 - Policy stitching / staged-curriculum chaining: not planned (solution structure).
-- Old-bulb attach/detach mechanic (unification spec Phase 4): LANDED for Replace
-  (issue #54, revised 2026-07-31) as the `mdp.bulb_attachment` bayonet state machine.
-  It constrains each bulb to axial-only insertion/ejection or rotation-only locking,
-  switching only when the bulb itself moves at the fully inserted junction. Insertion
-  depth and lock angle are per-env scalar-or-range parameters for future domain
-  randomization. All Replace score channels are achievable. Follow-up: put Remove/Install
-  on the same mechanic; their bulbs are already dynamic but currently lift straight out
-  of / drop straight into the socket.
+- Old-bulb attach/detach mechanic (unification spec Phase 4): the original bayonet state
+  machine (issue #54) was superseded (issue #167, 2026-09-08) by a simpler two-state
+  `mdp.bulb_attachment` FREE/SEATED axial detent -- real bulb-socket collision (re-enabled
+  globally; the old collision filter is gone) now constrains lateral position and
+  orientation on its own, so the only thing left to script is retention: a continuous
+  spring-damper WRENCH while seated, release on a real physics-driven axial pull past
+  `release_threshold`. No twist/lock semantics (this asset has no physical lug/groove; the
+  bayonet never modeled a real feature). Wired for Replace, the S01/S03/S11 subtask-teleop
+  tasks, and `FIATLUX-Insert-v0` (RL). **Not yet wired for `FIATLUX-Insert-Teleop-v0`**: that
+  task swaps in a differently-scaled OMNI socket/bulb asset whose seat/plug geometry hasn't
+  been measured against the family asset's calibrated offsets, so retention there needs its
+  own calibration pass first (see the TODO in `insert_teleop_env_cfg.py`).
+  - **Lateral + tilt centering (issue #171, 2026-09-08)**: real teleop evidence found a
+    seated bulb visibly tilts/swings -- the axial-only design left lateral position and
+    orientation entirely to real contact, and the bore's necessary radial clearance (2.69mm)
+    is real slop, not a defect (`scripts/diagnose_contact_axial.py` confirmed tightening it
+    even to 1.86mm breaks force-driven insertion outright, since the bore has no lead-in
+    chamfer). Fixed in software instead: a SEATED bulb now also gets a much gentler lateral
+    spring-damper and a tilt spring-damper torque, both far weaker than the axial term so
+    they damp wobble without fighting real contact or affecting insertion (gated on
+    `seated_now` exactly like the axial term). Gains are rough starting points, same as the
+    original axial ones -- needs real-teleop retuning before trusting the numbers.
+  - **Axial retention against gravity (issue #171, second finding, 2026-09-08)**: re-teleop
+    after the centering fix found wall mounts hold cleanly, but a ceiling-mounted bulb falls
+    out unassisted within under a second, no operator or contact. Cause: a ceiling fixture is
+    inverted, so the seat axis points down and the bulb's own weight acts entirely along it,
+    in the OUTWARD/release direction -- the axial spring's steady-state hold distance under
+    that load (~1.7cm at the original 20 N/m gain) left almost no margin before
+    `release_threshold` (2cm) on its own, before any transient. First attempt added a gravity
+    feedforward that cancelled it outright (steady-state sag ~0 everywhere) -- rejected on
+    review: a passive retention mechanism (spring, friction, magnet) doesn't know its own
+    orientation and null out whatever load that implies, so a bulb hanging against gravity
+    SHOULD sag more than one resting with it. Second attempt just raised the linear spring's
+    stiffness -- also reconsidered: a spring is weakest exactly at the seat and grows with
+    distance, backwards from what this is meant to model (a magnetic/detent catch, strongest
+    at contact, falling off with distance). Landed on a magnet-shaped axial law instead:
+    `F(axial) = -tanh(axial/deadband) * hold_force/(1 + |axial|/hold_range) - spring_d *
+    axial_rate` -- magnitude peaks at `hold_force` right at the seat, decays past
+    `hold_range`, with a small `tanh` deadband replacing a literal `sign()` to avoid a
+    direction-flip chatter risk exactly at rest. `hold_force`/`hold_range` are sized so the
+    local stiffness at the seat (their ratio) stays under the same semi-implicit stability
+    ceiling (~87 N/m) that bounded the spring, and so worst-case ceiling sag (~4.6mm) sits
+    well clear of `release_threshold` -- `hold_force` ends up modest in absolute terms (~1.5x
+    the bulb's weight) as a direct consequence: a magnet-shaped peak occurs exactly where its
+    stability-relevant stiffness is evaluated, unlike a spring's cap sitting far out along an
+    otherwise-gentle curve, so there's no way to get a strong peak, fast falloff, and the same
+    stability margin at once. Table/wall mounts still sag less than ceiling ones under their
+    own weight, correctly. Needs a regression pass on S11 (screw-in, ceiling) to confirm the
+    insert-then-hold failure reported alongside this is the same root cause, and real-teleop
+    validation that the new force-vs-distance shape (firm at contact, easier once separated)
+    actually feels different from the spring it replaced.
+  - **Twist friction (issue #171, third finding, 2026-09-08)**: real teleop found a
+    ceiling-seated bulb spinning about the seat axis at 1-19 rad/s for a sustained ~2.9s, no
+    operator or contact, before abruptly ejecting. Cause: the tilt torque's damping used the
+    FULL angular velocity but shared tilt's tiny `max_torque` (0.05 N*m) budget -- arresting
+    even 10 rad/s needed several times that, so it saturated uselessly every step. Split
+    twist (rotation about the seat axis, no target angle -- issue #90) from tilt
+    (misalignment, which does have a target) and gave twist its own budget. A first, viscous
+    version of that (`-twist_d * twist_rate`) settled into a stable but NONZERO equilibrium
+    spin under real contact, and raising its gain made the equilibrium worse at some tested
+    magnitudes -- evidence of the wrong force law, not just an under-sized one. Replaced with
+    Coulomb-like FRICTION (`twist_friction`, roughly constant magnitude, not
+    velocity-proportional) instead, matching how real contact friction actually behaves.
+    Verified (`scripts/verify_twist_damping.py`): both the viscous and friction versions
+    reliably stop the actual reported failure (self-ejection) across the full 1-19 rad/s
+    range, holding 5+ simulated seconds -- but NEITHER reliably drives the residual spin
+    itself to zero; it persists at some nonzero, sometimes noisy rate. That residual looks
+    like a real 3D contact effect (a loosely-toleranced plug precessing/rattling in the bore)
+    rather than something a single-axis torque law can fully resolve -- open follow-up, not
+    treated as solved, though the critical failure (detachment) is fixed.
+  Follow-up: put Remove/Install on the same mechanic; their
+  bulbs are already dynamic but currently lift straight out of / drop straight into the
+  socket (issue #76 Step 2).
 
 ## 3. Learned-policy support
 

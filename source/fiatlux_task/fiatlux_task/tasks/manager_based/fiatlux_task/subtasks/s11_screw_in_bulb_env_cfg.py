@@ -8,23 +8,21 @@
 Starts from S10's end state: the robot balanced on the upper steps with the fresh bulb in hand
 (``BULB_IN_ROOT_ON_LADDER``), the fixture inverted and empty, the old bulb in the disposal crate.
 
-The bayonet attach/detach state machine (issue #54, ``mdp.bulb_attachment``, wired once for the
-tier in ``subtask_tiers.balance.BalanceEventCfg``) governs the fresh bulb from here: FREE at reset
-(``BULB_IN_ROOT_ON_LADDER`` puts it in the hand, not the insertion channel, so it starts
-unconstrained same as before), through AXIAL once it enters the channel, to ROTATING once
-bottomed and turned through the full lock angle. ``mdp.fresh_bulb_attached`` is the success
-conjunct that actually requires that whole sequence, not just transiting the old geometric seating
-thresholds -- the attach-aware replacement for ``bulb_seated``.
+The axial retention spring (issue #167, ``mdp.bulb_attachment``, wired once for the tier in
+``subtask_tiers.balance.BalanceEventCfg``) governs the fresh bulb from here: FREE at reset
+(``BULB_IN_ROOT_ON_LADDER`` puts it in the hand, not at the seat, so it starts unconstrained same
+as before), to SEATED once it reaches the seat aligned and the socket is unoccupied.
+``mdp.fresh_bulb_attached`` is the success conjunct that requires that admission to have actually
+fired, not just transiting the old geometric seating thresholds -- the attach-aware replacement
+for ``bulb_seated``. There is no twist/rotation requirement: this asset has no physical
+lug/groove, so "installed" here means seated and released, not screwed through a lock angle --
+the task name and identifiers predate that simplification and are unchanged for now.
 
-Rotation about the mating axis is free by construction. The dense alignment term scores the angle
-BETWEEN the plug and seat axes (``mate_terms.bulb_axis_alignment_tanh``), not full-quaternion
-error, which would grow as the bulb is screwed home and fight the motion the task is named for.
-
-What makes the gate "screwed in" rather than "held in the socket" is that the hand must be OFF and
-the bulb still locked a second later -- the conjunction is debounced as a whole, so every part of
+What makes the gate "installed" rather than "held in the socket" is that the hand must be OFF and
+the bulb still seated a second later -- the conjunction is debounced as a whole, so every part of
 it has to survive the release.
 
-The bayonet mechanic governs bulb-vs-socket, not bulb-vs-hand -- that hold is real, not a
+The retention spring governs bulb-vs-socket, not bulb-vs-hand -- that hold is real, not a
 kinematic constraint: ``ARM_CRADLE`` (palm up) + ``HAND_CUP`` (uncurled, merged into
 ``robot.init_state.joint_pos``) rest the bulb directly on the open palm
 (``nav_terms.settle_carried_payload_live``), and ``grip_contact`` measures real, sustained
@@ -69,7 +67,7 @@ _GRIP_LEFT = SceneEntityCfg("grip_contact_left")
 BULB_SCREWED_IN_CONJUNCTS = [
     (mdp.fresh_bulb_attached, {}),
     (
-        place_terms.object_at_rest,
+        place_terms.object_settled,
         {"asset_cfg": _BULB, "lin_vel_limit": AT_REST_LIN_VEL_LIMIT, "ang_vel_limit": AT_REST_ANG_VEL_LIMIT},
     ),
     (
@@ -85,8 +83,8 @@ BULB_SCREWED_IN_CONJUNCTS = [
 class S11EventCfg(BalanceEventCfg):
     """Re-seats the bulb against the hand's live, actually-simulated pose -- see
     ``nav_terms.settle_carried_payload_live``. Declared after the inherited ``bulb_attachment``
-    (issue #54), so on the settling step the bayonet FSM still sees the bulb wherever
-    ``compose_carried_pose`` put it (FREE phase, no channel nearby -- harmless) before this
+    (issue #167), so on the settling step the retention term still sees the bulb wherever
+    ``compose_carried_pose`` put it (FREE phase, nowhere near the seat -- harmless) before this
     corrects the position for the rest of the episode. Root/joint randomization zeroed for now
     while the open-palm rest calibration is being worked out (adds noise we don't need yet)."""
 

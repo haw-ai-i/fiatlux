@@ -45,6 +45,16 @@ gym.register(
     kwargs={"env_cfg_entry_point": f"{__name__}.ladder_gallery_teleop_env_cfg:LadderGalleryTeleopEnvCfg"},
 )
 
+# Isolated bulb-attach/socket mechanism bench (imported from test/164-bench-telemetry) --
+# drives mdp.bulb_attachment on a tabletop rig with no ladder, for testing the retention
+# mechanism directly. Not a benchmark task.
+gym.register(
+    id="FIATLUX-TestLightbulbMechanism-Teleop-v0",
+    entry_point="isaaclab.envs:ManagerBasedRLEnv",
+    disable_env_checker=True,
+    kwargs={"env_cfg_entry_point": f"{__name__}.test_lightbulb_mechanism_env_cfg:TestLightbulbMechanismEnvCfg"},
+)
+
 # --- teleop twins of the 12 benchmark subtasks -------------------------------------------
 # Each has its own thin cfg file under `subtasks/` (matching how the benchmark writes its
 # subtasks: explicit file per task + shared behaviour in a common module -- here
