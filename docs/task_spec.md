@@ -167,8 +167,10 @@ The **tabletop preset** of the shared family scene (`scene_cfg.py: G1ReplaceScen
 - **Bulb:** graspable dynamic rigid body, the Omniverse A19 bulb
   (`assets/omniverse_bulb/LightBulb_bulb_z_rigid.usda`, 0.035 kg), standing on its screw
   cap at hand height on the table.
-- **Socket:** kinematic fixture on the table, the matching Omniverse socket
-  (`assets/omniverse_bulb/LightBulb_socket_z_static.usda`). Its screw hole is an exact
+- **Socket:** kinematic fixture on the table, the matching Omniverse socket with a guide
+  sleeve inside its bore (`assets/omniverse_bulb/LightBulb_socket_z_static_sleeve.usda`,
+  authored over the stock socket by `scripts/omniverse/omniverse_socket_guide_sleeve.py`;
+  the stock mouth ring alone lets a seated bulb lean 22 deg and jam). Its screw hole is an exact
   triangle-mesh collider, so a bulb genuinely enters and rests in it -- which also makes
   the socket permanently ineligible to be dynamic (a PhysX rule). Both halves are authored
   assembled at identity, so *seated* is exactly *bulb pose == socket pose*.
