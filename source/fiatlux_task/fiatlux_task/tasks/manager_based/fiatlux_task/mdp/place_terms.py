@@ -152,10 +152,11 @@ def object_settled(
     if step != st["step"]:
         dt = env.step_dt * (step - st["step"])
         lin_fd = torch.norm(pos - st["pos"], dim=-1) / dt
-        ang_fd = quat_error_magnitude(quat, st["quat"]) / dt
         alpha = min(1.0, dt / SETTLED_SPEED_TAU_S)
         st["lin"] = st["lin"] + alpha * (lin_fd - st["lin"])
-        st["ang"] = st["ang"] + alpha * (ang_fd - st["ang"])
+        if ang_vel_limit is not None:
+            ang_fd = quat_error_magnitude(quat, st["quat"]) / dt
+            st["ang"] = st["ang"] + alpha * (ang_fd - st["ang"])
         # just reset: the pose jump is a teleport, not motion. Not == 0 -- ManagerBasedRLEnv.step()
         # increments episode_length_buf before termination/reward terms run, on every step
         # including the first one after a reset, so this term never observes 0; 1 is the value
