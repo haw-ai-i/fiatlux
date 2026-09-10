@@ -121,12 +121,12 @@ simulation_app = app_launcher.app
 
 import importlib
 import inspect
-import sys
 
 import fiatlux_task.tasks  # noqa: F401  -- registers the FIATLUX benchmark environments
 import fiatlux_teleop  # noqa: F401  -- registers the -Teleop-v0 twins
 import gymnasium as gym
 import torch
+import verify_common
 from fiatlux_task.assets import BULB_PLUG_OFFSET, SOCKET_SEAT_AXIS, SOCKET_SEAT_OFFSET
 from fiatlux_task.tasks.manager_based.fiatlux_task.mdp import attach as task_attach
 from fiatlux_task.tasks.manager_based.fiatlux_task.scene_cfg import set_layout_seed
@@ -168,21 +168,11 @@ def build_cfg():
     """The bag's env, as the bag built it: preset layout at its seed, no forced fixture pose."""
     set_layout_seed(args_cli.seed)
     cfg = parse_env_cfg(args_cli.task, device=args_cli.device, num_envs=1)
-    assert hasattr(cfg.scene, "old_bulb"), (
-        f"cfg.scene ({type(cfg.scene)} from {sys.modules[type(cfg.scene).__module__].__file__}) has no "
-        "old_bulb -- fiatlux_task likely resolved to the wrong checkout again; check sys.path/pyrun"
-    )
+    verify_common.assert_right_checkout(cfg, "old_bulb")
     cfg.seed = args_cli.seed
     # Cameras only cost time here (zero action, nothing to see that the numbers do not say) and
     # draw no randoms, so dropping them does not perturb the layout the seed produced.
-    for camera in ("ego_camera", "torso_camera", "wrist_camera"):
-        if getattr(cfg.scene, camera, None) is not None:
-            setattr(cfg.scene, camera, None)
-    for group_name in ("policy", "privileged"):
-        group = getattr(cfg.observations, group_name, None)
-        for term in ("ego_rgb", "torso_rgb", "wrist_rgb"):
-            if group is not None and getattr(group, term, None) is not None:
-                setattr(group, term, None)
+    verify_common.strip_visual_obs(cfg)
     # Watch the whole window even if a termination would have cut it: the point is what happens
     # to the seated bulb, and a truncated episode would hide a late ejection.
     cfg.episode_length_s = max(args_cli.seconds * 2.0, cfg.episode_length_s)
@@ -444,17 +434,4 @@ def main() -> int:
 
 
 if __name__ == "__main__":
-    import traceback
-
-    exit_code = 1
-    try:
-        exit_code = main()
-    except BaseException:
-        traceback.print_exc()
-        exit_code = 1
-    finally:
-        sys.stdout.flush()
-        sys.stderr.flush()
-        if exit_code:
-            os._exit(exit_code)
-        simulation_app.close()
+    verify_common.run_verify_main(main, simulation_app)

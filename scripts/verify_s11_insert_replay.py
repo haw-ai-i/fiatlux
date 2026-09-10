@@ -81,12 +81,12 @@ simulation_app = app_launcher.app
 """Everything else follows."""
 
 import importlib
-import sys
 
 import fiatlux_task.tasks  # noqa: F401  -- registers the FIATLUX benchmark environments
 import fiatlux_teleop  # noqa: F401  -- registers the -Teleop-v0 twins
 import gymnasium as gym
 import torch
+import verify_common
 from fiatlux_task.assets import BULB_PLUG_OFFSET, SOCKET_SEAT_AXIS, SOCKET_SEAT_OFFSET
 from fiatlux_task.tasks.manager_based.fiatlux_task.mdp import attach as task_attach
 from fiatlux_task.tasks.manager_based.fiatlux_task.scene_cfg import set_layout_seed
@@ -101,19 +101,9 @@ OLD_GAINS = dict(tilt_k=0.05, tilt_d=0.01, max_torque=0.05, release_debounce_ste
 def build_cfg():
     set_layout_seed(args_cli.seed)
     cfg = parse_env_cfg(args_cli.task, device=args_cli.device, num_envs=1)
-    assert hasattr(cfg.scene, "fresh_bulb"), (
-        f"cfg.scene ({type(cfg.scene)} from {sys.modules[type(cfg.scene).__module__].__file__}) has no "
-        "fresh_bulb -- fiatlux_task likely resolved to the wrong checkout again; check sys.path/pyrun"
-    )
+    verify_common.assert_right_checkout(cfg, "fresh_bulb")
     cfg.seed = args_cli.seed
-    for camera in ("ego_camera", "torso_camera", "wrist_camera"):
-        if getattr(cfg.scene, camera, None) is not None:
-            setattr(cfg.scene, camera, None)
-    for group_name in ("policy", "privileged"):
-        group = getattr(cfg.observations, group_name, None)
-        for term in ("ego_rgb", "torso_rgb", "wrist_rgb"):
-            if group is not None and getattr(group, term, None) is not None:
-                setattr(group, term, None)
+    verify_common.strip_visual_obs(cfg)
     # Teleop is operator-paced; watch the whole recorded episode even if a termination would
     # otherwise cut it short -- a truncated replay would hide a late re-seat or re-ejection.
     ep = torch.load(args_cli.episode, weights_only=False)
@@ -271,17 +261,4 @@ def main() -> int:
 
 
 if __name__ == "__main__":
-    import traceback
-
-    exit_code = 1
-    try:
-        exit_code = main()
-    except BaseException:
-        traceback.print_exc()
-        exit_code = 1
-    finally:
-        sys.stdout.flush()
-        sys.stderr.flush()
-        if exit_code:
-            os._exit(exit_code)
-        simulation_app.close()
+    verify_common.run_verify_main(main, simulation_app)

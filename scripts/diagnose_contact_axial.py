@@ -70,11 +70,11 @@ simulation_app = app_launcher.app
 
 import importlib
 import os
-import sys
 
 import fiatlux_task.tasks  # noqa: F401  -- registers the FIATLUX Gym environments
 import gymnasium as gym
 import torch
+import verify_common
 from fiatlux_task.assets import BULB_PLUG_OFFSET, SOCKET_SEAT_AXIS, SOCKET_SEAT_OFFSET
 from fiatlux_task.tasks.manager_based.fiatlux_task.mdp import attach as task_attach
 from fiatlux_task.tasks.manager_based.fiatlux_task.scene_cfg import set_layout_seed
@@ -95,19 +95,9 @@ def build_cfg():
     # layout seed must be set first (same reasoning as the original script).
     set_layout_seed(args_cli.seed)
     cfg = parse_env_cfg("FIATLUX-Replace-v0", device=args_cli.device, num_envs=1)
-    assert hasattr(cfg.scene, "fresh_bulb"), (
-        f"cfg.scene ({type(cfg.scene)} from {sys.modules[type(cfg.scene).__module__].__file__}) has no "
-        "fresh_bulb -- fiatlux_task likely resolved to the wrong checkout again; check sys.path"
-    )
+    verify_common.assert_right_checkout(cfg, "fresh_bulb")
     cfg.seed = args_cli.seed
-    for camera in ("ego_camera", "torso_camera", "wrist_camera"):
-        if getattr(cfg.scene, camera, None) is not None:
-            setattr(cfg.scene, camera, None)
-    for group_name in ("policy", "privileged"):
-        group = getattr(cfg.observations, group_name, None)
-        for term in ("ego_rgb", "torso_rgb", "wrist_rgb"):
-            if group is not None and getattr(group, term, None) is not None:
-                setattr(group, term, None)
+    verify_common.strip_visual_obs(cfg)
     for term in ("success", "old_bulb_dropped", "fresh_bulb_dropped"):
         if getattr(cfg.terminations, term, None) is not None:
             setattr(cfg.terminations, term, None)
@@ -433,26 +423,6 @@ def main() -> int:
 
 
 if __name__ == "__main__":
-    # Same shutdown shape as the original: closing the env does not tear down Kit, and a
-    # blanket finally:-close would hang on failure, so hard-exit past it instead. UNLIKE the
-    # original, an uncaught exception is printed before that hard exit -- the original's bare
-    # try/finally called os._exit(1) (exit_code's untouched default) from inside the finally
-    # clause during exception unwinding, which preempts Python's normal unhandled-exception
-    # traceback entirely. That silently swallowed the actual error (found while running this
-    # for issue #171/#167): the process would exit 1 with zero diagnostic output.
-    import os
-    import sys
-    import traceback
-
-    exit_code = 1
-    try:
-        exit_code = main()
-    except BaseException:
-        traceback.print_exc()
-        exit_code = 1
-    finally:
-        sys.stdout.flush()
-        sys.stderr.flush()
-        if exit_code:
-            os._exit(exit_code)
-        simulation_app.close()
+    # See verify_common.run_verify_main's docstring for why this shape (print-then-hard-exit on
+    # failure, discovered while running this very script for issue #171/#167).
+    verify_common.run_verify_main(main, simulation_app)
