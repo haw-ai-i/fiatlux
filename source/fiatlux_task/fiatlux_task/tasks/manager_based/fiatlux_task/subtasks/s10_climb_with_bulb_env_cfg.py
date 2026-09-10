@@ -50,6 +50,7 @@ from ..subtask_tiers.carrying import add_bulb_crush_gate
 
 _BULB = SceneEntityCfg("fresh_bulb")
 _GRIP = SceneEntityCfg("grip_contact")
+_GRIP_LEFT = SceneEntityCfg("grip_contact_left")
 
 # The success gate, as reviewable data (mdp.all_of) rather than a hand-written conjunction --
 # an omitted conjunct here is a gate that passes vacuously.
@@ -62,7 +63,7 @@ CLIMBED_WITH_BULB_CONJUNCTS = [
             "max_speed": LADDER_SUCCESS_MAX_SPEED,
         },
     ),
-    (payload_held, {"sensor_cfg": _GRIP, "force_threshold": GRIP_FORCE_THRESHOLD_N}),
+    (payload_held, {"sensor_cfg": _GRIP, "other_sensor_cfg": _GRIP_LEFT, "force_threshold": GRIP_FORCE_THRESHOLD_N}),
     (grasp_terms.object_lifted, {"asset_cfg": _BULB, "min_height": FRESH_BULB_DROP_HEIGHT}),
     (place_terms.robot_standing, {"minimum_height": FALL_MIN_HEIGHT, "limit_angle": FALL_TILT_LIMIT}),
     (grasp_terms.ladder_near_vertical, {"tilt_limit": mdp.LADDER_TILT_LIMIT}),
@@ -139,5 +140,4 @@ class S10ClimbWithBulbEnvCfg(ClimbSubtaskCfg):
         }
         add_grip_contact_sensor(self.scene, self.scene.fresh_bulb.prim_path)
         add_bulb_crush_gate(self)
-        # Longer than S02's 20 s: one-handed is slower.
-        self.episode_length_s = 30.0
+        self.episode_length_s = 120.0

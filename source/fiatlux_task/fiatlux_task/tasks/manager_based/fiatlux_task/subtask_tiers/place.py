@@ -47,6 +47,13 @@ def add_release_contact_sensor(scene: G1ReplaceSceneCfg, target_prim_path: str) 
         history_length=1,
         track_air_time=False,
     )
+    # Left mirror: released means BOTH hands are off it, not just the right (issue #151).
+    scene.release_contact_left = ContactSensorCfg(
+        prim_path=scene.left_hand_contact.prim_path,
+        filter_prim_paths_expr=[target_prim_path],
+        history_length=1,
+        track_air_time=False,
+    )
 
 
 @configclass

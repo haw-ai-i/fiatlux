@@ -31,9 +31,9 @@ import torch
 from isaaclab.assets import Articulation, RigidObject
 from isaaclab.managers import SceneEntityCfg
 from isaaclab.sensors import ContactSensor
-from isaaclab.utils.math import quat_apply_inverse
+from isaaclab.utils.math import quat_apply, quat_apply_inverse
 
-from fiatlux_task.assets import BULB_LIE_Z_OFFSET, BULB_STAND_Z_OFFSET
+from fiatlux_task.assets import BULB_MERIDIAN
 
 if TYPE_CHECKING:
     from isaaclab.envs import ManagerBasedRLEnv
@@ -49,15 +49,13 @@ if TYPE_CHECKING:
 LADDER_STEP_FACE_LOCAL = (0.0, -1.0, 0.0)
 
 CRATE_RIM_Z = 0.17  # m
-# Interior half-extent + floor, measured by ray-casting the crate collision mesh (#131);
+# Interior half-extent, measured by ray-casting the crate collision mesh (#131);
 # re-measure if the crate USD changes.
 CRATE_INTERIOR_HALF_EXTENT = (0.2873, 0.1876)  # m; #131
-CRATE_INTERIOR_FLOOR_Z = 0.0074  # m; #131
-# Lowest root z a contained bulb can read, over every orientation: the root sits outside the
-# geometry, so a bulb standing on its cap on the crate's inner floor puts its root BELOW that
-# floor (BULB_STAND_Z_OFFSET), and one balanced on its glass dome lower still. Bounded by the
-# bulb's own length rather than by an orientation, which is the point (CRITIQUE A5).
-BULB_MAX_ROOT_DROP = BULB_STAND_Z_OFFSET + BULB_LIE_Z_OFFSET
+# Outer footprint, from the same measurement: what "standing at the crate" is measured against.
+CRATE_FOOTPRINT_HALF_EXTENT = (0.3007, 0.2009)  # m; #149
+# An object resting against an inner wall touches it, so equality is inside.
+CONTAINMENT_TOLERANCE = 0.001  # m
 
 
 # ---------------------------------------------------------------------------
@@ -84,20 +82,32 @@ def object_at_rest(
     return at_rest
 
 
+def _peak_filtered_force(env: ManagerBasedRLEnv, sensor_cfg: SceneEntityCfg) -> torch.Tensor:
+    """Largest per-body force magnitude on the sensor's filtered target."""
+    sensor: ContactSensor = env.scene.sensors[sensor_cfg.name]
+    force = sensor.data.force_matrix_w.sum(dim=2)  # (N, B, M, 3) -> (N, B, 3)
+    return force.norm(dim=-1).max(dim=1).values
+
+
 def object_released(
     env: ManagerBasedRLEnv,
     sensor_cfg: SceneEntityCfg,
     force_threshold: float,
+    other_sensor_cfg: SceneEntityCfg | None = None,
 ) -> torch.Tensor:
     """True where no hand body pushes on the sensor's filtered target above ``force_threshold``.
 
     The sensor must filter for exactly ONE prim (the manipulated object) -- summing a multi-target
     filter would let force on some other object mask the release, or the absence of force on it
     fake one.
+
+    With ``other_sensor_cfg``, released means BOTH hands are off it (issue #151): a bulb still
+    gripped by the other hand has not been let go of.
     """
-    sensor: ContactSensor = env.scene.sensors[sensor_cfg.name]
-    force = sensor.data.force_matrix_w.sum(dim=2)  # (N, B, M, 3) -> (N, B, 3)
-    return force.norm(dim=-1).max(dim=1).values < force_threshold
+    peak = _peak_filtered_force(env, sensor_cfg)
+    if other_sensor_cfg is not None:
+        peak = torch.maximum(peak, _peak_filtered_force(env, other_sensor_cfg))
+    return peak < force_threshold
 
 
 def robot_standing(
@@ -149,42 +159,83 @@ def ladder_feet_down(
 # ---------------------------------------------------------------------------
 
 
+def _revolved_extent(
+    axis: torch.Tensor, origin: torch.Tensor, meridian: torch.Tensor, component: int
+) -> tuple[torch.Tensor, torch.Tensor]:
+    """(min, max) of the body's projection onto container axis ``component``.
+
+    For a solid of revolution the ring of surface points at outline height ``z`` is a circle of
+    radius ``r`` centred at ``z * axis``, so its projection onto a unit axis spans
+    ``z * cos +/- r * sin``, with ``cos`` that component of ``axis``. The extremes over the
+    outline are the body's exact reach along that axis, at any orientation.
+    """
+    cos = axis[:, component].unsqueeze(1)
+    sin = (1.0 - cos.square()).clamp(min=0.0).sqrt()
+    centre = meridian[:, 0].unsqueeze(0) * cos
+    spread = meridian[:, 1].unsqueeze(0) * sin
+    base = origin[:, component].unsqueeze(1)
+    return (base + centre - spread).min(dim=1).values, (base + centre + spread).max(dim=1).values
+
+
+def object_vertical_span(
+    env: ManagerBasedRLEnv,
+    asset_cfg: SceneEntityCfg,
+    meridian: tuple[tuple[float, float], ...],
+) -> tuple[torch.Tensor, torch.Tensor]:
+    """(lowest, highest) world z reached by the object's geometry, at any orientation.
+
+    Height gates want the body, not the root: the bulb's root sits off its own cap, so tipping
+    one over on a table moves the root 76 mm without moving the bulb off the surface at all
+    (issue #131).
+    """
+    obj: RigidObject = env.scene[asset_cfg.name]
+    outline = torch.tensor(meridian, dtype=torch.float32, device=env.device)
+    local_axis = torch.tensor((0.0, 0.0, 1.0), device=env.device).expand(env.num_envs, 3)
+    axis = quat_apply(obj.data.root_quat_w, local_axis)
+    return _revolved_extent(axis, obj.data.root_pos_w, outline, 2)
+
+
 def object_in_container(
     env: ManagerBasedRLEnv,
     asset_cfg: SceneEntityCfg,
     container_cfg: SceneEntityCfg,
     interior_half_extent: tuple[float, float],
-    interior_floor_z: float,
     rim_z: float,
-    max_root_drop: float,
+    meridian: tuple[tuple[float, float], ...],
+    tolerance: float = CONTAINMENT_TOLERANCE,
 ) -> torch.Tensor:
-    """True where the object's root lies inside the container's interior, in ANY orientation.
+    """True where the object's GEOMETRY lies inside the container's interior, in any orientation.
 
-    Containment, not a height equality (CRITIQUE A5): a window around the root height a bulb reads
-    while *standing on its cap* excludes the same bulb lying on its glass, and excludes one wedged
-    against a wall or still settling -- states that are unambiguously in the crate.
+    Tests the body, not its root frame. A root is a transform origin and may sit outside the
+    geometry -- the bulb's lies 36 mm off its own cap, and up to 193 mm from its far end -- so a
+    root-point test asks about a point that can be past the container wall while the object rests
+    against that wall from the inside. Any correction for the offset is orientation-dependent and
+    as large as the object, which is why the previous per-axis allowance could not separate in
+    from out (issue #131).
 
-    The interior FOOTPRINT does the discriminating: a bulb balanced on the rim sits on the wall
-    line, outside it, and one on the floor beside the crate is further out still. The vertical
-    bounds only have to exclude "above the opening" and "under the floor", so they are given as
-    the rim height and the deepest the root can sit below the interior floor over all orientations
-    -- the root is outside the bulb's own geometry, so that offset is not zero.
+    ``meridian`` is the object's outline as ``(z, radius)`` about its own +z, so its reach along
+    each container axis follows in closed form (:func:`_revolved_extent`) from the live pose.
 
     Evaluated in the container's own frame, so a yawed crate is handled.
     """
     obj: RigidObject = env.scene[asset_cfg.name]
     container: RigidObject = env.scene[container_cfg.name]
-    rel = quat_apply_inverse(container.data.root_quat_w, obj.data.root_pos_w - container.data.root_pos_w)
-    inside_x = rel[:, 0].abs() < interior_half_extent[0]
-    inside_y = rel[:, 1].abs() < interior_half_extent[1]
-    below_rim = rel[:, 2] < rim_z
-    above_floor = rel[:, 2] > interior_floor_z - max_root_drop
-    return inside_x & inside_y & below_rim & above_floor
+    container_quat = container.data.root_quat_w
+    outline = torch.tensor(meridian, dtype=torch.float32, device=env.device)
+    local_axis = torch.tensor((0.0, 0.0, 1.0), device=env.device).expand(env.num_envs, 3)
+    axis = quat_apply_inverse(container_quat, quat_apply(obj.data.root_quat_w, local_axis))
+    origin = quat_apply_inverse(container_quat, obj.data.root_pos_w - container.data.root_pos_w)
+
+    inside = torch.ones(env.num_envs, dtype=torch.bool, device=env.device)
+    for component, half in enumerate(interior_half_extent):
+        low, high = _revolved_extent(axis, origin, outline, component)
+        inside &= torch.maximum(low.abs(), high.abs()) < half + tolerance
+    # Below the rim, so an object held or resting above the opening does not count as in it.
+    return inside & (_revolved_extent(axis, origin, outline, 2)[0] < rim_z)
 
 
 def old_bulb_in_bin(
     env: ManagerBasedRLEnv,
-    interior_floor_z: float = CRATE_INTERIOR_FLOOR_Z,
     asset_cfg: SceneEntityCfg = SceneEntityCfg("old_bulb"),
     bin_cfg: SceneEntityCfg = SceneEntityCfg("bin"),
 ) -> torch.Tensor:
@@ -194,9 +245,8 @@ def old_bulb_in_bin(
         asset_cfg=asset_cfg,
         container_cfg=bin_cfg,
         interior_half_extent=CRATE_INTERIOR_HALF_EXTENT,
-        interior_floor_z=interior_floor_z,
         rim_z=CRATE_RIM_Z,
-        max_root_drop=BULB_MAX_ROOT_DROP,
+        meridian=BULB_MERIDIAN,
     )
 
 

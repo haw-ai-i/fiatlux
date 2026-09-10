@@ -27,8 +27,13 @@ def add_bulb_crush_gate(cfg, sensor_name: str = "grip_contact") -> None:
     Args:
         cfg: the leaf's env cfg, after its tier has built ``rewards`` and ``terminations``.
         sensor_name: the leaf's single-target hand sensor -- ``grip_contact`` on the legs that
-            hold the bulb, ``release_contact`` on the leg that lets go of it.
+            hold the bulb, ``release_contact`` on the leg that lets go of it. Its left-hand
+            mirror is watched too, since either hand can crush the bulb (issue #151).
     """
-    params = {"sensor_cfg": SceneEntityCfg(sensor_name), "limit": GLASS_CONTACT_LIMIT_N}
+    params = {
+        "sensor_cfg": SceneEntityCfg(sensor_name),
+        "other_sensor_cfg": SceneEntityCfg(f"{sensor_name}_left"),
+        "limit": GLASS_CONTACT_LIMIT_N,
+    }
     cfg.rewards.bulb_crushed = RewTerm(func=mate_terms.grip_force_exceeded, weight=CRUSH_PENALTY_WEIGHT, params=params)
     cfg.terminations.bulb_crushed = DoneTerm(func=mate_terms.grip_force_exceeded, params=params)

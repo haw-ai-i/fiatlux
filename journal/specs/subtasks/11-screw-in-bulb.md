@@ -59,7 +59,7 @@ S11 is the only subtask that screws anything.
 ## Terminations
 
 `time_out`, `success=bulb_screwed_in`, `fell_below`, `fell_over`, `ladder_tipped`, `bulb_dropped`.
-`episode_length_s = 40.0` — the longest of the chain; fine insertion under balance.
+`episode_length_s = 120.0`.
 
 ## Reuse
 

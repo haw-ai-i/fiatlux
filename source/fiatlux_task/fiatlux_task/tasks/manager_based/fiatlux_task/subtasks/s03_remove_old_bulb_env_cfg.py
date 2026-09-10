@@ -40,7 +40,14 @@ _OLD_BULB = SceneEntityCfg("old_bulb")
 # an omitted conjunct here is a gate that passes vacuously.
 OLD_BULB_TAKEN_CONJUNCTS = [
     (mdp.old_bulb_removed_after_release, {"clearance_threshold": REMOVAL_CLEARANCE}),
-    (payload_held, {"sensor_cfg": SceneEntityCfg("grip_contact"), "force_threshold": GRIP_FORCE_THRESHOLD_N}),
+    (
+        payload_held,
+        {
+            "sensor_cfg": SceneEntityCfg("grip_contact"),
+            "other_sensor_cfg": SceneEntityCfg("grip_contact_left"),
+            "force_threshold": GRIP_FORCE_THRESHOLD_N,
+        },
+    ),
     (grasp_terms.object_lifted, {"asset_cfg": _OLD_BULB, "min_height": OLD_BULB_DROP_HEIGHT}),
     (place_terms.robot_standing, {"minimum_height": FALL_MIN_HEIGHT, "limit_angle": FALL_TILT_LIMIT}),
     (grasp_terms.ladder_near_vertical, {"tilt_limit": mdp.LADDER_TILT_LIMIT}),
@@ -90,4 +97,4 @@ class S03RemoveOldBulbEnvCfg(MateSubtaskCfg):
         super().__post_init__()
         # The old bulb stays where apply_replace_preset put it: seated in the inverted fixture.
         add_grip_contact_sensor(self.scene, self.scene.old_bulb.prim_path)
-        self.episode_length_s = 30.0
+        self.episode_length_s = 120.0

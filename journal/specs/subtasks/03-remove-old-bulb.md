@@ -65,7 +65,7 @@ scenarios. Note the limitation at the cfg site.
 ## Terminations
 
 `time_out`, `success=old_bulb_taken`, `fell_below`, `fell_over`, `ladder_tipped`,
-`old_bulb_dropped`. `episode_length_s = 30.0`.
+`old_bulb_dropped`. `episode_length_s = 120.0`.
 
 ## Reuse
 

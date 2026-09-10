@@ -59,7 +59,11 @@ class MateRewardsCfg(OnLadderRewardsCfg):
     bulb_crushed = RewTerm(
         func=mate_terms.grip_force_exceeded,
         weight=-200.0,
-        params={"sensor_cfg": SceneEntityCfg("grip_contact"), "limit": GLASS_CONTACT_LIMIT_N},
+        params={
+            "sensor_cfg": SceneEntityCfg("grip_contact"),
+            "other_sensor_cfg": SceneEntityCfg("grip_contact_left"),
+            "limit": GLASS_CONTACT_LIMIT_N,
+        },
     )
 
 
@@ -73,7 +77,11 @@ class MateTerminationsCfg(BalanceTerminationsCfg):
 
     bulb_crushed = DoneTerm(
         func=mate_terms.grip_force_exceeded,
-        params={"sensor_cfg": SceneEntityCfg("grip_contact"), "limit": GLASS_CONTACT_LIMIT_N},
+        params={
+            "sensor_cfg": SceneEntityCfg("grip_contact"),
+            "other_sensor_cfg": SceneEntityCfg("grip_contact_left"),
+            "limit": GLASS_CONTACT_LIMIT_N,
+        },
     )
 
 

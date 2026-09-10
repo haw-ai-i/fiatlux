@@ -19,7 +19,7 @@ hands free; bulb standing on its cap on the tabletop; old bulb at rest in the cr
 
 | Condition | Value |
 |---|---|
-| bulb lifted above the tabletop | > 0.05 m above its start z |
+| bulb lifted above the tabletop | the bulb's LOWEST point > 0.03 m above the table surface |
 | **held** — hand↔bulb contact on ≥ 2 hand bodies | > 2 N each, filtered channel |
 | grip within the fragility bounds | `GLASS_CONTACT_LIMIT_N = 50`, `CAP_CONTACT_LIMIT_N = 300` |
 | bulb not dropped | `object_dropped`, `FRESH_BULB_DROP_HEIGHT = 0.4` |
@@ -67,7 +67,7 @@ There is no headroom; if retention fails, the answer is not more curl.
 ## Terminations
 
 `time_out`, `success=bulb_grasped`, `fell_below`, `fell_over`, `bulb_dropped`.
-`episode_length_s = 20.0`.
+`episode_length_s = 120.0`.
 
 ## Reuse
 

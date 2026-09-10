@@ -441,12 +441,11 @@ class ReplaceEnvCfg(ManagerBasedRLEnvCfg):
         add_ego_camera(self.scene)
         add_mid360_lidar(self.scene)
 
-        # family control rate (50 Hz); a longer horizon than any subtask -- the episode
-        # spans approach + ladder work + insert + removal + disposal
+        # family control rate (50 Hz)
         self.decimation = 4
         self.sim.dt = 1.0 / 200.0
         self.sim.render_interval = self.decimation
-        self.episode_length_s = 40.0
+        self.episode_length_s = 1440.0
 
         # PhysX floors + stabilization (family finding; more load-bearing here than
         # anywhere: an uncontrolled G1, kinematic furniture, AND a dynamic ladder)
