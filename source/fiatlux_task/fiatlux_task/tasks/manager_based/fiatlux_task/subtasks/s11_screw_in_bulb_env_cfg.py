@@ -66,7 +66,7 @@ _GRIP = SceneEntityCfg("grip_contact")
 BULB_SCREWED_IN_CONJUNCTS = [
     (mdp.fresh_bulb_attached, {}),
     (
-        place_terms.object_at_rest,
+        place_terms.object_settled,
         {"asset_cfg": _BULB, "lin_vel_limit": AT_REST_LIN_VEL_LIMIT, "ang_vel_limit": AT_REST_ANG_VEL_LIMIT},
     ),
     (place_terms.object_released, {"sensor_cfg": _GRIP, "force_threshold": RELEASE_FORCE_THRESHOLD_N}),

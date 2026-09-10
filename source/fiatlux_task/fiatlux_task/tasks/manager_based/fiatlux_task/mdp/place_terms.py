@@ -31,7 +31,7 @@ import torch
 from isaaclab.assets import Articulation, RigidObject
 from isaaclab.managers import SceneEntityCfg
 from isaaclab.sensors import ContactSensor
-from isaaclab.utils.math import quat_apply_inverse
+from isaaclab.utils.math import quat_apply_inverse, quat_error_magnitude
 
 from fiatlux_task.assets import BULB_LIE_Z_OFFSET, BULB_STAND_Z_OFFSET
 
@@ -82,6 +82,95 @@ def object_at_rest(
     if ang_vel_limit is not None:
         at_rest = at_rest & (asset.data.root_ang_vel_w.norm(dim=-1) < ang_vel_limit)
     return at_rest
+
+
+# Time constant (s) of the pose-derived speed estimate object_settled uses. 0.1 s = five control
+# steps: long enough to average the solver's substep contact bounce out (see below), short enough
+# that a bulb that starts moving again reads as moving well inside the gates' 1 s sustain window.
+SETTLED_SPEED_TAU_S = 0.1
+_SETTLED_STATE_ATTR = "_fiatlux_object_settled_state"
+
+
+def object_settled(
+    env: ManagerBasedRLEnv,
+    asset_cfg: SceneEntityCfg,
+    lin_vel_limit: float,
+    ang_vel_limit: float | None = None,
+) -> torch.Tensor:
+    """``object_at_rest`` for an object HELD IN CONTACT by a force: speeds from the pose over time.
+
+    Same limits and meaning as :func:`object_at_rest`, but the speeds are estimated from the
+    object's pose (finite difference between control steps, low-passed with
+    ``SETTLED_SPEED_TAU_S``) instead of read from ``root_lin_vel_w`` / ``root_ang_vel_w``. For a
+    free object the two agree (a bulb resting in a crate reads 0.02 rad/s either way). For a body
+    pressed into stiff contact by an external wrench they do not: PhysX pushes it back out of the
+    contact every substep (200 Hz) while the wrench pushes it in, and the 50 Hz sample of that
+    bounce reads as a steady 0.05-0.1 m/s / 0.5-2 rad/s on a body whose pose is changing by
+    microns (S11 insert teleop bags, issue #171: reported |w| 0.5-2.0 rad/s against 0.000 rad/s
+    from the recorded poses, tilt std 0.05 deg). Used by S11's gate, where the seated bulb is
+    exactly that body; S01/S06 keep ``object_at_rest`` (their objects rest free, and the
+    instantaneous read has no lag).
+
+    State lives on the env keyed by asset name, indexed by ``common_step_counter`` so that being
+    evaluated more than once per step (terminations + the teleop recorder) does not read a zero
+    difference on the second call. An env that just reset restarts its estimate from zero -- both
+    at reset time itself (``episode_length_buf == 0``, e.g. ``gate_progress.reset()`` reading the
+    new episode's baseline before ``common_step_counter`` has advanced) and on the new episode's
+    first regular evaluation (``episode_length_buf == 1``, discarding the one teleport-sized diff
+    that pass would otherwise compute against the dying episode's cached pose).
+    """
+    asset: RigidObject = env.scene[asset_cfg.name]
+    pos = asset.data.root_pos_w
+    quat = asset.data.root_quat_w
+    store = getattr(env, _SETTLED_STATE_ATTR, None)
+    if store is None:
+        store = {}
+        setattr(env, _SETTLED_STATE_ATTR, store)
+    step = int(env.common_step_counter)
+    st = store.get(asset_cfg.name)
+    if st is None or st["step"] > step:
+        st = {
+            "step": step,
+            "pos": pos.clone(),
+            "quat": quat.clone(),
+            "lin": torch.zeros(pos.shape[0], device=pos.device),
+            "ang": torch.zeros(pos.shape[0], device=pos.device),
+        }
+        store[asset_cfg.name] = st
+    # An env resets mid-step: its termination is evaluated (caching st at this step's counter),
+    # then its pose is teleported to the new episode's start and gate_progress.reset() calls this
+    # same term again to set the new episode's baseline -- still at the same common_step_counter,
+    # so the dt block below is skipped and would otherwise hand back the dying episode's stale
+    # cached speed. Snap those envs' baseline to the just-written pose directly, independent of
+    # the step dedup; the next regular call, one step later, computes real motion from there.
+    just_reset = env.episode_length_buf == 0
+    if bool(just_reset.any()):
+        st["pos"][just_reset] = pos[just_reset]
+        st["quat"][just_reset] = quat[just_reset]
+        st["lin"][just_reset] = 0.0
+        st["ang"][just_reset] = 0.0
+    if step != st["step"]:
+        dt = env.step_dt * (step - st["step"])
+        lin_fd = torch.norm(pos - st["pos"], dim=-1) / dt
+        alpha = min(1.0, dt / SETTLED_SPEED_TAU_S)
+        st["lin"] = st["lin"] + alpha * (lin_fd - st["lin"])
+        if ang_vel_limit is not None:
+            ang_fd = quat_error_magnitude(quat, st["quat"]) / dt
+            st["ang"] = st["ang"] + alpha * (ang_fd - st["ang"])
+        # just reset: the pose jump is a teleport, not motion. Not == 0 -- ManagerBasedRLEnv.step()
+        # increments episode_length_buf before termination/reward terms run, on every step
+        # including the first one after a reset, so this term never observes 0; 1 is the value
+        # it actually sees on that first pass (see nav_terms.py's identical note).
+        fresh = env.episode_length_buf == 1
+        st["lin"][fresh] = 0.0
+        st["ang"][fresh] = 0.0
+        st["pos"].copy_(pos)
+        st["quat"].copy_(quat)
+        st["step"] = step
+    settled = st["lin"] < lin_vel_limit
+    if ang_vel_limit is not None:
+        settled = settled & (st["ang"] < ang_vel_limit)
+    return settled
 
 
 def object_released(
