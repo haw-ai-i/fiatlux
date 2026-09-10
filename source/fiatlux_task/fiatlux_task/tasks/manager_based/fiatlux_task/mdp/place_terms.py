@@ -31,7 +31,7 @@ import torch
 from isaaclab.assets import Articulation, RigidObject
 from isaaclab.managers import SceneEntityCfg
 from isaaclab.sensors import ContactSensor
-from isaaclab.utils.math import quat_apply_inverse
+from isaaclab.utils.math import quat_apply_inverse, quat_error_magnitude
 
 from fiatlux_task.assets import BULB_LIE_Z_OFFSET, BULB_STAND_Z_OFFSET
 
@@ -152,8 +152,7 @@ def object_settled(
     if step != st["step"]:
         dt = env.step_dt * (step - st["step"])
         lin_fd = torch.norm(pos - st["pos"], dim=-1) / dt
-        dot = (quat * st["quat"]).sum(dim=-1).abs().clamp(max=1.0)
-        ang_fd = 2.0 * torch.acos(dot) / dt
+        ang_fd = quat_error_magnitude(quat, st["quat"]) / dt
         alpha = min(1.0, dt / SETTLED_SPEED_TAU_S)
         st["lin"] = st["lin"] + alpha * (lin_fd - st["lin"])
         st["ang"] = st["ang"] + alpha * (ang_fd - st["ang"])
