@@ -113,7 +113,11 @@ def object_settled(
 
     State lives on the env keyed by asset name, indexed by ``common_step_counter`` so that being
     evaluated more than once per step (terminations + the teleop recorder) does not read a zero
-    difference on the second call. An env that just reset restarts its estimate from zero.
+    difference on the second call. An env that just reset restarts its estimate from zero -- both
+    at reset time itself (``episode_length_buf == 0``, e.g. ``gate_progress.reset()`` reading the
+    new episode's baseline before ``common_step_counter`` has advanced) and on the new episode's
+    first regular evaluation (``episode_length_buf == 1``, discarding the one teleport-sized diff
+    that pass would otherwise compute against the dying episode's cached pose).
     """
     asset: RigidObject = env.scene[asset_cfg.name]
     pos = asset.data.root_pos_w
@@ -133,6 +137,18 @@ def object_settled(
             "ang": torch.zeros(pos.shape[0], device=pos.device),
         }
         store[asset_cfg.name] = st
+    # An env resets mid-step: its termination is evaluated (caching st at this step's counter),
+    # then its pose is teleported to the new episode's start and gate_progress.reset() calls this
+    # same term again to set the new episode's baseline -- still at the same common_step_counter,
+    # so the dt block below is skipped and would otherwise hand back the dying episode's stale
+    # cached speed. Snap those envs' baseline to the just-written pose directly, independent of
+    # the step dedup; the next regular call, one step later, computes real motion from there.
+    just_reset = env.episode_length_buf == 0
+    if bool(just_reset.any()):
+        st["pos"][just_reset] = pos[just_reset]
+        st["quat"][just_reset] = quat[just_reset]
+        st["lin"][just_reset] = 0.0
+        st["ang"][just_reset] = 0.0
     if step != st["step"]:
         dt = env.step_dt * (step - st["step"])
         lin_fd = torch.norm(pos - st["pos"], dim=-1) / dt
