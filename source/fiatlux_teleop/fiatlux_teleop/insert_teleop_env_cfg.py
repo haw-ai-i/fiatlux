@@ -196,6 +196,19 @@ class G1BulbInsertTeleopEnvCfg(G1BulbInsertEnvCfg):
         self.scene.fresh_bulb.init_state.pos = (0.34, 0.24, 0.89)
         self.scene.fresh_bulb.init_state.rot = upright
 
+        # The base EventCfg's bulb_attachment (issue #167 axial-detent retention) assumes the
+        # FAMILY bulb/socket's calibrated SOCKET_SEAT_OFFSET/BULB_PLUG_OFFSET/SOCKET_SEAT_AXIS
+        # (fiatlux_task.assets -- a ~3.6cm offset measured for that asset's geometry). This cfg
+        # swaps in the OMNI socket/bulb above at a different scale (0.007) and axis convention
+        # (Y-up native, +90deg X to stand upright), so those constants do not describe this
+        # asset's actual seat/plug points and have not been re-measured for it. Disabling
+        # retention here rather than applying it with unverified geometry -- a spring pulling
+        # toward the wrong point would be worse for a live operator than no retention at all.
+        # TODO(#167): measure this asset's real seat/plug offsets (same usd-core point-query
+        # approach as plans/bayonet-force-based-attachment.md used for the family asset) and
+        # re-enable.
+        self.events.bulb_attachment = None
+
         # NOTE: use the robot's tuned per-joint arm gains (_ARM_STIFFNESS/_ARM_DAMPING/_ARM_ARMATURE
         # from robots/g1.py). A previous blanket override (stiffness=2000, damping=100) replaced those
         # per-joint dicts with uniform values while leaving the tuned armature in place -- the

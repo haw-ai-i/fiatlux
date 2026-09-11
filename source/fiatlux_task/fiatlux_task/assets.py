@@ -22,13 +22,16 @@ G1_DEX3_USD = os.path.join(FIATLUX_ASSETS_DIR, "unitree_g1", "wholebody_dex3", "
 # The socket's colliders are an exact triangle mesh (``physics:approximation = "none"``), which
 # is illegal on a dynamic body: the socket must stay static or kinematic.
 BULB_USD = os.path.join(FIATLUX_ASSETS_DIR, "omniverse_bulb", "LightBulb_bulb_z_rigid.usda")
-SOCKET_USD = os.path.join(FIATLUX_ASSETS_DIR, "omniverse_bulb", "LightBulb_socket_z_static.usda")
+# The stock socket plus a guide sleeve inside its bore (issue #171): the stock mouth ring alone lets
+# a seated plug lean 22 deg and jam; the sleeve caps it at ~9 deg. Additive layers over the stock
+# files, authored by scripts/omniverse/omniverse_socket_guide_sleeve.py (run it if they are missing).
+SOCKET_USD = os.path.join(FIATLUX_ASSETS_DIR, "omniverse_bulb", "LightBulb_socket_z_static_sleeve.usda")
 
 # Curated Omniverse LightBulb split into a graspable bulb + its socket base (Y-up, cm-authored ->
 # spawn scale + an X rotation). Clean-rendering (unlike the flat-texpath B1K lamp); used by the
 # teleop bench (FIATLUX-Insert-Teleop-v0).
 OMNI_BULB_USD = os.path.join(FIATLUX_ASSETS_DIR, "omniverse_bulb", "LightBulb_bulb.usda")
-OMNI_SOCKET_USD = os.path.join(FIATLUX_ASSETS_DIR, "omniverse_bulb", "LightBulb_socket.usda")
+OMNI_SOCKET_USD = os.path.join(FIATLUX_ASSETS_DIR, "omniverse_bulb", "LightBulb_socket_sleeve.usda")
 
 # Metres, in each object's own root frame, Z-up. Both halves are authored assembled at
 # identity, so "seated" is *bulb root pose == socket root pose*.

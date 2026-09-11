@@ -14,9 +14,9 @@ down has undone the task, so leaving the socket also ends the episode.
 
 Its success region is the chain's declared terminal state -- there is no successor to hand off to.
 
-The bayonet attach/detach state machine (issue #54, ``mdp.bulb_attachment``) is wired at the
-balance tier (``subtask_tiers.balance.BalanceEventCfg``), retaining the bulb in the inverted fixture
-while the robot descends.
+The axial retention spring (issue #167, ``mdp.bulb_attachment``) is wired at the balance tier
+(``subtask_tiers.balance.BalanceEventCfg``), retaining the bulb in the inverted fixture while
+the robot descends.
 """
 
 from isaaclab.managers import RewardTermCfg as RewTerm
