@@ -516,6 +516,16 @@ class signal_progress(ManagerTermBase):
     ``signal_fn`` is named in ``params``; every other param is forwarded to it. They stay flat
     because ``ManagerBase`` resolves a ``SceneEntityCfg`` only at the top level of ``params`` --
     nested inside a sub-dict it would never be bound to the scene.
+
+    ``__call__`` must name every param a call site passes, defaulted to ``None``, rather than
+    catch them in ``**kwargs``: ``ManagerBase._resolve_common_term_cfg`` validates a term's
+    ``params`` by matching cfg keys against ``inspect.signature(term.__call__)`` by name, and
+    does not treat a ``**kwargs`` catch-all as "accepts anything" -- it takes the literal
+    parameter name ``kwargs`` as one more required key, so any call site passing params other
+    than exactly ``{"signal_fn", "kwargs"}`` fails at env construction (``ValueError: The term
+    'X' expects mandatory parameters: [...'kwargs'] ... but received: [...]``). The values here
+    are unused: ``_phi`` re-reads them from ``self.cfg.params`` (needed anyway, since ``reset``
+    calls ``_phi`` with no per-call kwargs available), so the signature only has to name them.
     """
 
     def __init__(self, cfg: RewardTermCfg, env: ManagerBasedRLEnv):
@@ -530,7 +540,16 @@ class signal_progress(ManagerTermBase):
         ids = slice(None) if env_ids is None else env_ids
         self._prev_phi[ids] = self._phi(self._env)[ids]
 
-    def __call__(self, env: ManagerBasedRLEnv, signal_fn: Callable[..., torch.Tensor], **kwargs) -> torch.Tensor:
+    def __call__(
+        self,
+        env: ManagerBasedRLEnv,
+        signal_fn: Callable[..., torch.Tensor],
+        sensor_cfg: SceneEntityCfg | None = None,
+        threshold: float | None = None,
+        std: float | None = None,
+        saturation_force: float | None = None,
+    ) -> torch.Tensor:
+        del sensor_cfg, threshold, std, saturation_force  # forwarded to signal_fn via self.cfg.params in _phi
         phi = self._phi(env)
         shaped = phi - self._prev_phi
         self._prev_phi = phi
