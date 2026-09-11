@@ -10,7 +10,7 @@ extension — no ROS, no distributed harness — so it plugs into the standard
 > standard/cheatcode observation modes. The **insertion** (`FIATLUX-Insert-v0`) and
 > **climbing** (`FIATLUX-Climb-v0`) subtasks are functional RL tasks kept as
 > development aids; the rest of the family exists as loadable non-RL scene
-> **scaffolds**. The old bulb's unscrew mechanic is implemented (`mdp.bulb_attachment`),
+> **scaffolds**. The bulb/socket retention mechanic is implemented (`mdp.bulb_attachment`),
 > so Replace's removal and disposal score channels are now achievable. See
 > [docs/roadmap.md](docs/roadmap.md).
 
@@ -24,7 +24,7 @@ extension — no ROS, no distributed harness — so it plugs into the standard
 | `FIATLUX-Base-v0` | shared G1 + ladder + lamp + bulb scene, no task logic | 🧱 scaffold (non-RL) |
 | `FIATLUX-Carry-v0` | G1 walks to a ladder, grasps it, and carries it upright to a target (whole-body RL) | ✅ functional |
 | `FIATLUX-Descend-v0` | bipedal ladder descent | 🧱 scaffold (non-RL) |
-| `FIATLUX-Remove-v0` | unscrew / remove the seated bulb | 🧱 scaffold (non-RL) |
+| `FIATLUX-Remove-v0` | remove the seated bulb from the fixture | 🧱 scaffold (non-RL) |
 | `FIATLUX-Install-v0` | seat a new bulb at the fixture (the at-fixture counterpart of `Insert`) | 🧱 scaffold (non-RL) |
 
 All seven ids are members of **one task family** backed by **one scene** with preset
