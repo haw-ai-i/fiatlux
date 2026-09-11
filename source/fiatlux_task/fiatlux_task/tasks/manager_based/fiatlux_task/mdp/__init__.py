@@ -81,7 +81,6 @@ from .rewards import (  # noqa: F401
     descend_height_progress,
     descended_to_target,
     distance_progress,
-    signal_progress,
     fall_terminated,
     full_replacement_success,
     hand_contact_force_l2,
@@ -101,4 +100,5 @@ from .rewards import (  # noqa: F401
     old_bulb_dropped,
     old_bulb_fixture_clearance,
     old_bulb_removed,
+    signal_progress,
 )
