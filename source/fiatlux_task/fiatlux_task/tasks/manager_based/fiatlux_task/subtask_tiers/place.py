@@ -23,7 +23,7 @@ from isaaclab.utils import configclass
 
 from .. import mdp
 from ..scene_cfg import G1ReplaceSceneCfg
-from ..subtask_env_cfg import SubtaskEnvCfg, SubtaskRewardsCfg
+from ..subtask_env_cfg import SubtaskEnvCfg, SubtaskRewardsCfg, SubtaskShapingRewardsCfg, wire_progress_distance_fn
 
 # Longer than a momentary dip: a release that is only stable while a hand steadies it is not placed.
 PLACE_SUSTAIN_SECONDS = 1.0
@@ -57,7 +57,7 @@ def add_release_contact_sensor(scene: G1ReplaceSceneCfg, target_prim_path: str) 
 
 
 @configclass
-class PlaceRewardsCfg(SubtaskRewardsCfg):
+class PlaceRewardsCfg(SubtaskShapingRewardsCfg):
     """Placement-progress channel; ``distance_fn`` comes from the leaf."""
 
     placement_progress = RewTerm(
@@ -70,10 +70,10 @@ class PlaceSubtaskCfg(SubtaskEnvCfg):
     """A subtask whose job is to release a held object at a target and leave it there."""
 
     progress_distance_fn: Callable | None = None
-    rewards: PlaceRewardsCfg = PlaceRewardsCfg()
+    rewards: SubtaskRewardsCfg = SubtaskRewardsCfg()
 
     def __post_init__(self) -> None:
         super().__post_init__()
         if self.progress_distance_fn is None:
             raise ValueError(f"{type(self).__name__} must set progress_distance_fn")
-        self.rewards.placement_progress.params["distance_fn"] = self.progress_distance_fn
+        wire_progress_distance_fn(self.rewards, "placement_progress", self.progress_distance_fn)

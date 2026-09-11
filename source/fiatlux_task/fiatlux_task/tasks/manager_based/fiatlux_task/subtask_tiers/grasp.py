@@ -27,7 +27,7 @@ from isaaclab.utils import configclass
 from .. import mdp
 from ..mdp import grasp_terms
 from ..scene_cfg import G1ReplaceSceneCfg
-from ..subtask_env_cfg import SubtaskEnvCfg, SubtaskRewardsCfg
+from ..subtask_env_cfg import SubtaskEnvCfg, SubtaskRewardsCfg, SubtaskShapingRewardsCfg, wire_progress_distance_fn
 
 # Shorter than ``place``'s 1.0 s: proving a hold isn't a glance, not that the object has settled.
 GRASP_SUSTAIN_SECONDS = 0.5
@@ -36,6 +36,10 @@ GRASP_SUSTAIN_SECONDS = 0.5
 # so it never fights the grip-force penalty on the way to a real grasp -- it only has to signal
 # "the hand is pressing", not "the hand is holding". PROVISIONAL.
 GRASP_BOOTSTRAP_SATURATION_N = 10.0
+
+# Potential-based, so the episode total is capped at ``weight * dt`` (2.0 at dt=0.02)
+# regardless of horizon -- a fifth of the 10.0 a completed subtask pays (issue #169).
+CONTACT_BOOTSTRAP_WEIGHT = 100.0
 
 
 def add_grasp_contact_sensor(scene: G1ReplaceSceneCfg, target_prim_path: str) -> None:
@@ -64,16 +68,20 @@ def add_grasp_contact_sensor(scene: G1ReplaceSceneCfg, target_prim_path: str) ->
 
 
 @configclass
-class GraspRewardsCfg(SubtaskRewardsCfg):
+class GraspRewardsCfg(SubtaskShapingRewardsCfg):
     """Reach + bootstrap + grip-force discipline; ``distance_fn`` comes from the leaf."""
 
     reach_progress = RewTerm(
         func=mdp.distance_progress, weight=500.0, params={"distance_fn": grasp_terms.hand_bulb_distance}
     )
     contact_bootstrap = RewTerm(
-        func=grasp_terms.grasp_contact_bootstrap,
-        weight=20.0,
-        params={"sensor_cfg": SceneEntityCfg("grasp_contact"), "saturation_force": GRASP_BOOTSTRAP_SATURATION_N},
+        func=mdp.signal_progress,
+        weight=CONTACT_BOOTSTRAP_WEIGHT,
+        params={
+            "signal_fn": grasp_terms.grasp_contact_bootstrap,
+            "sensor_cfg": SceneEntityCfg("grasp_contact"),
+            "saturation_force": GRASP_BOOTSTRAP_SATURATION_N,
+        },
     )
     grip_force_penalty = RewTerm(
         func=mdp.hand_contact_force_l2, weight=-1.0e-4, params={"sensor_cfg": SceneEntityCfg("grasp_contact")}
@@ -85,10 +93,10 @@ class GraspSubtaskCfg(SubtaskEnvCfg):
     """A subtask whose job is to grasp an object and take its weight."""
 
     progress_distance_fn: Callable | None = None
-    rewards: GraspRewardsCfg = GraspRewardsCfg()
+    rewards: SubtaskRewardsCfg = SubtaskRewardsCfg()
 
     def __post_init__(self) -> None:
         super().__post_init__()
         if self.progress_distance_fn is None:
             raise ValueError(f"{type(self).__name__} must set progress_distance_fn")
-        self.rewards.reach_progress.params["distance_fn"] = self.progress_distance_fn
+        wire_progress_distance_fn(self.rewards, "reach_progress", self.progress_distance_fn)

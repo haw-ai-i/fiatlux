@@ -46,7 +46,7 @@ from ..mdp import grasp_terms, mate_terms, place_terms
 from ..mdp.nav_terms import add_grip_contact_sensor, compose_carried_pose, settle_carried_payload_live
 from ..replace_env_cfg import FRESH_BULB_DROP_HEIGHT
 from ..scene_cfg import park_old_bulb_in_crate
-from ..subtask_env_cfg import FALL_MIN_HEIGHT, FALL_TILT_LIMIT
+from ..subtask_env_cfg import FALL_MIN_HEIGHT, FALL_TILT_LIMIT, SubtaskRewardsCfg
 from ..subtask_tiers.balance import BalanceEventCfg
 from ..subtask_tiers.mate import (
     MATE_ALIGNMENT_STD,
@@ -116,7 +116,9 @@ class S11RewardsCfg(MateRewardsCfg):
         func=mdp.distance_progress, weight=500.0, params={"distance_fn": mdp.bulb_fixture_distance}
     )
     alignment = RewTerm(
-        func=mate_terms.bulb_axis_alignment_tanh, weight=MATE_ALIGNMENT_WEIGHT, params={"std": MATE_ALIGNMENT_STD}
+        func=mdp.signal_progress,
+        weight=MATE_ALIGNMENT_WEIGHT,
+        params={"signal_fn": mate_terms.bulb_axis_alignment_tanh, "std": MATE_ALIGNMENT_STD},
     )
     bulb_dropped = RewTerm(
         func=mdp.object_dropped, weight=-200.0, params={"asset_cfg": _BULB, "min_height": FRESH_BULB_DROP_HEIGHT}
@@ -140,7 +142,7 @@ class S11ScrewInBulbEnvCfg(MateSubtaskCfg):
     }
 
     events: S11EventCfg = S11EventCfg()
-    rewards: S11RewardsCfg = S11RewardsCfg()
+    rewards: SubtaskRewardsCfg = SubtaskRewardsCfg()
     terminations: S11TerminationsCfg = S11TerminationsCfg()
 
     def __post_init__(self) -> None:

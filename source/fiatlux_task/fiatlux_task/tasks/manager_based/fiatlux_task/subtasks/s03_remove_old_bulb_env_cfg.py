@@ -31,7 +31,7 @@ from .. import mdp
 from ..mdp import grasp_terms, place_terms
 from ..mdp.nav_terms import GRIP_FORCE_THRESHOLD_N, add_grip_contact_sensor, payload_held
 from ..replace_env_cfg import OLD_BULB_DROP_HEIGHT, REMOVAL_CLEARANCE
-from ..subtask_env_cfg import FALL_MIN_HEIGHT, FALL_TILT_LIMIT
+from ..subtask_env_cfg import FALL_MIN_HEIGHT, FALL_TILT_LIMIT, SubtaskRewardsCfg
 from ..subtask_tiers.mate import MATE_GRASP_SUSTAIN_SECONDS, MateRewardsCfg, MateSubtaskCfg, MateTerminationsCfg
 
 _OLD_BULB = SceneEntityCfg("old_bulb")
@@ -90,7 +90,7 @@ class S03RemoveOldBulbEnvCfg(MateSubtaskCfg):
         "predicate_params": {"predicates": OLD_BULB_TAKEN_CONJUNCTS},
     }
 
-    rewards: S03RewardsCfg = S03RewardsCfg()
+    rewards: SubtaskRewardsCfg = SubtaskRewardsCfg()
     terminations: S03TerminationsCfg = S03TerminationsCfg()
 
     def __post_init__(self) -> None:

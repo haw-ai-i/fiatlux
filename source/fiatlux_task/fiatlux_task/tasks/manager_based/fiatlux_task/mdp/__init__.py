@@ -100,4 +100,5 @@ from .rewards import (  # noqa: F401
     old_bulb_dropped,
     old_bulb_fixture_clearance,
     old_bulb_removed,
+    signal_progress,
 )

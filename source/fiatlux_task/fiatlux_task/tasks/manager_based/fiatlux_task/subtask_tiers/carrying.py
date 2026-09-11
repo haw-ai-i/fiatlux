@@ -17,6 +17,7 @@ from isaaclab.managers import TerminationTermCfg as DoneTerm
 from fiatlux_task.grasp_poses import GLASS_CONTACT_LIMIT_N
 
 from ..mdp import mate_terms
+from ..subtask_env_cfg import SubtaskShapingRewardsCfg
 
 CRUSH_PENALTY_WEIGHT = -200.0
 
@@ -35,5 +36,8 @@ def add_bulb_crush_gate(cfg, sensor_name: str = "grip_contact") -> None:
         "other_sensor_cfg": SceneEntityCfg(f"{sensor_name}_left"),
         "limit": GLASS_CONTACT_LIMIT_N,
     }
-    cfg.rewards.bulb_crushed = RewTerm(func=mate_terms.grip_force_exceeded, weight=CRUSH_PENALTY_WEIGHT, params=params)
+    if isinstance(cfg.rewards, SubtaskShapingRewardsCfg):
+        cfg.rewards.bulb_crushed = RewTerm(
+            func=mate_terms.grip_force_exceeded, weight=CRUSH_PENALTY_WEIGHT, params=params
+        )
     cfg.terminations.bulb_crushed = DoneTerm(func=mate_terms.grip_force_exceeded, params=params)

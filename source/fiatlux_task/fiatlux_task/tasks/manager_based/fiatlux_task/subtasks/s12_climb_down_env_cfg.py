@@ -27,7 +27,7 @@ from .. import mdp
 from ..mdp import balance_terms, grasp_terms, place_terms
 from ..replace_env_cfg import SEAT_ORI_THRESHOLD, SEAT_POS_THRESHOLD
 from ..scene_cfg import park_old_bulb_in_crate, seat_bulb_in_fixture
-from ..subtask_env_cfg import FALL_MIN_HEIGHT, FALL_TILT_LIMIT
+from ..subtask_env_cfg import FALL_MIN_HEIGHT, FALL_TILT_LIMIT, SubtaskRewardsCfg
 from ..subtask_tiers.balance import (
     LADDER_FLOOR_STANCE_HEIGHT,
     LADDER_SUCCESS_MAX_SPEED,
@@ -77,7 +77,7 @@ class S12ClimbDownEnvCfg(DescendSubtaskCfg):
     success_predicate = mdp.all_of
     success_params: dict | None = {"predicates": DESCENDED_INTACT_CONJUNCTS}
 
-    rewards: S12RewardsCfg = S12RewardsCfg()
+    rewards: SubtaskRewardsCfg = SubtaskRewardsCfg()
     terminations: S12TerminationsCfg = S12TerminationsCfg()
 
     def __post_init__(self) -> None:

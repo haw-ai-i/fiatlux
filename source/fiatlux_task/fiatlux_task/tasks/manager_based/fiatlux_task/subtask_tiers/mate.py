@@ -30,13 +30,16 @@ from fiatlux_task.grasp_poses import GLASS_CONTACT_LIMIT_N
 
 from .. import mdp
 from ..mdp import mate_terms
+from ..subtask_env_cfg import SubtaskRewardsCfg
 from .balance import BalanceSubtaskCfg, BalanceTerminationsCfg, OnLadderRewardsCfg, stand_robot_on_ladder_top
 
 # Dense alignment kernel width, in radians of mating-axis error: the family's existing value for
 # the orientation kernel this one replaces (install/g1_bulb), which is well outside the 0.2 rad
 # seating gate, so the term stays informative on approach.
 MATE_ALIGNMENT_STD = 0.3
-MATE_ALIGNMENT_WEIGHT = 0.3
+# Potential-based, so the episode total is capped at ``weight * dt`` (2.0 at dt=0.02)
+# regardless of horizon -- a fifth of the 10.0 a completed subtask pays (issue #169).
+MATE_ALIGNMENT_WEIGHT = 100.0
 
 # Taking hold only has to prove the grasp is not a glancing contact (the grasp tier's window).
 # Leaving something installed has to prove it stays there once the hand is off, which is a
@@ -89,7 +92,7 @@ class MateTerminationsCfg(BalanceTerminationsCfg):
 class MateSubtaskCfg(BalanceSubtaskCfg):
     """Manipulation at the fixture from the ladder's upper steps."""
 
-    rewards: MateRewardsCfg = MateRewardsCfg()
+    rewards: SubtaskRewardsCfg = SubtaskRewardsCfg()
     terminations: MateTerminationsCfg = MateTerminationsCfg()
 
     def __post_init__(self) -> None:

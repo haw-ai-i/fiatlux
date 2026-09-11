@@ -55,6 +55,7 @@ from ..subtask_env_cfg import (
     NavigateRewardsCfg,
     NavigateSubtaskCfg,
     SubtaskEventCfg,
+    SubtaskRewardsCfg,
     SubtaskTerminationsCfg,
 )
 from ..subtask_tiers.carrying import add_bulb_crush_gate
@@ -129,7 +130,7 @@ class S09CarryBulbToLadderEnvCfg(NavigateSubtaskCfg):
     progress_distance_fn = mdp.base_ladder_distance
 
     events: S09EventCfg = S09EventCfg()
-    rewards: S09RewardsCfg = S09RewardsCfg()
+    rewards: SubtaskRewardsCfg = SubtaskRewardsCfg()
     terminations: S09TerminationsCfg = S09TerminationsCfg()
 
     def __post_init__(self) -> None:
