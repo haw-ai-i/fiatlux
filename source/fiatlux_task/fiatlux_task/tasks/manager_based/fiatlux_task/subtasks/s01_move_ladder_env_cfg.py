@@ -52,7 +52,8 @@ from ..scene_cfg import (
     face_robot_at,
     frame_viewer_between,
 )
-from ..subtask_env_cfg import FALL_MIN_HEIGHT, FALL_TILT_LIMIT, SubtaskTerminationsCfg
+from ..subtask_env_cfg import FALL_MIN_HEIGHT, FALL_TILT_LIMIT, SubtaskRewardsCfg, SubtaskTerminationsCfg
+from ..subtask_tiers.balance import BulbAttachmentEventCfg
 from ..subtask_tiers.place import (
     AT_REST_ANG_VEL_LIMIT,
     AT_REST_LIN_VEL_LIMIT,
@@ -124,8 +125,12 @@ class S01MoveLadderEnvCfg(PlaceSubtaskCfg):
     }
     progress_distance_fn = mdp.ladder_fixture_distance
 
-    rewards: S01RewardsCfg = S01RewardsCfg()
+    rewards: SubtaskRewardsCfg = SubtaskRewardsCfg()
     terminations: S01TerminationsCfg = S01TerminationsCfg()
+    # Retain the socketed old bulb in the overhead fixture (#108, #167). The Place tier wires
+    # no events, so a dynamic bulb in the inverted socket just falls out at spawn; this is the
+    # same attach term the Balance/Descend tiers already use to hold their seated bulbs.
+    events: BulbAttachmentEventCfg = BulbAttachmentEventCfg()
 
     def __post_init__(self) -> None:
         super().__post_init__()
@@ -143,7 +148,5 @@ class S01MoveLadderEnvCfg(PlaceSubtaskCfg):
         # is indistinguishable from a dead sensor. Filtered to the ladder alone, this column is
         # attributable, and ``recording.py`` writes it into the bag as ``grip_force``.
         add_grip_contact_sensor(self.scene, self.scene.ladder.prim_path)
-        # The three retired horizons summed (20 s approach + 45 s loaded traverse + 20 s
-        # placement), rounded up. PROVISIONAL: no rollout has set it.
-        self.episode_length_s = 90.0
+        self.episode_length_s = 120.0
         frame_viewer_between(self.viewer, self.scene.robot.init_state.pos, self.scene.ladder.init_state.pos)

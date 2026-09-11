@@ -22,21 +22,55 @@ return to it (plus the reset jitter below).
   default; `ReplaceEnvCfg.couple_ladder_to_fixture = True` is an explicit debug/curriculum
   opt-in that spawns it reachably near the fixture.
 - **Both bulbs are dynamic**, governed by the `mdp.bulb_attachment` state machine
-  (unification spec Phase 4, issue #54). It models a bayonet channel from the bulb pose:
-  insertion permits only axial translation; at full depth, starting a twist locks
-  translation and permits only rotation. Removal reverses the sequence: rotate, then
-  eject axially.
-  The insertion depth and locking angle are scalar-or-range parameters, sampled per env
-  at reset when ranges are configured. `fresh_bulb_inserted` and `success` read the
-  attachment state, so every score channel is achievable. Remove/Install do not yet use
-  this mechanic: their bulbs simply lift out of / drop into the socket.
+  (unification spec Phase 4; issue #167 superseded the original bayonet design, issue #54).
+  Two states per bulb: `FREE` (unconstrained) and `SEATED` (a continuous wrench holds it at
+  the seat: a magnet-shaped axial term, strongest at the seat and decaying with distance
+  -- issue #171, see below -- plus a much gentler lateral + tilt centering term). `FREE ->
+  SEATED` fires on reaching the seat aligned (position + tilt tolerance) with the socket
+  empty; real bulb-socket collision -- filtered out under the old bayonet, now enabled
+  everywhere -- constrains lateral position and orientation as its primary mechanism, the
+  wrench's lateral/tilt term only assisting. `SEATED -> FREE` (release) fires on a real,
+  physics-driven axial pull past `release_threshold`. No twist/lock/rotation state: this
+  asset has no physical lug or groove, so the old bayonet's clock-angle semantics were never
+  modeling a real feature. `fresh_bulb_attached` and `success` read the attachment state, so
+  every score channel is achievable. Remove/Install do not yet use this mechanic: their bulbs
+  simply lift out of / drop into the socket.
+  - **Lateral + tilt centering (issue #171)**: the original design left lateral position and
+    orientation entirely to real contact. Teleop evidence found a seated bulb visibly
+    tilts/swings -- the bore's 2.69mm radial clearance is real, necessary slop (tightening
+    it even to 1.86mm breaks force-driven insertion outright, confirmed with
+    `scripts/diagnose_contact_axial.py`), so the fix is a much gentler additional
+    spring-damper on lateral position and tilt while seated, not a tighter bore. Gated on
+    the same seated condition as the axial term, so it cannot affect insertion.
+  - **Axial retention is a magnet, not a spring (issue #171)**: a linear spring is weakest
+    exactly at the seat and grows with distance -- backwards from a magnetic/detent catch,
+    which is strongest at contact and falls off with distance. The axial term's shape now
+    matches the latter: peak force (`hold_force`) right at the seat, decaying past
+    `hold_range`. This also fixed a real ceiling-mount failure along the way: a ceiling
+    fixture is inverted (seat axis points down), so gravity pulls a seated bulb OUTWARD
+    along it, and the original linear spring's steady-state sag under that load left almost
+    no margin before `release_threshold` -- a ceiling-seated bulb fell out unassisted within
+    under a second. `hold_force`/`hold_range` are sized (not a gravity feedforward -- a
+    passive mechanism doesn't cancel gravity outright, and a ceiling-hung bulb should sag
+    more than a resting one, same as any real spring/friction/magnet) so worst-case sag sits
+    comfortably clear of `release_threshold`. Table/wall mounts sag less than ceiling ones
+    under their own weight, correctly.
+  - **Twist friction (issue #171)**: a ceiling-seated bulb was found spinning about the seat
+    axis at 1-19 rad/s for ~2.9s, no operator or contact, before ejecting -- the tilt torque's
+    damping shared tilt's tiny torque budget, which couldn't arrest a real spin. Twist
+    (rotation about the seat axis, no target angle) now gets its own, Coulomb-like friction
+    term (`twist_friction`, roughly constant magnitude, not velocity-proportional -- a
+    viscous version tried first settled into a stable but nonzero spin under real contact and
+    got worse, not better, as its gain was raised). Reliably stops the self-ejection across
+    the full reported range, but does not reliably drive the residual spin itself to zero --
+    that looks like a real 3D contact effect, open follow-up.
 
 ## Goal
 
 Insert the fresh bulb into the fixture, remove the old bulb from the fixture, and place
-the old bulb in the disposal crate. Full success = fresh bulb **attached** (fully inserted
-and rotated through the configured lock angle, per `mdp.bulb_attachment`) **and** old bulb
-in the crate. Seating alone no longer scores.
+the old bulb in the disposal crate. Full success = fresh bulb **attached** (seated and held
+by the retention spring, per `mdp.bulb_attachment`) **and** old bulb in the crate. Seating
+alone no longer scores.
 
 ## Actions
 
@@ -107,8 +141,8 @@ at 1.0). Completion bonuses pay once per episode.
 - **Ladder tipped**: ladder up-axis beyond 0.6 rad from vertical.
 - **Fresh bulb dropped**: below 0.4 m. **Old bulb dropped**: below 0.15 m *and* away
   from the crate (a disposed bulb legitimately rests near the floor inside it).
-- **Timeout**: `episode_length_s = 40 s` (the full approach → ladder → insert → dispose
-  horizon).
+- **Timeout**: `episode_length_s = 1440 s` — the twelve subtask budgets (120 s each) summed.
+  Part of the evaluation protocol (`docs/scoring.md`); a submission may not change it.
 
 ## Randomization
 
@@ -133,8 +167,10 @@ The **tabletop preset** of the shared family scene (`scene_cfg.py: G1ReplaceScen
 - **Bulb:** graspable dynamic rigid body, the Omniverse A19 bulb
   (`assets/omniverse_bulb/LightBulb_bulb_z_rigid.usda`, 0.035 kg), standing on its screw
   cap at hand height on the table.
-- **Socket:** kinematic fixture on the table, the matching Omniverse socket
-  (`assets/omniverse_bulb/LightBulb_socket_z_static.usda`). Its screw hole is an exact
+- **Socket:** kinematic fixture on the table, the matching Omniverse socket with a guide
+  sleeve inside its bore (`assets/omniverse_bulb/LightBulb_socket_z_static_sleeve.usda`,
+  authored over the stock socket by `scripts/omniverse/omniverse_socket_guide_sleeve.py`;
+  the stock mouth ring alone lets a seated bulb lean 22 deg and jam). Its screw hole is an exact
   triangle-mesh collider, so a bulb genuinely enters and rests in it -- which also makes
   the socket permanently ineligible to be dynamic (a PhysX rule). Both halves are authored
   assembled at identity, so *seated* is exactly *bulb pose == socket pose*.

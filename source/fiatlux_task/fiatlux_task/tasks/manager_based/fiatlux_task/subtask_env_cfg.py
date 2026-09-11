@@ -163,7 +163,25 @@ class SubtaskEventCfg:
 
 @configclass
 class SubtaskRewardsCfg:
-    """Shaping and discipline, identical for every subtask. Task channels go in a subclass.
+    """What the benchmark measures, and nothing else. Every subtask env ships exactly this.
+
+    ``gate_progress`` is the canonical name for partial credit; it is derived from the ``success``
+    gate rather than restating it, and ``telemetry`` reads it back out of
+    ``Episode_Reward/gate_progress``. It is the only reward channel any score depends on -- the
+    other half, ``success_rate``, is counted off the ``success`` termination and never touches a
+    reward at all.
+
+    Shaping for a learner lives in :class:`SubtaskShapingRewardsCfg`, which the benchmark envs do
+    not use. See ``subtasks/training_env_cfg.py``.
+    """
+
+    # ``predicates`` is filled from the leaf's own gate in ``SubtaskEnvCfg.__post_init__``.
+    gate_progress = RewTerm(func=mdp.gate_progress, weight=1.0, params={"predicates": []})
+
+
+@configclass
+class SubtaskShapingRewardsCfg(SubtaskRewardsCfg):
+    """Discipline and completion signal for a learner. No score reads any of it.
 
     ``robot_fall`` is the canonical name for the fall penalty. It recomputes the fall predicates
     rather than using ``mdp.is_terminated`` (which would also punish success) or
@@ -173,17 +191,9 @@ class SubtaskRewardsCfg:
     ``success_bonus`` is the canonical name for the completion bonus. It reads the ``success``
     termination's flag rather than re-evaluating the gate, so the two cannot drift even when the
     gate is stateful, and it pays exactly on the terminating step.
-
-    ``gate_progress`` is the canonical name for partial credit; it is derived from the ``success``
-    gate rather than restating it.
     """
 
     success_bonus = RewTerm(func=mdp.success_term_fired, weight=500.0)
-    # Partial credit: the episode sum is the best fraction of the success gate's conjuncts the
-    # episode satisfied at once, in [0, 1]. Weight 1.0 against progress channels worth 500 keeps
-    # it a score channel, not a training signal. ``predicates`` is filled from the leaf's own gate
-    # in ``SubtaskEnvCfg.__post_init__``.
-    gate_progress = RewTerm(func=mdp.gate_progress, weight=1.0, params={"predicates": []})
     robot_fall = RewTerm(
         func=mdp.fall_terminated,
         weight=-200.0,
@@ -253,9 +263,7 @@ class SubtaskEnvCfg(ManagerBasedRLEnvCfg):
         self.terminations.success.params = dict(self.success_params or {})
         # Partial credit reads the same gate, decomposed. A leaf whose gate is one opaque
         # predicate becomes a single conjunct, and its partial credit is then its success flag.
-        self.rewards.gate_progress.params["predicates"] = mdp.conjuncts_of(
-            self.success_predicate, self.success_params
-        )
+        self.rewards.gate_progress.params["predicates"] = mdp.conjuncts_of(self.success_predicate, self.success_params)
 
         # Family control rate (50 Hz).
         self.decimation = 4
@@ -283,8 +291,19 @@ class SubtaskEnvCfg(ManagerBasedRLEnvCfg):
         self.events.randomize_hand_material = mdp.hand_grip_material_event(randomize=False)
 
 
+def wire_progress_distance_fn(rewards: SubtaskRewardsCfg, field_name: str, distance_fn: Callable) -> None:
+    """Bind ``distance_fn`` into a tier's own progress reward term, by name, if ``rewards`` has one.
+
+    A benchmark env's plain ``SubtaskRewardsCfg`` carries no such field (its shaping lives on
+    ``SubtaskShapingRewardsCfg`` and the tier's subclass of it instead, attached only by the
+    ``-Training-v0`` twin in ``subtasks/training_env_cfg.py``), so there is nothing to wire there.
+    """
+    if hasattr(rewards, field_name):
+        getattr(rewards, field_name).params["distance_fn"] = distance_fn
+
+
 @configclass
-class NavigateRewardsCfg(SubtaskRewardsCfg):
+class NavigateRewardsCfg(SubtaskShapingRewardsCfg):
     """Walk-to-a-target channels. ``distance_fn`` and the predicate come from the leaf."""
 
     approach_progress = RewTerm(
@@ -301,10 +320,10 @@ class NavigateSubtaskCfg(SubtaskEnvCfg):
     """
 
     progress_distance_fn: Callable | None = None
-    rewards: NavigateRewardsCfg = NavigateRewardsCfg()
+    rewards: SubtaskRewardsCfg = SubtaskRewardsCfg()
 
     def __post_init__(self) -> None:
         super().__post_init__()
         if self.progress_distance_fn is None:
             raise ValueError(f"{type(self).__name__} must set progress_distance_fn")
-        self.rewards.approach_progress.params["distance_fn"] = self.progress_distance_fn
+        wire_progress_distance_fn(self.rewards, "approach_progress", self.progress_distance_fn)

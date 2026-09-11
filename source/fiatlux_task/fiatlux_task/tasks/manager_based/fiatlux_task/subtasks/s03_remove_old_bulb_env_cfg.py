@@ -6,20 +6,20 @@
 """``FIATLUX-S03-RemoveOldBulb-v0`` -- free the old bulb from the fixture while on the ladder.
 
 Starts from S02's end state: the robot balanced on the upper steps with hands free, the old bulb
-locked in the fixture's bayonet channel (``mdp.bulb_attachment`` resets it ``ROTATING`` at full
-lock angle -- issue #54, wired once for the tier in ``subtask_tiers.mate.MateEventCfg``).
+seated in the fixture (``mdp.bulb_attachment``'s axial retention spring, issue #167, wired once
+for the tier in ``subtask_tiers.mate.MateEventCfg``).
 
 **The held conjunct is the entire subtask.** A gate that only checked geometric clearance from the
-fixture could be satisfied by the bulb sitting anywhere the bayonet projection allows without ever
-being taken -- ``old_bulb_removed_after_release`` requires the attach state machine to have
-actually left the channel (``_phase != ROTATING``), which only happens if something rotates it
-through the unlock angle and pulls it clear. A zero-action rollout scores 0.
+fixture could be satisfied by the bulb sitting anywhere the retention spring allows without ever
+being taken -- ``old_bulb_removed_after_release`` requires the retention state to have actually
+released (``_phase != _SEATED``), which only happens from a real, sustained pull past the release
+threshold. A zero-action rollout scores 0.
 
 ``removal_progress`` uses the away-from formulation: the bulb starts AT the fixture, so the
 normalized ``(d0 - d) / d0`` form would divide by ~zero. It reads the attach-aware
-``old_bulb_release_clearance``, pinned to 0 while the bulb is still constrained, per
-``mdp.attach``'s own ordering caveat (rewards run before the interval projection step, so raw
-geometry can transiently read clear a step before the bulb has actually exited the channel).
+``old_bulb_release_clearance``, pinned to 0 while the bulb is still seated, per ``mdp.attach``'s
+own ordering caveat (rewards run before the interval event, so raw geometry can transiently read
+clear a step before the bulb has actually released).
 """
 
 from isaaclab.managers import RewardTermCfg as RewTerm
@@ -31,7 +31,7 @@ from .. import mdp
 from ..mdp import grasp_terms, place_terms
 from ..mdp.nav_terms import GRIP_FORCE_THRESHOLD_N, add_grip_contact_sensor, payload_held
 from ..replace_env_cfg import OLD_BULB_DROP_HEIGHT, REMOVAL_CLEARANCE
-from ..subtask_env_cfg import FALL_MIN_HEIGHT, FALL_TILT_LIMIT
+from ..subtask_env_cfg import FALL_MIN_HEIGHT, FALL_TILT_LIMIT, SubtaskRewardsCfg
 from ..subtask_tiers.mate import MATE_GRASP_SUSTAIN_SECONDS, MateRewardsCfg, MateSubtaskCfg, MateTerminationsCfg
 
 _OLD_BULB = SceneEntityCfg("old_bulb")
@@ -40,7 +40,14 @@ _OLD_BULB = SceneEntityCfg("old_bulb")
 # an omitted conjunct here is a gate that passes vacuously.
 OLD_BULB_TAKEN_CONJUNCTS = [
     (mdp.old_bulb_removed_after_release, {"clearance_threshold": REMOVAL_CLEARANCE}),
-    (payload_held, {"sensor_cfg": SceneEntityCfg("grip_contact"), "force_threshold": GRIP_FORCE_THRESHOLD_N}),
+    (
+        payload_held,
+        {
+            "sensor_cfg": SceneEntityCfg("grip_contact"),
+            "other_sensor_cfg": SceneEntityCfg("grip_contact_left"),
+            "force_threshold": GRIP_FORCE_THRESHOLD_N,
+        },
+    ),
     (grasp_terms.object_lifted, {"asset_cfg": _OLD_BULB, "min_height": OLD_BULB_DROP_HEIGHT}),
     (place_terms.robot_standing, {"minimum_height": FALL_MIN_HEIGHT, "limit_angle": FALL_TILT_LIMIT}),
     (grasp_terms.ladder_near_vertical, {"tilt_limit": mdp.LADDER_TILT_LIMIT}),
@@ -57,9 +64,9 @@ class S03RewardsCfg(MateRewardsCfg):
         weight=500.0,
         params={"distance_fn": mdp.old_bulb_release_clearance, "away_threshold": REMOVAL_CLEARANCE},
     )
-    # Not attach-aware: the bayonet projection pins the bulb near fixture height for the
-    # entire ROTATING/AXIAL phase, well above OLD_BULB_DROP_HEIGHT, so there is no transient
-    # mid-step value near this threshold for the interval projection to correct.
+    # Not attach-aware: the retention spring holds the bulb near fixture height the entire
+    # time it is SEATED, well above OLD_BULB_DROP_HEIGHT, so there is no transient mid-step
+    # value near this threshold for the retention term to correct.
     bulb_dropped = RewTerm(
         func=mdp.object_dropped, weight=-200.0, params={"asset_cfg": _OLD_BULB, "min_height": OLD_BULB_DROP_HEIGHT}
     )
@@ -83,11 +90,11 @@ class S03RemoveOldBulbEnvCfg(MateSubtaskCfg):
         "predicate_params": {"predicates": OLD_BULB_TAKEN_CONJUNCTS},
     }
 
-    rewards: S03RewardsCfg = S03RewardsCfg()
+    rewards: SubtaskRewardsCfg = SubtaskRewardsCfg()
     terminations: S03TerminationsCfg = S03TerminationsCfg()
 
     def __post_init__(self) -> None:
         super().__post_init__()
         # The old bulb stays where apply_replace_preset put it: seated in the inverted fixture.
         add_grip_contact_sensor(self.scene, self.scene.old_bulb.prim_path)
-        self.episode_length_s = 30.0
+        self.episode_length_s = 120.0

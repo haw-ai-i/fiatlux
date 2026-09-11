@@ -83,9 +83,7 @@ Plus `success_bonus` and the shared shaping tail from `SubtaskRewardsCfg`.
 `time_out`, `success`, `fell_below`, `fell_over`, `ladder_tipped`. No `ladder_dropped`: setting
 the ladder down is the goal.
 
-`episode_length_s = 90.0` — the three retired horizons summed (20 s approach + 45 s loaded
-traverse + 20 s placement), rounded up. PROVISIONAL, like every horizon in the family that no
-rollout has set.
+`episode_length_s = 120.0`.
 
 ## Reuse
 

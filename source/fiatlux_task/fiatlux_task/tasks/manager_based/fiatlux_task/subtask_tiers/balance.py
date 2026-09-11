@@ -12,14 +12,17 @@ termination and a penalty in every subtask in this file, and absent from
 ``FIATLUX-Climb-v0``/``FIATLUX-Descend-v0``, which climb a kinematic ladder -- and it can stand
 anywhere, so the stances and success gates read its live pose, not ``LADDER_POSITION``.
 
-``mdp.bulb_attachment`` is wired here rather than on the mate tier: the old bulb starts locked in
-the inverted fixture on every subtask in this file, and nothing else keeps it from falling out
-under gravity. Only S03 and S11 score against it.
+``mdp.bulb_attachment`` is wired here (as ``BulbAttachmentEventCfg``) rather than on the mate
+tier: the old bulb starts seated in the inverted fixture on every subtask in this file, and
+nothing else keeps it from falling out under gravity. Only S03 and S11 score against it.
+``BulbAttachmentEventCfg`` is standalone from the on-the-ladder tier for that reason: S01 (Place
+tier, off-ladder) wires it in too, for the same falling-bulb problem, and must not inherit
+anything this file adds for the ladder. ``BalanceEventCfg`` subclasses it for this file's own
+subtasks, and is where any on-the-ladder-only event term belongs.
 """
 
 import math
 
-from isaaclab.managers import EventTermCfg as EventTerm
 from isaaclab.managers import RewardTermCfg as RewTerm
 from isaaclab.managers import SceneEntityCfg
 from isaaclab.managers import TerminationTermCfg as DoneTerm
@@ -30,12 +33,7 @@ from fiatlux_task.robots.g1 import G1_DEX3_PALM_BODIES, G1_FOOT_BODIES, G1_PALM_
 
 from .. import mdp
 from ..mdp.place_terms import step_face_dir_from_yaw, yaw_from_quat
-from ..replace_env_cfg import (
-    BAYONET_ENTRY_TILT,
-    BAYONET_INSERTION_DEPTH,
-    BAYONET_ROTATION_ANGLE,
-    SEAT_POS_THRESHOLD,
-)
+from ..replace_env_cfg import bulb_attachment_event
 from ..scene_cfg import (
     CLIMB_ROBOT_POSITION,
     LADDER_POSITION,
@@ -51,25 +49,29 @@ from ..scene_cfg import (
     face_robot_at,
     frame_viewer_on,
 )
-from ..subtask_env_cfg import SubtaskEnvCfg, SubtaskEventCfg, SubtaskRewardsCfg, SubtaskTerminationsCfg
+from ..subtask_env_cfg import (
+    SubtaskEnvCfg,
+    SubtaskEventCfg,
+    SubtaskRewardsCfg,
+    SubtaskShapingRewardsCfg,
+    SubtaskTerminationsCfg,
+)
 
 
 @configclass
-class BalanceEventCfg(SubtaskEventCfg):
-    """Bayonet channel enforcement, with ``FIATLUX-Replace-v0``'s parameters."""
+class BulbAttachmentEventCfg(SubtaskEventCfg):
+    """Axial retention spring, with ``FIATLUX-Replace-v0``'s parameters.
 
-    bulb_attachment = EventTerm(
-        func=mdp.bulb_attachment,
-        mode="interval",
-        interval_range_s=(0.0, 0.0),
-        params={
-            "insertion_depth": BAYONET_INSERTION_DEPTH,
-            "rotation_angle": BAYONET_ROTATION_ANGLE,
-            "rotation_sign": -1.0,
-            "radial_tolerance": SEAT_POS_THRESHOLD,
-            "tilt_tolerance": BAYONET_ENTRY_TILT,
-        },
-    )
+    Nothing ladder-specific: S01 (Place tier, off-ladder) wires this in directly, so it must stay
+    usable on its own, without whatever ``BalanceEventCfg`` adds for the on-the-ladder tier.
+    """
+
+    bulb_attachment = bulb_attachment_event()
+
+
+@configclass
+class BalanceEventCfg(BulbAttachmentEventCfg):
+    """``BulbAttachmentEventCfg`` plus whatever the on-the-ladder tier adds for itself."""
 
 
 # Shared by every climb/descend gate in the family.
@@ -126,8 +128,13 @@ def stand_robot_on_ladder_top(scene: G1ReplaceSceneCfg) -> None:
     scene.robot.init_state.rot = _quat_mul(scene.ladder.init_state.rot, _quat_z_deg(TOP_STANCE_YAW_OFFSET_DEG))
 
 
+# Potential-based, so the episode total is capped at ``weight * dt`` (2.0 at dt=0.02)
+# regardless of horizon -- a fifth of the 10.0 a completed subtask pays (issue #169).
+LADDER_CONTACT_WEIGHT = 100.0
+
+
 @configclass
-class OnLadderRewardsCfg(SubtaskRewardsCfg):
+class OnLadderRewardsCfg(SubtaskShapingRewardsCfg):
     """No ``flat_orientation_l2``: working on the ladder requires a sustained forward lean, so
     an upright-torso term fights the task."""
 
@@ -139,9 +146,13 @@ class BalanceRewardsCfg(OnLadderRewardsCfg):
     """Adds the limb-on-ladder bootstrap; the height channel comes from the climb/descend tier."""
 
     ladder_contact = RewTerm(
-        func=mdp.ladder_contact_fraction,
-        weight=0.25,
-        params={"sensor_cfg": SceneEntityCfg("ladder_contact"), "threshold": 1.0},
+        func=mdp.signal_progress,
+        weight=LADDER_CONTACT_WEIGHT,
+        params={
+            "signal_fn": mdp.ladder_contact_fraction,
+            "sensor_cfg": SceneEntityCfg("ladder_contact"),
+            "threshold": 1.0,
+        },
     )
 
 
@@ -170,7 +181,7 @@ class BalanceSubtaskCfg(SubtaskEnvCfg):
     orbit_height: float = 2.4
 
     events: BalanceEventCfg = BalanceEventCfg()
-    rewards: OnLadderRewardsCfg = OnLadderRewardsCfg()
+    rewards: SubtaskRewardsCfg = SubtaskRewardsCfg()
     terminations: BalanceTerminationsCfg = BalanceTerminationsCfg()
 
     def __post_init__(self) -> None:
@@ -201,7 +212,7 @@ class ClimbSubtaskCfg(BalanceSubtaskCfg):
     """Starts on the floor at the ladder's steps."""
 
     ladder_contact_bodies: list[str] | None = None
-    rewards: ClimbRewardsCfg = ClimbRewardsCfg()
+    rewards: SubtaskRewardsCfg = SubtaskRewardsCfg()
 
     def __post_init__(self) -> None:
         super().__post_init__()
@@ -214,7 +225,7 @@ class DescendSubtaskCfg(BalanceSubtaskCfg):
     """Starts on the tread."""
 
     ladder_contact_bodies: list[str] | None = None
-    rewards: DescendRewardsCfg = DescendRewardsCfg()
+    rewards: SubtaskRewardsCfg = SubtaskRewardsCfg()
 
     def __post_init__(self) -> None:
         super().__post_init__()

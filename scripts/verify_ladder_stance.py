@@ -68,7 +68,8 @@ from fiatlux_task.tasks.manager_based.fiatlux_task.scene_cfg import (  # noqa: E
     FIXTURE_HALF_EXTENT,
     G1_STANCE_TORSO_HALF_EXTENT,
     LADDER_FIXTURE_MIN_STANDOFF,
-    LADDER_FIXTURE_STANDOFF,
+    LADDER_FIXTURE_STANDOFF_CEILING,
+    LADDER_FIXTURE_STANDOFF_WALL,
     set_layout_seed,
 )
 from fiatlux_task.tasks.manager_based.fiatlux_task.subtasks.s03_remove_old_bulb_env_cfg import (  # noqa: E402
@@ -132,11 +133,12 @@ if args_cli.measure:
     fixture = env.scene["socket"].data.root_pos_w[0]
     print(f"\nfixture z {float(fixture[2]):.3f}, pelvis z {float(robot.data.root_pos_w[0, 2]):.3f}")
     worst, name = torso_clearance(env)
-    # The stance stands LADDER_FIXTURE_STANDOFF from the fixture axis, so the body nearest the
-    # fixture reaches (standoff - clearance) out from the pelvis axis toward it.
+    # --measure builds seed 1, a ceiling draw, so the stance stands LADDER_FIXTURE_STANDOFF_CEILING
+    # from the fixture axis; the body nearest the fixture reaches (standoff - clearance) out from
+    # the pelvis axis toward it.
     print(
         f"G1_STANCE_TORSO_HALF_EXTENT: the non-arm body nearest the fixture is {name}, "
-        f"{worst:.3f} m from its axis = {LADDER_FIXTURE_STANDOFF - worst:.3f} m out from the pelvis"
+        f"{worst:.3f} m from its axis = {LADDER_FIXTURE_STANDOFF_CEILING - worst:.3f} m out from the pelvis"
     )
     from isaacsim.core.utils.bounds import compute_aabb, create_bbox_cache
 
@@ -150,8 +152,8 @@ if args_cli.measure:
     raise SystemExit(0)
 
 print(
-    f"\n[verify] on-ladder stance vs fixture; standoff {LADDER_FIXTURE_STANDOFF} m, "
-    f"required > {LADDER_FIXTURE_MIN_STANDOFF:.3f} m "
+    f"\n[verify] on-ladder stance vs fixture; standoff wall {LADDER_FIXTURE_STANDOFF_WALL} m / "
+    f"ceiling {LADDER_FIXTURE_STANDOFF_CEILING} m, required > {LADDER_FIXTURE_MIN_STANDOFF:.3f} m "
     f"(torso {G1_STANCE_TORSO_HALF_EXTENT} + fixture {FIXTURE_HALF_EXTENT} + reset jitter)"
 )
 

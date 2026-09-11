@@ -16,7 +16,7 @@ from isaaclab.utils import configclass
 from .. import mdp
 from ..mdp.nav_terms import (
     BULB_APPROACH_RADIUS,
-    DISPOSAL_ARRIVAL_RADIUS,
+    DISPOSAL_STANCE_RADIUS,
     base_bulb_distance,
     base_calm,
     base_facing,
@@ -64,12 +64,11 @@ class S07ApproachNewBulbEnvCfg(NavigateSubtaskCfg):
         # of -- and with no attach FSM on this tier it drops out of the inverted socket at reset.
         park_old_bulb_in_crate(self.scene)
         # S06's end state: standing at the disposal crate, hands free.
-        stand_robot_near(self.scene, self.scene.bin.init_state.pos[:2], DISPOSAL_ARRIVAL_RADIUS)
+        stand_robot_near(self.scene, self.scene.bin.init_state.pos[:2], DISPOSAL_STANCE_RADIUS)
         # This leg's target is the bulb itself, not the table's own origin apply_replace_preset
         # aims at.
         face_robot_at(self.scene, self.scene.fresh_bulb.init_state.pos[:2])
         add_ego_camera(self.scene)
         add_mid360_lidar(self.scene)
-        # Worst-case room-diagonal traverse (~10.8 m) at the ~0.5 m/s reference speed, 2x margin.
-        self.episode_length_s = 45.0
+        self.episode_length_s = 120.0
         frame_viewer_between(self.viewer, self.scene.robot.init_state.pos, self.scene.fresh_bulb.init_state.pos)

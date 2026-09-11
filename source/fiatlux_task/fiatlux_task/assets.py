@@ -22,13 +22,16 @@ G1_DEX3_USD = os.path.join(FIATLUX_ASSETS_DIR, "unitree_g1", "wholebody_dex3", "
 # The socket's colliders are an exact triangle mesh (``physics:approximation = "none"``), which
 # is illegal on a dynamic body: the socket must stay static or kinematic.
 BULB_USD = os.path.join(FIATLUX_ASSETS_DIR, "omniverse_bulb", "LightBulb_bulb_z_rigid.usda")
-SOCKET_USD = os.path.join(FIATLUX_ASSETS_DIR, "omniverse_bulb", "LightBulb_socket_z_static.usda")
+# The stock socket plus a guide sleeve inside its bore (issue #171): the stock mouth ring alone lets
+# a seated plug lean 22 deg and jam; the sleeve caps it at ~9 deg. Additive layers over the stock
+# files, authored by scripts/omniverse/omniverse_socket_guide_sleeve.py (run it if they are missing).
+SOCKET_USD = os.path.join(FIATLUX_ASSETS_DIR, "omniverse_bulb", "LightBulb_socket_z_static_sleeve.usda")
 
 # Curated Omniverse LightBulb split into a graspable bulb + its socket base (Y-up, cm-authored ->
 # spawn scale + an X rotation). Clean-rendering (unlike the flat-texpath B1K lamp); used by the
 # teleop bench (FIATLUX-Insert-Teleop-v0).
 OMNI_BULB_USD = os.path.join(FIATLUX_ASSETS_DIR, "omniverse_bulb", "LightBulb_bulb.usda")
-OMNI_SOCKET_USD = os.path.join(FIATLUX_ASSETS_DIR, "omniverse_bulb", "LightBulb_socket.usda")
+OMNI_SOCKET_USD = os.path.join(FIATLUX_ASSETS_DIR, "omniverse_bulb", "LightBulb_socket_sleeve.usda")
 
 # Metres, in each object's own root frame, Z-up. Both halves are authored assembled at
 # identity, so "seated" is *bulb root pose == socket root pose*.
@@ -41,6 +44,29 @@ SOCKET_SEAT_AXIS = (0.0, 0.0, 1.0)
 # root z = surface_z + BULB_LIE_Z_OFFSET. The fixture's origin is its floor-contact plane.
 BULB_STAND_Z_OFFSET = 0.036259
 BULB_LIE_Z_OFFSET = 0.039561
+# The bulb's collider outline as (z, radius) in its own root frame -- it is a solid of
+# revolution about local +z. The body starts 36 mm ABOVE the root and ends at 193 mm, so the
+# root frame origin lies outside the geometry entirely: a gate that tests the root as if it
+# were a point on the bulb is testing a point up to 193 mm away from it (issue #131).
+# Measured from the collision meshes; re-measure if the bulb USD changes.
+BULB_MERIDIAN = (
+    (0.03626, 0.00759),
+    (0.04583, 0.02026),
+    (0.07436, 0.02196),
+    (0.08479, 0.02440),
+    (0.09706, 0.02442),
+    (0.11086, 0.02558),
+    (0.12366, 0.03025),
+    (0.13688, 0.03652),
+    (0.15224, 0.03956),
+    (0.15748, 0.03922),
+    (0.16764, 0.03653),
+    (0.18181, 0.02640),
+    (0.19267, 0.00000),
+)
+# Centroid of that outline: a point actually ON the bulb, for anything that means "where the
+# bulb is" rather than "where its transform origin is" (issue #131).
+BULB_BODY_CENTRE_OFFSET = (0.0, 0.0, 0.10961)
 SOCKET_BASE_Z_OFFSET = 0.0
 # Cap bottom to fixture top: how far the bulb sinks when seated.
 SOCKET_INSERTION_DEPTH = 0.034226

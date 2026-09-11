@@ -8,23 +8,21 @@
 Starts from S10's end state: the robot balanced on the upper steps with the fresh bulb in hand
 (``BULB_IN_ROOT_ON_LADDER``), the fixture inverted and empty, the old bulb in the disposal crate.
 
-The bayonet attach/detach state machine (issue #54, ``mdp.bulb_attachment``, wired once for the
-tier in ``subtask_tiers.balance.BalanceEventCfg``) governs the fresh bulb from here: FREE at reset
-(``BULB_IN_ROOT_ON_LADDER`` puts it in the hand, not the insertion channel, so it starts
-unconstrained same as before), through AXIAL once it enters the channel, to ROTATING once
-bottomed and turned through the full lock angle. ``mdp.fresh_bulb_attached`` is the success
-conjunct that actually requires that whole sequence, not just transiting the old geometric seating
-thresholds -- the attach-aware replacement for ``bulb_seated``.
+The axial retention spring (issue #167, ``mdp.bulb_attachment``, wired once for the tier in
+``subtask_tiers.balance.BalanceEventCfg``) governs the fresh bulb from here: FREE at reset
+(``BULB_IN_ROOT_ON_LADDER`` puts it in the hand, not at the seat, so it starts unconstrained same
+as before), to SEATED once it reaches the seat aligned and the socket is unoccupied.
+``mdp.fresh_bulb_attached`` is the success conjunct that requires that admission to have actually
+fired, not just transiting the old geometric seating thresholds -- the attach-aware replacement
+for ``bulb_seated``. There is no twist/rotation requirement: this asset has no physical
+lug/groove, so "installed" here means seated and released, not screwed through a lock angle --
+the task name and identifiers predate that simplification and are unchanged for now.
 
-Rotation about the mating axis is free by construction. The dense alignment term scores the angle
-BETWEEN the plug and seat axes (``mate_terms.bulb_axis_alignment_tanh``), not full-quaternion
-error, which would grow as the bulb is screwed home and fight the motion the task is named for.
-
-What makes the gate "screwed in" rather than "held in the socket" is that the hand must be OFF and
-the bulb still locked a second later -- the conjunction is debounced as a whole, so every part of
+What makes the gate "installed" rather than "held in the socket" is that the hand must be OFF and
+the bulb still seated a second later -- the conjunction is debounced as a whole, so every part of
 it has to survive the release.
 
-The bayonet mechanic governs bulb-vs-socket, not bulb-vs-hand -- that hold is real, not a
+The retention spring governs bulb-vs-socket, not bulb-vs-hand -- that hold is real, not a
 kinematic constraint: ``ARM_CRADLE`` (palm up) + ``HAND_CUP`` (uncurled, merged into
 ``robot.init_state.joint_pos``) rest the bulb directly on the open palm
 (``nav_terms.settle_carried_payload_live``), and ``grip_contact`` measures real, sustained
@@ -48,7 +46,7 @@ from ..mdp import grasp_terms, mate_terms, place_terms
 from ..mdp.nav_terms import add_grip_contact_sensor, compose_carried_pose, settle_carried_payload_live
 from ..replace_env_cfg import FRESH_BULB_DROP_HEIGHT
 from ..scene_cfg import park_old_bulb_in_crate
-from ..subtask_env_cfg import FALL_MIN_HEIGHT, FALL_TILT_LIMIT
+from ..subtask_env_cfg import FALL_MIN_HEIGHT, FALL_TILT_LIMIT, SubtaskRewardsCfg
 from ..subtask_tiers.balance import BalanceEventCfg
 from ..subtask_tiers.mate import (
     MATE_ALIGNMENT_STD,
@@ -62,16 +60,20 @@ from ..subtask_tiers.place import AT_REST_ANG_VEL_LIMIT, AT_REST_LIN_VEL_LIMIT, 
 
 _BULB = SceneEntityCfg("fresh_bulb")
 _GRIP = SceneEntityCfg("grip_contact")
+_GRIP_LEFT = SceneEntityCfg("grip_contact_left")
 
 # The success gate, as reviewable data (mdp.all_of) rather than a hand-written conjunction --
 # an omitted conjunct here is a gate that passes vacuously.
 BULB_SCREWED_IN_CONJUNCTS = [
     (mdp.fresh_bulb_attached, {}),
     (
-        place_terms.object_at_rest,
+        place_terms.object_settled,
         {"asset_cfg": _BULB, "lin_vel_limit": AT_REST_LIN_VEL_LIMIT, "ang_vel_limit": AT_REST_ANG_VEL_LIMIT},
     ),
-    (place_terms.object_released, {"sensor_cfg": _GRIP, "force_threshold": RELEASE_FORCE_THRESHOLD_N}),
+    (
+        place_terms.object_released,
+        {"sensor_cfg": _GRIP, "other_sensor_cfg": _GRIP_LEFT, "force_threshold": RELEASE_FORCE_THRESHOLD_N},
+    ),
     (place_terms.robot_standing, {"minimum_height": FALL_MIN_HEIGHT, "limit_angle": FALL_TILT_LIMIT}),
     (grasp_terms.ladder_near_vertical, {"tilt_limit": mdp.LADDER_TILT_LIMIT}),
 ]
@@ -81,8 +83,8 @@ BULB_SCREWED_IN_CONJUNCTS = [
 class S11EventCfg(BalanceEventCfg):
     """Re-seats the bulb against the hand's live, actually-simulated pose -- see
     ``nav_terms.settle_carried_payload_live``. Declared after the inherited ``bulb_attachment``
-    (issue #54), so on the settling step the bayonet FSM still sees the bulb wherever
-    ``compose_carried_pose`` put it (FREE phase, no channel nearby -- harmless) before this
+    (issue #167), so on the settling step the retention term still sees the bulb wherever
+    ``compose_carried_pose`` put it (FREE phase, nowhere near the seat -- harmless) before this
     corrects the position for the rest of the episode. Root/joint randomization zeroed for now
     while the open-palm rest calibration is being worked out (adds noise we don't need yet)."""
 
@@ -114,7 +116,9 @@ class S11RewardsCfg(MateRewardsCfg):
         func=mdp.distance_progress, weight=500.0, params={"distance_fn": mdp.bulb_fixture_distance}
     )
     alignment = RewTerm(
-        func=mate_terms.bulb_axis_alignment_tanh, weight=MATE_ALIGNMENT_WEIGHT, params={"std": MATE_ALIGNMENT_STD}
+        func=mdp.signal_progress,
+        weight=MATE_ALIGNMENT_WEIGHT,
+        params={"signal_fn": mate_terms.bulb_axis_alignment_tanh, "std": MATE_ALIGNMENT_STD},
     )
     bulb_dropped = RewTerm(
         func=mdp.object_dropped, weight=-200.0, params={"asset_cfg": _BULB, "min_height": FRESH_BULB_DROP_HEIGHT}
@@ -138,7 +142,7 @@ class S11ScrewInBulbEnvCfg(MateSubtaskCfg):
     }
 
     events: S11EventCfg = S11EventCfg()
-    rewards: S11RewardsCfg = S11RewardsCfg()
+    rewards: SubtaskRewardsCfg = SubtaskRewardsCfg()
     terminations: S11TerminationsCfg = S11TerminationsCfg()
 
     def __post_init__(self) -> None:
@@ -156,5 +160,4 @@ class S11ScrewInBulbEnvCfg(MateSubtaskCfg):
             **HAND_CUP,
         }
         add_grip_contact_sensor(self.scene, self.scene.fresh_bulb.prim_path)
-        # The longest of the chain: fine insertion under balance.
-        self.episode_length_s = 40.0
+        self.episode_length_s = 120.0

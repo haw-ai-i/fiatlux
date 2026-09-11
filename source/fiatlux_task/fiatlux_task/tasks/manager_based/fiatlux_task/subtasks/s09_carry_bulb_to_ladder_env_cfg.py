@@ -55,6 +55,7 @@ from ..subtask_env_cfg import (
     NavigateRewardsCfg,
     NavigateSubtaskCfg,
     SubtaskEventCfg,
+    SubtaskRewardsCfg,
     SubtaskTerminationsCfg,
 )
 from ..subtask_tiers.carrying import add_bulb_crush_gate
@@ -65,7 +66,14 @@ AT_LADDER_WITH_BULB_CONJUNCTS = [
     (base_near, {"asset_cfg": SceneEntityCfg("ladder"), "xy_radius": LADDER_MOUNT_RADIUS}),
     (base_facing, {"asset_cfg": SceneEntityCfg("ladder"), "facing_tolerance": ARRIVAL_FACING_TOLERANCE}),
     (base_calm, {"max_speed": ARRIVAL_MAX_SPEED}),
-    (payload_held, {"sensor_cfg": SceneEntityCfg("grip_contact"), "force_threshold": GRIP_FORCE_THRESHOLD_N}),
+    (
+        payload_held,
+        {
+            "sensor_cfg": SceneEntityCfg("grip_contact"),
+            "other_sensor_cfg": SceneEntityCfg("grip_contact_left"),
+            "force_threshold": GRIP_FORCE_THRESHOLD_N,
+        },
+    ),
     (ladder_upright, {"tilt_limit": mdp.LADDER_TILT_LIMIT}),
 ]
 
@@ -122,7 +130,7 @@ class S09CarryBulbToLadderEnvCfg(NavigateSubtaskCfg):
     progress_distance_fn = mdp.base_ladder_distance
 
     events: S09EventCfg = S09EventCfg()
-    rewards: S09RewardsCfg = S09RewardsCfg()
+    rewards: SubtaskRewardsCfg = SubtaskRewardsCfg()
     terminations: S09TerminationsCfg = S09TerminationsCfg()
 
     def __post_init__(self) -> None:
@@ -149,7 +157,5 @@ class S09CarryBulbToLadderEnvCfg(NavigateSubtaskCfg):
         add_bulb_crush_gate(self)
         add_ego_camera(self.scene)
         add_mid360_lidar(self.scene)
-        # Worst-case room-diagonal traverse (~10.8 m) at the ~0.5 m/s reference speed, 2x margin;
-        # conservative for a carrying leg.
-        self.episode_length_s = 45.0
+        self.episode_length_s = 120.0
         frame_viewer_between(self.viewer, self.scene.robot.init_state.pos, self.scene.ladder.init_state.pos)

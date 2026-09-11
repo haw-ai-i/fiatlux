@@ -14,9 +14,9 @@ down has undone the task, so leaving the socket also ends the episode.
 
 Its success region is the chain's declared terminal state -- there is no successor to hand off to.
 
-The bayonet attach/detach state machine (issue #54, ``mdp.bulb_attachment``) is wired at the
-balance tier (``subtask_tiers.balance.BalanceEventCfg``), retaining the bulb in the inverted fixture
-while the robot descends.
+The axial retention spring (issue #167, ``mdp.bulb_attachment``) is wired at the balance tier
+(``subtask_tiers.balance.BalanceEventCfg``), retaining the bulb in the inverted fixture while
+the robot descends.
 """
 
 from isaaclab.managers import RewardTermCfg as RewTerm
@@ -27,7 +27,7 @@ from .. import mdp
 from ..mdp import balance_terms, grasp_terms, place_terms
 from ..replace_env_cfg import SEAT_ORI_THRESHOLD, SEAT_POS_THRESHOLD
 from ..scene_cfg import park_old_bulb_in_crate, seat_bulb_in_fixture
-from ..subtask_env_cfg import FALL_MIN_HEIGHT, FALL_TILT_LIMIT
+from ..subtask_env_cfg import FALL_MIN_HEIGHT, FALL_TILT_LIMIT, SubtaskRewardsCfg
 from ..subtask_tiers.balance import (
     LADDER_FLOOR_STANCE_HEIGHT,
     LADDER_SUCCESS_MAX_SPEED,
@@ -77,7 +77,7 @@ class S12ClimbDownEnvCfg(DescendSubtaskCfg):
     success_predicate = mdp.all_of
     success_params: dict | None = {"predicates": DESCENDED_INTACT_CONJUNCTS}
 
-    rewards: S12RewardsCfg = S12RewardsCfg()
+    rewards: SubtaskRewardsCfg = SubtaskRewardsCfg()
     terminations: S12TerminationsCfg = S12TerminationsCfg()
 
     def __post_init__(self) -> None:
@@ -85,4 +85,4 @@ class S12ClimbDownEnvCfg(DescendSubtaskCfg):
         # S11's end state: the job is done -- fresh bulb in the fixture, old one thrown away.
         park_old_bulb_in_crate(self.scene)
         seat_bulb_in_fixture(self.scene)
-        self.episode_length_s = 20.0
+        self.episode_length_s = 120.0

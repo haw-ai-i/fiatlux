@@ -113,6 +113,23 @@ for group in "${TASK_ASSETS[@]}"; do
     sync_group "$group"
 done
 
+# Author the socket's guide sleeve (issue #171): the bucket only ships the stock socket, and
+# fiatlux_task/assets.py's SOCKET_USD/OMNI_SOCKET_USD point at the additive "_sleeve" layers this
+# script generates on top of it (see its module docstring). Doing it here rather than baking the
+# sleeve into the bucket keeps the synced asset as the stock socket, and means a fresh sync always
+# leaves SOCKET_USD resolvable instead of failing at scene build with a missing-file error.
+BULB_DIR="${TARGET_DIR}/omniverse_bulb"
+if [[ -d "$BULB_DIR" ]]; then
+    echo "Authoring the socket guide sleeve ..."
+    if ! (cd "${TARGET_DIR}/.." && uv run python scripts/omniverse/omniverse_socket_guide_sleeve.py "$BULB_DIR"); then
+        echo "  WARNING: could not author the socket guide sleeve. Until it is, SOCKET_USD and" >&2
+        echo "  OMNI_SOCKET_USD (fiatlux_task/assets.py) point at files that do not exist, and any" >&2
+        echo "  task touching the socket will fail at scene build." >&2
+        echo "  Re-run by hand from the repo root:" >&2
+        echo "    uv run python scripts/omniverse/omniverse_socket_guide_sleeve.py $BULB_DIR" >&2
+    fi
+fi
+
 echo "Syncing room dressing assets from ${ASSET_BUCKET} ..."
 for group in "${ROOM_ASSETS[@]}"; do
     sync_group "$group"

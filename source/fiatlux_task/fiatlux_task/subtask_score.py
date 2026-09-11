@@ -65,18 +65,21 @@ SUBTASK_FACTORS: dict[str, tuple[str, ...]] = {
 
 SUCCESS_SHARE = 0.5
 TELEOP_SUFFIX = "-Teleop-v0"
+TRAINING_SUFFIX = "-Training-v0"
 
 
 def base_subtask_id(task_id: str | None) -> str | None:
-    """The benchmark id a teleop twin belongs to (``...-Teleop-v0`` -> ``...-v0``).
+    """The benchmark id a twin belongs to (``...-Teleop-v0`` / ``...-Training-v0`` -> ``...-v0``).
 
-    ``fiatlux_teleop`` registers one twin per subtask, and a teleop bag records that id. The
-    weights are keyed on the benchmark ids alone, so an operator's take of S06 is still S06.
+    ``fiatlux_teleop`` registers one twin per subtask and ``subtasks.training_env_cfg`` registers
+    another, and a bag records whichever id it ran. The weights are keyed on the benchmark ids
+    alone, so an operator's take of S06 -- or a training rollout of it -- is still S06.
     """
     if not task_id or not isinstance(task_id, str):
         return task_id
-    if task_id.endswith(TELEOP_SUFFIX):
-        return task_id[: -len(TELEOP_SUFFIX)] + "-v0"
+    for suffix in (TELEOP_SUFFIX, TRAINING_SUFFIX):
+        if task_id.endswith(suffix):
+            return task_id[: -len(suffix)] + "-v0"
     return task_id
 
 

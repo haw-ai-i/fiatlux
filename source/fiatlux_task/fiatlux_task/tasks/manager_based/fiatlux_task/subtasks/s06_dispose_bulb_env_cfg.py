@@ -11,7 +11,8 @@ fixture.
 
 Success requires the bulb inside the crate's interior footprint (``place_terms.old_bulb_in_bin``,
 orientation-agnostic): a bulb balanced on the rim, or resting on the floor beside the crate, is
-outside it.
+outside it. The gate tests the bulb's geometry rather than its root frame, which lies off the
+body and can be past the crate wall while the bulb rests against it from the inside (#131).
 """
 
 from isaaclab.managers import EventTermCfg as EventTerm
@@ -23,7 +24,7 @@ from fiatlux_task.poses import ARM_CRADLE, HAND_CUP
 
 from .. import mdp
 from ..mdp import place_terms
-from ..mdp.nav_terms import DISPOSAL_ARRIVAL_RADIUS, compose_carried_pose, settle_carried_payload_live
+from ..mdp.nav_terms import DISPOSAL_STANCE_RADIUS, compose_carried_pose, settle_carried_payload_live
 from ..scene_cfg import (
     add_ego_camera,
     add_mid360_lidar,
@@ -51,7 +52,11 @@ OLD_BULB_DISPOSED_CONJUNCTS = [
     ),
     (
         place_terms.object_released,
-        {"sensor_cfg": SceneEntityCfg("release_contact"), "force_threshold": RELEASE_FORCE_THRESHOLD_N},
+        {
+            "sensor_cfg": SceneEntityCfg("release_contact"),
+            "other_sensor_cfg": SceneEntityCfg("release_contact_left"),
+            "force_threshold": RELEASE_FORCE_THRESHOLD_N,
+        },
     ),
     (place_terms.robot_standing, {"minimum_height": FALL_MIN_HEIGHT, "limit_angle": FALL_TILT_LIMIT}),
 ]
@@ -96,7 +101,7 @@ class S06DisposeBulbEnvCfg(PlaceSubtaskCfg):
         apply_replace_preset(self.scene, couple_ladder_to_fixture=True)
         # The preset's own robot zone is independent of the bin's; pull the robot to where it
         # would be holding the old bulb it starts this subtask already carrying.
-        stand_robot_near(self.scene, self.scene.bin.init_state.pos[:2], DISPOSAL_ARRIVAL_RADIUS)
+        stand_robot_near(self.scene, self.scene.bin.init_state.pos[:2], DISPOSAL_STANCE_RADIUS)
         # S05's end state: the old bulb starts already held, at the carry offset from the robot's
         # own (now-final) root pose -- not seated at the fixture, which is where the preset
         # leaves it and where it stayed until this was added.
@@ -113,5 +118,5 @@ class S06DisposeBulbEnvCfg(PlaceSubtaskCfg):
         add_mid360_lidar(self.scene)
         add_release_contact_sensor(self.scene, self.scene.old_bulb.prim_path)
         add_bulb_crush_gate(self, "release_contact")
-        self.episode_length_s = 20.0
+        self.episode_length_s = 120.0
         frame_viewer_on(self.viewer, self.scene.robot.init_state.pos)

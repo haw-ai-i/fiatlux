@@ -33,7 +33,9 @@ import torch
 from isaaclab.assets import Articulation, RigidObject
 from isaaclab.managers import SceneEntityCfg
 from isaaclab.sensors import ContactSensor, ContactSensorCfg
+from isaaclab.utils.math import quat_apply_inverse
 
+from fiatlux_task.assets import G1_HORIZONTAL_REACH
 from fiatlux_task.grasp_poses import BULB_GLASS_RADIUS_M, BULB_IN_ROOT_STANDING
 
 from ..scene_cfg import (
@@ -107,9 +109,15 @@ if abs((_APPROACH_UX, _APPROACH_UY)[_OTHER_AXIS] * CARRY_CLEARANCE_STANDOFF) > T
         "is optimistic. Solve the box distance directly instead of assuming a face."
     )
 
-# "Close enough to be standing at the crate." PROVISIONAL: the crate's own layout zone
-# half-extent (footprint + working clearance); no authored robot-relative standoff exists.
-DISPOSAL_ARRIVAL_RADIUS = DISPOSAL_ZONE_HALF_SIZE
+# "Close enough to be standing at the crate", measured from the crate's FOOTPRINT rather than
+# its origin (issue #149). Horizontal arm reach is the condition that matters: within it the
+# robot can put a hand over the crate, which is what arrival is for.
+DISPOSAL_ARRIVAL_CLEARANCE = G1_HORIZONTAL_REACH
+
+# Where staging PUTS the robot, as a radius from the crate's origin -- a different quantity from
+# the gate above, which is a clearance from its footprint. PROVISIONAL: the crate's own layout
+# zone half-extent; no authored robot-relative standoff exists.
+DISPOSAL_STANCE_RADIUS = DISPOSAL_ZONE_HALF_SIZE
 
 # Grip-presence floor for the carrying legs' arrival gate: subtask_tiers.place's
 # RELEASE_FORCE_THRESHOLD_N read the other way. PROVISIONAL.
@@ -270,15 +278,37 @@ def add_grip_contact_sensor(scene: G1ReplaceSceneCfg, target_prim_path: str) -> 
         history_length=1,
         track_air_time=False,
     )
+    # Left mirror, so a payload carried in the left hand reads as carried (issue #151).
+    scene.grip_contact_left = ContactSensorCfg(
+        prim_path=scene.left_hand_contact.prim_path,
+        filter_prim_paths_expr=[target_prim_path],
+        history_length=1,
+        track_air_time=False,
+    )
 
 
-def payload_held(env: ManagerBasedRLEnv, sensor_cfg: SceneEntityCfg, force_threshold: float) -> torch.Tensor:
-    """True where some hand body still presses on the sensor's ONE filtered target above
-    ``force_threshold`` -- the positive counterpart of ``place_terms.object_released``.
-    """
+def _peak_filtered_force(env: ManagerBasedRLEnv, sensor_cfg: SceneEntityCfg) -> torch.Tensor:
+    """Largest per-body force magnitude on the sensor's ONE filtered target."""
     sensor: ContactSensor = env.scene.sensors[sensor_cfg.name]
     force = sensor.data.force_matrix_w.sum(dim=2)  # (N, B, M, 3) -> (N, B, 3); M == 1 here
-    return force.norm(dim=-1).max(dim=1).values > force_threshold
+    return force.norm(dim=-1).max(dim=1).values
+
+
+def payload_held(
+    env: ManagerBasedRLEnv,
+    sensor_cfg: SceneEntityCfg,
+    force_threshold: float,
+    other_sensor_cfg: SceneEntityCfg | None = None,
+) -> torch.Tensor:
+    """True where some hand body still presses on the sensor's ONE filtered target above
+    ``force_threshold`` -- the positive counterpart of ``place_terms.object_released``.
+
+    With ``other_sensor_cfg``, carrying it in EITHER hand counts (issue #151).
+    """
+    peak = _peak_filtered_force(env, sensor_cfg)
+    if other_sensor_cfg is not None:
+        peak = torch.maximum(peak, _peak_filtered_force(env, other_sensor_cfg))
+    return peak > force_threshold
 
 
 # ---------------------------------------------------------------------------
@@ -308,11 +338,27 @@ def base_bulb_distance(env: ManagerBasedRLEnv) -> torch.Tensor:
 # is present, and ``mdp.gates.gate_progress`` counts how many an episode satisfied.
 
 
-def base_near(env: ManagerBasedRLEnv, asset_cfg: SceneEntityCfg, xy_radius: float) -> torch.Tensor:
-    """True where the robot's root is horizontally within ``xy_radius`` of the entity's root."""
+def base_near(
+    env: ManagerBasedRLEnv,
+    asset_cfg: SceneEntityCfg,
+    xy_radius: float,
+    half_extent: tuple[float, float] = (0.0, 0.0),
+) -> torch.Tensor:
+    """True where the robot's root is horizontally within ``xy_radius`` of the entity's FOOTPRINT.
+
+    ``half_extent`` is that footprint in the entity's own frame; the default of zero measures to
+    its origin, which is right for something small and wrong for a container. Measured to the
+    origin, the 0.60 x 0.40 m disposal crate scores the approach side rather than being at it: the
+    same 0.24 m gap from the crate reads 0.54 m off the short end and 0.44 m off the long face
+    (issue #149).
+
+    Evaluated in the entity's own frame, so a yawed crate is handled.
+    """
     robot: Articulation = env.scene["robot"]
     target: RigidObject = env.scene[asset_cfg.name]
-    return torch.norm((robot.data.root_pos_w - target.data.root_pos_w)[:, :2], dim=1) < xy_radius
+    rel = quat_apply_inverse(target.data.root_quat_w, robot.data.root_pos_w - target.data.root_pos_w)
+    half = torch.tensor(half_extent, device=env.device)
+    return (rel[:, :2].abs() - half).clamp(min=0.0).norm(dim=1) < xy_radius
 
 
 def base_facing(env: ManagerBasedRLEnv, asset_cfg: SceneEntityCfg, facing_tolerance: float) -> torch.Tensor:

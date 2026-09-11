@@ -14,10 +14,13 @@ simulator.
 Design:
 - ``TrajectoryRecorder.record_step(...)`` is called once per ``env.step``; it
   buffers per-env arrays on the host.
-- ``write(out_dir, fmt)`` segments the buffered stream into per-episode groups
-  (split on the ``done`` flag, robomimic-style ``data/demo_<i>``) and writes either
-  HDF5 (default; ``h5py`` ships with Isaac Lab) or a flat ``.npz`` fallback, plus a
-  human-readable ``meta.json`` header.
+- Given ``out_dir`` at construction, each episode is written to the bag as it ends and
+  its steps leave the buffer, so RAM holds only in-flight episodes. Without it the whole
+  run stays buffered until ``write``.
+- ``write(out_dir, fmt)`` closes the bag (robomimic-style ``data/demo_<i>`` groups, split
+  on the ``done`` flag) as HDF5 (default; ``h5py`` ships with Isaac Lab) or a flat ``.npz``
+  fallback, plus a human-readable ``meta.json`` header. ``.npz`` has no append mode, so it
+  is always fully buffered.
 
 Terminal-step caveat: Isaac Lab's ``ManagerBasedRLEnv.step`` auto-resets episodes
 that finished, so object poses read *after* a terminating step reflect the *next*
@@ -158,12 +161,49 @@ def term_flag(env, name: str, n: int, device) -> torch.Tensor:
     return torch.zeros(n, dtype=torch.bool, device=device)
 
 
+class _EpisodeSink:
+    """Append finished episodes to an open HDF5 bag, one group per episode."""
+
+    def __init__(self, out_dir: Path):
+        import h5py
+
+        out_dir.mkdir(parents=True, exist_ok=True)
+        self.out_dir = out_dir
+        self.path = out_dir / "run.h5"
+        self._f = h5py.File(self.path, "w")
+        self._data = self._f.create_group("data")
+        self.lengths: list[int] = []
+
+    @property
+    def count(self) -> int:
+        return len(self.lengths)
+
+    def add(self, episode: dict[str, np.ndarray]) -> None:
+        g = self._data.create_group(f"demo_{self.count}")
+        for key, arr in episode.items():
+            g.create_dataset(key, data=arr, compression="gzip")
+        self.lengths.append(int(episode["done"].shape[0]))
+
+    def close(self, meta: dict) -> None:
+        self._f.attrs["meta"] = json.dumps(meta)
+        self._f.close()
+
+
 class TrajectoryRecorder:
-    """Buffers a full rollout and writes a self-describing trajectory bag."""
+    """Buffers a rollout and writes a self-describing trajectory bag."""
 
     # Per-step fields captured from the environment. Each maps to a callable that
     # returns a ``(num_envs, ...)`` tensor for the current state.
-    def __init__(self, env, *, policy_spec: str, seed: int, checkpoint: str | None = None):
+    def __init__(
+        self,
+        env,
+        *,
+        policy_spec: str,
+        seed: int,
+        checkpoint: str | None = None,
+        out_dir: str | Path | None = None,
+        fmt: str = "hdf5",
+    ):
         self.env = env
         self.device = env.device
         self.n = env.num_envs
@@ -178,7 +218,7 @@ class TrajectoryRecorder:
         self._left_ee_name = left_names[0] if left_names else None
         self._left_contact = env.scene.sensors.get("left_hand_contact")
 
-        # Resolve the bayonet manager once, not per step: whether a task wires
+        # Resolve the retention manager once, not per step: whether a task wires
         # mdp.bulb_attachment is fixed for the whole run, and a key that appeared midway
         # through would give the buffers ragged lengths. Tasks without the term (Remove,
         # Install, Carry today) simply record no lock columns.
@@ -217,6 +257,10 @@ class TrajectoryRecorder:
         self._gate_col_names: list[str] = []
 
         self._buf: dict[str, list[np.ndarray]] = {}
+        self._base = 0
+        self._t = 0
+        self._ep_start = np.zeros(self.n, dtype=np.int64)
+        self._sink = _EpisodeSink(Path(out_dir)) if out_dir is not None and fmt == "hdf5" else None
         self._meta = self._build_meta(policy_spec=policy_spec, seed=seed, checkpoint=checkpoint, ee_name=ee_names[0])
 
     def _resolve_gate(self, env) -> tuple[list, float]:
@@ -390,11 +434,33 @@ class TrajectoryRecorder:
         step.update(self.object_state_fields())
         step.update(self.contact_fields())
         step.update(self.gate_fields())
-        # Bayonet lock state (issue #77). Only tasks that wire mdp.bulb_attachment have it.
+        # Seated state (issue #167). Only tasks that wire mdp.bulb_attachment have it.
         if self._attachment is not None:
             step.update(_attach.bulb_lock_telemetry(env))
         for key, value in step.items():
             self._buf.setdefault(key, []).append(_np(value))
+        self._t += 1
+        self._flush_completed()
+
+    # -- streaming -------------------------------------------------------------
+    def _flush_completed(self) -> None:
+        """Write out every episode that ended on the step just recorded, then drop the
+        steps no in-flight episode still needs."""
+        if self._sink is None or "done" not in self._buf:
+            return
+        done = np.asarray(self._buf["done"][-1]).reshape(-1)
+        end = self._t - 1
+        for e in np.nonzero(done)[0]:
+            lo = int(self._ep_start[e]) - self._base
+            hi = end - self._base
+            self._sink.add({k: np.stack([row[e] for row in v[lo : hi + 1]], axis=0) for k, v in self._buf.items()})
+            self._ep_start[e] = end + 1
+        keep = int(self._ep_start.min())
+        if keep > self._base:
+            cut = keep - self._base
+            for v in self._buf.values():
+                del v[:cut]
+            self._base = keep
 
     # -- serialization ---------------------------------------------------------
     def episodes(self) -> list[dict[str, np.ndarray]]:
@@ -417,27 +483,48 @@ class TrajectoryRecorder:
     def write(self, out_dir: str | Path, *, fmt: str = "hdf5") -> dict:
         out = Path(out_dir)
         out.mkdir(parents=True, exist_ok=True)
-        episodes = self.episodes()
-
-        self._meta["num_episodes"] = len(episodes)
-        self._meta["episode_lengths"] = [int(ep["done"].shape[0]) for ep in episodes]
         self._meta["fields"] = sorted(self._buf.keys())
-        self._meta["format"] = fmt
 
-        if fmt == "hdf5":
-            bag_path = out / "run.h5"
-            self._write_hdf5(bag_path, episodes)
-        elif fmt == "npz":
-            bag_path = out / "run.npz"
-            self._write_npz(bag_path, episodes)
+        if self._sink is not None:
+            if fmt != "hdf5":
+                # The sink was already opened as hdf5 at construction (out_dir + the default
+                # fmt="hdf5" is what creates it); honoring a different fmt here would mean
+                # transcoding the episodes already streamed out, not just picking a format.
+                raise ValueError(
+                    f"recorder was constructed with out_dir set, which streams to hdf5 as it "
+                    f"records; write(fmt={fmt!r}) cannot retroactively change that. Pass "
+                    f"fmt='hdf5' (or omit it), or construct the recorder without out_dir to "
+                    f"buffer in RAM and pick a format at write() time."
+                )
+            self._meta["num_episodes"] = self._sink.count
+            self._meta["episode_lengths"] = list(self._sink.lengths)
+            self._meta["format"] = "hdf5"
+            bag_path = self._sink.path
+            self._meta["bag_file"] = bag_path.name
+            self._sink.close(self._meta)
+            n_episodes = self._sink.count
         else:
-            raise ValueError(f"unknown bag format: {fmt!r} (use 'hdf5' or 'npz')")
+            episodes = self.episodes()
+            self._meta["num_episodes"] = len(episodes)
+            self._meta["episode_lengths"] = [int(ep["done"].shape[0]) for ep in episodes]
+            self._meta["format"] = fmt
 
-        self._meta["bag_file"] = bag_path.name
+            if fmt == "hdf5":
+                bag_path = out / "run.h5"
+                self._write_hdf5(bag_path, episodes)
+            elif fmt == "npz":
+                bag_path = out / "run.npz"
+                self._write_npz(bag_path, episodes)
+            else:
+                raise ValueError(f"unknown bag format: {fmt!r} (use 'hdf5' or 'npz')")
+
+            self._meta["bag_file"] = bag_path.name
+            n_episodes = len(episodes)
+
         meta_path = out / "meta.json"
         with open(meta_path, "w") as fh:
             json.dump(self._meta, fh, indent=2)
-        return {"bag": str(bag_path), "meta": str(meta_path), "episodes": len(episodes)}
+        return {"bag": str(bag_path), "meta": str(meta_path), "episodes": n_episodes}
 
     def _write_hdf5(self, path: Path, episodes: list[dict[str, np.ndarray]]) -> None:
         import h5py
@@ -506,10 +593,9 @@ class TrajectoryRecorder:
             "success_pos_threshold": float(success_params.get("pos_threshold", 0.015)),
             "success_ori_threshold": float(success_params.get("ori_threshold", 0.2)),
             "drop_min_height": float(drop_params.get("min_height", 0.4)),
-            # Issue #77: says whether the *_phase / *_theta columns are present, so an
-            # offline reader does not have to probe the arrays to find out.
+            # Issue #167: says whether the *_phase columns are present, so an offline reader
+            # does not have to probe the arrays to find out.
             "has_bulb_attachment": self._attachment is not None,
-            "bulb_rotation_sign": (None if self._attachment is None else self._attachment.rotation_sign),
         }
 
 

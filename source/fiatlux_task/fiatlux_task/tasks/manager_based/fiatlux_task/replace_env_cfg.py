@@ -32,20 +32,16 @@ Design notes (full-task benchmark plan, ``journal/specs/full-task-benchmark-plan
   ending physical event. **Both bulbs are dynamic**, seated in the fixture by contact rather
   than pinned kinematic, so removal and disposal are real physical events.
 
-  ``mdp.bulb_attachment`` overlays a bayonet channel on that contact geometry. During
-  insertion the bulb can translate only along the socket axis and cannot rotate. At full
-  depth, starting a bulb twist switches the constraint: axial travel is locked and only
-  bulb rotation is allowed.
-  Removal is the exact reverse, rotate then eject. The state machine reads bulb motion,
-  never wrist pose, and samples its configured insertion depth / rotation angle per env
-  when ranges are supplied for domain randomization.
-  ``fresh_bulb_inserted`` and ``success`` read the attachment state, not the raw seating
-  geometry, so every score channel is genuinely achievable. Remove/Install do not yet gate
-  on attachment: their bulbs are dynamic and simply lift out of / drop into the socket, so
-  neither requires unscrewing.
+  ``mdp.bulb_attachment`` (issue #167) adds a simple axial retention spring on top of that
+  contact geometry: reaching the seat while reasonably aligned, with the socket unoccupied,
+  seats the bulb; a real, physics-driven pull past a release threshold frees it again.
+  Lateral position and orientation are left entirely to real bulb-socket contact -- there is
+  no scripted lock or twist requirement, since this asset has no physical lug/groove for one
+  to model. The state machine reads bulb motion, never wrist pose.
+  ``fresh_bulb_inserted`` and ``success`` read the attachment state, not raw seating
+  geometry, so every score channel is genuinely achievable. Remove/Install do not gate on
+  attachment at all: their bulbs are dynamic and simply lift out of / drop into the socket.
 """
-
-import math
 
 from isaaclab.envs import ManagerBasedRLEnvCfg
 from isaaclab.managers import EventTermCfg as EventTerm
@@ -84,12 +80,40 @@ SEAT_POS_THRESHOLD = 0.015  # m; fresh-bulb seating tolerance (Insert's validate
 SEAT_ORI_THRESHOLD = 0.2  # rad
 FRESH_BULB_DROP_HEIGHT = 0.4  # m; the fresh bulb's working heights are table (~1.0) and up
 OLD_BULB_DROP_HEIGHT = 0.15  # m; must clear a bulb resting *inside* the floor crate (~0.1)
-BAYONET_INSERTION_DEPTH = 0.034  # m; travel from socket mouth to fully seated
-BAYONET_ROTATION_ANGLE = 0.5 * math.pi  # rad; quarter turn from released to locked
-# rad; how far the bulb may point away from the seat axis and still enter the channel. Its own
-# constant since #90: it used to borrow SEAT_ORI_THRESHOLD, a seating-SUCCESS threshold, which
-# measures the full frame and so counted the screwing motion itself as misalignment.
-BAYONET_ENTRY_TILT = 0.2
+# rad; how far the bulb may point away from the seat axis and still be admitted as seated. Its
+# own constant since #90: it used to borrow SEAT_ORI_THRESHOLD, a seating-SUCCESS threshold,
+# which measures the full frame and would count the bulb's own resting roll as misalignment.
+BULB_ENTRY_TILT = 0.2
+# m; axial pull past the seat that releases a seated bulb. 15mm (issue #171): far enough out
+# that the magnet stays engaged through a teleop finger-brush and pulls the bulb back, instead
+# of switching off mid-excursion and letting it coast out. Measured against real VR bags: 12 of
+# 14 knock-outs were brushes that parked at 8.9-13.8mm, all of them inside 15mm; the other 2 were
+# genuine ejections (78mm, 139mm) that must still release. Bounded above by the magnet's own
+# gravity crossing at 19.3mm -- past there the attraction is weaker than the bulb's weight and a
+# ceiling-mounted bulb really is leaving. See mdp/attach.py's docstring for the full sizing.
+BULB_RELEASE_THRESHOLD = 0.015
+
+
+def bulb_attachment_event() -> EventTerm:
+    """The axial retention spring event term, with this task's parameters.
+
+    A factory, not a shared instance, so each caller gets its own ``EventTermCfg`` to attach to
+    its own config class -- ``EventCfg`` here, ``BulbAttachmentEventCfg``
+    (``subtask_tiers/balance.py``, also used standalone by S01), and ``g1_bulb_env_cfg.py``'s
+    ``EventCfg`` all wire in the identical term; before this they each hand-duplicated the same
+    ``EventTerm(...)`` block, with nothing enforcing the three stayed in sync on a future change.
+    """
+    return EventTerm(
+        func=mdp.bulb_attachment,
+        mode="interval",
+        interval_range_s=(0.0, 0.0),
+        params={
+            "radial_tolerance": SEAT_POS_THRESHOLD,
+            "tilt_tolerance": BULB_ENTRY_TILT,
+            "release_threshold": BULB_RELEASE_THRESHOLD,
+        },
+    )
+
 
 ##
 # MDP settings
@@ -165,9 +189,9 @@ class ObservationsCfg:
         old_bulb_pose = ObsTerm(func=mdp.root_pose_w, params={"asset_cfg": SceneEntityCfg("old_bulb")})
         disposal_pose = ObsTerm(func=mdp.root_pose_w, params={"asset_cfg": SceneEntityCfg("bin")})
         score_distances = ObsTerm(func=mdp.replace_score_distances)
-        # Bayonet lock state of both bulbs (issue #77): old phase, old theta, fresh phase,
-        # fresh theta. The mechanic is otherwise invisible -- an operator cannot tell a twist
-        # that does not register from a twist that the lock clamps away.
+        # Seated state of both bulbs (issue #77): old seated, fresh seated. The mechanic is
+        # otherwise invisible -- an operator cannot tell a seat that does not register from one
+        # the retention wrench is actually holding.
         bulb_lock_state = ObsTerm(func=mdp.bulb_lock_state)
 
         def __post_init__(self) -> None:
@@ -182,36 +206,8 @@ class ObservationsCfg:
 class EventCfg:
     """Reset-time randomization (the room layout itself randomizes per scene build)."""
 
-    # The attach/detach state machine (issue #54) projects the bulb onto mutually exclusive
-    # axial and rotational channels. Zero interval -> enforce the channel every env step.
-    bulb_attachment = EventTerm(
-        func=mdp.bulb_attachment,
-        mode="interval",
-        interval_range_s=(0.0, 0.0),
-        params={
-            "insertion_depth": BAYONET_INSERTION_DEPTH,
-            "rotation_angle": BAYONET_ROTATION_ANGLE,
-            # -1.0 makes the mechanic turn the way a real bayonet cap does (issue #77).
-            # SOCKET_SEAT_AXIS points from the seat OUTWARD along the insertion axis --
-            # positive axial travel leaves the socket, which is what `eject` tests -- so it
-            # always points at whoever holds the bulb, whatever wall the fixture randomizes
-            # onto. A positive rotation about an axis aimed at the viewer reads
-            # COUNTER-CLOCKWISE to that viewer. A BA22d cap releases counter-clockwise and
-            # seats clockwise, so release must be the positive direction about the seat
-            # axis: rotation_sign = -1, since unlock needs delta < 0 and delta is
-            # sign * (twist change).
-            #
-            # It shipped at +1.0 from #54, never chosen -- and +1.0 inverts both halves.
-            # Measured on the fixture: at +1.0 a counter-clockwise operator twist (the real
-            # release direction) leaves the bulb completely inert, because the old bulb
-            # resets AT the clamp ceiling and `at_lock_stop` damps the angular velocity. No
-            # rotation, no displacement, no state change. That matches the 2026-08-10 report
-            # exactly, and it is the failure mode #77 predicted a wrong sign would produce.
-            "rotation_sign": -1.0,
-            "radial_tolerance": SEAT_POS_THRESHOLD,
-            "tilt_tolerance": BAYONET_ENTRY_TILT,
-        },
-    )
+    # Axial retention spring (issue #167). Zero interval -> enforce it every env step.
+    bulb_attachment = bulb_attachment_event()
     reset_all = EventTerm(func=mdp.reset_scene_to_default, mode="reset")
     reset_robot_joints = EventTerm(
         func=mdp.reset_joints_by_offset,
@@ -460,12 +456,11 @@ class ReplaceEnvCfg(ManagerBasedRLEnvCfg):
         add_ego_camera(self.scene)
         add_mid360_lidar(self.scene)
 
-        # family control rate (50 Hz); a longer horizon than any subtask -- the episode
-        # spans approach + ladder work + insert + removal + disposal
+        # family control rate (50 Hz)
         self.decimation = 4
         self.sim.dt = 1.0 / 200.0
         self.sim.render_interval = self.decimation
-        self.episode_length_s = 40.0
+        self.episode_length_s = 1440.0
 
         # PhysX floors + stabilization (family finding; more load-bearing here than
         # anywhere: an uncontrolled G1, kinematic furniture, AND a dynamic ladder)

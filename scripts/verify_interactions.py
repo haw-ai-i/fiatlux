@@ -910,8 +910,11 @@ def scenario_fragility():
     cfg = build_hand_cfg()
     cfg.episode_length_s = 6.0  # short episodes; time_out truncates each phase
     env = make_env("FIATLUX-Insert-v0", cfg)
+    recorder = None
     try:
-        recorder = TrajectoryRecorder(env, policy_spec="scripted:verify_interactions", seed=args_cli.seed)
+        recorder = TrajectoryRecorder(
+            env, policy_spec="scripted:verify_interactions", seed=args_cli.seed, out_dir=out_dir
+        )
         zero = torch.zeros((env.num_envs, env.action_manager.total_action_dim), device=env.device)
         gentle_press = targets_to_actions(env, {**ARM_PRESS_DOWN, **HAND_FLAT})
         # wedges the bulb between palm and kinematic table: sustained force spans many
@@ -949,8 +952,12 @@ def scenario_fragility():
                     break
             if not done:
                 raise RuntimeError(f"fragility phase {name!r} never finished an episode")
-        recorder.write(out_dir)
     finally:
+        # recorder holds an open HDF5 file (out_dir was passed) from construction; write() is
+        # what closes it. Without this in the finally, the "phase never finished" raise above
+        # skips write() and leaves that file open instead of a closed, inspectable partial bag.
+        if recorder is not None:
+            recorder.write(out_dir)
         env.close()
 
     episodes, meta = score.load_bag(out_dir)

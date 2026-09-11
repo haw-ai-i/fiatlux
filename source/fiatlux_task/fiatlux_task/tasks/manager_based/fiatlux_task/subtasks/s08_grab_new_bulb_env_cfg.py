@@ -20,7 +20,6 @@ from isaaclab.managers import SceneEntityCfg
 from isaaclab.managers import TerminationTermCfg as DoneTerm
 from isaaclab.utils import configclass
 
-from fiatlux_task.assets import BULB_STAND_Z_OFFSET
 from fiatlux_task.grasp_poses import GLASS_CONTACT_LIMIT_N
 
 from .. import mdp
@@ -35,15 +34,12 @@ from ..scene_cfg import (
     park_old_bulb_in_crate,
     stand_robot_at_offset,
 )
-from ..subtask_env_cfg import FALL_MIN_HEIGHT, FALL_TILT_LIMIT, SubtaskTerminationsCfg
+from ..subtask_env_cfg import FALL_MIN_HEIGHT, FALL_TILT_LIMIT, SubtaskRewardsCfg, SubtaskTerminationsCfg
 from ..subtask_tiers.grasp import GRASP_SUSTAIN_SECONDS, GraspRewardsCfg, GraspSubtaskCfg, add_grasp_contact_sensor
 
-# Resting root height on the (always z=0) table, standing on its cap.
-BULB_TABLETOP_REST_Z = TABLETOP_SURFACE_Z - BULB_STAND_Z_OFFSET  # m
-
-# Root rise counted as "lifted". PROVISIONAL.
+# Clearance above the table the whole bulb must reach to count as lifted. PROVISIONAL.
 BULB_LIFT_CLEARANCE_M = 0.03  # m
-BULB_LIFTED_HEIGHT_M = BULB_TABLETOP_REST_Z + BULB_LIFT_CLEARANCE_M
+BULB_LIFTED_HEIGHT_M = TABLETOP_SURFACE_Z + BULB_LIFT_CLEARANCE_M
 
 # Below the tabletop rest height, above the floor (~-0.036 m): catches "knocked off the table"
 # before it lands. PROVISIONAL.
@@ -62,13 +58,18 @@ BULB_GRASPED_CONJUNCTS = [
         grasp_terms.hand_bodies_in_contact,
         {
             "sensor_cfg": SceneEntityCfg("grasp_contact"),
+            "other_sensor_cfg": SceneEntityCfg("grasp_contact_left"),
             "min_bodies": BULB_HELD_MIN_HAND_BODIES,
             "force_threshold": BULB_HAND_CONTACT_THRESHOLD_N,
         },
     ),
     (
         grasp_terms.grasp_force_within,
-        {"sensor_cfg": SceneEntityCfg("grasp_contact"), "limit": GLASS_CONTACT_LIMIT_N},
+        {
+            "sensor_cfg": SceneEntityCfg("grasp_contact"),
+            "other_sensor_cfg": SceneEntityCfg("grasp_contact_left"),
+            "limit": GLASS_CONTACT_LIMIT_N,
+        },
     ),
     (place_terms.robot_standing, {"minimum_height": FALL_MIN_HEIGHT, "limit_angle": FALL_TILT_LIMIT}),
 ]
@@ -107,7 +108,7 @@ class S08GrabNewBulbEnvCfg(GraspSubtaskCfg):
     }
     progress_distance_fn = grasp_terms.hand_bulb_distance
 
-    rewards: S08RewardsCfg = S08RewardsCfg()
+    rewards: SubtaskRewardsCfg = SubtaskRewardsCfg()
     terminations: S08TerminationsCfg = S08TerminationsCfg()
 
     def __post_init__(self) -> None:
@@ -122,5 +123,5 @@ class S08GrabNewBulbEnvCfg(GraspSubtaskCfg):
         add_ego_camera(self.scene)
         add_mid360_lidar(self.scene)
         add_grasp_contact_sensor(self.scene, self.scene.fresh_bulb.prim_path)
-        self.episode_length_s = 20.0
+        self.episode_length_s = 120.0
         frame_viewer_on(self.viewer, self.scene.robot.init_state.pos)
