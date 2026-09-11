@@ -291,6 +291,17 @@ class SubtaskEnvCfg(ManagerBasedRLEnvCfg):
         self.events.randomize_hand_material = mdp.hand_grip_material_event(randomize=False)
 
 
+def wire_progress_distance_fn(rewards: SubtaskRewardsCfg, field_name: str, distance_fn: Callable) -> None:
+    """Bind ``distance_fn`` into a tier's own progress reward term, by name, if ``rewards`` has one.
+
+    A benchmark env's plain ``SubtaskRewardsCfg`` carries no such field (its shaping lives on
+    ``SubtaskShapingRewardsCfg`` and the tier's subclass of it instead, attached only by the
+    ``-Training-v0`` twin in ``subtasks/training_env_cfg.py``), so there is nothing to wire there.
+    """
+    if hasattr(rewards, field_name):
+        getattr(rewards, field_name).params["distance_fn"] = distance_fn
+
+
 @configclass
 class NavigateRewardsCfg(SubtaskShapingRewardsCfg):
     """Walk-to-a-target channels. ``distance_fn`` and the predicate come from the leaf."""
@@ -315,5 +326,4 @@ class NavigateSubtaskCfg(SubtaskEnvCfg):
         super().__post_init__()
         if self.progress_distance_fn is None:
             raise ValueError(f"{type(self).__name__} must set progress_distance_fn")
-        if hasattr(self.rewards, "approach_progress"):
-            self.rewards.approach_progress.params["distance_fn"] = self.progress_distance_fn
+        wire_progress_distance_fn(self.rewards, "approach_progress", self.progress_distance_fn)

@@ -27,7 +27,7 @@ from isaaclab.utils import configclass
 from .. import mdp
 from ..mdp import grasp_terms
 from ..scene_cfg import G1ReplaceSceneCfg
-from ..subtask_env_cfg import SubtaskEnvCfg, SubtaskRewardsCfg, SubtaskShapingRewardsCfg
+from ..subtask_env_cfg import SubtaskEnvCfg, SubtaskRewardsCfg, SubtaskShapingRewardsCfg, wire_progress_distance_fn
 
 # Shorter than ``place``'s 1.0 s: proving a hold isn't a glance, not that the object has settled.
 GRASP_SUSTAIN_SECONDS = 0.5
@@ -99,5 +99,4 @@ class GraspSubtaskCfg(SubtaskEnvCfg):
         super().__post_init__()
         if self.progress_distance_fn is None:
             raise ValueError(f"{type(self).__name__} must set progress_distance_fn")
-        if hasattr(self.rewards, "reach_progress"):
-            self.rewards.reach_progress.params["distance_fn"] = self.progress_distance_fn
+        wire_progress_distance_fn(self.rewards, "reach_progress", self.progress_distance_fn)
