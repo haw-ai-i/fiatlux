@@ -573,6 +573,21 @@ def main():  # noqa: C901  (one long orchestration: env setup + settle/resettle 
 
     env = gym.make(args.task, cfg=env_cfg).unwrapped
     robot = env.scene["robot"]
+
+    # Left arm rest pose: shoulder pitch/roll/yaw, elbow, wrist roll/pitch/yaw in degrees,
+    # captured from an operator take. Empty string keeps the asset's pose.
+    _ARM_REST_L = os.environ.get("FIATLUX_ARM_REST_LEFT", "-4.8,9.4,0.5,15.6,-4.3,-9.6,4.8")
+    if _ARM_REST_L.strip():
+        _names = [f"left_{_n}_joint" for _n in
+                  ("shoulder_pitch", "shoulder_roll", "shoulder_yaw", "elbow",
+                   "wrist_roll", "wrist_pitch", "wrist_yaw")]
+        _vals = [float(_x) for _x in _ARM_REST_L.split(",")]
+        if len(_vals) == len(_names) and all(_n in robot.joint_names for _n in _names):
+            for _n, _v in zip(_names, _vals):
+                robot.data.default_joint_pos[:, robot.joint_names.index(_n)] = math.radians(_v)
+            print(f"[sonic] left arm rest pose set to {_ARM_REST_L} deg (recorded)", flush=True)
+        else:
+            print(f"[sonic] ignoring FIATLUX_ARM_REST_LEFT: need {len(_names)} values", flush=True)
     # Say which hand was actually BUILT, not which was requested: the two have disagreed silently
     # before (an env came up Inspire under "hand=dex3"). Joint names are the ground truth --
     # Dex3 fingers are right_hand_*_N_joint, Inspire's are R_*_joint.
@@ -1229,12 +1244,33 @@ def main():  # noqa: C901  (one long orchestration: env setup + settle/resettle 
             # of the OPEN pose so the paddle is the flat palm + straight fingers only.
             if os.environ.get("FIATLUX_RAIL_THUMB", "fold") == "fold":
                 _lterm = env.action_manager.get_term("left_hand_action")
+                _lthumb_open = _lterm._open_command.clone()  # the REAL open pose, kept to put back
                 _folded = 0
                 for _k, _n in enumerate(robot.joint_names[i] for i in _lterm._joint_ids):
                     if "thumb" in _n:
                         _lterm._open_command[_k] = _lterm._close_command[_k]
                         _folded += 1
+
+                def _rail_thumb_restore():
+                    """Undo the fold, or open and close stay the same pose and the hand cannot let go."""
+                    _lterm._open_command.copy_(_lthumb_open)
                 print(f"[sonic] RAIL HAND: left thumb folded across the palm in the open pose ({_folded} joints)", flush=True)
+
+            # The return commands JOINTS, not a wrist pose: a pose fixes 6 numbers and the arm
+            # has 7 joints, so the IK satisfies it with whatever shoulder/elbow it likes.
+            _larm_term = env.action_manager.get_term("left_arm_action")
+            _larm_jids = _larm_term._joint_ids
+            _larm_rest_q = robot.data.default_joint_pos[:, _larm_jids].clone()
+            _larm_apply_orig = _larm_term.apply_actions
+            _rail_jt = {"q": None}
+
+            def _larm_apply():
+                if _rail_jt["q"] is None:
+                    _larm_apply_orig()
+                else:
+                    robot.set_joint_position_target(_rail_jt["q"], joint_ids=_larm_jids)
+
+            _larm_term.apply_actions = _larm_apply
 
             def _rail_force():
                 """Left hand's total force against the ladder (N), from the filtered sensor."""
@@ -1304,6 +1340,7 @@ def main():  # noqa: C901  (one long orchestration: env setup + settle/resettle 
                     # timed release: glide the hand back to the rest pose over 1 s, then let go
                     _rail["cap"] = _rail["to"].clone()
                     _rail["from"], _rail["to"] = _rail["to"].clone(), _rail["rest"].clone()
+                    _rail_jt["q"] = _larm_rest_q  # drive the JOINTS to the recorded pose
                     _rail["phase"], _rail["i"], _rail["release_at"] = "retract", 0, None
                     print(f"[sonic] RAIL HAND timed release ({_rail['hold_seconds']:.1f} s): returning the left arm to rest", flush=True)
                 if _rail["phase"] == "retract":
@@ -1313,6 +1350,10 @@ def main():  # noqa: C901  (one long orchestration: env setup + settle/resettle 
                     _rail["i"] += 1
                     if _rail["i"] > 50:
                         _rail["phase"], _rail["held"] = "idle", False
+                        _rail_jt["q"] = None  # hand the arm back: nothing of ours drives it now
+                        _rail_thumb_restore()  # or the hand can never un-grasp
+                        # hold the shape the joints landed on, not a stale pose target
+                        _rail["rest"] = rest_arm_action()[8:15]
                         rest_arm[8:15] = _rail["rest"]
                         if args.input == "vr":
                             _vr_take_left_arm()
@@ -1389,6 +1430,20 @@ def main():  # noqa: C901  (one long orchestration: env setup + settle/resettle 
     # kick can shove the free ladder 10-40 cm in the first physics step (seen in 3 of 84 baseline
     # takes and in rail-B-inspire seed3/try3), and a target computed from the pre-kick ladder pose
     # stages the hand behind the cap, where it pushes the robot backward instead of bracing it.
+    # Place the left arm on the rest pose before the settle. default_joint_pos alone does not
+    # reach it: the post-settle restore skips the left arm while the rail hand is staged
+    # (_arm_idx), and the rail hand captures its return target from wherever the arm is.
+    if _rail is not None and _ARM_REST_L.strip():
+        _lnames = [f"left_{_n}_joint" for _n in
+                   ("shoulder_pitch", "shoulder_roll", "shoulder_yaw", "elbow",
+                    "wrist_roll", "wrist_pitch", "wrist_yaw")]
+        if all(_n in robot.joint_names for _n in _lnames):
+            _lids = [robot.joint_names.index(_n) for _n in _lnames]
+            _jp_rest = robot.data.joint_pos.clone()
+            _jp_rest[:, _lids] = robot.data.default_joint_pos[:, _lids]
+            _carry_payload(lambda: robot.write_joint_state_to_sim(_jp_rest, torch.zeros_like(robot.data.joint_vel)))
+            print("[sonic] left arm placed on the recorded rest pose before the settle", flush=True)
+
     _pin_steps = 40 + ((_rail["approach"] + _rail["dwell"]) if _rail is not None else 0)
     for _k in range(_pin_steps):
         if _rail is not None and _k == 40:
