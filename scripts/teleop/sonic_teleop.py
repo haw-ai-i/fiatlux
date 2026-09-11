@@ -556,6 +556,38 @@ def main():  # noqa: C901  (one long orchestration: env setup + settle/resettle 
             history_length=1,
         )
 
+    # FIATLUX_SETTLE_PROBE=1: one contact sensor per arm, filtered against every scene object at
+    # once, so a hit during staging is attributed to the thing that was hit (socket, bulb, wall,
+    # ladder) instead of a single net number. Diagnostic only; off by default.
+    _probe_names: list[str] = []
+    if os.environ.get("FIATLUX_SETTLE_PROBE", "0") == "1":
+        from isaaclab.sensors import ContactSensorCfg as _ProbeSensorCfg  # noqa: E402
+
+        _probe_paths = []
+        for _nm in ("socket", "fresh_bulb", "old_bulb", "ladder", "room", "fixture", "table", "bin", "pendant"):
+            _obj = getattr(env_cfg.scene, _nm, None)
+            if _obj is not None and getattr(_obj, "prim_path", None):
+                _probe_names.append(_nm)
+                _probe_paths.append(_obj.prim_path)
+        for _side, _bodies in (
+            ("r", "right_shoulder_.*|right_elbow_.*|right_wrist_.*|right_hand_.*|R_.*"),
+            ("l", "left_shoulder_.*|left_elbow_.*|left_wrist_.*|left_hand_.*|L_.*"),
+        ):
+            setattr(
+                env_cfg.scene,
+                f"probe_{_side}",
+                _ProbeSensorCfg(
+                    prim_path="{ENV_REGEX_NS}/Robot/(" + _bodies + ")",
+                    filter_prim_paths_expr=list(_probe_paths),
+                    history_length=1,
+                ),
+            )
+        print(f"[sonic] settle probe: arm contacts attributed to {_probe_names}", flush=True)
+        if args.out:
+            os.makedirs(args.out, exist_ok=True)
+            with open(os.path.join(args.out, "probe_targets.txt"), "w") as _fh:
+                _fh.write("\n".join(_probe_names) + "\n")
+
     if args.xr:
         env_cfg.sim.render.antialiasing_mode = "DLSS"
 
@@ -1151,6 +1183,36 @@ def main():  # noqa: C901  (one long orchestration: env setup + settle/resettle 
         """The pose to capture the third-person video from this frame, whatever --camera says."""
         return _static_pose if _static_pose is not None else _follow_pose()
 
+    _probe_seen: dict = {}
+
+    def _probe_extras():
+        """Per-object arm contact forces (N) as bag columns, over _probe_names.
+
+        Also NAMES any touch of something that should never be touched -- the socket, the room
+        walls, the fixture, a bulb. Those are failures whether or not the thing moves (the socket
+        is bolted in place, so it cannot move and a graze would otherwise leave no trace), and the
+        summed column cannot say which link did it.
+        """
+        _out = {}
+        if not _probe_names:
+            return _out
+        for _side in ("r", "l"):
+            _sensor = env.scene.sensors.get(f"probe_{_side}") if hasattr(env.scene, "sensors") else None
+            if _sensor is None:
+                continue
+            _fm = _sensor.data.force_matrix_w  # (envs, bodies, targets, 3)
+            _out[f"probe_{_side}_force"] = _fm.sum(dim=1).norm(dim=-1)[0].cpu().numpy().astype(np.float32)[None]
+            _per = _fm.norm(dim=-1)[0]  # (bodies, targets)
+            for _ti, _tn in enumerate(_probe_names):
+                if _tn == "ladder" or _ti >= _per.shape[1]:
+                    continue
+                _bi = int(_per[:, _ti].argmax())
+                _f = float(_per[_bi, _ti])
+                if _f >= 2.0 and _probe_seen.get((_side, _tn), 0.0) < _f:
+                    _probe_seen[(_side, _tn)] = _f
+                    print(f"[sonic] TOUCH: {_sensor.body_names[_bi]} -> {_tn} at {_f:.0f} N", flush=True)
+        return _out
+
     def _settle_step(_arm):
         """env.step during the settle, recorded when --record-settle asks for it.
 
@@ -1172,6 +1234,7 @@ def main():  # noqa: C901  (one long orchestration: env setup + settle/resettle 
             }
             if _rail is not None:
                 _settle_extras["rail_contact_force"] = _rail_force().cpu().numpy().astype(np.float32)[None]
+            _settle_extras.update(_probe_extras())
             recorder.record_step(_out[0], _arm, _out[1], _out[2], _out[3], extras=_settle_extras)
             if video is not None:
                 video.capture(pose=_video_pose())
@@ -2181,6 +2244,7 @@ def main():  # noqa: C901  (one long orchestration: env setup + settle/resettle 
                     }
                     if _rail is not None:
                         _extras["rail_contact_force"] = _rail_force().cpu().numpy().astype(np.float32)[None]
+                    _extras.update(_probe_extras())
                     recorder.record_step(_obs_t, arm_action, _rew_t, _term_t, _trunc_t, extras=_extras)
                     if args.stop_on_success and getattr(recorder, "_gate_fired", False):
                         # The gate latched: end the take here. The scene does NOT reset (the
