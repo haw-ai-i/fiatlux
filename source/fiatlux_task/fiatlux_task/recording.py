@@ -486,6 +486,16 @@ class TrajectoryRecorder:
         self._meta["fields"] = sorted(self._buf.keys())
 
         if self._sink is not None:
+            if fmt != "hdf5":
+                # The sink was already opened as hdf5 at construction (out_dir + the default
+                # fmt="hdf5" is what creates it); honoring a different fmt here would mean
+                # transcoding the episodes already streamed out, not just picking a format.
+                raise ValueError(
+                    f"recorder was constructed with out_dir set, which streams to hdf5 as it "
+                    f"records; write(fmt={fmt!r}) cannot retroactively change that. Pass "
+                    f"fmt='hdf5' (or omit it), or construct the recorder without out_dir to "
+                    f"buffer in RAM and pick a format at write() time."
+                )
             self._meta["num_episodes"] = self._sink.count
             self._meta["episode_lengths"] = list(self._sink.lengths)
             self._meta["format"] = "hdf5"
