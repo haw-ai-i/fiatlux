@@ -53,6 +53,7 @@ from isaaclab.sensors import ContactSensor
 from isaaclab.utils.math import quat_apply, quat_error_magnitude, quat_mul
 
 from fiatlux_task.assets import (
+    BULB_BODY_CENTRE_OFFSET,
     BULB_PLUG_AXIS,
     BULB_PLUG_OFFSET,
     G1_WORKING_SHOULDER_OFFSET,
@@ -609,23 +610,27 @@ def _predicted_stance_shoulder_w(env: ManagerBasedRLEnv) -> tuple[torch.Tensor, 
     return shoulder, forward
 
 
+def _fixture_grasp_point_w(env: ManagerBasedRLEnv) -> torch.Tensor:
+    """World position of the seated bulb's graspable body centre."""
+    socket: RigidObject = env.scene["socket"]
+    offset = torch.tensor(BULB_BODY_CENTRE_OFFSET, device=env.device).expand(env.num_envs, 3)
+    return socket.data.root_pos_w + quat_apply(socket.data.root_quat_w, offset)
+
+
 def ladder_ready(
     env: ManagerBasedRLEnv,
     reach: float,
     tilt_limit: float,
     facing_tolerance: float,
 ) -> torch.Tensor:
-    """True where the ladder is placed so a stance on it could GRASP at the socket.
+    """True where the ladder is placed so a stance on it could GRASP the seated bulb.
 
-    Three things, where there used to be two (issue #147). Upright, as before. Then the socket
-    within ``reach`` of the predicted stance's shoulder in 3-D, not a flat radius: the horizontal
-    budget shrinks as the fixture sits higher above the shoulder, so a flat radius accepts
-    placements the arm cannot cover. And ``reach`` is to the PALM, since closing a hand around the
-    bulb needs a hand's depth more than brushing it. Finally the stance must FACE the socket --
-    without it a ladder whose steps point away scores, which three operator takes did.
+    Three things, where there used to be two (issue #147). Upright, as before. Then the bulb's
+    graspable body centre within ``reach`` of the predicted stance's shoulder in 3-D, not a flat
+    radius. Finally the stance must FACE it.
     """
     shoulder, forward = _predicted_stance_shoulder_w(env)
-    bearing = _seat_point_w(env) - shoulder
+    bearing = _fixture_grasp_point_w(env) - shoulder
     within = torch.norm(bearing, dim=1) < reach
     flat = bearing[:, :2]
     cos = (forward[:, :2] * flat).sum(dim=1) / flat.norm(dim=1).clamp(min=1e-9)

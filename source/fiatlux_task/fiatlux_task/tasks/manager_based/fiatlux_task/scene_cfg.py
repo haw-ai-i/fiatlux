@@ -179,15 +179,8 @@ LADDER_READY_MARGIN = 0.05  # m, held back off the geometric bound
 LADDER_READY_XY_RADIUS = (
     math.sqrt(G1_OVERHEAD_REACH**2 - (CEILING_FIXTURE_Z - LADDER_WORK_FOOT_Z) ** 2) - LADDER_READY_MARGIN
 )
-# What "ready" actually asks (issue #147): from the stance THIS ladder pose would produce, is the
-# socket inside the palm's envelope, and does that stance face it? The flat radius above is
-# ~0.67 m, roughly three times the graspable reach, and carries no orientation at all -- three
-# operator takes scored 1.0 with the socket past even the fingertip arm, two of them with the
-# steps pointing away.
-LADDER_READY_REACH = G1_PALM_REACH - 0.04  # m, so the arm is not locked straight at the target
-# 45 deg, not tighter. A wall draw's ladder must stand off its own depth, and at 30 deg the best
-# placement that clears the wall still leaves the socket 0.390 m from the shoulder -- outside the
-# reach gate. Tightening this makes S01 unwinnable on wall draws; at 45 deg the best is 0.292 m.
+# Issue #147.
+LADDER_READY_REACH = G1_PALM_REACH
 LADDER_READY_FACING_TOLERANCE = math.radians(45.0)
 if LADDER_READY_XY_RADIUS <= 0.0:
     raise ValueError(

@@ -145,21 +145,21 @@ with the ladder's steps pointing away.
 
 Both gaps are closed by judging the STANCE rather than the ladder top. The stance is a pure
 function of the ladder pose (`stand_robot_on_ladder_top`), so the gate predicts where the shoulder
-would be and asks two questions of it: is the seat within `LADDER_READY_REACH` in 3-D, and does the
-stance face it within `LADDER_READY_FACING_TOLERANCE`.
+would be and asks two questions of it: is the graspable bulb within `LADDER_READY_REACH` in 3-D,
+and does the stance face it within `LADDER_READY_FACING_TOLERANCE`.
 
-- **3-D, not flat.** The horizontal budget shrinks as the fixture sits higher above the shoulder,
-  so a flat radius accepts placements the arm cannot cover.
+- **3-D, not flat.** A flat radius carries no vertical component at all, and the working stance's
+  shoulder (2.258 m) sits 58 mm ABOVE the 2.2 m fixture, so the arm reaches down-and-out.
+- **To the bulb, not the seat.** The hand closes on the bulb body, whose centroid is
+  `BULB_BODY_CENTRE_OFFSET` = 0.110 m along the socket's opening axis. Measuring to the seat
+  overstates the wall draw by 71 mm and understates the ceiling draw by 24 mm.
 - **To the palm, not the fingertip.** `G1_PALM_REACH` = 0.419 m measured by FK (#130), against
-  0.559 m to the fingertip. Closing a hand around the bulb needs a hand's depth more than brushing
-  it, which is the whole of #130.
-- **45 deg facing, and it cannot be tighter.** A wall draw's ladder has to stand off its own depth,
-  so searching every placement that clears the wall: at 45 deg the best leaves the seat 0.292 m
-  from the shoulder (inside the gate), at 30 deg the best is 0.390 m (outside it). A 30 deg
-  tolerance would make S01 unwinnable on wall draws.
+  0.559 m to the fingertip.
 
-Verified in sim at layout seed 3. At 0.35 m out the gate fires only for ladder yaws 90 and 135 deg
-(facing 22 and 45 deg) and rejects 0, 45, 180 and 270. At the facing-correct yaw it fires out to
-0.45 m and rejects 0.60 and 1.00 m, both of which the old radius accepted. The reported failure
-case -- 0.35 m out with the steps turned 130 deg away -- is inside the reach at 0.378 m and
-rejected on facing.
+At the chain's own coupled placement, predicted shoulder to bulb is 0.406 m on a wall draw
+(standoff 0.60 m) and 0.427 m on a ceiling draw (standoff 0.48 m). The wall draw is inside the
+gate; the ceiling draw is 8 mm outside it and is not yet resolved -- see #147's thread.
+
+Searching every placement that clears the wall plane, the best reachable-and-facing distance to the
+bulb is 0.245 m on a wall draw and 0.168 m on a ceiling draw, so the 45 deg facing tolerance is not
+the binding constraint on either mount kind.
