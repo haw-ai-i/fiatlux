@@ -156,9 +156,18 @@ and does the stance face it within `LADDER_READY_FACING_TOLERANCE`.
 - **To the palm, not the fingertip.** `G1_PALM_REACH` = 0.419 m measured by FK (#130), against
   0.559 m to the fingertip.
 
-At the chain's own coupled placement, predicted shoulder to bulb is 0.406 m on a wall draw
-(standoff 0.60 m) and 0.427 m on a ceiling draw (standoff 0.48 m). The wall draw is inside the
-gate; the ceiling draw is 8 mm outside it and is not yet resolved -- see #147's thread.
+At the chain's own coupled placement, measured in sim, predicted shoulder to bulb is 0.406 m on a
+wall draw (standoff 0.60 m) and 0.392 m on a ceiling draw (standoff 0.48 m). Both are inside the
+gate.
+
+`CEILING_FIXTURE_Z` moves 2.2 -> 2.37 m to get the second of those. The pendant rod exists to put
+an overhead fixture at a reachable height, and 2.2 m was chosen against `G1_OVERHEAD_REACH`, a
+vertical fingertip figure used as a spherical radius. Against the stance this gate predicts, a
+ceiling bulb at 2.2 m hangs 0.168 m BELOW a shoulder that sits at 2.258 m, and the reach is the
+3-D distance. 2.37 m puts the bulb level with the shoulder, so the whole reach is horizontal:
+0.392 m against a 0.419 m palm. The working window is 2.220-2.404 m, the top bounded by
+`MAX_REACHABLE_MOUNT_Z`. `WALL_MOUNT_Z` stays at 2.2 m: a wall bulb projects horizontally out of
+its socket, so it is already only 0.058 m off shoulder height.
 
 Searching every placement that clears the wall plane, the best reachable-and-facing distance to the
 bulb is 0.245 m on a wall draw and 0.168 m on a ceiling draw, so the 45 deg facing tolerance is not

@@ -150,7 +150,7 @@ ROOM_FLOOR_MAX = (4.0, 4.2)
 # CEILING_FIXTURE_Z rather than floating unsupported at the reach height.
 ROOM_CEILING_Z = 4.179
 ROOM_WALL_TOP_Z = 3.989
-CEILING_FIXTURE_Z = 2.2  # fixture height, both mount kinds: workable from LADDER_WORK_FOOT_Z
+CEILING_FIXTURE_Z = 2.37  # issue #147
 WALL_MOUNT_Z = 2.2
 # The stance the at-height tasks work from: the pelvis height Climb's success gate accepts, and
 # the foot height that implies. Reach is taken from here, not from the tread, because a
