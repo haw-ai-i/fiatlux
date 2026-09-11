@@ -205,27 +205,32 @@ def main():
     score_logger = ScoreLogger.from_args(args_cli, extra_config={"record": args_cli.record})
 
     obs, _ = env.reset(seed=args_cli.seed)
-    with torch.inference_mode():
-        while score_logger.episodes_done < args_cli.episodes:
-            actions = policy(obs)
-            obs, reward, terminated, truncated, extras = env.step(actions)
-            if video is not None and len(video) < args_cli.video_length:
-                pose = pose_fn(len(video), args_cli.video_length) if pose_fn is not None else None
-                video.capture(pose)
-            if video is not None and recorder is None and len(video) >= args_cli.video_length:
-                break
-            if recorder is not None:
-                recorder.record_step(obs, actions, reward, terminated, truncated)
-            score_logger.step(base_env, extras, terminated | truncated)
+    try:
+        with torch.inference_mode():
+            while score_logger.episodes_done < args_cli.episodes:
+                actions = policy(obs)
+                obs, reward, terminated, truncated, extras = env.step(actions)
+                if video is not None and len(video) < args_cli.video_length:
+                    pose = pose_fn(len(video), args_cli.video_length) if pose_fn is not None else None
+                    video.capture(pose)
+                if video is not None and recorder is None and len(video) >= args_cli.video_length:
+                    break
+                if recorder is not None:
+                    recorder.record_step(obs, actions, reward, terminated, truncated)
+                score_logger.step(base_env, extras, terminated | truncated)
+    finally:
+        # A streaming (out_dir-backed) recorder holds an open HDF5 file from the moment it is
+        # constructed. Without this, a mid-run exception (env.step, the policy, ...) skips
+        # write()'s close() and leaves that file open -- exactly the run worth keeping most.
+        if recorder is not None:
+            info = recorder.write(args_cli.out, fmt=args_cli.format)
+            print(f"[INFO] wrote bag {info['bag']} ({info['episodes']} episodes)")
+            print(f"[INFO] wrote metadata {info['meta']}")
 
     if video is not None:
         video_file = video.write()
         print(f"[INFO] wrote video {video_file}")
         score_logger.video(video_file, caption=f"{args_cli.task} / {args_cli.policy}")
-    if recorder is not None:
-        info = recorder.write(args_cli.out, fmt=args_cli.format)
-        print(f"[INFO] wrote bag {info['bag']} ({info['episodes']} episodes)")
-        print(f"[INFO] wrote metadata {info['meta']}")
     score_logger.close()
 
     env.close()
