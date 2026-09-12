@@ -79,17 +79,19 @@ def _git_commit() -> dict[str, object]:
         return done.stdout.strip() if done.returncode == 0 else None
 
     unknown = {"commit": "unknown", "commit_dirty": None, "commit_branch": None}
-    if run("rev-parse", "--show-toplevel") != str(repo):
+    # One call for toplevel/HEAD/branch (rev-parse prints one line per positional arg,
+    # in order) instead of three, so a slow git (network fs, lock contention) only
+    # costs one 5s timeout instead of three.
+    rev_info = run("rev-parse", "--show-toplevel", "HEAD", "--abbrev-ref", "HEAD")
+    lines = rev_info.splitlines() if rev_info is not None else []
+    if len(lines) != 3 or lines[0] != str(repo):
         return unknown
-    commit = run("rev-parse", "HEAD")
-    if commit is None:
-        return unknown
+    _, commit, branch = lines
     status = run("status", "--porcelain")
-    branch = run("rev-parse", "--abbrev-ref", "HEAD")
     return {
         "commit": commit,
         "commit_dirty": None if status is None else bool(status),
-        "commit_branch": None if branch in (None, "HEAD") else branch,
+        "commit_branch": None if branch == "HEAD" else branch,
     }
 
 
