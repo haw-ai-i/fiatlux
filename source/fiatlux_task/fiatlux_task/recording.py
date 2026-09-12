@@ -34,6 +34,7 @@ from __future__ import annotations
 
 import datetime
 import json
+import subprocess
 from pathlib import Path
 
 import numpy as np
@@ -58,6 +59,38 @@ def _benchmark_version() -> str:
             return tomllib.load(fh)["package"]["version"]
     except Exception:
         return "unknown"
+
+
+def _git_commit() -> dict[str, object]:
+    """The checkout this bag was recorded from (issue #181).
+
+    ``dirty`` matters as much as the SHA: a bag recorded from a modified tree cannot be
+    reproduced by checking that SHA out.
+    """
+    repo = Path(__file__).resolve().parents[3]
+
+    def run(*args: str) -> str | None:
+        try:
+            done = subprocess.run(
+                ["git", "-C", str(repo), *args], capture_output=True, text=True, timeout=5, check=False
+            )
+        except (OSError, subprocess.SubprocessError):
+            return None
+        return done.stdout.strip() if done.returncode == 0 else None
+
+    unknown = {"commit": "unknown", "commit_dirty": None, "commit_branch": None}
+    if run("rev-parse", "--show-toplevel") != str(repo):
+        return unknown
+    commit = run("rev-parse", "HEAD")
+    if commit is None:
+        return unknown
+    status = run("status", "--porcelain", "--untracked-files=no")
+    branch = run("rev-parse", "--abbrev-ref", "HEAD")
+    return {
+        "commit": commit,
+        "commit_dirty": None if status is None else bool(status),
+        "commit_branch": None if branch in (None, "HEAD") else branch,
+    }
 
 
 def _np(t: torch.Tensor | np.ndarray) -> np.ndarray:
@@ -571,6 +604,7 @@ class TrajectoryRecorder:
             "gate_conjuncts": [getattr(fn, "__name__", "conjunct") for fn, _ in self._gate_conjuncts],
             "gate_sustain_seconds": self._gate_seconds,
             "benchmark_version": _benchmark_version(),
+            **_git_commit(),
             "recorder_version": RECORDER_VERSION,
             "created": datetime.datetime.now().isoformat(timespec="seconds"),
             "policy": policy_spec,
