@@ -209,7 +209,7 @@ Two groups:
 - **Success** (`bulb_seated`): bulb within `pos_threshold` (1.5 cm) **and**
   `ori_threshold` (0.2 rad) of the socket.
 - **Fall** (`fell_below` / `fell_over`): root below **0.35 m** (standing pelvis is
-  0.75 m; a collapsed robot reads < 0.30 m) or tilt beyond **1.0 rad**. This is the
+  0.79 m; a collapsed robot reads < 0.30 m) or tilt beyond **1.0 rad**. This is the
   family's fall-detection RL gate: solver-kick episodes against the kinematic table
   end immediately (thresholds shared from `climb_env_cfg.py`).
 - **Timeout**: `episode_length_s = 15 s`.
@@ -230,7 +230,7 @@ Defined in
 ## Scene
 
 The **at-height preset** of the shared family scene: the G1 spawns at the base of the
-kinematic work-site step ladder (`assets.py: STEP_LADDER_USD`, 0.68 × 1.11 × 1.75 m at
+kinematic work-site step ladder (`assets.py: STEP_LADDER_USD`, 0.608 × 0.979 × 1.861 m at
 (1.6, 0, 0), steps facing the robot), an elevated BEHAVIOR-1K chandelier stands in for
 the fixture at (1.9, 0, 2.80) (visual dressing — success is geometric), and the bulb is
 parked on the floor. A dedicated contact sensor (`ladder_contact`) filters the feet +
@@ -275,11 +275,11 @@ forward lean.
 
 ## Success & termination
 
-- **Success** (`climbed_to_target`): root above **1.70 m** (the descend task's start
-  height minus 0.15 m), horizontally within **0.6 m** of the upper steps (1.35, 0), at
+- **Success** (`climbed_to_target`): root above **1.82 m** (`TOP_ROBOT_POSITION[2]` 1.97 m minus the
+  0.15 m stance tolerance), horizontally within **0.6 m** of the upper steps (1.6, 0), at
   root speed < **1.5 m/s** (rejects ballistic fly-throughs).
 - **Fall** (`fell_below` / `fell_over`): root below **0.35 m** (standing pelvis is
-  0.75 m; a collapsed robot reads < 0.30 m) or tilt beyond **1.0 rad**. This is the
+  0.79 m; a collapsed robot reads < 0.30 m) or tilt beyond **1.0 rad**. This is the
   family's fall-detection RL gate: solver-kick episodes end immediately.
 - **Timeout**: `episode_length_s = 20 s`.
 
