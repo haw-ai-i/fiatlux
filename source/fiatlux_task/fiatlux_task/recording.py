@@ -84,7 +84,7 @@ def _git_commit() -> dict[str, object]:
     commit = run("rev-parse", "HEAD")
     if commit is None:
         return unknown
-    status = run("status", "--porcelain", "--untracked-files=no")
+    status = run("status", "--porcelain")
     branch = run("rev-parse", "--abbrev-ref", "HEAD")
     return {
         "commit": commit,
