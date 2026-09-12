@@ -235,7 +235,7 @@ kinematic work-site step ladder (`assets.py: STEP_LADDER_USD`, 0.68 × 1.11 × 1
 the fixture at (1.9, 0, 2.80) (visual dressing — success is geometric), and the bulb is
 parked on the floor. A dedicated contact sensor (`ladder_contact`) filters the feet +
 palms (`G1_FOOT_BODIES` + `G1_PALM_BODIES`) against the ladder body. Runs at the family
-control rate (50 Hz), `episode_length_s = 20`.
+control rate (50 Hz), `episode_length_s = SUBTASK_EPISODE_LENGTH_S` (120 s).
 
 ## Actions
 
@@ -281,7 +281,7 @@ forward lean.
 - **Fall** (`fell_below` / `fell_over`): root below **0.35 m** (standing pelvis is
   0.75 m; a collapsed robot reads < 0.30 m) or tilt beyond **1.0 rad**. This is the
   family's fall-detection RL gate: solver-kick episodes end immediately.
-- **Timeout**: `episode_length_s = 20 s`.
+- **Timeout**: `episode_length_s = SUBTASK_EPISODE_LENGTH_S` (120 s).
 
 ## Randomization (on reset)
 
