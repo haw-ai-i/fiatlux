@@ -79,6 +79,11 @@ class ObservationsCfg:
             scale=0.1,
             params={"sensor_cfg": SceneEntityCfg("hand_contact")},
         )
+        left_hand_contact = ObsTerm(
+            func=mdp.contact_net_forces,
+            scale=0.1,
+            params={"sensor_cfg": SceneEntityCfg("left_hand_contact")},
+        )
         # Exteroception: ego RGB (features) + head lidar ranges (the ladder being
         # carried is the salient thing to range). Requires --enable_cameras.
         ego_rgb = ObsTerm(
