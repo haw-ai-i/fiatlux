@@ -70,8 +70,12 @@ class SubtaskObservationsCfg:
     argument is sim-to-real, not tidiness: this is the sensor-realizable mode, and real hardware
     does not change its sensor suite between subtasks. One observation space for the family also
     means a single policy can attempt any of them and GR00T's adapter needs no per-subtask change.
-    It stays fixed-width because the filtered hand-contact channel sums over its filter targets,
+    It stays fixed-width because the filtered hand-contact channels sum over their filter targets,
     giving ``(N, B, 3)`` whichever objects a subtask filters for -- only the meaning changes.
+
+    Both hands are carried (issue #191). Scoring has been hand-agnostic since #151, so a
+    right-hand-only observation scores a left-handed grasp on a fragility bound through forces it
+    cannot feel.
 
     Extend ``privileged`` instead: it reaches only the critic, and rsl_rl's ``obs_groups`` routing
     is per-task anyway.
@@ -91,6 +95,9 @@ class SubtaskObservationsCfg:
         # Force on the manipulated objects (filtered channel, not the unfiltered net force).
         hand_contact = ObsTerm(
             func=mdp.contact_net_forces, scale=0.1, params={"sensor_cfg": SceneEntityCfg("hand_contact")}
+        )
+        left_hand_contact = ObsTerm(
+            func=mdp.contact_net_forces, scale=0.1, params={"sensor_cfg": SceneEntityCfg("left_hand_contact")}
         )
         # Exteroception; needs --enable_cameras.
         ego_rgb = ObsTerm(
