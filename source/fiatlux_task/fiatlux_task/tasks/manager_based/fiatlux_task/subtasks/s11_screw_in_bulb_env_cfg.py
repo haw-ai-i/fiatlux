@@ -160,4 +160,3 @@ class S11ScrewInBulbEnvCfg(MateSubtaskCfg):
             **HAND_CUP,
         }
         add_grip_contact_sensor(self.scene, self.scene.fresh_bulb.prim_path)
-        self.episode_length_s = 120.0

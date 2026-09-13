@@ -42,7 +42,7 @@ from isaaclab.utils.noise import AdditiveUniformNoiseCfg as Unoise
 from fiatlux_task.robots.g1 import G1_FINGER_JOINT_PATTERNS, G1_WAIST_JOINT_PATTERNS
 
 from . import mdp
-from .scene_cfg import ROOM_ENV_SPACING, G1ReplaceSceneCfg
+from .scene_cfg import ROOM_ENV_SPACING, SUBTASK_EPISODE_LENGTH_S, G1ReplaceSceneCfg
 
 # Fall gates, one definition for every subtask. Standing pelvis is 0.79 m, a deep mounting crouch
 # stays above 0.35 m, a collapsed robot reads under 0.30 m; beyond ~57 deg a position-controlled
@@ -271,6 +271,8 @@ class SubtaskEnvCfg(ManagerBasedRLEnvCfg):
         # Partial credit reads the same gate, decomposed. A leaf whose gate is one opaque
         # predicate becomes a single conjunct, and its partial credit is then its success flag.
         self.rewards.gate_progress.params["predicates"] = mdp.conjuncts_of(self.success_predicate, self.success_params)
+
+        self.episode_length_s = SUBTASK_EPISODE_LENGTH_S
 
         # Family control rate (50 Hz).
         self.decimation = 4

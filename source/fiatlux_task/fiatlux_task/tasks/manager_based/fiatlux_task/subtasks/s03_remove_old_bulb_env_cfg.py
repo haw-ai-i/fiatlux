@@ -97,4 +97,3 @@ class S03RemoveOldBulbEnvCfg(MateSubtaskCfg):
         super().__post_init__()
         # The old bulb stays where apply_replace_preset put it: seated in the inverted fixture.
         add_grip_contact_sensor(self.scene, self.scene.old_bulb.prim_path)
-        self.episode_length_s = 120.0

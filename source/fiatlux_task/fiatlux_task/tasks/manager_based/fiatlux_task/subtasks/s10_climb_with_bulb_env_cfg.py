@@ -140,4 +140,3 @@ class S10ClimbWithBulbEnvCfg(ClimbSubtaskCfg):
         }
         add_grip_contact_sensor(self.scene, self.scene.fresh_bulb.prim_path)
         add_bulb_crush_gate(self)
-        self.episode_length_s = 120.0

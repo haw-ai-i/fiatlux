@@ -138,5 +138,4 @@ class S05CarryBulbToDisposalEnvCfg(NavigateSubtaskCfg):
         add_bulb_crush_gate(self)
         add_ego_camera(self.scene)
         add_mid360_lidar(self.scene)
-        self.episode_length_s = 120.0
         frame_viewer_on(self.viewer, self.scene.robot.init_state.pos)

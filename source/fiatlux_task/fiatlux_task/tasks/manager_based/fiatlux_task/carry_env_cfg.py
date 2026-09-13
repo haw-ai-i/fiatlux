@@ -33,6 +33,7 @@ from . import mdp
 from .scene_cfg import (
     LADDER_READY_XY_RADIUS,
     ROOM_ENV_SPACING,
+    SUBTASK_EPISODE_LENGTH_S,
     G1ReplaceSceneCfg,
     add_ego_camera,
     add_mid360_lidar,
@@ -280,7 +281,7 @@ class CarryEnvCfg(ManagerBasedRLEnvCfg):
 
         self.decimation = 4
         self.sim.render_interval = self.decimation
-        self.episode_length_s = 20.0
+        self.episode_length_s = SUBTASK_EPISODE_LENGTH_S
         # family control rate (50 Hz; the GEAR-WBC decoders enforce it)
         self.sim.dt = 1.0 / 200.0
         # PhysX solver floors + stabilization (uncontrolled free base against props; Insert finding)
