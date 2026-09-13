@@ -386,9 +386,7 @@ def make_sonic_stand_policy(env, onnx_path: str | None = None):
 # Mirrors decoupled_wbc's g1_gear_wbc.yaml + G1GearWbcPolicy: the WBC controls
 # the first 15 URDF body joints (legs + waist) from a 6-frame history of an
 # 86-d observation; Balance serves |nav cmd| < 0.05, Walk the rest.
-DEFAULT_WBC_DIR = os.path.expanduser(
-    "~/tools/GR00T-WholeBodyControl/decoupled_wbc/sim2mujoco/resources/robots/g1/policy"
-)
+DEFAULT_WBC_DIR = os.path.expanduser("~/tools/GR00T-WholeBodyControl/gr00t_wbc/sim2mujoco/resources/robots/g1/policy")
 _WBC_BALANCE = "GR00T-WholeBodyControl-Balance.onnx"
 _WBC_WALK = "GR00T-WholeBodyControl-Walk.onnx"
 _WBC_LOWER_DEFAULTS = [-0.1, 0.0, 0.0, 0.3, -0.2, 0.0] * 2 + [0.0, 0.0, 0.0]
@@ -431,7 +429,7 @@ class GearWbcDecoder:
             if not os.path.isfile(path):
                 raise FileNotFoundError(
                     f"decoupled WBC ONNX not found at {path} -- clone GR00T-WholeBodyControl and "
-                    "`git lfs pull --include 'decoupled_wbc/sim2mujoco/resources/robots/g1/policy/*'` "
+                    "`git lfs pull --include 'gr00t_wbc/sim2mujoco/resources/robots/g1/policy/*'` "
                     "(see journal/specs/groot-sonic-baseline.md)"
                 )
         self._balance, self._walk = (ort.InferenceSession(path, providers=["CPUExecutionProvider"]) for path in paths)
