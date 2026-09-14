@@ -80,9 +80,8 @@ class S05EventCfg(SubtaskEventCfg):
 
     settle_bulb = EventTerm(
         func=settle_carried_payload_live,
-        mode="interval",
-        interval_range_s=(0.0, 0.0),
-        params={"payload_cfg": SceneEntityCfg("old_bulb")},
+        mode="reset",
+        params={"payload_cfg": SceneEntityCfg("old_bulb"), "reset_mode": True},
     )
     reset_robot_joints = EventTerm(
         func=mdp.reset_joints_by_offset,
