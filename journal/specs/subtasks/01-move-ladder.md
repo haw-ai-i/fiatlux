@@ -51,7 +51,7 @@ claim is that the ladder stays standing once whatever was holding it stops.
 
 | Conjunct | Value |
 |---|---|
-| `ladder_ready(reach=LADDER_READY_REACH, tilt_limit, facing_tolerance=LADDER_READY_FACING_TOLERANCE)` | the stance this ladder pose would produce can reach the seat with its PALM, in 3-D, while facing it; ladder upright |
+| `ladder_ready(reach=LADDER_READY_REACH, tilt_limit, facing_tolerance=LADDER_READY_FACING_TOLERANCE)` | the stance this ladder pose would produce can reach the seated bulb with its PALM, in 3-D, while facing it and with the fixture housing clear of its torso (`LADDER_READY_MIN_BEARING`); ladder upright |
 | `ladder_feet_down(tolerance=0.02)` | root on the floor — a ladder *held* in the right place at the right angle is not standing |
 | `object_at_rest(ladder, 0.05 m/s, 0.10 rad/s)` | settled, not swinging through |
 | `robot_standing(FALL_MIN_HEIGHT, FALL_TILT_LIMIT)` | not scoring on the step the robot collapses |
@@ -145,8 +145,10 @@ with the ladder's steps pointing away.
 
 Both gaps are closed by judging the STANCE rather than the ladder top. The stance is a pure
 function of the ladder pose (`stand_robot_on_ladder_top`), so the gate predicts where the shoulder
-would be and asks two questions of it: is the graspable bulb within `LADDER_READY_REACH` in 3-D,
-and does the stance face it within `LADDER_READY_FACING_TOLERANCE`.
+would be and asks three questions of it: is the graspable bulb within `LADDER_READY_REACH` in 3-D,
+is it at least `LADDER_READY_MIN_BEARING` out horizontally (closer and the fixture housing is inside
+the torso, and the facing angle has no meaning), and does the stance face it within
+`LADDER_READY_FACING_TOLERANCE`.
 
 - **3-D, not flat.** A flat radius carries no vertical component at all, and the working stance's
   shoulder (2.258 m) sits 58 mm ABOVE the 2.2 m fixture, so the arm reaches down-and-out.
@@ -160,7 +162,11 @@ At the chain's own coupled placement, measured in sim, predicted shoulder to bul
 wall draw (standoff 0.60 m) and 0.392 m on a ceiling draw (standoff 0.48 m). Both are inside the
 gate.
 
-`CEILING_FIXTURE_Z` moves 2.2 -> 2.37 m to get the second of those. The pendant rod exists to put
+`CEILING_FIXTURE_Z` moves 2.2 -> 2.37 m to get the second of those. This is a SCENE change, not a
+gate change: every ceiling draw of every subtask (S03, S04, S10, S11, S12, Carry, Replace) now
+hangs its fixture 17 cm higher, and recordings made at 2.2 m are of a different scene. Checked on
+the branch (2026-09-13): S03 and S11's staged on-ladder stance reads shoulder 2.257 m, bulb centre
+2.260 m, shoulder-to-bulb 0.364 m, head clear of the fixture. The pendant rod exists to put
 an overhead fixture at a reachable height, and 2.2 m was chosen against `G1_OVERHEAD_REACH`, a
 vertical fingertip figure used as a spherical radius. Against the stance this gate predicts, a
 ceiling bulb at 2.2 m hangs 0.168 m BELOW a shoulder that sits at 2.258 m, and the reach is the
@@ -171,4 +177,10 @@ its socket, so it is already only 0.058 m off shoulder height.
 
 Searching every placement that clears the wall plane, the best reachable-and-facing distance to the
 bulb is 0.245 m on a wall draw and 0.168 m on a ceiling draw, so the 45 deg facing tolerance is not
-the binding constraint on either mount kind.
+the binding constraint on either mount kind. The near bound is now `LADDER_READY_MIN_BEARING`
+(0.233 m, torso half-extent plus fixture half-extent): a bulb nearer than that horizontally would put
+the fixture inside the working stance.
+
+`scene_cfg.coupled_placement_reach` works the same geometry analytically at import and raises if
+either mount's coupled placement falls outside `LADDER_READY_REACH`, so a retune of the standoff,
+the stance height, the shoulder offset or the bulb offset cannot silently make S01 unwinnable again.

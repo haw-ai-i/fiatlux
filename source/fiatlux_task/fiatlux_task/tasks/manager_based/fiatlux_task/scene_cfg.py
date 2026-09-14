@@ -54,6 +54,7 @@ from isaaclab.sim.utils import clone
 from isaaclab.utils import configclass
 
 from fiatlux_task.assets import (
+    BULB_BODY_CENTRE_OFFSET,
     BULB_STAND_Z_OFFSET,
     BULB_USD,
     CRATE_USD,
@@ -62,6 +63,7 @@ from fiatlux_task.assets import (
     G1_HORIZONTAL_REACH,
     G1_OVERHEAD_REACH,
     G1_PALM_REACH,
+    G1_WORKING_SHOULDER_OFFSET,
     SOCKET_USD,
     STEP_LADDER_RIGID_USD,
     STEP_LADDER_TOP_OFFSET,
@@ -173,20 +175,12 @@ if min(CEILING_FIXTURE_Z, WALL_MOUNT_Z) <= G1_OVERHEAD_REACH:
         f"fixture mount heights (ceiling {CEILING_FIXTURE_Z} m, wall {WALL_MOUNT_Z} m) are within "
         f"standing floor reach ({G1_OVERHEAD_REACH:.3f} m): the ladder would be unnecessary"
     )
-# Horizontal tolerance on the ladder placement (m): the reach left over the fixture's vertical
-# gap above the working stance. Derived from the CEILING mount only.
-LADDER_READY_MARGIN = 0.05  # m, held back off the geometric bound
-LADDER_READY_XY_RADIUS = (
-    math.sqrt(G1_OVERHEAD_REACH**2 - (CEILING_FIXTURE_Z - LADDER_WORK_FOOT_Z) ** 2) - LADDER_READY_MARGIN
-)
-# Issue #147.
+# Ladder placement gate (issue #147): the stance the ladder pose would produce must reach the
+# seated bulb with its PALM, in 3-D, while facing it. The flat ``LADDER_READY_XY_RADIUS`` that
+# used to live here is gone: a flat radius carries no vertical component and scored placements
+# the arm could not cover.
 LADDER_READY_REACH = G1_PALM_REACH
 LADDER_READY_FACING_TOLERANCE = math.radians(45.0)
-if LADDER_READY_XY_RADIUS <= 0.0:
-    raise ValueError(
-        f"no horizontal slack left for the ladder placement: a {CEILING_FIXTURE_Z} m fixture eats "
-        f"the whole {G1_OVERHEAD_REACH:.3f} m reach from the {STEP_LADDER_TOP_OFFSET[2]} m ladder top"
-    )
 # How far from the ladder's root the robot may stand and still reach a rail: horizontal arm
 # reach plus the root-to-near-rail offset, less a margin. The narrow axis is the conservative
 # choice, since the ladder's yaw is sampled. Mounting the ladder is a foot-placement question
@@ -245,6 +239,10 @@ FIXTURE_HALF_EXTENT = 0.081  # m
 # reset_robot_root jitters the stance +/-5 cm on each floor axis, so the worst case is the diagonal.
 STANCE_RESET_JITTER = math.hypot(0.05, 0.05)  # m
 LADDER_FIXTURE_MIN_STANDOFF = G1_STANCE_TORSO_HALF_EXTENT + FIXTURE_HALF_EXTENT + STANCE_RESET_JITTER
+# Nearest the seated bulb may sit, horizontally, to the predicted working shoulder before the
+# fixture housing is inside the torso. Also keeps ``ladder_ready``'s facing test off a degenerate
+# (near-zero) bearing.
+LADDER_READY_MIN_BEARING = G1_STANCE_TORSO_HALF_EXTENT + FIXTURE_HALF_EXTENT
 # Horizontal slack left over once the fixture's height above LADDER_WORK_FOOT_Z is accounted
 # for -- the gate-tolerant foot height, not the tread itself, so the ceiling and wall guards
 # agree on where the robot is standing. This is the SPHERICAL bound -- G1_OVERHEAD_REACH is a
@@ -288,6 +286,48 @@ LADDER_ANCHOR_HALF_SIZE = 0.18
 # statement that these start states assume a controller from step one.
 TOP_STANCE_PELVIS_OFFSET = 0.787  # m
 TOP_STANCE_YAW_OFFSET_DEG = 90.0
+
+
+def coupled_placement_reach(kind: str) -> float:
+    """Predicted working-shoulder-to-bulb distance (m) at the coupled ladder placement.
+
+    The same geometry ``mdp.ladder_ready`` evaluates on a live ladder, worked analytically for
+    the placement ``apply_replace_preset(couple_ladder_to_fixture=True)`` produces: the ladder
+    root ``standoff`` out from the fixture along the mount's bearing, turned so the on-tread
+    stance faces back down it. In the bearing's frame (fixture at the origin, bearing +x) the
+    ladder's yaw is +90 deg and the stance's +180 deg. Checked against the sim by
+    ``scripts/verify_move_ladder.py`` (wall 0.407 m, ceiling 0.392 m, 2026-09-13).
+    """
+    standoff = {"wall": LADDER_FIXTURE_STANDOFF_WALL, "ceiling": LADDER_FIXTURE_STANDOFF_CEILING}[kind]
+    ladder_yaw = math.radians(180.0 - TOP_STANCE_YAW_OFFSET_DEG)
+    stance_yaw = math.radians(180.0)
+    tx, ty, tz = STEP_LADDER_TOP_OFFSET
+    pelvis = (
+        standoff + tx * math.cos(ladder_yaw) - ty * math.sin(ladder_yaw),
+        tx * math.sin(ladder_yaw) + ty * math.cos(ladder_yaw),
+        tz + TOP_STANCE_PELVIS_OFFSET,
+    )
+    sx, sy, sz = G1_WORKING_SHOULDER_OFFSET
+    shoulder = (
+        pelvis[0] + sx * math.cos(stance_yaw) - sy * math.sin(stance_yaw),
+        pelvis[1] + sx * math.sin(stance_yaw) + sy * math.cos(stance_yaw),
+        pelvis[2] + sz,
+    )
+    along = BULB_BODY_CENTRE_OFFSET[2]  # the bulb's body centre, along the socket's opening axis
+    bulb = (along, 0.0, WALL_MOUNT_Z) if kind == "wall" else (0.0, 0.0, CEILING_FIXTURE_Z - along)
+    return math.dist(shoulder, bulb)
+
+
+# The chain's own ladder placement must satisfy S01's gate, or S01 is unwinnable where S02+ expect
+# the ladder (#147, #158). Four constants feed this and any one of them can push it back out.
+for _kind in ("wall", "ceiling"):
+    _reach = coupled_placement_reach(_kind)
+    if _reach >= LADDER_READY_REACH:
+        raise ValueError(
+            f"the coupled {_kind} ladder placement puts the seated bulb {_reach:.3f} m from the "
+            f"working shoulder, outside LADDER_READY_REACH ({LADDER_READY_REACH:.3f} m): S01's gate "
+            "would reject the placement the rest of the chain starts from"
+        )
 
 # Ladder mass, every preset. Without an authored MassAPI PhysX derives mass from collider
 # volume at 1000 kg/m^3, which lands a hollow ladder at tens of kg.

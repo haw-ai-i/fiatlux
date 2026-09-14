@@ -62,7 +62,7 @@ from fiatlux_task.assets import (
     STEP_LADDER_TOP_OFFSET,
 )
 
-from ..scene_cfg import TOP_STANCE_PELVIS_OFFSET, TOP_STANCE_YAW_OFFSET_DEG
+from ..scene_cfg import LADDER_READY_MIN_BEARING, TOP_STANCE_PELVIS_OFFSET, TOP_STANCE_YAW_OFFSET_DEG
 from .place_terms import old_bulb_in_bin
 
 if TYPE_CHECKING:
@@ -625,17 +625,21 @@ def ladder_ready(
 ) -> torch.Tensor:
     """True where the ladder is placed so a stance on it could GRASP the seated bulb.
 
-    Three things, where there used to be two (issue #147). Upright, as before. Then the bulb's
+    Four things, where there used to be two (issue #147). Upright, as before. Then the bulb's
     graspable body centre within ``reach`` of the predicted stance's shoulder in 3-D, not a flat
-    radius. Finally the stance must FACE it.
+    radius. The bulb must also sit at least ``LADDER_READY_MIN_BEARING`` out horizontally, or the
+    fixture housing is inside the stance's torso -- and the facing angle below is undefined on a
+    zero bearing. Finally the stance must FACE it.
     """
     shoulder, forward = _predicted_stance_shoulder_w(env)
     bearing = _fixture_grasp_point_w(env) - shoulder
     within = torch.norm(bearing, dim=1) < reach
     flat = bearing[:, :2]
-    cos = (forward[:, :2] * flat).sum(dim=1) / flat.norm(dim=1).clamp(min=1e-9)
+    flat_norm = flat.norm(dim=1)
+    clear = flat_norm >= LADDER_READY_MIN_BEARING
+    cos = (forward[:, :2] * flat).sum(dim=1) / flat_norm.clamp(min=1e-9)
     facing = torch.acos(cos.clamp(-1.0, 1.0)) < facing_tolerance
-    return within & facing & ~ladder_tipped(env, tilt_limit)
+    return within & clear & facing & ~ladder_tipped(env, tilt_limit)
 
 
 def old_bulb_removed(
