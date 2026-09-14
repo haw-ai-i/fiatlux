@@ -274,7 +274,8 @@ _TR = DeviceBase.TrackingTarget.CONTROLLER_RIGHT
 
 class WalkRetargeter(RetargeterBase):
     """LEFT stick -> walk; RIGHT stick X -> turn; RIGHT A (lower) -> stop; RIGHT B (upper) -> record toggle;
-    LEFT X/Y -> lean. Output [vx,vy,wz,stop,lean,rec]."""
+    LEFT X/Y -> lean. Output [vx,vy,wz,stop,lean,rec,lsqueeze,lboth]; the last two feed the rail-hand
+    toggle (left grip squeeze = take the left arm back; both left face buttons = put it on the rail)."""
 
     def __init__(self, cfg):
         super().__init__(cfg)
@@ -284,18 +285,19 @@ class WalkRetargeter(RetargeterBase):
     def _read(data, target):
         cd = data.get(target) if data else None
         if cd is None or len(cd) <= _ROW:
-            return 0.0, 0.0, 0.0, 0.0
+            return 0.0, 0.0, 0.0, 0.0, 0.0
         inp = cd[_ROW]
         return (
             float(inp[_IDX.THUMBSTICK_X.value]),
             float(inp[_IDX.THUMBSTICK_Y.value]),
             float(inp[_IDX.BUTTON_0.value]),
             float(inp[_IDX.BUTTON_1.value]),
+            float(inp[_IDX.SQUEEZE.value]),
         )
 
     def retarget(self, data):
-        lx, ly, lb0, lb1 = self._read(data, _TL)
-        rx, ry, rb0, rb1 = self._read(data, _TR)
+        lx, ly, lb0, lb1, lsq = self._read(data, _TL)
+        rx, ry, rb0, rb1, _rsq = self._read(data, _TR)
         dz = self.cfg.deadzone
         lx = lx if abs(lx) > dz else 0.0  # deadzone: idle thumbstick drift must not walk the robot
         ly = ly if abs(ly) > dz else 0.0
@@ -304,7 +306,11 @@ class WalkRetargeter(RetargeterBase):
         stop = 1.0 if rb0 > 0.5 else 0.0
         lean = (1.0 if lb0 > 0.5 else 0.0) - (1.0 if lb1 > 0.5 else 0.0)
         rec = 1.0 if rb1 > 0.5 else 0.0  # right B (UPPER face button): record toggle (edge-detected downstream)
-        return torch.tensor([ly * ms, -lx * ms, -rx, stop, lean, rec], device=self.cfg.sim_device, dtype=torch.float32)
+        lsqueeze = 1.0 if lsq > 0.5 else 0.0
+        lboth = 1.0 if (lb0 > 0.5 and lb1 > 0.5) else 0.0  # both left face buttons (lean cancels to 0)
+        return torch.tensor(
+            [ly * ms, -lx * ms, -rx, stop, lean, rec, lsqueeze, lboth], device=self.cfg.sim_device, dtype=torch.float32
+        )
 
     def get_requirements(self):
         return [RetargeterBase.Requirement.MOTION_CONTROLLER]
@@ -517,6 +523,69 @@ def main():  # noqa: C901  (one long orchestration: env setup + settle/resettle 
     _arms.stiffness = {".*_(shoulder|elbow|wrist).*_joint": 200.0}
     _arms.damping = {".*_(shoulder|elbow|wrist).*_joint": 20.0}
 
+    # Rail hand (the settle below): FIATLUX_RAIL_HOLD=1 forces it on, 0 off; unset = AUTO, which is
+    # on exactly when the task stages the robot ON the ladder (pelvis >= 1 m above the ladder root:
+    # S03/S11 and the descend legs), because that is the stance that topples backward off the
+    # tread unattended (ladder-diag: 27-29% idle, 0/30 with the hand on the cap). Floor spawns
+    # (climb legs, bench legs) keep the left arm free -- the cap is out of reach there anyway.
+    _rail_env = os.environ.get("FIATLUX_RAIL_HOLD", "auto").lower()
+    _rail_on = False
+    if _rail_env != "0" and getattr(env_cfg.scene, "ladder", None) is not None:
+        _on_ladder = float(env_cfg.scene.robot.init_state.pos[2]) - float(env_cfg.scene.ladder.init_state.pos[2]) >= 1.0
+        _rail_on = _rail_env == "1" or (_rail_env == "auto" and _on_ladder)
+        if _rail_env == "auto":
+            print(
+                f"[sonic] rail hand: {'ON' if _rail_on else 'off'} (auto: robot staged "
+                f"{'on' if _on_ladder else 'off'} the ladder; FIATLUX_RAIL_HOLD=0/1 overrides)",
+                flush=True,
+            )
+    if _rail_on:
+        # A sensor for the LEFT hand's force against the ladder only. The env's own
+        # left_hand_contact is filtered to the task's bulb, so the brace never shows in it, and
+        # the unfiltered net force also counts the hand's own colliders.
+        from isaaclab.sensors import ContactSensorCfg  # noqa: E402
+
+        # The WHOLE left arm, not just the hand: a badly converged approach can park the elbow
+        # inside the ladder's side rail while the base is pinned, and that has to be seen
+        # before the release (VR batch, S11 inspire seed 4: 1.1 m/s kick on release).
+        env_cfg.scene.rail_contact = ContactSensorCfg(
+            prim_path="{ENV_REGEX_NS}/Robot/(left_shoulder_.*|left_elbow_.*|left_wrist_.*|left_hand_.*|L_.*)",
+            filter_prim_paths_expr=["{ENV_REGEX_NS}/Ladder"],
+            history_length=1,
+        )
+
+    # FIATLUX_SETTLE_PROBE=1: one contact sensor per arm, filtered against every scene object at
+    # once, so a hit during staging is attributed to the thing that was hit (socket, bulb, wall,
+    # ladder) instead of a single net number. Diagnostic only; off by default.
+    _probe_names: list[str] = []
+    if os.environ.get("FIATLUX_SETTLE_PROBE", "0") == "1":
+        from isaaclab.sensors import ContactSensorCfg as _ProbeSensorCfg  # noqa: E402
+
+        _probe_paths = []
+        for _nm in ("socket", "fresh_bulb", "old_bulb", "ladder", "room", "fixture", "table", "bin", "pendant"):
+            _obj = getattr(env_cfg.scene, _nm, None)
+            if _obj is not None and getattr(_obj, "prim_path", None):
+                _probe_names.append(_nm)
+                _probe_paths.append(_obj.prim_path)
+        for _side, _bodies in (
+            ("r", "right_shoulder_.*|right_elbow_.*|right_wrist_.*|right_hand_.*|R_.*"),
+            ("l", "left_shoulder_.*|left_elbow_.*|left_wrist_.*|left_hand_.*|L_.*"),
+        ):
+            setattr(
+                env_cfg.scene,
+                f"probe_{_side}",
+                _ProbeSensorCfg(
+                    prim_path="{ENV_REGEX_NS}/Robot/(" + _bodies + ")",
+                    filter_prim_paths_expr=list(_probe_paths),
+                    history_length=1,
+                ),
+            )
+        print(f"[sonic] settle probe: arm contacts attributed to {_probe_names}", flush=True)
+        if args.out:
+            os.makedirs(args.out, exist_ok=True)
+            with open(os.path.join(args.out, "probe_targets.txt"), "w") as _fh:
+                _fh.write("\n".join(_probe_names) + "\n")
+
     if args.xr:
         env_cfg.sim.render.antialiasing_mode = "DLSS"
 
@@ -534,14 +603,47 @@ def main():  # noqa: C901  (one long orchestration: env setup + settle/resettle 
 
     env = gym.make(args.task, cfg=env_cfg).unwrapped
     robot = env.scene["robot"]
+
+    # Left arm rest pose: shoulder pitch/roll/yaw, elbow, wrist roll/pitch/yaw in degrees,
+    # captured from an operator take. Empty string keeps the asset's pose. The recorded pose is
+    # the ladder-cap approach, meaningful only for the rail-hand feature -- gate the write on
+    # _rail_on (computed above, before gym.make): default_joint_pos is shared state that the
+    # post-settle restore and mid-session reset re-home both read for EVERY task, rail or not, so
+    # writing it unconditionally silently replaces a non-rail task's own left-arm rest pose with
+    # this ladder-specific one.
+    _ARM_REST_L = os.environ.get("FIATLUX_ARM_REST_LEFT", "-4.8,9.4,0.5,15.6,-4.3,-9.6,4.8")
+    if _rail_on and _ARM_REST_L.strip():
+        _names = [
+            f"left_{_n}_joint"
+            for _n in (
+                "shoulder_pitch",
+                "shoulder_roll",
+                "shoulder_yaw",
+                "elbow",
+                "wrist_roll",
+                "wrist_pitch",
+                "wrist_yaw",
+            )
+        ]
+        _vals = [float(_x) for _x in _ARM_REST_L.split(",")]
+        if len(_vals) == len(_names) and all(_n in robot.joint_names for _n in _names):
+            for _n, _v in zip(_names, _vals):
+                robot.data.default_joint_pos[:, robot.joint_names.index(_n)] = math.radians(_v)
+            print(f"[sonic] left arm rest pose set to {_ARM_REST_L} deg (recorded)", flush=True)
+        else:
+            print(f"[sonic] ignoring FIATLUX_ARM_REST_LEFT: need {len(_names)} values", flush=True)
     # Say which hand was actually BUILT, not which was requested: the two have disagreed silently
     # before (an env came up Inspire under "hand=dex3"). Joint names are the ground truth --
     # Dex3 fingers are right_hand_*_N_joint, Inspire's are R_*_joint.
     _jn = list(robot.joint_names)
-    _built = ("dex3" if any("right_hand_" in n for n in _jn)
-              else "inspire" if any(n.startswith("R_") for n in _jn) else "no hand joints found")
-    print(f"[sonic] robot built with {len(_jn)} joints -- hand: {_built} (requested {args.hand.lower()})",
-          flush=True)
+    _built = (
+        "dex3"
+        if any("right_hand_" in n for n in _jn)
+        else "inspire"
+        if any(n.startswith("R_") for n in _jn)
+        else "no hand joints found"
+    )
+    print(f"[sonic] robot built with {len(_jn)} joints -- hand: {_built} (requested {args.hand.lower()})", flush=True)
     if _built not in (args.hand.lower(), "no hand joints found"):
         print(f"[sonic] WARNING: hand mismatch -- the env ignored --hand {args.hand}", flush=True)
     dev = env.device
@@ -923,8 +1025,11 @@ def main():  # noqa: C901  (one long orchestration: env setup + settle/resettle 
     _sid = re.search(r"-S(\d\d)-", args.task)
     _sid = _sid.group(1) if _sid else None
     _TASK_FRAME = {
-        "05": ("ladder", "bin"), "06": ("bin",), "07": ("table", "fresh_bulb"),
-        "08": ("table", "fresh_bulb"), "09": ("table", "ladder"),
+        "05": ("ladder", "bin"),
+        "06": ("bin",),
+        "07": ("table", "fresh_bulb"),
+        "08": ("table", "fresh_bulb"),
+        "09": ("table", "ladder"),
     }
     _TASK_MODE = {"03": "fixture", "11": "fixture", "07": "bench", "08": "bench", "06": "crate"}
     _want = _TASK_FRAME.get(_sid, ("ladder", "socket"))
@@ -936,7 +1041,7 @@ def main():  # noqa: C901  (one long orchestration: env setup + settle/resettle 
     def _frame_points():
         pts = []
         for _n in _frame_names:
-            if _n == "table":                      # static asset, no live pose: use the cfg
+            if _n == "table":  # static asset, no live pose: use the cfg
                 pts.append(np.array([_table_pos[0], _table_pos[1], 0.9]))
                 continue
             _o = env.scene[_n]
@@ -1030,8 +1135,11 @@ def main():  # noqa: C901  (one long orchestration: env setup + settle/resettle 
                 _best, _best_m = (_cx, _cy), _m
         _cx = min(max(_best[0], _CAM_MIN[0]), _CAM_MAX[0])
         _cy = min(max(_best[1], _CAM_MIN[1]), _CAM_MAX[1])
-        print(f"[sonic] side camera at ({_cx:.2f},{_cy:.2f},{eye_z}) on robot->{entity}, "
-              f"aimed at ({_mid[0]:.2f},{_mid[1]:.2f},{aim_z}), wall margin {_best_m:.2f} m", flush=True)
+        print(
+            f"[sonic] side camera at ({_cx:.2f},{_cy:.2f},{eye_z}) on robot->{entity}, "
+            f"aimed at ({_mid[0]:.2f},{_mid[1]:.2f},{aim_z}), wall margin {_best_m:.2f} m",
+            flush=True,
+        )
         return ((_cx, _cy, eye_z), (float(_mid[0]), float(_mid[1]), aim_z))
 
     if _cam_mode == "bench":
@@ -1040,8 +1148,8 @@ def main():  # noqa: C901  (one long orchestration: env setup + settle/resettle 
     elif _cam_mode == "crate":
         _static_pose = _side_pose("bin", 0.45, 1.3)
 
-    _follow_dir = [None]    # camera direction from the objects' centre, kept until a point leaves frame
-    _HFOV, _VFOV = 41.0 * 0.9, 26.5 * 0.9   # 12 mm lens, half-angles, used at 90 %
+    _follow_dir = [None]  # camera direction from the objects' centre, kept until a point leaves frame
+    _HFOV, _VFOV = 41.0 * 0.9, 26.5 * 0.9  # 12 mm lens, half-angles, used at 90 %
 
     def _view_margin(eye, c, pts):
         """Smallest angular margin (deg) by which every point sits inside the frame; <0 = cut."""
@@ -1097,6 +1205,36 @@ def main():  # noqa: C901  (one long orchestration: env setup + settle/resettle 
         """The pose to capture the third-person video from this frame, whatever --camera says."""
         return _static_pose if _static_pose is not None else _follow_pose()
 
+    _probe_seen: dict = {}
+
+    def _probe_extras():
+        """Per-object arm contact forces (N) as bag columns, over _probe_names.
+
+        Also NAMES any touch of something that should never be touched -- the socket, the room
+        walls, the fixture, a bulb. Those are failures whether or not the thing moves (the socket
+        is bolted in place, so it cannot move and a graze would otherwise leave no trace), and the
+        summed column cannot say which link did it.
+        """
+        _out = {}
+        if not _probe_names:
+            return _out
+        for _side in ("r", "l"):
+            _sensor = env.scene.sensors.get(f"probe_{_side}") if hasattr(env.scene, "sensors") else None
+            if _sensor is None:
+                continue
+            _fm = _sensor.data.force_matrix_w  # (envs, bodies, targets, 3)
+            _out[f"probe_{_side}_force"] = _fm.sum(dim=1).norm(dim=-1)[0].cpu().numpy().astype(np.float32)[None]
+            _per = _fm.norm(dim=-1)[0]  # (bodies, targets)
+            for _ti, _tn in enumerate(_probe_names):
+                if _tn == "ladder" or _ti >= _per.shape[1]:
+                    continue
+                _bi = int(_per[:, _ti].argmax())
+                _f = float(_per[_bi, _ti])
+                if _f >= 2.0 and _probe_seen.get((_side, _tn), 0.0) < _f:
+                    _probe_seen[(_side, _tn)] = _f
+                    print(f"[sonic] TOUCH: {_sensor.body_names[_bi]} -> {_tn} at {_f:.0f} N", flush=True)
+        return _out
+
     def _settle_step(_arm):
         """env.step during the settle, recorded when --record-settle asks for it.
 
@@ -1116,6 +1254,9 @@ def main():  # noqa: C901  (one long orchestration: env setup + settle/resettle 
                 "rpy_cmd": np.asarray(rpy_cmd, dtype=np.float32)[None],
                 "sonic_action": np.asarray(last_action, dtype=np.float32)[None],
             }
+            if _rail is not None:
+                _settle_extras["rail_contact_force"] = _rail_force().cpu().numpy().astype(np.float32)[None]
+            _settle_extras.update(_probe_extras())
             recorder.record_step(_out[0], _arm, _out[1], _out[2], _out[3], extras=_settle_extras)
             if video is not None:
                 video.capture(pose=_video_pose())
@@ -1123,12 +1264,255 @@ def main():  # noqa: C901  (one long orchestration: env setup + settle/resettle 
                 ego_video.capture()
         return _out
 
-    for _k in range(40):
+    # ---- RAIL HAND (FIATLUX_RAIL_HOLD auto/1/0, see the scene cfg above): a third support point ----
+    # On the on-ladder stance the tread leaves ~12 cm behind the heel and SONIC's backward
+    # catch-glide is ~15 cm, so roughly a quarter of idle spawns topple off the back (ladder-diag
+    # batches: 29% inspire / 27% dex3; every stance/height/pin change tried was worse). A person
+    # on a platform ladder keeps a hand on the top cap. This stages the LEFT hand hanging flat
+    # over the cap's FAR edge -- an open "paddle", fingers down, palm toward the robot -- while
+    # the base is still pinned, so it is engaged before the glide starts. A backward slide then
+    # presses the cap's far face into the palm and the straight fingers (loaded into their 0-rad
+    # limit, so the 0.1 N.m finger motors are not what holds), and the load goes up the arm's PD:
+    # real contact through real joints, nothing filtered. The wrist IK target stays ROOT-relative
+    # (a stiffened arm), which is what makes the hand a brace rather than a hand that merely
+    # rides along. Geometry (AlumStep_D, ladder frame, m): top cap z 1.80-1.86, y 0.155-0.27,
+    # full width; the robot faces +y with its left at -x; the pin holds the pelvis ~0.07 above
+    # SONIC's stance, so the hand is staged that much higher and settles onto the face on release.
+    _rail = None
+    if _rail_on:
+        if "ladder" not in getattr(env.scene, "rigid_objects", {}):
+            print("[sonic] RAIL HAND requested but this scene has no ladder; ignored", flush=True)
+        else:
+            from isaaclab.utils.math import quat_apply, quat_inv, quat_mul  # noqa: E402
+
+            _ladder = env.scene["ladder"]
+            _lw_bid = robot.body_names.index("left_wrist_yaw_link")
+
+            # Staged wrist height per hand: the fingertips must end ~2 cm ABOVE the cap plate
+            # (top z 1.86) before the release drop, or the approach sweeps them through it and
+            # the arm jams behind the cap (inspire probe 1). Fingertip reach below the wrist:
+            # dex3 0.165 m, inspire 0.21 m; plus the ~6 cm the DLS IK stalls short of the target.
+            _RAIL_WRIST_L = (-0.13, 0.30, 2.11) if args.hand.lower() == "inspire" else (-0.13, 0.30, 2.05)
+            _RAIL_APPROACH_STEPS, _RAIL_DWELL_STEPS = 30, 10  # pinned steps to reach the cap, then settle
+            _rail = {
+                # wrist target in the LADDER frame, staged (pre-release) height
+                "wrist_l": torch.tensor([_RAIL_WRIST_L], device=dev),
+                # wrist orientation in the LADDER frame (w,x,y,z): the paddle, R_y(+90 deg) =
+                # fingers straight down, palm side (-y_wrist on both hands) toward the robot.
+                "quat_l": torch.tensor([[0.7071068, 0.0, 0.7071068, 0.0]], device=dev),
+                "approach": _RAIL_APPROACH_STEPS,
+                "dwell": _RAIL_DWELL_STEPS,
+                # The brace HOLDS until the operator takes the arm (keyboard H, VR left grip). There
+                # is no timed return to the rest pose: the hand stays on the ladder and control
+                # passes to the operator from wherever it is, with no repositioning in between.
+                "phase": "idle",  # idle -> approach -> hold ; the operator toggle -> idle
+                "i": 0,
+                "from": None,  # root-frame L pose the approach starts from (= the spawn rest pose)
+                "to": None,  # root-frame L pose it ends at (= the hold target)
+                "rest": None,  # the spawn rest pose, kept so a retract has somewhere to go
+                "cap": None,  # the (re-anchored) cap pose, kept so a re-brace has somewhere to go
+                "held": True,  # operator toggle (keyboard H / VR): False hands the left arm back
+                "staged": True,  # False once a spawn's approach failed its check (brace off for it)
+            }
+
+            # The dex3 thumb stands 6 cm proud of the palm when open, straight at the cap top once
+            # the hand hangs over the far edge. Fold it across the palm (its grasp preset) as part
+            # of the OPEN pose so the paddle is the flat palm + straight fingers only.
+            _lterm = env.action_manager.get_term("left_hand_action")
+            _lthumb_open = _lterm._open_command.clone()  # the REAL open pose, kept to put back
+            _lnames_hand = [robot.joint_names[i] for i in _lterm._joint_ids]
+            _lthumb_idx = [_k for _k, _n in enumerate(_lnames_hand) if "thumb" in _n]
+
+            def _rail_thumb_fold():
+                """The paddle: thumb across the palm as part of the OPEN pose (also on re-brace)."""
+                for _k in _lthumb_idx:
+                    _lterm._open_command[_k] = _lterm._close_command[_k]
+
+            def _rail_thumb_restore():
+                """Undo the fold when the operator takes the arm, or open and close stay the
+                same pose and the hand can never let go."""
+                _lterm._open_command.copy_(_lthumb_open)
+
+            _rail_thumb_fold()
+            print(
+                f"[sonic] RAIL HAND: left thumb folded across the palm in the open pose ({len(_lthumb_idx)} joints)",
+                flush=True,
+            )
+
+            def _rail_force():
+                """Left hand's total force against the ladder (N), from the filtered sensor."""
+                if "rail_contact" not in getattr(env.scene, "sensors", {}):
+                    return torch.zeros(1, device=dev)
+                _fm = env.scene["rail_contact"].data.force_matrix_w  # (N, B, M, 3)
+                return _fm.sum(dim=2).norm(dim=-1).sum(dim=1)  # (N,)
+
+            def _rail_target_b():
+                """Ladder-frame wrist target -> ROOT frame (pose 7). Computed while pinned."""
+                p_w = _ladder.data.root_pos_w + quat_apply(_ladder.data.root_quat_w, _rail["wrist_l"])
+                q_w = quat_mul(_ladder.data.root_quat_w, _rail["quat_l"])
+                p_b, q_b = subtract_frame_transforms(robot.data.root_pos_w, robot.data.root_quat_w, p_w, q_w)
+                return torch.cat([p_b[0], q_b[0]])
+
+            def _rail_begin():
+                _rail["phase"] = "approach"
+                _rail["i"] = 0
+                _rail["from"] = rest_arm_action()[8:15].clone()
+                _rail["rest"] = _rail["from"].clone()
+                _rail["to"] = _rail_target_b()
+                _rail["held"] = True
+                _rail["staged"] = True
+
+            def _rail_staged_ok():
+                """End of the pinned approach: did the hand land where it was sent?
+
+                Three ways it does not, all seen: the arm pressing on the ladder (the elbow inside
+                a side rail after the IK wandered off), the wrist parked well ABOVE its target, or
+                the wrist stalled well BELOW its target with no ladder contact at all (an
+                unreachable/stalled approach leaves the hand dangling in free air -- near-zero
+                force, since it touches nothing). The normal DLS stall is only a few cm below
+                target, so a small negative dz is fine; a large one means there is no brace.
+                Any of these releasing the base now throws the robot (S11 inspire seed 4 in the
+                VR batch: 1.1 m/s kick, ladder 58 cm), so the brace is worth less than nothing on
+                that spawn.
+                """
+                f = float(_rail_force())
+                dz = float(rest_arm_action()[10] - _rail["to"][2])
+                ok = f < 20.0 and abs(dz) < 0.05
+                if not ok:
+                    print(
+                        f"[sonic] RAIL HAND NOT STAGED (arm-ladder {f:.0f} N, wrist {dz * 100:+.0f} cm vs target): "
+                        "retracting to the rest pose while pinned; brace OFF for this spawn",
+                        flush=True,
+                    )
+                return ok
+
+            def _rail_retract_pinned(pin, legs):
+                """Bring the left arm back to its spawn rest pose over 20 steps, base still pinned."""
+                _rail["from"] = rest_arm_action()[8:15].clone()
+                _rail["to"] = _rail["rest"].clone()
+                _rail["phase"], _rail["i"] = "approach", 0
+                _rail["approach"], _rail["dwell"] = 20, 0
+                for _ in range(20):
+                    robot.set_joint_position_target(legs, joint_ids=act_idx)
+                    robot.write_root_pose_to_sim(pin)
+                    robot.write_root_velocity_to_sim(zero_vel)
+                    _settle_step(_settle_arm())
+                    _pin_settle_bulb()
+                _rail["approach"], _rail["dwell"] = _RAIL_APPROACH_STEPS, _RAIL_DWELL_STEPS
+                _rail["phase"], _rail["held"], _rail["staged"] = "idle", False, False
+
+            def _rail_main_L():
+                """Per main-loop step: the LEFT pose (7) to enforce while braced, or None (operator's arm)."""
+                if _rail["held"]:
+                    return _rail["to"]
+                return None
+
+            def _rail_release():
+                """The operator takes the left arm: stop enforcing the cap pose and give the hand its
+                real open pose back. The arm is handed over where it is -- on the ladder -- with no
+                return to a rest pose first."""
+                _rail["held"], _rail["phase"] = False, "idle"
+                _rail_thumb_restore()
+
+            def _rail_rebrace():
+                """Operator asked for the brace back: aim at the cap pose again (the IK slews)."""
+                if _rail["cap"] is not None:
+                    _rail["to"] = _rail["cap"].clone()
+                _rail_thumb_fold()
+                _rail["phase"], _rail["held"] = "hold", True
+
+            def _rail_settled():
+                """After SONIC's settle-in: re-anchor the hold ONCE to where the hand actually rests.
+
+                The staged target is 7 cm above the resting height (the release drop) and the IK
+                stalls a few cm short of it anyway, so keeping it would leave the arm pressing the
+                hand down onto the cap (~50-100 N in probe 2) for the whole session -- a steady
+                nose-up moment and a chunk of the arm's effort budget. Anchoring to the settled
+                pose leaves the brace unloaded until the body moves; one-time, not per frame (a
+                per-frame re-anchor is the sag ratchet the settle comments warn about).
+                """
+                _live = rest_arm_action()[8:15].clone()
+                _d = (_live[0:3] - _rail["to"][0:3]) * 100.0
+                _rail["to"] = _live
+                _lw_l = quat_apply(
+                    quat_inv(_ladder.data.root_quat_w),
+                    robot.data.body_state_w[:, _lw_bid, 0:3] - _ladder.data.root_pos_w,
+                )[0]
+                print(
+                    f"[sonic] RAIL HAND re-anchored to the resting pose: wrist ladder-frame "
+                    f"({_lw_l[0]:.3f},{_lw_l[1]:.3f},{_lw_l[2]:.3f}), "
+                    f"moved ({_d[0]:+.1f},{_d[1]:+.1f},{_d[2]:+.1f}) cm "
+                    f"in the root frame from the staged target; brace force {float(_rail_force()):.1f} N",
+                    flush=True,
+                )
+
+            def _rail_arm(arm):
+                """Replace the LEFT arm part of a rest arm action with the rail approach/hold."""
+                if _rail["phase"] == "idle":
+                    return arm
+                if _rail["phase"] == "approach":
+                    a = min(1.0, _rail["i"] / max(1, _rail["approach"]))
+                    pose = (1 - a) * _rail["from"] + a * _rail["to"]
+                    pose[3:7] = pose[3:7] / torch.linalg.norm(pose[3:7])
+                    _rail["i"] += 1
+                    if _rail["i"] >= _rail["approach"] + _rail["dwell"]:
+                        _rail["phase"] = "hold"
+                else:
+                    pose = _rail["to"]
+                arm = arm.clone()
+                arm[8:15] = pose
+                arm[15] = 1.0  # open paddle
+                return arm
+
+            print(
+                f"[sonic] RAIL HAND: left wrist -> ladder-frame {_rail['wrist_l'][0].tolist()} "
+                f"(ladder-frame quat {_rail['quat_l'][0].tolist()}), "
+                f"{_rail['approach']} approach + {_rail['dwell']} dwell steps while pinned",
+                flush=True,
+            )
+
+    def _settle_arm():
+        _a = rest_arm_action()
+        return (_rail_arm(_a) if _rail is not None else _a).repeat(env.num_envs, 1)
+
+    # The rail approach starts AFTER the 40 plant steps, not before: the spawn's depenetration
+    # kick can shove the free ladder 10-40 cm in the first physics step (seen in 3 of 84 baseline
+    # takes and in rail-B-inspire seed3/try3), and a target computed from the pre-kick ladder pose
+    # stages the hand behind the cap, where it pushes the robot backward instead of bracing it.
+    # Place the left arm on the rest pose before the settle. default_joint_pos alone does not
+    # reach it: the post-settle restore skips the left arm while the rail hand is staged
+    # (_arm_idx), and the rail hand captures its return target from wherever the arm is.
+    if _rail is not None and _ARM_REST_L.strip():
+        _lnames = [
+            f"left_{_n}_joint"
+            for _n in (
+                "shoulder_pitch",
+                "shoulder_roll",
+                "shoulder_yaw",
+                "elbow",
+                "wrist_roll",
+                "wrist_pitch",
+                "wrist_yaw",
+            )
+        ]
+        if all(_n in robot.joint_names for _n in _lnames):
+            _lids = [robot.joint_names.index(_n) for _n in _lnames]
+            _jp_rest = robot.data.joint_pos.clone()
+            _jp_rest[:, _lids] = robot.data.default_joint_pos[:, _lids]
+            _carry_payload(lambda: robot.write_joint_state_to_sim(_jp_rest, torch.zeros_like(robot.data.joint_vel)))
+            print("[sonic] left arm placed on the recorded rest pose before the settle", flush=True)
+
+    _pin_steps = 40 + ((_rail["approach"] + _rail["dwell"]) if _rail is not None else 0)
+    for _k in range(_pin_steps):
+        if _rail is not None and _k == 40:
+            _rail_begin()  # feet planted, ladder settled: aim at where the cap actually is
         robot.set_joint_position_target(leg_default, joint_ids=act_idx)
         robot.write_root_pose_to_sim(pin_pose)  # hold base upright while feet plant
         robot.write_root_velocity_to_sim(zero_vel)
-        _settle_step(rest_arm_action().repeat(env.num_envs, 1))
+        _settle_step(_settle_arm())
         _pin_settle_bulb()  # carry the seated bulb through the grip-close transient
+    if _rail is not None and not _rail_staged_ok():
+        _rail_retract_pinned(pin_pose, leg_default)
     robot.write_root_pose_to_sim(pin_pose)  # final: level + still, then release to SONIC
     robot.write_root_velocity_to_sim(zero_vel)
     obs_hist = collections.deque([build_obs()] * HIST_LEN, maxlen=HIST_LEN)  # warm history w/ real state
@@ -1141,7 +1525,7 @@ def main():  # noqa: C901  (one long orchestration: env setup + settle/resettle 
         last_action = bal_sess.run(None, {in_name: flat})[0][0]
         leg_target = torch.as_tensor(last_action * ACTION_SCALE + DEFAULT_15, device=dev)
         robot.set_joint_position_target(leg_target.unsqueeze(0), joint_ids=act_idx)
-        _settle_step(rest_arm_action().repeat(env.num_envs, 1))
+        _settle_step(_settle_arm())
         _pin_settle_bulb()  # keep carrying through SONIC settle-in, released after this loop
     spawn_root = robot.data.root_state_w[:, 0:7].clone()  # centered pose = re-home + hold target
     home_xy = spawn_root[0, 0:2].cpu().numpy().copy()
@@ -1152,8 +1536,18 @@ def main():  # noqa: C901  (one long orchestration: env setup + settle/resettle 
     # (measured ~0.4 rad of droop at the right shoulder on the carry tasks). That moves the open
     # palm the payload is staged to rest on. Put the arm back on the pose the task authored, then
     # capture the IK target FROM that pose so the hold does not pull it back down.
+    # (Rail hand: the LEFT arm is where it was staged -- on the cap -- so only the right arm is
+    # put back; a state write would yank the brace off the rail. A spawn whose brace was retracted
+    # by the staging check gets BOTH arms restored, like a stock spawn: its left arm sagged through
+    # the SONIC settle-in and, left there, rested on the cap at ~19 N -- guard test 2.)
+    _rail_braced = _rail is not None and _rail["staged"]
     _arm_idx = torch.tensor(
-        [i for i, n in enumerate(robot.joint_names) if any(k in n for k in ("shoulder", "elbow", "wrist"))], device=dev
+        [
+            i
+            for i, n in enumerate(robot.joint_names)
+            if any(k in n for k in ("shoulder", "elbow", "wrist")) and (not _rail_braced or n.startswith("right_"))
+        ],
+        device=dev,
     )
     _staged_arm = robot.data.default_joint_pos[:, _arm_idx].clone()
     _jp = robot.data.joint_pos.clone()
@@ -1166,6 +1560,19 @@ def main():  # noqa: C901  (one long orchestration: env setup + settle/resettle 
     )
 
     rest_arm = rest_arm_action()
+    if _rail is not None and _rail["staged"]:
+        _rail_settled()
+        _rail["cap"] = _rail["to"].clone()
+        rest_arm[8:15] = _rail["to"]
+        rest_arm[15] = 1.0
+        _lw_l = quat_apply(
+            quat_inv(_ladder.data.root_quat_w), robot.data.body_state_w[:, _lw_bid, 0:3] - _ladder.data.root_pos_w
+        )[0]
+        print(
+            f"[sonic] RAIL HAND staged: left wrist at ladder-frame ({_lw_l[0]:.3f},{_lw_l[1]:.3f},{_lw_l[2]:.3f}) "
+            f"vs target {_rail['wrist_l'][0].tolist()} (pre-release); H toggles the brace",
+            flush=True,
+        )
 
     # OPERATOR GRASP (Inspire on the thumb-fix asset): the env's close preset is the settle-time
     # support curl (fingers ~0.3 rad) that keeps the seated bulb from being squeezed while SONIC
@@ -1392,6 +1799,14 @@ def main():  # noqa: C901  (one long orchestration: env setup + settle/resettle 
                     rec_flag["toggle"] = True
                 elif k == "R":
                     _reset()
+                elif k == "H" and _rail is not None:
+                    if _rail["held"]:
+                        _rail_release()
+                    else:  # back onto the rail: re-aim the left target at the cap pose
+                        _rail_rebrace()
+                        kb["L_ee"] = _rail["to"].clone()
+                        kb["L_grip_open"] = True
+                    print(f"[sonic] rail hand {'ON' if _rail['held'] else 'OFF (left arm is yours)'}", flush=True)
                 elif k == "ESCAPE":
                     kb["quit"] = True
             kb["R_ee"][0:3] = torch.clamp(kb["R_ee"][0:3], kb["R_lo"], kb["R_hi"])
@@ -1448,13 +1863,20 @@ def main():  # noqa: C901  (one long orchestration: env setup + settle/resettle 
         print(
             "Teleop ready. In the Isaac Sim UI: AR panel -> Start AR, then connect the Pico. "
             "LEFT stick = walk, RIGHT stick X = turn, RIGHT btn = stop, LEFT X/Y = lean. "
-            "Arms: the usual controller_rel teleop (grip-clutch + move, trigger to grasp).",
+            "Arms: the usual controller_rel teleop (grip-clutch + move, trigger to grasp)."
+            + (
+                " LEFT HAND IS ON THE LADDER CAP (rail brace): squeeze the LEFT grip to take the "
+                "left arm back, press both LEFT face buttons to put it back on the cap."
+                if _rail is not None
+                else ""
+            ),
             flush=True,
         )
     else:
         print(
             "Teleop ready (keyboard). Click the Isaac Sim viewport to focus it, then use the keys "
-            "listed above (TAB switches arm; W/S A/D Q/E move + U/O I/K J/L rotate; arrows walk).",
+            "listed above (TAB switches arm; W/S A/D Q/E move + U/O I/K J/L rotate; arrows walk)."
+            + (" LEFT HAND IS ON THE LADDER CAP (rail brace): H toggles it." if _rail is not None else ""),
             flush=True,
         )
 
@@ -1484,12 +1906,18 @@ def main():  # noqa: C901  (one long orchestration: env setup + settle/resettle 
 
         _carry_payload(_rehome_writes)  # joints AND root move the wrist: the payload rides along
         # Reset re-settles like startup, so re-apply the pre-grasp here too (else [R]/RESET drops the bulb).
-        for _ in range(40):  # pin level while feet plant
+        if _rail is not None:
+            _rail["phase"] = "idle"  # the re-home put the left arm back on the staged pose: hold it
+        for _k in range(_pin_steps):  # pin level while feet plant
+            if _rail is not None and _k == 40:
+                _rail_begin()  # re-stage the brace once the feet and the ladder have settled
             robot.set_joint_position_target(ld, joint_ids=act_idx)
             robot.write_root_pose_to_sim(pin)
             robot.write_root_velocity_to_sim(zv)
-            env.step(rest_arm_action().repeat(env.num_envs, 1))  # re-read (like startup): symmetric elbows
+            env.step(_settle_arm())  # re-read (like startup): symmetric elbows
             _pin_settle_bulb()  # carry the re-seated bulb through the grip-close transient
+        if _rail is not None and not _rail_staged_ok():
+            _rail_retract_pinned(pin, ld)
         robot.write_root_pose_to_sim(pin)
         robot.write_root_velocity_to_sim(zv)
         obs_hist = collections.deque([build_obs()] * HIST_LEN, maxlen=HIST_LEN)  # warm w/ real state
@@ -1502,15 +1930,51 @@ def main():  # noqa: C901  (one long orchestration: env setup + settle/resettle 
             last_action = bal_sess.run(None, {in_name: flat})[0][0]
             lt = torch.as_tensor(last_action * ACTION_SCALE + DEFAULT_15, device=dev)
             robot.set_joint_position_target(lt.unsqueeze(0), joint_ids=act_idx)
-            env.step(rest_arm_action().repeat(env.num_envs, 1))  # re-read (like startup): symmetric elbows
+            env.step(_settle_arm())  # re-read (like startup): symmetric elbows
             _pin_settle_bulb()  # keep carrying through the re-settle, released after this loop
         home_xy = robot.data.root_pos_w[0, 0:2].cpu().numpy().copy()  # hold where it actually stands
+        if _rail is not None and _rail["staged"]:
+            _rail_settled()
+            _rail["cap"] = _rail["to"].clone()
+            rest_arm[8:15] = _rail["to"]
+            rest_arm[15] = 1.0
+        elif _rail is not None:
+            rest_arm[8:15] = _rail["rest"]
+            rest_arm[15] = 1.0
         last_arm = rest_arm
 
     # Room interior for the follow-cam, inset from the walls (ROOM_FLOOR_MIN/MAX in scene_cfg).
 
-    n_walk = 6
+    n_walk = 8
     vr_rec_prev = False  # rising-edge detect for the VR record-toggle button
+    vr_rail_prev = [False, False]  # rising-edge detect: left squeeze (take the arm), both left buttons (re-brace)
+
+    def _vr_take_left_arm():
+        """Hand the left arm to the controller without a jump: re-reference the left Se3Rel
+        retargeter to the LIVE wrist pose (its own target is stale from before the brace)."""
+        if args.input != "vr":
+            return
+        _rq_ = robot.data.root_quat_w[0].cpu().numpy()
+        _R_ = _Rot.from_quat([_rq_[1], _rq_[2], _rq_[3], _rq_[0]])
+        _rp_ = robot.data.root_pos_w[0].cpu().numpy()
+        _eeb = robot.body_names.index("left_wrist_yaw_link")
+        for _rt in getattr(teleop, "_retargeters", None) or []:
+            _is_left = getattr(_rt, "_target", None) == DeviceBase.TrackingTarget.CONTROLLER_LEFT
+            if not hasattr(_rt, "_root_pos") or not _is_left:
+                continue
+            _ee_w = robot.data.body_state_w[0, _eeb, 0:3].cpu().numpy().astype(np.float32)
+            _ee = (_R_.as_matrix().T @ (_ee_w - _rp_)).astype(np.float32)
+            _rt._init_pos = _ee.copy()
+            _rt._pos = _ee.copy()
+            _rt._lo = _ee - np.array([0.45, 0.45, 0.45], dtype=np.float32)
+            _rt._hi = _ee + np.array([0.45, 0.45, 0.45], dtype=np.float32)
+            _rt._prev = None
+            _rt._smooth = None
+            _ee_q = robot.data.body_state_w[0, _eeb, 3:7].cpu().numpy()
+            _live_R = _R_.inv() * _Rot.from_quat([_ee_q[1], _ee_q[2], _ee_q[3], _ee_q[0]])
+            _rt._init_R = _live_R
+            _rt._quat_R = _live_R
+
     # Grasp-validity test hooks (default off): at FIATLUX_ROTATE_AT roll the right wrist
     # FIATLUX_ROTATE_DEG (90) about world FIATLUX_ROTATE_AXIS (x), then at FIATLUX_UNGRASP_AT open the
     # hand. A real grasp drops the bulb; one "held" by interpenetration stays stuck (false positive).
@@ -1642,6 +2106,12 @@ def main():  # noqa: C901  (one long orchestration: env setup + settle/resettle 
                     out = teleop.advance()
                     if out is not None:
                         last_arm = out[:-n_walk]
+                        _rail_pose = _rail_main_L() if _rail is not None else None
+                        if _rail_pose is not None:
+                            # the brace keeps the left arm; the left controller is ignored meanwhile
+                            last_arm = last_arm.clone()
+                            last_arm[8:15] = _rail_pose
+                            last_arm[15] = 1.0
                         walk = out[-n_walk:].detach().cpu().numpy()
                         loco_cmd[:] = walk[:3]
                         if walk[3] > 0.5:
@@ -1651,8 +2121,23 @@ def main():  # noqa: C901  (one long orchestration: env setup + settle/resettle 
                         if _rec_now and not vr_rec_prev:
                             rec_flag["toggle"] = True
                         vr_rec_prev = _rec_now
+                        if _rail is not None:
+                            _sq_now, _both_now = walk[6] > 0.5, walk[7] > 0.5
+                            if _sq_now and not vr_rail_prev[0] and _rail["held"]:
+                                _rail_release()
+                                _vr_take_left_arm()
+                                print("[sonic] rail hand OFF (left grip squeezed): the left arm is yours", flush=True)
+                            elif _both_now and not vr_rail_prev[1] and not _rail["held"]:
+                                _rail_rebrace()
+                                print("[sonic] rail hand ON (both left buttons): left arm back on the rail", flush=True)
+                            vr_rail_prev = [_sq_now, _both_now]
                     else:
                         last_arm = rest_arm  # no controller -> FIXED rest pose (no IK re-solve jitter)
+                        _rail_pose = _rail_main_L() if _rail is not None else None
+                        if _rail_pose is not None:
+                            last_arm = last_arm.clone()
+                            last_arm[8:15] = _rail_pose
+                            last_arm[15] = 1.0
                         loco_cmd[:] = 0.0
                         rpy_cmd[:] = 0.0
                 else:  # keyboard: keys persist loco_cmd + move the arm EE target
@@ -1685,6 +2170,10 @@ def main():  # noqa: C901  (one long orchestration: env setup + settle/resettle 
                             f"[sonic] AUTO-UNGRASP step {step_i}: hand OPEN (bulb should fall if gripped)",
                             flush=True,
                         )
+                    _rail_pose = _rail_main_L() if _rail is not None else None
+                    if _rail_pose is not None:
+                        kb["L_ee"] = _rail_pose.clone()
+                        kb["L_grip_open"] = True
                     last_arm = kb_arm_action()
 
                 # Position hold: SONIC is a velocity policy with no position feedback, so cmd=0 slowly
@@ -1746,6 +2235,9 @@ def main():  # noqa: C901  (one long orchestration: env setup + settle/resettle 
                         "rpy_cmd": np.asarray(rpy_cmd, dtype=np.float32)[None],
                         "sonic_action": np.asarray(last_action, dtype=np.float32)[None],
                     }
+                    if _rail is not None:
+                        _extras["rail_contact_force"] = _rail_force().cpu().numpy().astype(np.float32)[None]
+                    _extras.update(_probe_extras())
                     recorder.record_step(_obs_t, arm_action, _rew_t, _term_t, _trunc_t, extras=_extras)
                     if args.stop_on_success and getattr(recorder, "_gate_fired", False):
                         # The gate latched: end the take here. The scene does NOT reset (the
