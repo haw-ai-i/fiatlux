@@ -531,9 +531,7 @@ def main():  # noqa: C901  (one long orchestration: env setup + settle/resettle 
     _rail_env = os.environ.get("FIATLUX_RAIL_HOLD", "auto").lower()
     _rail_on = False
     if _rail_env != "0" and getattr(env_cfg.scene, "ladder", None) is not None:
-        _on_ladder = (
-            float(env_cfg.scene.robot.init_state.pos[2]) - float(env_cfg.scene.ladder.init_state.pos[2]) >= 1.0
-        )
+        _on_ladder = float(env_cfg.scene.robot.init_state.pos[2]) - float(env_cfg.scene.ladder.init_state.pos[2]) >= 1.0
         _rail_on = _rail_env == "1" or (_rail_env == "auto" and _on_ladder)
         if _rail_env == "auto":
             print(
@@ -610,9 +608,18 @@ def main():  # noqa: C901  (one long orchestration: env setup + settle/resettle 
     # captured from an operator take. Empty string keeps the asset's pose.
     _ARM_REST_L = os.environ.get("FIATLUX_ARM_REST_LEFT", "-4.8,9.4,0.5,15.6,-4.3,-9.6,4.8")
     if _ARM_REST_L.strip():
-        _names = [f"left_{_n}_joint" for _n in
-                  ("shoulder_pitch", "shoulder_roll", "shoulder_yaw", "elbow",
-                   "wrist_roll", "wrist_pitch", "wrist_yaw")]
+        _names = [
+            f"left_{_n}_joint"
+            for _n in (
+                "shoulder_pitch",
+                "shoulder_roll",
+                "shoulder_yaw",
+                "elbow",
+                "wrist_roll",
+                "wrist_pitch",
+                "wrist_yaw",
+            )
+        ]
         _vals = [float(_x) for _x in _ARM_REST_L.split(",")]
         if len(_vals) == len(_names) and all(_n in robot.joint_names for _n in _names):
             for _n, _v in zip(_names, _vals):
@@ -624,10 +631,14 @@ def main():  # noqa: C901  (one long orchestration: env setup + settle/resettle 
     # before (an env came up Inspire under "hand=dex3"). Joint names are the ground truth --
     # Dex3 fingers are right_hand_*_N_joint, Inspire's are R_*_joint.
     _jn = list(robot.joint_names)
-    _built = ("dex3" if any("right_hand_" in n for n in _jn)
-              else "inspire" if any(n.startswith("R_") for n in _jn) else "no hand joints found")
-    print(f"[sonic] robot built with {len(_jn)} joints -- hand: {_built} (requested {args.hand.lower()})",
-          flush=True)
+    _built = (
+        "dex3"
+        if any("right_hand_" in n for n in _jn)
+        else "inspire"
+        if any(n.startswith("R_") for n in _jn)
+        else "no hand joints found"
+    )
+    print(f"[sonic] robot built with {len(_jn)} joints -- hand: {_built} (requested {args.hand.lower()})", flush=True)
     if _built not in (args.hand.lower(), "no hand joints found"):
         print(f"[sonic] WARNING: hand mismatch -- the env ignored --hand {args.hand}", flush=True)
     dev = env.device
@@ -1009,8 +1020,11 @@ def main():  # noqa: C901  (one long orchestration: env setup + settle/resettle 
     _sid = re.search(r"-S(\d\d)-", args.task)
     _sid = _sid.group(1) if _sid else None
     _TASK_FRAME = {
-        "05": ("ladder", "bin"), "06": ("bin",), "07": ("table", "fresh_bulb"),
-        "08": ("table", "fresh_bulb"), "09": ("table", "ladder"),
+        "05": ("ladder", "bin"),
+        "06": ("bin",),
+        "07": ("table", "fresh_bulb"),
+        "08": ("table", "fresh_bulb"),
+        "09": ("table", "ladder"),
     }
     _TASK_MODE = {"03": "fixture", "11": "fixture", "07": "bench", "08": "bench", "06": "crate"}
     _want = _TASK_FRAME.get(_sid, ("ladder", "socket"))
@@ -1022,7 +1036,7 @@ def main():  # noqa: C901  (one long orchestration: env setup + settle/resettle 
     def _frame_points():
         pts = []
         for _n in _frame_names:
-            if _n == "table":                      # static asset, no live pose: use the cfg
+            if _n == "table":  # static asset, no live pose: use the cfg
                 pts.append(np.array([_table_pos[0], _table_pos[1], 0.9]))
                 continue
             _o = env.scene[_n]
@@ -1116,8 +1130,11 @@ def main():  # noqa: C901  (one long orchestration: env setup + settle/resettle 
                 _best, _best_m = (_cx, _cy), _m
         _cx = min(max(_best[0], _CAM_MIN[0]), _CAM_MAX[0])
         _cy = min(max(_best[1], _CAM_MIN[1]), _CAM_MAX[1])
-        print(f"[sonic] side camera at ({_cx:.2f},{_cy:.2f},{eye_z}) on robot->{entity}, "
-              f"aimed at ({_mid[0]:.2f},{_mid[1]:.2f},{aim_z}), wall margin {_best_m:.2f} m", flush=True)
+        print(
+            f"[sonic] side camera at ({_cx:.2f},{_cy:.2f},{eye_z}) on robot->{entity}, "
+            f"aimed at ({_mid[0]:.2f},{_mid[1]:.2f},{aim_z}), wall margin {_best_m:.2f} m",
+            flush=True,
+        )
         return ((_cx, _cy, eye_z), (float(_mid[0]), float(_mid[1]), aim_z))
 
     if _cam_mode == "bench":
@@ -1126,8 +1143,8 @@ def main():  # noqa: C901  (one long orchestration: env setup + settle/resettle 
     elif _cam_mode == "crate":
         _static_pose = _side_pose("bin", 0.45, 1.3)
 
-    _follow_dir = [None]    # camera direction from the objects' centre, kept until a point leaves frame
-    _HFOV, _VFOV = 41.0 * 0.9, 26.5 * 0.9   # 12 mm lens, half-angles, used at 90 %
+    _follow_dir = [None]  # camera direction from the objects' centre, kept until a point leaves frame
+    _HFOV, _VFOV = 41.0 * 0.9, 26.5 * 0.9  # 12 mm lens, half-angles, used at 90 %
 
     def _view_margin(eye, c, pts):
         """Smallest angular margin (deg) by which every point sits inside the frame; <0 = cut."""
@@ -1266,27 +1283,20 @@ def main():  # noqa: C901  (one long orchestration: env setup + settle/resettle 
             _ladder = env.scene["ladder"]
             _lw_bid = robot.body_names.index("left_wrist_yaw_link")
 
-            def _env_vec(name, default):
-                return [float(v) for v in os.environ.get(name, default).split(",")]
-
             # Staged wrist height per hand: the fingertips must end ~2 cm ABOVE the cap plate
             # (top z 1.86) before the release drop, or the approach sweeps them through it and
             # the arm jams behind the cap (inspire probe 1). Fingertip reach below the wrist:
             # dex3 0.165 m, inspire 0.21 m; plus the ~6 cm the DLS IK stalls short of the target.
-            _rail_wrist_default = "-0.13,0.30,2.11" if args.hand.lower() == "inspire" else "-0.13,0.30,2.05"
+            _RAIL_WRIST_L = (-0.13, 0.30, 2.11) if args.hand.lower() == "inspire" else (-0.13, 0.30, 2.05)
+            _RAIL_APPROACH_STEPS, _RAIL_DWELL_STEPS = 30, 10  # pinned steps to reach the cap, then settle
             _rail = {
                 # wrist target in the LADDER frame, staged (pre-release) height
-                "wrist_l": torch.tensor([_env_vec("FIATLUX_RAIL_WRIST", _rail_wrist_default)], device=dev),
+                "wrist_l": torch.tensor([_RAIL_WRIST_L], device=dev),
                 # wrist orientation in the LADDER frame (w,x,y,z): the paddle, R_y(+90 deg) =
                 # fingers straight down, palm side (-y_wrist on both hands) toward the robot.
-                # 'rest' keeps the spawn orientation (geometry probes only).
-                "quat_l": (
-                    None
-                    if os.environ.get("FIATLUX_RAIL_WRIST_QUAT_L", "").lower() == "rest"
-                    else torch.tensor([_env_vec("FIATLUX_RAIL_WRIST_QUAT_L", "0.7071068,0,0.7071068,0")], device=dev)
-                ),
-                "approach": int(os.environ.get("FIATLUX_RAIL_APPROACH_STEPS", "30")),
-                "dwell": int(os.environ.get("FIATLUX_RAIL_DWELL_STEPS", "10")),
+                "quat_l": torch.tensor([[0.7071068, 0.0, 0.7071068, 0.0]], device=dev),
+                "approach": _RAIL_APPROACH_STEPS,
+                "dwell": _RAIL_DWELL_STEPS,
                 # The brace HOLDS until the operator takes the arm (keyboard H, VR left grip). There
                 # is no timed return to the rest pose: the hand stays on the ladder and control
                 # passes to the operator from wherever it is, with no repositioning in between.
@@ -1303,33 +1313,26 @@ def main():  # noqa: C901  (one long orchestration: env setup + settle/resettle 
             # The dex3 thumb stands 6 cm proud of the palm when open, straight at the cap top once
             # the hand hangs over the far edge. Fold it across the palm (its grasp preset) as part
             # of the OPEN pose so the paddle is the flat palm + straight fingers only.
+            _lterm = env.action_manager.get_term("left_hand_action")
+            _lthumb_open = _lterm._open_command.clone()  # the REAL open pose, kept to put back
+            _lnames_hand = [robot.joint_names[i] for i in _lterm._joint_ids]
+            _lthumb_idx = [_k for _k, _n in enumerate(_lnames_hand) if "thumb" in _n]
+
             def _rail_thumb_fold():
-                return None
+                """The paddle: thumb across the palm as part of the OPEN pose (also on re-brace)."""
+                for _k in _lthumb_idx:
+                    _lterm._open_command[_k] = _lterm._close_command[_k]
 
             def _rail_thumb_restore():
-                return None
+                """Undo the fold when the operator takes the arm, or open and close stay the
+                same pose and the hand can never let go."""
+                _lterm._open_command.copy_(_lthumb_open)
 
-            if os.environ.get("FIATLUX_RAIL_THUMB", "fold") == "fold":
-                _lterm = env.action_manager.get_term("left_hand_action")
-                _lthumb_open = _lterm._open_command.clone()  # the REAL open pose, kept to put back
-                _lnames_hand = [robot.joint_names[i] for i in _lterm._joint_ids]
-                _lthumb_idx = [_k for _k, _n in enumerate(_lnames_hand) if "thumb" in _n]
-
-                def _rail_thumb_fold():
-                    """The paddle: thumb across the palm as part of the OPEN pose (also on re-brace)."""
-                    for _k in _lthumb_idx:
-                        _lterm._open_command[_k] = _lterm._close_command[_k]
-
-                def _rail_thumb_restore():
-                    """Undo the fold when the operator takes the arm, or open and close stay the
-                    same pose and the hand can never let go."""
-                    _lterm._open_command.copy_(_lthumb_open)
-
-                _rail_thumb_fold()
-                print(
-                    f"[sonic] RAIL HAND: left thumb folded across the palm in the open pose ({len(_lthumb_idx)} joints)",
-                    flush=True,
-                )
+            _rail_thumb_fold()
+            print(
+                f"[sonic] RAIL HAND: left thumb folded across the palm in the open pose ({len(_lthumb_idx)} joints)",
+                flush=True,
+            )
 
             def _rail_force():
                 """Left hand's total force against the ladder (N), from the filtered sensor."""
@@ -1341,10 +1344,7 @@ def main():  # noqa: C901  (one long orchestration: env setup + settle/resettle 
             def _rail_target_b():
                 """Ladder-frame wrist target -> ROOT frame (pose 7). Computed while pinned."""
                 p_w = _ladder.data.root_pos_w + quat_apply(_ladder.data.root_quat_w, _rail["wrist_l"])
-                if _rail["quat_l"] is not None:
-                    q_w = quat_mul(_ladder.data.root_quat_w, _rail["quat_l"])
-                else:
-                    q_w = robot.data.body_state_w[:, _lw_bid, 3:7]
+                q_w = quat_mul(_ladder.data.root_quat_w, _rail["quat_l"])
                 p_b, q_b = subtract_frame_transforms(robot.data.root_pos_w, robot.data.root_quat_w, p_w, q_w)
                 return torch.cat([p_b[0], q_b[0]])
 
@@ -1371,7 +1371,7 @@ def main():  # noqa: C901  (one long orchestration: env setup + settle/resettle 
                 ok = f < 20.0 and dz < 0.05
                 if not ok:
                     print(
-                        f"[sonic] RAIL HAND NOT STAGED (arm-ladder {f:.0f} N, wrist {dz*100:+.0f} cm vs target): "
+                        f"[sonic] RAIL HAND NOT STAGED (arm-ladder {f:.0f} N, wrist {dz * 100:+.0f} cm vs target): "
                         "retracting to the rest pose while pinned; brace OFF for this spawn",
                         flush=True,
                     )
@@ -1389,11 +1389,10 @@ def main():  # noqa: C901  (one long orchestration: env setup + settle/resettle 
                     robot.write_root_velocity_to_sim(zero_vel)
                     _settle_step(_settle_arm())
                     _pin_settle_bulb()
-                _rail["approach"] = int(os.environ.get("FIATLUX_RAIL_APPROACH_STEPS", "30"))
-                _rail["dwell"] = int(os.environ.get("FIATLUX_RAIL_DWELL_STEPS", "10"))
+                _rail["approach"], _rail["dwell"] = _RAIL_APPROACH_STEPS, _RAIL_DWELL_STEPS
                 _rail["phase"], _rail["held"], _rail["staged"] = "idle", False, False
 
-            def _rail_main_L(step_now):
+            def _rail_main_L():
                 """Per main-loop step: the LEFT pose (7) to enforce while braced, or None (operator's arm)."""
                 if _rail["held"]:
                     return _rail["to"]
@@ -1423,17 +1422,17 @@ def main():  # noqa: C901  (one long orchestration: env setup + settle/resettle 
                 pose leaves the brace unloaded until the body moves; one-time, not per frame (a
                 per-frame re-anchor is the sag ratchet the settle comments warn about).
                 """
-                if os.environ.get("FIATLUX_RAIL_REANCHOR", "1") != "1":
-                    return
                 _live = rest_arm_action()[8:15].clone()
                 _d = (_live[0:3] - _rail["to"][0:3]) * 100.0
                 _rail["to"] = _live
                 _lw_l = quat_apply(
-                    quat_inv(_ladder.data.root_quat_w), robot.data.body_state_w[:, _lw_bid, 0:3] - _ladder.data.root_pos_w
+                    quat_inv(_ladder.data.root_quat_w),
+                    robot.data.body_state_w[:, _lw_bid, 0:3] - _ladder.data.root_pos_w,
                 )[0]
                 print(
                     f"[sonic] RAIL HAND re-anchored to the resting pose: wrist ladder-frame "
-                    f"({_lw_l[0]:.3f},{_lw_l[1]:.3f},{_lw_l[2]:.3f}), moved ({_d[0]:+.1f},{_d[1]:+.1f},{_d[2]:+.1f}) cm "
+                    f"({_lw_l[0]:.3f},{_lw_l[1]:.3f},{_lw_l[2]:.3f}), "
+                    f"moved ({_d[0]:+.1f},{_d[1]:+.1f},{_d[2]:+.1f}) cm "
                     f"in the root frame from the staged target; brace force {float(_rail_force()):.1f} N",
                     flush=True,
                 )
@@ -1458,7 +1457,7 @@ def main():  # noqa: C901  (one long orchestration: env setup + settle/resettle 
 
             print(
                 f"[sonic] RAIL HAND: left wrist -> ladder-frame {_rail['wrist_l'][0].tolist()} "
-                f"({'ladder-frame quat ' + str(_rail['quat_l'][0].tolist()) if _rail['quat_l'] is not None else 'rest orientation'}), "
+                f"(ladder-frame quat {_rail['quat_l'][0].tolist()}), "
                 f"{_rail['approach']} approach + {_rail['dwell']} dwell steps while pinned",
                 flush=True,
             )
@@ -1475,9 +1474,18 @@ def main():  # noqa: C901  (one long orchestration: env setup + settle/resettle 
     # reach it: the post-settle restore skips the left arm while the rail hand is staged
     # (_arm_idx), and the rail hand captures its return target from wherever the arm is.
     if _rail is not None and _ARM_REST_L.strip():
-        _lnames = [f"left_{_n}_joint" for _n in
-                   ("shoulder_pitch", "shoulder_roll", "shoulder_yaw", "elbow",
-                    "wrist_roll", "wrist_pitch", "wrist_yaw")]
+        _lnames = [
+            f"left_{_n}_joint"
+            for _n in (
+                "shoulder_pitch",
+                "shoulder_roll",
+                "shoulder_yaw",
+                "elbow",
+                "wrist_roll",
+                "wrist_pitch",
+                "wrist_yaw",
+            )
+        ]
         if all(_n in robot.joint_names for _n in _lnames):
             _lids = [robot.joint_names.index(_n) for _n in _lnames]
             _jp_rest = robot.data.joint_pos.clone()
@@ -1942,7 +1950,8 @@ def main():  # noqa: C901  (one long orchestration: env setup + settle/resettle 
         _rp_ = robot.data.root_pos_w[0].cpu().numpy()
         _eeb = robot.body_names.index("left_wrist_yaw_link")
         for _rt in getattr(teleop, "_retargeters", None) or []:
-            if not hasattr(_rt, "_root_pos") or getattr(_rt, "_target", None) != DeviceBase.TrackingTarget.CONTROLLER_LEFT:
+            _is_left = getattr(_rt, "_target", None) == DeviceBase.TrackingTarget.CONTROLLER_LEFT
+            if not hasattr(_rt, "_root_pos") or not _is_left:
                 continue
             _ee_w = robot.data.body_state_w[0, _eeb, 0:3].cpu().numpy().astype(np.float32)
             _ee = (_R_.as_matrix().T @ (_ee_w - _rp_)).astype(np.float32)
@@ -1956,6 +1965,7 @@ def main():  # noqa: C901  (one long orchestration: env setup + settle/resettle 
             _live_R = _R_.inv() * _Rot.from_quat([_ee_q[1], _ee_q[2], _ee_q[3], _ee_q[0]])
             _rt._init_R = _live_R
             _rt._quat_R = _live_R
+
     # Grasp-validity test hooks (default off): at FIATLUX_ROTATE_AT roll the right wrist
     # FIATLUX_ROTATE_DEG (90) about world FIATLUX_ROTATE_AXIS (x), then at FIATLUX_UNGRASP_AT open the
     # hand. A real grasp drops the bulb; one "held" by interpenetration stays stuck (false positive).
@@ -2087,7 +2097,7 @@ def main():  # noqa: C901  (one long orchestration: env setup + settle/resettle 
                     out = teleop.advance()
                     if out is not None:
                         last_arm = out[:-n_walk]
-                        _rail_pose = _rail_main_L(step_i) if _rail is not None else None
+                        _rail_pose = _rail_main_L() if _rail is not None else None
                         if _rail_pose is not None:
                             # the brace keeps the left arm; the left controller is ignored meanwhile
                             last_arm = last_arm.clone()
@@ -2114,7 +2124,7 @@ def main():  # noqa: C901  (one long orchestration: env setup + settle/resettle 
                             vr_rail_prev = [_sq_now, _both_now]
                     else:
                         last_arm = rest_arm  # no controller -> FIXED rest pose (no IK re-solve jitter)
-                        _rail_pose = _rail_main_L(step_i) if _rail is not None else None
+                        _rail_pose = _rail_main_L() if _rail is not None else None
                         if _rail_pose is not None:
                             last_arm = last_arm.clone()
                             last_arm[8:15] = _rail_pose
@@ -2151,7 +2161,7 @@ def main():  # noqa: C901  (one long orchestration: env setup + settle/resettle 
                             f"[sonic] AUTO-UNGRASP step {step_i}: hand OPEN (bulb should fall if gripped)",
                             flush=True,
                         )
-                    _rail_pose = _rail_main_L(step_i) if _rail is not None else None
+                    _rail_pose = _rail_main_L() if _rail is not None else None
                     if _rail_pose is not None:
                         kb["L_ee"] = _rail_pose.clone()
                         kb["L_grip_open"] = True
@@ -2234,33 +2244,6 @@ def main():  # noqa: C901  (one long orchestration: env setup + settle/resettle 
                     if images is not None:
                         images.maybe_capture(len(recorder._buf["done"]) - 1)  # flat recorded-step index
                 step_i += 1
-                if _rail is not None and os.environ.get("FIATLUX_RAIL_PROBE") and step_i % 25 == 1:
-                    # Geometry probe for tuning the brace pose: where the left hand actually is, in
-                    # the ladder frame, plus the wrist frame's own axes and the finger offsets.
-                    _lq_inv = quat_inv(_ladder.data.root_quat_w)
-                    _in_l = lambda p_w: quat_apply(_lq_inv, p_w - _ladder.data.root_pos_w)[0].cpu().numpy()  # noqa: E731
-                    _wq = robot.data.body_state_w[:, _lw_bid, 3:7]
-                    _wp = robot.data.body_state_w[:, _lw_bid, 0:3]
-                    _axes = [
-                        quat_apply(_lq_inv, quat_apply(_wq, torch.tensor([[float(i == 0), float(i == 1), float(i == 2)]], device=dev)))[0].cpu().numpy()
-                        for i in range(3)
-                    ]
-                    _fing = {}
-                    for _n in ("left_hand_palm_link", "left_hand_index_0_link", "left_hand_middle_0_link",
-                               "left_hand_index_1_link", "left_hand_middle_1_link", "left_hand_thumb_2_link",
-                               "left_hand_base_link", "L_index_intermediate", "L_middle_intermediate", "L_thumb_distal"):
-                        if _n in robot.body_names:
-                            _pb = robot.data.body_state_w[:, robot.body_names.index(_n), 0:3]
-                            _off_w = quat_apply(quat_inv(_wq), _pb - _wp)[0].cpu().numpy()  # in the WRIST frame
-                            _fing[_n] = (np.round(_in_l(_pb), 3).tolist(), np.round(_off_w, 3).tolist())
-                    _lc = float(_rail_force()) if _rail is not None else 0.0
-                    print(
-                        f"[rail-probe] step {step_i} wrist ladder-frame {np.round(_in_l(_wp), 3).tolist()} "
-                        f"root-quat {np.round(subtract_frame_transforms(robot.data.root_pos_w, robot.data.root_quat_w, _wp, _wq)[1][0].cpu().numpy(), 3).tolist()} "
-                        f"wrist axes in ladder frame x={np.round(_axes[0], 2).tolist()} y={np.round(_axes[1], 2).tolist()} z={np.round(_axes[2], 2).tolist()} "
-                        f"| links (ladder-frame pos, wrist-frame offset): {_fing} | left contact {_lc:.2f} N",
-                        flush=True,
-                    )
                 if args.max_steps and step_i >= args.max_steps:
                     print(f"[sonic] --max_steps {args.max_steps} reached; ending session.", flush=True)
                     break
