@@ -3,14 +3,14 @@
 #
 # SPDX-License-Identifier: BSD-3-Clause
 
-"""``FIATLUX-Remove-v0`` -- unscrew/remove the existing bulb (standalone RL task).
+"""``FIATLUX-Remove-v0`` -- remove the existing bulb from the fixture (standalone RL task).
 
 Start layout: Insert's bench world with the OLD BULB seated in the table lamp -- DYNAMIC,
 resting in the socket's open hole under gravity (see ``apply_remove_preset``) -- and an
 empty parts crate beside the bench as its destination.
 
-**Honesty note:** the bulb lifts straight out -- nothing gates unscrewing here, so the
-task is "pick it up and bin it" rather than "unscrew it". ``FIATLUX-Replace-v0`` now gates
+**Honesty note:** the bulb lifts straight out -- nothing gates the retention detent here, so the
+task is "pick it up and bin it" rather than "free it from the detent". ``FIATLUX-Replace-v0`` now gates
 removal on ``mdp.bulb_attachment`` (issue #54); porting that term here is the remaining
 work (unification spec Phase 4: a revolute/screw
 joint or a make/break fixed-joint attach gated by rotation, anchored at the lamp's socket
@@ -18,7 +18,7 @@ seat pose). The reward/termination code below is real, not a placeholder -- it i
 Replace's own ``old_bulb_removed`` / ``old_bulb_disposed`` channels, parametrized
 to point at this scene's ``bulb`` entity instead of Replace's ``old_bulb``. A policy can
 solve it today by lifting the bulb out and binning it; what the mechanic would add is the
-requirement to *unscrew* first, which is how Replace now scores the same channels.
+requirement to *free the bulb from its detent* first, which is how Replace now scores the same channels.
 """
 
 from isaaclab.envs import ManagerBasedRLEnvCfg

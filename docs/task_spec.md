@@ -126,7 +126,7 @@ at 1.0). Completion bonuses pay once per episode.
 | `old_bulb_disposal_progress` (+) | dense | old bulb → disposal crate, normalized progress |
 | `ladder_ready` (+) | completion | upright ladder top horizontally within 0.9 m of the fixture |
 | `fresh_bulb_inserted` (+) | completion | fresh bulb screwed in (the attach gate; Insert's 1.5 cm / 0.2 rad seating tolerances are enforced at attach time) |
-| `old_bulb_removed` (+) | completion | old bulb unscrewed and cleared the seat by 0.10 m (a held bulb reads as seated) |
+| `old_bulb_removed` (+) | completion | old bulb freed from the socket detent and cleared the seat by 0.10 m (a held bulb reads as seated) |
 | `old_bulb_disposed` (+) | completion | old bulb inside the disposal crate (containment, any orientation) |
 | `success_bonus` (+) | sparse | full replacement (fires on the terminating step) |
 | `robot_fall`, `ladder_tipped`, `fresh_bulb_dropped`, `old_bulb_dropped` (−) | penalty | each fires once — the same predicate also terminates |

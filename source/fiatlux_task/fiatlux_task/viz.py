@@ -142,7 +142,7 @@ def fixture_orbit(env_cfg) -> dict:
 def _draw_overlay(frame: np.ndarray, text: str) -> np.ndarray:
     """Burn a few lines of text into the top-left of a frame, over a dark panel.
 
-    Some state a recording needs to show has no visual signature at all. The bayonet unscrew is
+    Some state a recording needs to show has no visual signature at all. The retention release is
     the case in point: the bulb is a surface of revolution, so turning it about its own axis
     changes almost nothing on screen -- measured at 5.7 percent of pixels between two
     mid-rotation frames, and most of that is specular drift. The event is real, and the camera
