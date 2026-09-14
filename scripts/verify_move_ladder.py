@@ -42,7 +42,7 @@ import gymnasium as gym  # noqa: E402
 import torch  # noqa: E402
 from fiatlux_task.tasks.manager_based.fiatlux_task.mdp import rewards  # noqa: E402
 from fiatlux_task.tasks.manager_based.fiatlux_task.scene_cfg import (  # noqa: E402
-    LADDER_READY_XY_RADIUS,
+    LADDER_READY_REACH,
     set_layout_seed,
 )
 from fiatlux_task.tasks.manager_based.fiatlux_task.subtasks.s01_move_ladder_env_cfg import (  # noqa: E402
@@ -84,8 +84,9 @@ def conjuncts() -> dict[str, bool]:
 
 
 def ladder_fixture_xy() -> float:
-    delta = rewards._ladder_top_point_w(env) - rewards._seat_point_w(env)
-    return float(torch.norm(delta[:, :2], dim=1)[0])
+    shoulder, _ = rewards._predicted_stance_shoulder_w(env)
+    delta = rewards._fixture_grasp_point_w(env) - shoulder
+    return float(torch.norm(delta, dim=1)[0])
 
 
 def stage_ladder(*, dz: float = 0.0, tilt: float = 0.0, at_fixture: bool = True) -> None:
@@ -153,7 +154,7 @@ check(
 check(
     "start:ladder_not_yet_ready",
     not start["ladder_ready"],
-    f"ladder top is {ladder_fixture_xy():.3f} m from the fixture (gate radius {LADDER_READY_XY_RADIUS:.3f} m)",
+    f"predicted shoulder is {ladder_fixture_xy():.3f} m from the bulb (gate reach {LADDER_READY_REACH:.3f} m)",
 )
 check("start:gate_open", not all(start.values()), "the episode does not begin already solved")
 

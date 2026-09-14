@@ -31,7 +31,8 @@ from fiatlux_task.robots.g1 import G1_FINGER_JOINT_PATTERNS, G1_WAIST_JOINT_PATT
 
 from . import mdp
 from .scene_cfg import (
-    LADDER_READY_XY_RADIUS,
+    LADDER_READY_FACING_TOLERANCE,
+    LADDER_READY_REACH,
     ROOM_ENV_SPACING,
     SUBTASK_EPISODE_LENGTH_S,
     G1ReplaceSceneCfg,
@@ -187,7 +188,8 @@ class RewardsCfg:
         params={
             "predicate_fn": mdp.ladder_ready,
             "predicate_params": {
-                "xy_radius": LADDER_READY_XY_RADIUS,
+                "reach": LADDER_READY_REACH,
+                "facing_tolerance": LADDER_READY_FACING_TOLERANCE,
                 "tilt_limit": LADDER_TILT_LIMIT,
             },
         },
@@ -233,10 +235,14 @@ class TerminationsCfg:
     """Horizon, success (ladder positioned upright within reach), and fall/tip violations."""
 
     time_out = DoneTerm(func=mdp.time_out, time_out=True)
-    # success: the Replace task's ladder-ready predicate (xy within reach + upright)
+    # success: the Replace task's ladder-ready predicate (palm can reach, stance faces it, upright)
     success = DoneTerm(
         func=mdp.ladder_ready,
-        params={"xy_radius": LADDER_READY_XY_RADIUS, "tilt_limit": LADDER_TILT_LIMIT},
+        params={
+            "reach": LADDER_READY_REACH,
+            "tilt_limit": LADDER_TILT_LIMIT,
+            "facing_tolerance": LADDER_READY_FACING_TOLERANCE,
+        },
     )
     ladder_tipped = DoneTerm(func=mdp.ladder_tipped, params={"tilt_limit": LADDER_TILT_LIMIT})
     # No height-gate "dropped" check here: this ladder's

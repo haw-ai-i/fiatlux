@@ -17,8 +17,10 @@ dragging, shouldering, pushing along the floor and nudging it a foot at a time a
 no gate conjunct reads contact, so none of them can tell those apart. The gate is the deliverable
 itself, held for ``PLACE_SUSTAIN_SECONDS``:
 
-* ``ladder_ready`` -- the ladder's top is horizontally within ``LADDER_READY_XY_RADIUS`` of the
-  fixture and the ladder is upright;
+* ``ladder_ready`` -- the ladder is upright AND placed so the stance it would produce can reach
+  the socket with its PALM (3-D, ``LADDER_READY_REACH``) while facing it
+  (``LADDER_READY_FACING_TOLERANCE``). A flat radius with no orientation scored placements the
+  arm could not cover and ladders whose steps pointed away (issue #147);
 * ``ladder_feet_down`` -- its root is on the floor, so a ladder merely *held* in the right place
   at the right angle does not read as standing;
 * ``object_at_rest`` -- it has settled, not swung through;
@@ -42,7 +44,8 @@ from .. import mdp
 from ..mdp import place_terms
 from ..mdp.nav_terms import add_grip_contact_sensor
 from ..scene_cfg import (
-    LADDER_READY_XY_RADIUS,
+    LADDER_READY_FACING_TOLERANCE,
+    LADDER_READY_REACH,
     add_ego_camera,
     add_mid360_lidar,
     apply_replace_preset,
@@ -65,7 +68,14 @@ LADDER_FEET_TOLERANCE = 0.02  # m
 # The success gate as data (mdp.all_of): an omitted conjunct in a hand-written conjunction is a
 # gate that passes vacuously.
 LADDER_MOVED_CONJUNCTS = [
-    (mdp.ladder_ready, {"xy_radius": LADDER_READY_XY_RADIUS, "tilt_limit": mdp.LADDER_TILT_LIMIT}),
+    (
+        mdp.ladder_ready,
+        {
+            "reach": LADDER_READY_REACH,
+            "tilt_limit": mdp.LADDER_TILT_LIMIT,
+            "facing_tolerance": LADDER_READY_FACING_TOLERANCE,
+        },
+    ),
     (place_terms.ladder_feet_down, {"tolerance": LADDER_FEET_TOLERANCE}),
     (
         place_terms.object_at_rest,

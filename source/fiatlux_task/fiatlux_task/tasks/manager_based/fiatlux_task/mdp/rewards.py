@@ -42,6 +42,7 @@ through ``mdp.bulb_attachment`` (issue #167), Remove does not yet.
 
 from __future__ import annotations
 
+import math
 from typing import TYPE_CHECKING
 
 import torch
@@ -49,16 +50,19 @@ import torch
 from isaaclab.assets import Articulation, RigidObject
 from isaaclab.managers import ManagerTermBase, SceneEntityCfg
 from isaaclab.sensors import ContactSensor
-from isaaclab.utils.math import quat_apply, quat_error_magnitude
+from isaaclab.utils.math import quat_apply, quat_error_magnitude, quat_mul
 
 from fiatlux_task.assets import (
+    BULB_BODY_CENTRE_OFFSET,
     BULB_PLUG_AXIS,
     BULB_PLUG_OFFSET,
+    G1_WORKING_SHOULDER_OFFSET,
     SOCKET_SEAT_AXIS,
     SOCKET_SEAT_OFFSET,
     STEP_LADDER_TOP_OFFSET,
 )
 
+from ..scene_cfg import LADDER_READY_MIN_BEARING, TOP_STANCE_PELVIS_OFFSET, TOP_STANCE_YAW_OFFSET_DEG
 from .place_terms import old_bulb_in_bin
 
 if TYPE_CHECKING:
@@ -584,11 +588,58 @@ class completion_bonus(ManagerTermBase):
         return fire.float()
 
 
-def ladder_ready(env: ManagerBasedRLEnv, xy_radius: float, tilt_limit: float) -> torch.Tensor:
-    """True where the (upright) ladder's top is horizontally within reach of the fixture."""
-    delta = _ladder_top_point_w(env) - _seat_point_w(env)
-    near = torch.norm(delta[:, :2], dim=1) < xy_radius
-    return near & ~ladder_tipped(env, tilt_limit)
+def _predicted_stance_shoulder_w(env: ManagerBasedRLEnv) -> tuple[torch.Tensor, torch.Tensor]:
+    """(shoulder position, stance forward) the working stance would have on THIS ladder pose.
+
+    The stance is a pure function of the ladder pose -- ``stand_robot_on_ladder_top`` puts the
+    pelvis over the tread and turns it a quarter turn -- so a gate judging a placement can work
+    out where the shoulder would end up before the robot ever climbs.
+    """
+    ladder: RigidObject = env.scene["ladder"]
+    n, device = env.num_envs, env.device
+    quat = ladder.data.root_quat_w
+    tread = torch.tensor(STEP_LADDER_TOP_OFFSET, device=device).expand(n, 3)
+    pelvis = ladder.data.root_pos_w + quat_apply(quat, tread)
+    pelvis = pelvis + torch.tensor((0.0, 0.0, TOP_STANCE_PELVIS_OFFSET), device=device).expand(n, 3)
+
+    turn = math.radians(TOP_STANCE_YAW_OFFSET_DEG)
+    half = torch.tensor((math.cos(turn / 2), 0.0, 0.0, math.sin(turn / 2)), device=device).expand(n, 4)
+    stance_quat = quat_mul(quat, half)
+    shoulder = pelvis + quat_apply(stance_quat, torch.tensor(G1_WORKING_SHOULDER_OFFSET, device=device).expand(n, 3))
+    forward = quat_apply(stance_quat, torch.tensor((1.0, 0.0, 0.0), device=device).expand(n, 3))
+    return shoulder, forward
+
+
+def _fixture_grasp_point_w(env: ManagerBasedRLEnv) -> torch.Tensor:
+    """World position of the seated bulb's graspable body centre."""
+    socket: RigidObject = env.scene["socket"]
+    offset = torch.tensor(BULB_BODY_CENTRE_OFFSET, device=env.device).expand(env.num_envs, 3)
+    return socket.data.root_pos_w + quat_apply(socket.data.root_quat_w, offset)
+
+
+def ladder_ready(
+    env: ManagerBasedRLEnv,
+    reach: float,
+    tilt_limit: float,
+    facing_tolerance: float,
+) -> torch.Tensor:
+    """True where the ladder is placed so a stance on it could GRASP the seated bulb.
+
+    Four things, where there used to be two (issue #147). Upright, as before. Then the bulb's
+    graspable body centre within ``reach`` of the predicted stance's shoulder in 3-D, not a flat
+    radius. The bulb must also sit at least ``LADDER_READY_MIN_BEARING`` out horizontally, or the
+    fixture housing is inside the stance's torso -- and the facing angle below is undefined on a
+    zero bearing. Finally the stance must FACE it.
+    """
+    shoulder, forward = _predicted_stance_shoulder_w(env)
+    bearing = _fixture_grasp_point_w(env) - shoulder
+    within = torch.norm(bearing, dim=1) < reach
+    flat = bearing[:, :2]
+    flat_norm = flat.norm(dim=1)
+    clear = flat_norm >= LADDER_READY_MIN_BEARING
+    cos = (forward[:, :2] * flat).sum(dim=1) / flat_norm.clamp(min=1e-9)
+    facing = torch.acos(cos.clamp(-1.0, 1.0)) < facing_tolerance
+    return within & clear & facing & ~ladder_tipped(env, tilt_limit)
 
 
 def old_bulb_removed(

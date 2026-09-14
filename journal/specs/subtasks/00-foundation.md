@@ -207,11 +207,12 @@ Now derived from the stance the tasks actually work from:
 
 | Constant | Value |
 |---|---|
-| `LADDER_WORK_PELVIS_Z` (= Climb's `SUCCESS_HEIGHT`) | 1.700 m |
-| `LADDER_WORK_FOOT_Z` | 0.910 m |
-| `MAX_REACHABLE_MOUNT_Z` | 2.284 m |
-| `CEILING_FIXTURE_Z` = `WALL_MOUNT_Z` | **2.200 m** (8.4 cm margin) |
-| `LADDER_READY_XY_RADIUS` | 0.422 m |
+| `LADDER_WORK_PELVIS_Z` (= Climb's `SUCCESS_HEIGHT`) | 1.820 m |
+| `LADDER_WORK_FOOT_Z` | 1.030 m |
+| `MAX_REACHABLE_MOUNT_Z` | 2.404 m |
+| `CEILING_FIXTURE_Z` | **2.370 m** (3.4 cm margin; raised from 2.200 in #158 so the pendant bulb hangs level with the working shoulder -- a scene change for every ceiling draw, not only S01) |
+| `WALL_MOUNT_Z` | **2.200 m** |
+| `LADDER_READY_REACH` / `LADDER_READY_FACING_TOLERANCE` / `LADDER_READY_MIN_BEARING` | 0.419 m palm reach, 3-D from the predicted working shoulder to the seated bulb / 45 deg / 0.233 m (replaces the flat `LADDER_READY_XY_RADIUS`, #147) |
 
 Two import-time guards now bracket the fixture height from both sides: it must be **reachable** from
 the working stance, and it must remain **above standing floor reach** (1.374 m) so the ladder is
