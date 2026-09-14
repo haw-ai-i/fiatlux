@@ -1,4 +1,4 @@
-"""``FIATLUX-S03-RemoveOldBulb-Teleop-v0`` -- unscrew and remove the old bulb, teleoperated.
+"""``FIATLUX-S03-RemoveOldBulb-Teleop-v0`` -- remove the old bulb from the fixture, teleoperated.
 
 S03RemoveOldBulbEnvCfg with the shared teleop interface applied (arm-IK + binary grip in place of the RL
 whole-body joint action, the pelvis-anchored XR follow camera and ``controller_rel`` device,
