@@ -72,6 +72,7 @@ HAND_CUP: dict[str, float] = {
 # ---------------------------------------------------------------------------
 HAND_FLAT_DEX3: dict[str, float] = dict.fromkeys(G1_DEX3_RIGHT_HAND_JOINTS, 0.0)
 _DEX3_CURL = 1.2
+_DEX3_CUP_CURL = 0.667  # issue #196
 HAND_CRADLE_DEX3: dict[str, float] = {
     "right_hand_index_0_joint": _DEX3_CURL,
     "right_hand_index_1_joint": _DEX3_CURL,
@@ -82,8 +83,23 @@ HAND_CRADLE_DEX3: dict[str, float] = {
     "right_hand_thumb_2_joint": -_DEX3_CURL,
 }
 
+def hand_cup_dex3(curl: float = _DEX3_CUP_CURL) -> dict[str, float]:
+    return {
+        "right_hand_index_0_joint": curl,
+        "right_hand_index_1_joint": curl,
+        "right_hand_middle_0_joint": curl,
+        "right_hand_middle_1_joint": curl,
+        "right_hand_thumb_0_joint": 0.9,
+        "right_hand_thumb_1_joint": 0.3,
+        "right_hand_thumb_2_joint": -curl,
+    }
+
+
+HAND_CUP_DEX3: dict[str, float] = hand_cup_dex3()
+
 HAND_FLAT_BY_VARIANT: dict[str, dict[str, float]] = {"inspire": HAND_FLAT, "dex3": HAND_FLAT_DEX3}
 HAND_CRADLE_BY_VARIANT: dict[str, dict[str, float]] = {"inspire": HAND_CRADLE, "dex3": HAND_CRADLE_DEX3}
+HAND_CUP_BY_VARIANT: dict[str, dict[str, float]] = {"inspire": HAND_CUP, "dex3": HAND_CUP_DEX3}
 
 # (w, x, y, z). The ymomhw bulb is an elongated ~25 cm body; upright it topples.
 BULB_LYING_QUAT: tuple[float, float, float, float] = (0.7071068, 0.7071068, 0.0, 0.0)

@@ -40,7 +40,7 @@ from __future__ import annotations
 import argparse
 import json
 import sys
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, field
 from pathlib import Path
 
 import numpy as np
@@ -55,6 +55,11 @@ class ScoreConfig:
     dropped_penalty: float = 1.0  # subtracted from any episode's score
     min_score: float = 0.0  # floor for a per-episode score
     drop_min_height: float = 0.4  # m; bulb below this counts as dropped
+    # Per-bulb floors from the bag (issue #202). A scene can hold two bulbs and only one is
+    # the one the leg manipulates, so a single ``bulb_pos`` column scored the wrong one:
+    # S03-S06 watched a fresh bulb parked on the bench while the operator dropped the old
+    # one. ``None`` for a bulb means exempt -- the task puts that bulb down on purpose.
+    drop_floors_by_bulb: dict[str, float | None] = field(default_factory=dict)
 
 
 # --------------------------------------------------------------------------- #
@@ -153,15 +158,53 @@ def episode_gate_progress(ep: dict[str, np.ndarray]) -> float | None:
     return float(np.clip((float(counts.max()) - at_reset) / (n - at_reset), 0.0, 1.0))
 
 
+def apply_bag_metadata(cfg: ScoreConfig, meta: dict) -> ScoreConfig:
+    """Take the thresholds the bag itself recorded, and return ``cfg``.
+
+    A bag knows what its own task counts as a dropped bulb; a caller scoring it with bare
+    defaults silently substitutes the family numbers instead. That is not academic -- the
+    per-bulb floors (issue #202) live only here, so a caller that skips this scores S06's
+    disposal against a height the task never asked for, or misses an old bulb that fell.
+    Call it wherever a bag is scored, and apply any explicit overrides AFTER it.
+    """
+    if "drop_min_height" in meta:
+        cfg.drop_min_height = float(meta["drop_min_height"])
+    if isinstance(meta.get("drop_min_height_by_bulb"), dict):
+        cfg.drop_floors_by_bulb = {
+            name: (None if floor is None else float(floor)) for name, floor in meta["drop_min_height_by_bulb"].items()
+        }
+    if "fragility_threshold" in meta:
+        cfg.fragility_threshold = float(meta["fragility_threshold"])
+    elif "glass_contact_limit_n" in meta:
+        cfg.fragility_threshold = float(meta["glass_contact_limit_n"])
+    return cfg
+
+
 def score_episode(ep: dict[str, np.ndarray], cfg: ScoreConfig) -> dict:
     success = ep.get("success_term")
     seated = bool(success[-1]) if success is not None and getattr(success, "size", 0) else False
 
     dropped_term = ep.get("dropped_term")
     dropped = bool(dropped_term[-1]) if dropped_term is not None and getattr(dropped_term, "size", 0) else False
-    bulb_pos = ep.get("bulb_pos")
-    if not dropped and bulb_pos is not None and getattr(bulb_pos, "size", 0):
-        dropped = bool(bulb_pos[:, 2].min() < cfg.drop_min_height)
+    # Every bulb the bag names, each against its own floor. Bags recorded before the per-bulb
+    # floors existed carry neither, and fall back to the single ``bulb_pos`` column.
+    columns = [(f"{name}_pos", floor) for name, floor in cfg.drop_floors_by_bulb.items()]
+    checked = False
+    for column, floor in columns:
+        if floor is None:  # exempt: the task requires this bulb to end up low
+            continue
+        pos = ep.get(column)
+        if pos is None or not getattr(pos, "size", 0):
+            continue
+        checked = True
+        dropped = dropped or bool(pos[:, 2].min() < floor)
+    # Fall back only when the per-bulb pass checked NOTHING -- an older bag with no per-bulb
+    # floors, or floors naming columns this bag does not carry. Staying silent there would be a
+    # penalty that never fires, which is the bug this metadata exists to fix.
+    if not checked and not dropped:
+        bulb_pos = ep.get("bulb_pos")
+        if bulb_pos is not None and getattr(bulb_pos, "size", 0):
+            dropped = bool(bulb_pos[:, 2].min() < cfg.drop_min_height)
 
     peak_force = _peak_contact_force(ep)
     broken = peak_force > cfg.fragility_threshold
@@ -269,10 +312,7 @@ def main():
 
     episodes, meta = load_bag(args.bag)
 
-    cfg = ScoreConfig()
-    # Thresholds default from the bag's metadata when present.
-    if "drop_min_height" in meta:
-        cfg.drop_min_height = float(meta["drop_min_height"])
+    cfg = apply_bag_metadata(ScoreConfig(), meta)
     for name, value in [
         ("fragility_threshold", args.fragility_threshold),
         ("broken_penalty", args.broken_penalty),

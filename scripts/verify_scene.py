@@ -50,6 +50,13 @@ parser.add_argument(
 )
 parser.add_argument("--num_envs", type=int, default=4, help="Number of environments to spawn.")
 parser.add_argument(
+    "--robot",
+    type=str,
+    default="inspire",
+    choices=["inspire", "dex3"],
+    help="G1 hand variant. dex3 is the variant the VLA baselines score.",
+)
+parser.add_argument(
     "--seed",
     type=int,
     default=0,
@@ -240,6 +247,14 @@ def write_orbit_video(base, env_cfg, actions) -> str:
     return out_path
 
 
+def _apply_robot_variant(env_cfg, variant: str) -> None:
+    if variant == "inspire":
+        return
+    from fiatlux_task.robots.g1 import swap_robot_variant
+
+    swap_robot_variant(env_cfg, variant)
+
+
 def main() -> int:
     results: list[tuple[str, bool, str]] = []
 
@@ -253,6 +268,7 @@ def main() -> int:
     # this a failing layout could not be re-run.
     set_layout_seed(args_cli.seed)
     env_cfg = parse_env_cfg(args_cli.task, device=args_cli.device, num_envs=args_cli.num_envs)
+    _apply_robot_variant(env_cfg, args_cli.robot)
     env_cfg.seed = args_cli.seed
     if args_cli.hold_base:
         env_cfg.scene.robot.spawn.articulation_props.fix_root_link = True

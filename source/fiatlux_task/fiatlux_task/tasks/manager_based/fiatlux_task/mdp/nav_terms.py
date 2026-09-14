@@ -174,6 +174,7 @@ def settle_carried_payload_live(
     env_ids: torch.Tensor,
     payload_cfg: SceneEntityCfg,
     hand_variant: str = "inspire",
+    reset_mode: bool = False,
 ) -> None:
     """Seat a carried payload directly ON the hand's LIVE, actually-simulated palm surface.
 
@@ -204,10 +205,13 @@ def settle_carried_payload_live(
     the arm has actually been simulated into its target pose (the reset's own
     ``scene.write_data_to_sim()`` + ``sim.forward()``, followed by this step's physics).
     """
-    fresh = env.episode_length_buf[env_ids] == 1
-    if not bool(fresh.any()):
-        return
-    ids = env_ids[fresh]
+    if reset_mode:
+        ids = env_ids
+    else:
+        fresh = env.episode_length_buf[env_ids] == 1
+        if not bool(fresh.any()):
+            return
+        ids = env_ids[fresh]
 
     from isaaclab.utils.math import matrix_from_quat, quat_from_matrix
 
@@ -223,6 +227,13 @@ def settle_carried_payload_live(
 
     robot: Articulation = env.scene["robot"]
     payload: RigidObject = env.scene[payload_cfg.name]
+    if reset_mode:
+        # Reset-mode events run before the cycle's kinematics update, so body_pos_w still holds
+        # the previous episode's poses. Force the update here instead of waiting a step, so the
+        # payload is seated before any physics runs on the overlap (issue #197).
+        robot.write_data_to_sim()
+        env.sim.forward()
+        robot.update(0.0)
     palm_idx = robot.find_bodies(G1_PALM_BODY_BY_VARIANT[hand_variant])[0][0]
     palm_quat = robot.data.body_quat_w[ids, palm_idx]
     rot = matrix_from_quat(palm_quat)  # (n, 3, 3), columns are the palm's local axes in world
