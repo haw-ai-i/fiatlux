@@ -1287,12 +1287,10 @@ def main():  # noqa: C901  (one long orchestration: env setup + settle/resettle 
                 ),
                 "approach": int(os.environ.get("FIATLUX_RAIL_APPROACH_STEPS", "30")),
                 "dwell": int(os.environ.get("FIATLUX_RAIL_DWELL_STEPS", "10")),
-                # Brace only through the settle + the first N s of teleop (the release drop and
-                # the back-glide, where every idle fall started), then return the arm to its rest
-                # pose so the operator gets the usual two free hands. 0 = hold until toggled.
-                "hold_seconds": float(os.environ.get("FIATLUX_RAIL_HOLD_SECONDS", "0")),
-                "release_at": None,  # main-loop step at which the timed release starts
-                "phase": "idle",  # idle -> approach -> hold ; retract (main loop) -> idle
+                # The brace HOLDS until the operator takes the arm (keyboard H, VR left grip). There
+                # is no timed return to the rest pose: the hand stays on the ladder and control
+                # passes to the operator from wherever it is, with no repositioning in between.
+                "phase": "idle",  # idle -> approach -> hold ; the operator toggle -> idle
                 "i": 0,
                 "from": None,  # root-frame L pose the approach starts from (= the spawn rest pose)
                 "to": None,  # root-frame L pose it ends at (= the hold target)
@@ -1305,35 +1303,33 @@ def main():  # noqa: C901  (one long orchestration: env setup + settle/resettle 
             # The dex3 thumb stands 6 cm proud of the palm when open, straight at the cap top once
             # the hand hangs over the far edge. Fold it across the palm (its grasp preset) as part
             # of the OPEN pose so the paddle is the flat palm + straight fingers only.
+            def _rail_thumb_fold():
+                return None
+
+            def _rail_thumb_restore():
+                return None
+
             if os.environ.get("FIATLUX_RAIL_THUMB", "fold") == "fold":
                 _lterm = env.action_manager.get_term("left_hand_action")
                 _lthumb_open = _lterm._open_command.clone()  # the REAL open pose, kept to put back
-                _folded = 0
-                for _k, _n in enumerate(robot.joint_names[i] for i in _lterm._joint_ids):
-                    if "thumb" in _n:
+                _lnames_hand = [robot.joint_names[i] for i in _lterm._joint_ids]
+                _lthumb_idx = [_k for _k, _n in enumerate(_lnames_hand) if "thumb" in _n]
+
+                def _rail_thumb_fold():
+                    """The paddle: thumb across the palm as part of the OPEN pose (also on re-brace)."""
+                    for _k in _lthumb_idx:
                         _lterm._open_command[_k] = _lterm._close_command[_k]
-                        _folded += 1
 
                 def _rail_thumb_restore():
-                    """Undo the fold, or open and close stay the same pose and the hand cannot let go."""
+                    """Undo the fold when the operator takes the arm, or open and close stay the
+                    same pose and the hand can never let go."""
                     _lterm._open_command.copy_(_lthumb_open)
-                print(f"[sonic] RAIL HAND: left thumb folded across the palm in the open pose ({_folded} joints)", flush=True)
 
-            # The return commands JOINTS, not a wrist pose: a pose fixes 6 numbers and the arm
-            # has 7 joints, so the IK satisfies it with whatever shoulder/elbow it likes.
-            _larm_term = env.action_manager.get_term("left_arm_action")
-            _larm_jids = _larm_term._joint_ids
-            _larm_rest_q = robot.data.default_joint_pos[:, _larm_jids].clone()
-            _larm_apply_orig = _larm_term.apply_actions
-            _rail_jt = {"q": None}
-
-            def _larm_apply():
-                if _rail_jt["q"] is None:
-                    _larm_apply_orig()
-                else:
-                    robot.set_joint_position_target(_rail_jt["q"], joint_ids=_larm_jids)
-
-            _larm_term.apply_actions = _larm_apply
+                _rail_thumb_fold()
+                print(
+                    f"[sonic] RAIL HAND: left thumb folded across the palm in the open pose ({len(_lthumb_idx)} joints)",
+                    flush=True,
+                )
 
             def _rail_force():
                 """Left hand's total force against the ladder (N), from the filtered sensor."""
@@ -1398,41 +1394,23 @@ def main():  # noqa: C901  (one long orchestration: env setup + settle/resettle 
                 _rail["phase"], _rail["held"], _rail["staged"] = "idle", False, False
 
             def _rail_main_L(step_now):
-                """Per main-loop step: the LEFT pose (7) to enforce, or None (operator's arm)."""
-                if _rail["phase"] == "hold" and _rail["held"] and _rail["release_at"] is not None and step_now >= _rail["release_at"]:
-                    # timed release: glide the hand back to the rest pose over 1 s, then let go
-                    _rail["cap"] = _rail["to"].clone()
-                    _rail["from"], _rail["to"] = _rail["to"].clone(), _rail["rest"].clone()
-                    _rail_jt["q"] = _larm_rest_q  # drive the JOINTS to the recorded pose
-                    _rail["phase"], _rail["i"], _rail["release_at"] = "retract", 0, None
-                    print(f"[sonic] RAIL HAND timed release ({_rail['hold_seconds']:.1f} s): returning the left arm to rest", flush=True)
-                if _rail["phase"] == "retract":
-                    a = min(1.0, _rail["i"] / 50.0)
-                    pose = (1 - a) * _rail["from"] + a * _rail["to"]
-                    pose[3:7] = pose[3:7] / torch.linalg.norm(pose[3:7])
-                    _rail["i"] += 1
-                    if _rail["i"] > 50:
-                        _rail["phase"], _rail["held"] = "idle", False
-                        _rail_jt["q"] = None  # hand the arm back: nothing of ours drives it now
-                        _rail_thumb_restore()  # or the hand can never un-grasp
-                        # hold the shape the joints landed on, not a stale pose target
-                        _rail["rest"] = rest_arm_action()[8:15]
-                        rest_arm[8:15] = _rail["rest"]
-                        if args.input == "vr":
-                            _vr_take_left_arm()
-                        elif kb is not None:
-                            kb["L_ee"] = _rail["rest"].clone()
-                        print("[sonic] RAIL HAND released: left arm is yours (H / both left buttons re-brace)", flush=True)
-                        return None
-                    return pose
+                """Per main-loop step: the LEFT pose (7) to enforce while braced, or None (operator's arm)."""
                 if _rail["held"]:
                     return _rail["to"]
                 return None
+
+            def _rail_release():
+                """The operator takes the left arm: stop enforcing the cap pose and give the hand its
+                real open pose back. The arm is handed over where it is -- on the ladder -- with no
+                return to a rest pose first."""
+                _rail["held"], _rail["phase"] = False, "idle"
+                _rail_thumb_restore()
 
             def _rail_rebrace():
                 """Operator asked for the brace back: aim at the cap pose again (the IK slews)."""
                 if _rail["cap"] is not None:
                     _rail["to"] = _rail["cap"].clone()
+                _rail_thumb_fold()
                 _rail["phase"], _rail["held"] = "hold", True
 
             def _rail_settled():
@@ -1570,8 +1548,6 @@ def main():  # noqa: C901  (one long orchestration: env setup + settle/resettle 
         _rail["cap"] = _rail["to"].clone()
         rest_arm[8:15] = _rail["to"]
         rest_arm[15] = 1.0
-        if _rail["hold_seconds"] > 0:
-            _rail["release_at"] = int(_rail["hold_seconds"] * 50)
         _lw_l = quat_apply(
             quat_inv(_ladder.data.root_quat_w), robot.data.body_state_w[:, _lw_bid, 0:3] - _ladder.data.root_pos_w
         )[0]
@@ -1808,7 +1784,7 @@ def main():  # noqa: C901  (one long orchestration: env setup + settle/resettle 
                     _reset()
                 elif k == "H" and _rail is not None:
                     if _rail["held"]:
-                        _rail["held"], _rail["phase"] = False, "idle"
+                        _rail_release()
                     else:  # back onto the rail: re-aim the left target at the cap pose
                         _rail_rebrace()
                         kb["L_ee"] = _rail["to"].clone()
@@ -1945,8 +1921,6 @@ def main():  # noqa: C901  (one long orchestration: env setup + settle/resettle 
             _rail["cap"] = _rail["to"].clone()
             rest_arm[8:15] = _rail["to"]
             rest_arm[15] = 1.0
-            if _rail["hold_seconds"] > 0:
-                _rail["release_at"] = step_i + int(_rail["hold_seconds"] * 50)
         elif _rail is not None:
             rest_arm[8:15] = _rail["rest"]
             rest_arm[15] = 1.0
@@ -2131,7 +2105,7 @@ def main():  # noqa: C901  (one long orchestration: env setup + settle/resettle 
                         if _rail is not None:
                             _sq_now, _both_now = walk[6] > 0.5, walk[7] > 0.5
                             if _sq_now and not vr_rail_prev[0] and _rail["held"]:
-                                _rail["held"], _rail["phase"] = False, "idle"
+                                _rail_release()
                                 _vr_take_left_arm()
                                 print("[sonic] rail hand OFF (left grip squeezed): the left arm is yours", flush=True)
                             elif _both_now and not vr_rail_prev[1] and not _rail["held"]:
