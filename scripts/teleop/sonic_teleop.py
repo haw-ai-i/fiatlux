@@ -1360,15 +1360,19 @@ def main():  # noqa: C901  (one long orchestration: env setup + settle/resettle 
             def _rail_staged_ok():
                 """End of the pinned approach: did the hand land where it was sent?
 
-                Two ways it does not, both seen: the arm pressing on the ladder (the elbow inside
-                a side rail after the IK wandered off) or the wrist parked well ABOVE its target
-                (the normal DLS stall is a few cm BELOW it). Either way releasing the base now
-                throws the robot (S11 inspire seed 4 in the VR batch: 1.1 m/s kick, ladder 58 cm),
-                so the brace is worth less than nothing on that spawn.
+                Three ways it does not, all seen: the arm pressing on the ladder (the elbow inside
+                a side rail after the IK wandered off), the wrist parked well ABOVE its target, or
+                the wrist stalled well BELOW its target with no ladder contact at all (an
+                unreachable/stalled approach leaves the hand dangling in free air -- near-zero
+                force, since it touches nothing). The normal DLS stall is only a few cm below
+                target, so a small negative dz is fine; a large one means there is no brace.
+                Any of these releasing the base now throws the robot (S11 inspire seed 4 in the
+                VR batch: 1.1 m/s kick, ladder 58 cm), so the brace is worth less than nothing on
+                that spawn.
                 """
                 f = float(_rail_force())
                 dz = float(rest_arm_action()[10] - _rail["to"][2])
-                ok = f < 20.0 and dz < 0.05
+                ok = f < 20.0 and abs(dz) < 0.05
                 if not ok:
                     print(
                         f"[sonic] RAIL HAND NOT STAGED (arm-ladder {f:.0f} N, wrist {dz * 100:+.0f} cm vs target): "
