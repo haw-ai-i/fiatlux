@@ -80,7 +80,7 @@ parser.add_argument(
     default="cradle",
     help="hand scenario: which hand pose to hold the bulb with. 'cradle' closes the fingers "
     "(poses.HAND_CRADLE); 'cup' is the open palm the carry subtasks actually spawn "
-    "(poses.HAND_CUP). Inspire only -- Dex3 has no HAND_CUP equivalent.",
+    "(poses.HAND_CUP / HAND_CUP_DEX3).",
 )
 parser.add_argument(
     "--curl",
@@ -238,17 +238,22 @@ HAND_FLAT = HAND_FLAT_BY_VARIANT[args_cli.robot]
 HAND_CRADLE = HAND_CRADLE_BY_VARIANT[args_cli.robot]
 # --grip cup swaps in the open palm the carry subtasks spawn. Dex3 has no cup pose, so it keeps
 # the cradle.
-if args_cli.grip == "cup" and args_cli.robot == "inspire":
-    from fiatlux_task.poses import HAND_CUP  # noqa: E402
+if args_cli.grip == "cup":
+    from fiatlux_task.poses import HAND_CUP_BY_VARIANT  # noqa: E402
 
-    HAND_CRADLE = HAND_CUP
-if args_cli.curl is not None and args_cli.robot == "inspire":
-    from fiatlux_task.robots.g1 import G1_FINGER_JOINTS, G1_THUMB_JOINTS  # noqa: E402
+    HAND_CRADLE = HAND_CUP_BY_VARIANT[args_cli.robot]
+if args_cli.curl is not None:
+    if args_cli.robot == "inspire":
+        from fiatlux_task.robots.g1 import G1_FINGER_JOINTS, G1_THUMB_JOINTS  # noqa: E402
 
-    HAND_CRADLE = {
-        **dict.fromkeys(G1_FINGER_JOINTS, args_cli.curl),
-        **dict.fromkeys(G1_THUMB_JOINTS, args_cli.curl * 2.0 / 3.0),
-    }
+        HAND_CRADLE = {
+            **dict.fromkeys(G1_FINGER_JOINTS, args_cli.curl),
+            **dict.fromkeys(G1_THUMB_JOINTS, args_cli.curl * 2.0 / 3.0),
+        }
+    else:
+        from fiatlux_task.poses import hand_cup_dex3  # noqa: E402
+
+        HAND_CRADLE = hand_cup_dex3(args_cli.curl)
 
 
 # --------------------------------------------------------------------------- #
@@ -792,6 +797,21 @@ def scenario_hand(probe: bool = False):
             origin, normal, fingers, across = palm_frame(env)
             gp = grasp_point(env)
             gp_rel = gp - origin
+            # The TARGET pose, in the robot's own root frame, before any settling: this is what
+            # grasp_poses.BULB_IN_ROOT_* should hold for this variant (issue #196).
+            from isaaclab.utils.math import quat_apply_inverse as _qai
+            from isaaclab.utils.math import quat_mul as _qm
+
+            _tp, _tq = palm_grasp_pose(env)
+            _root = robot.data.root_state_w[0]
+            _rel_p = _qai(_root[3:7].unsqueeze(0), (_tp - _root[:3]).unsqueeze(0))[0]
+            _rq = _root[3:7] * torch.tensor([1.0, -1.0, -1.0, -1.0], device=_root.device)
+            _rel_q = _qm(_rq.unsqueeze(0), _tq.unsqueeze(0))[0]
+            print(
+                f"  [PROBE] TARGET bulb-in-root ({args_cli.robot}) pos="
+                f"({_rel_p[0]:+.4f}, {_rel_p[1]:+.4f}, {_rel_p[2]:+.4f}) "
+                f"quat=({_rel_q[0]:+.6f}, {_rel_q[1]:+.6f}, {_rel_q[2]:+.6f}, {_rel_q[3]:+.6f})"
+            )
             print(
                 f"  [PROBE] CLOSED grasp point palm-frame (n,f,a)=({torch.dot(gp_rel, normal):+.4f}, "
                 f"{torch.dot(gp_rel, fingers):+.4f}, {torch.dot(gp_rel, across):+.4f})"
