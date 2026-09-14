@@ -40,11 +40,15 @@ from pathlib import Path
 import numpy as np
 import torch
 
+from .grasp_poses import GLASS_CONTACT_LIMIT_N
 from .tasks.manager_based.fiatlux_task.mdp import attach as _attach
 from .tasks.manager_based.fiatlux_task.mdp import observations as _obs
 from .tasks.manager_based.fiatlux_task.mdp import rewards as _rewards
 
 RECORDER_VERSION = "1.0"
+
+# Fallback drop floor for a bulb no task rule covers (issue #202).
+DEFAULT_BULB_DROP_FLOOR_M = 0.4
 
 
 def _benchmark_version() -> str:
@@ -270,6 +274,7 @@ class TrajectoryRecorder:
         # The behaviour is unchanged by the rename -- the old lookup resolved to the same fresh
         # bulb -- but fixing it needs the task to DECLARE its manipuland, which is #76 Step 3.
         self._bulb_entity = "fresh_bulb" if "fresh_bulb" in env.scene.rigid_objects else "old_bulb"
+        self._old_bulb_binned = _old_bulb_starts_binned(env)
 
         # The grip channel (issue #106), optional: only the legs that hold something wire
         # ``grip_contact``. Resolved once for the same reason the bulb is -- a key that appeared
@@ -285,6 +290,13 @@ class TrajectoryRecorder:
         # Resolved once, not per step: `env.scene[name]` is a dict/category lookup, and
         # `object_state_fields` runs on every step of every episode.
         self._tracked_entities = [(name, env.scene[name]) for name in self._tracked_objects]
+        # Issue #202: every bulb the scene carries, not the one this leg happens to manipulate.
+        # The old guess pointed S03-S06's penalty channels at a fresh bulb parked on the bench,
+        # so a dropped or crushed old bulb scored `penalties: none`. Intersected with the tracked
+        # objects on purpose: these names are published as ``penalised_bulbs`` and an offline
+        # scorer reads a ``<name>_pos`` column for each, so naming a bulb the bag does not carry
+        # would be a penalty that silently never fires -- this issue over again.
+        self._bulb_entities = [n for n in ("fresh_bulb", "old_bulb") if n in self._tracked_objects]
         # The success gate's conjuncts, so `gate_progress` -- half of a subtask's score -- can be
         # recomputed offline instead of only existing inside a live reward manager.
         self._gate_conjuncts, self._gate_seconds = self._resolve_gate(env)
@@ -629,10 +641,59 @@ class TrajectoryRecorder:
             "success_pos_threshold": float(success_params.get("pos_threshold", 0.015)),
             "success_ori_threshold": float(success_params.get("ori_threshold", 0.2)),
             "drop_min_height": float(drop_params.get("min_height", 0.4)),
+            # Issue #202: breaking either bulb is a penalty in every subtask, so both are
+            # scored. Dropping is per bulb, against a floor the TASK sets -- see
+            # ``_drop_floors_by_bulb``.
+            "penalised_bulbs": list(self._bulb_entities),
+            "drop_min_height_by_bulb": self._drop_floors_by_bulb(cfg),
+            "glass_contact_limit_n": GLASS_CONTACT_LIMIT_N,
             # Issue #167: says whether the *_phase columns are present, so an offline reader
             # does not have to probe the arrays to find out.
             "has_bulb_attachment": self._attachment is not None,
         }
+
+    def _drop_floors_by_bulb(self, cfg) -> dict:
+        """The height each bulb must stay above, per bulb. ``None`` means exempt.
+
+        A single floor cannot serve both bulbs, because the height that means "dropped" depends
+        on where the TASK wants the bulb to end up, and the two ends differ: S05 carries the old
+        bulb and a metre of altitude lost on the way is a fault, while S06 *disposes* of the same
+        bulb and a successful take leaves it on the crate floor at z ~= 0. Nothing about the
+        start state separates those, so the task has to say, in this order:
+
+        1. ``cfg.bulb_drop_floors`` -- the task states it outright (``None`` == exempt).
+        2. the task's own ``bulb_dropped`` termination, for the bulb that term names: a task
+           that already declares what counts as dropping should not have it restated here.
+        3. a bulb that BEGINS in the crate is already disposed of (S07 on), so exempt.
+        4. otherwise the family default.
+        """
+        declared = dict(getattr(cfg, "bulb_drop_floors", None) or {})
+        drop_params = _term_params(cfg, "bulb_dropped")
+        # A term that names no asset means the bulb the task is about (S08 does this).
+        term_asset = getattr(drop_params.get("asset_cfg", None), "name", None) or (
+            self._bulb_entity if drop_params else None
+        )
+        term_height = drop_params.get("min_height", None)
+        floors: dict = {}
+        for name in self._bulb_entities:
+            if name in declared:
+                floors[name] = None if declared[name] is None else float(declared[name])
+            elif term_asset == name and term_height is not None:
+                floors[name] = float(term_height)
+            elif name == "old_bulb" and self._old_bulb_binned:
+                floors[name] = None
+            else:
+                floors[name] = DEFAULT_BULB_DROP_FLOOR_M
+        return floors
+
+
+def _old_bulb_starts_binned(env) -> bool:
+    """Whether the old bulb begins the episode already in the disposal crate (issue #202)."""
+    if "old_bulb" not in env.scene.rigid_objects or "bin" not in env.scene.rigid_objects:
+        return False
+    bulb = env.scene["old_bulb"].data.root_pos_w[0]
+    crate = env.scene["bin"].data.root_pos_w[0]
+    return bool((bulb[:2] - crate[:2]).norm() < 0.35 and bulb[2] < 0.4)
 
 
 def _ee_body_name(env) -> str:

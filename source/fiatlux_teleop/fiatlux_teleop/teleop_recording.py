@@ -96,7 +96,11 @@ def _embed_score(out_dir) -> dict | None:
         sys.modules["_fiatlux_score"] = mod
         spec.loader.exec_module(mod)
         episodes, meta = mod.load_bag(out_dir)
-        result = mod.score_bag(episodes, meta, mod.ScoreConfig())
+        # The bag's own thresholds, not the family defaults: a take is scored against what its
+        # task counts as a dropped bulb, which since issue #202 is per bulb (S06 disposes of the
+        # old bulb on purpose, S05 carrying it to the floor is a fault). Scoring with bare
+        # defaults is how a dropped old bulb read as `penalties: none`.
+        result = mod.score_bag(episodes, meta, mod.apply_bag_metadata(mod.ScoreConfig(), meta))
         meta_path = Path(out_dir) / "meta.json"
         meta_disk = json.loads(meta_path.read_text())
         meta_disk["score"] = result

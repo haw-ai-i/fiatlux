@@ -63,7 +63,7 @@ parser.add_argument(
     "--cam",
     type=str,
     default="third_person",
-    choices=["third_person", "closeup", "orbit", "fixture", "ego"],
+    choices=["third_person", "closeup", "orbit", "fixture", "ego", "hand"],
     help="Camera pose for the video: fixed presets, a 360-degree scene orbit, a low orbit looking UP "
     "at the mounted fixture, or the robot's own ego_camera sensor.",
 )
@@ -126,7 +126,7 @@ import isaaclab_tasks  # noqa: F401
 from isaaclab_tasks.utils import parse_env_cfg
 
 
-def _cam_pose_fn(kind: str, env_cfg):
+def _cam_pose_fn(kind: str, env_cfg, base_env=None):
     """Camera pose per captured frame ``(i, n_frames) -> (eye, lookat)``.
 
     ``third_person`` frames the task cfg's own viewer eye/lookat; ``orbit`` turntables
@@ -141,6 +141,24 @@ def _cam_pose_fn(kind: str, env_cfg):
         return lambda i, n: (eye, lookat)
     if kind == "closeup":
         return lambda i, n: ((0.9, 0.8, 1.4), (0.45, 0.0, 1.15))
+    if kind == "hand":
+        from fiatlux_task.robots.g1 import G1_PALM_BODY_BY_VARIANT
+
+        robot = base_env.scene["robot"]
+        variant = "dex3" if "dex3" in str(getattr(robot.cfg.spawn, "usd_path", "") or "") else "inspire"
+        idx = robot.find_bodies(G1_PALM_BODY_BY_VARIANT[variant])[0][0]
+
+        def hand_pose(i, n):
+            import math
+
+            p = robot.data.body_pos_w[0, idx].tolist()
+            root = robot.data.root_pos_w[0].tolist()
+            dx, dy = p[0] - root[0], p[1] - root[1]
+            norm = math.hypot(dx, dy) or 1.0
+            dx, dy = dx / norm, dy / norm
+            return ((p[0] + dx * 0.75, p[1] + dy * 0.75, p[2] + 0.25), tuple(p))
+
+        return hand_pose
     if kind == "fixture":
         orbit = fixture_orbit(env_cfg)
         return lambda i, n: orbit_pose(i, n, **orbit)
@@ -180,7 +198,7 @@ def main():
 
     video = None
     # ego_camera is body-attached and moves with the robot; nothing to pose per frame.
-    pose_fn = None if args_cli.cam == "ego" else _cam_pose_fn(args_cli.cam, env_cfg)
+    pose_fn = None if args_cli.cam == "ego" else _cam_pose_fn(args_cli.cam, env_cfg, base_env)
     if want_video:
         video_path = os.path.join(args_cli.out, "video", "run.mp4")
         cam_name = "ego_camera" if args_cli.cam == "ego" else "video_cam"

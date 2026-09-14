@@ -52,3 +52,21 @@ BULB_IN_ROOT_STANDING: tuple[Vec3, Quat] = (
 # Consumed by S04 (old bulb) and S11 (fresh bulb). Kept as a separate name because those two
 # import it as such; the value is shared.
 BULB_IN_ROOT_ON_LADDER: tuple[Vec3, Quat] = BULB_IN_ROOT_STANDING
+
+# MEASURED 2026-09-13, ``verify_interactions.py --scenario hand --robot dex3 --grip cup
+# --upright-grip --probe`` (issue #196): the root-frame target the Dex3 palm's own grasp
+# geometry produces under the same ``ARM_CRADLE`` the subtasks stage with.
+BULB_IN_ROOT_STANDING_DEX3: tuple[Vec3, Quat] = (
+    (0.2623, -0.0657, 0.0),
+    (0.707107, 0.0, 0.0, 0.707107),
+)
+BULB_IN_ROOT_ON_LADDER_DEX3: tuple[Vec3, Quat] = BULB_IN_ROOT_STANDING_DEX3
+
+BULB_IN_ROOT_STANDING_BY_VARIANT: dict[str, tuple[Vec3, Quat]] = {
+    "inspire": BULB_IN_ROOT_STANDING,
+    "dex3": BULB_IN_ROOT_STANDING_DEX3,
+}
+BULB_IN_ROOT_ON_LADDER_BY_VARIANT: dict[str, tuple[Vec3, Quat]] = {
+    "inspire": BULB_IN_ROOT_ON_LADDER,
+    "dex3": BULB_IN_ROOT_ON_LADDER_DEX3,
+}

@@ -72,6 +72,11 @@ def bulb_axis_alignment_tanh(
     return 1.0 - torch.tanh(bulb_mating_axis_angle(env, asset_cfg, socket_cfg) / std)
 
 
+# Steps a staged payload is given to be seated onto the live palm before a crush can score
+# (``nav_terms.settle_carried_payload_live`` fires on the first stepped frame). Issue #197.
+SPAWN_SETTLE_GRACE_STEPS = 2
+
+
 def grip_force_exceeded(
     env: ManagerBasedRLEnv,
     sensor_cfg: SceneEntityCfg,
@@ -87,4 +92,5 @@ def grip_force_exceeded(
     worst = _filtered_hand_force(env, sensor_cfg).max(dim=1).values
     if other_sensor_cfg is not None:
         worst = torch.maximum(worst, _filtered_hand_force(env, other_sensor_cfg).max(dim=1).values)
-    return worst > limit
+    fired = worst > limit
+    return fired & (env.episode_length_buf > SPAWN_SETTLE_GRACE_STEPS)

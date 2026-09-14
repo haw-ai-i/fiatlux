@@ -510,8 +510,26 @@ def _drop_foreign_hand_joint_pos(joint_pos: dict[str, float], variant: str) -> d
     against zero joints on a swapped-in Dex3 robot, and ``resolve_matching_names_values`` is
     strict by default -- that is a crash on env creation, not a silent no-op.
     """
+    from fiatlux_task.poses import (
+        HAND_CRADLE_BY_VARIANT,
+        HAND_CUP_BY_VARIANT,
+        HAND_FLAT_BY_VARIANT,
+    )
+
     foreign_markers = [m for v, ms in _HAND_MARKERS_BY_VARIANT.items() if v != variant for m in ms]
-    return {k: v for k, v in joint_pos.items() if not any(m in k for m in foreign_markers)}
+    kept = {k: v for k, v in joint_pos.items() if not any(m in k for m in foreign_markers)}
+    dropped = {k: v for k, v in joint_pos.items() if k not in kept}
+    if not dropped:
+        return kept
+    # Dropping alone loses a staged grip: the swapped-in hand spawns open and a held payload
+    # falls out at step 1 (issue #196). Substitute the target variant's equivalent pose when the
+    # dropped entries are one the family defines for both hands.
+    for by_variant in (HAND_CUP_BY_VARIANT, HAND_CRADLE_BY_VARIANT, HAND_FLAT_BY_VARIANT):
+        for source_variant, pose in by_variant.items():
+            if source_variant != variant and pose and dropped == dict(pose):
+                kept.update(by_variant[variant])
+                return kept
+    return kept
 
 
 def _remap_binary_commands(term, joint_names: list[str], variant: str) -> None:
