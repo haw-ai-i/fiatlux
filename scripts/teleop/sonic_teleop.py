@@ -605,9 +605,14 @@ def main():  # noqa: C901  (one long orchestration: env setup + settle/resettle 
     robot = env.scene["robot"]
 
     # Left arm rest pose: shoulder pitch/roll/yaw, elbow, wrist roll/pitch/yaw in degrees,
-    # captured from an operator take. Empty string keeps the asset's pose.
+    # captured from an operator take. Empty string keeps the asset's pose. The recorded pose is
+    # the ladder-cap approach, meaningful only for the rail-hand feature -- gate the write on
+    # _rail_on (computed above, before gym.make): default_joint_pos is shared state that the
+    # post-settle restore and mid-session reset re-home both read for EVERY task, rail or not, so
+    # writing it unconditionally silently replaces a non-rail task's own left-arm rest pose with
+    # this ladder-specific one.
     _ARM_REST_L = os.environ.get("FIATLUX_ARM_REST_LEFT", "-4.8,9.4,0.5,15.6,-4.3,-9.6,4.8")
-    if _ARM_REST_L.strip():
+    if _rail_on and _ARM_REST_L.strip():
         _names = [
             f"left_{_n}_joint"
             for _n in (
