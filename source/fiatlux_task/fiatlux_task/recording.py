@@ -40,6 +40,7 @@ from pathlib import Path
 import numpy as np
 import torch
 
+from .grasp_poses import GLASS_CONTACT_LIMIT_N
 from .tasks.manager_based.fiatlux_task.mdp import attach as _attach
 from .tasks.manager_based.fiatlux_task.mdp import observations as _obs
 from .tasks.manager_based.fiatlux_task.mdp import rewards as _rewards
@@ -270,6 +271,11 @@ class TrajectoryRecorder:
         # The behaviour is unchanged by the rename -- the old lookup resolved to the same fresh
         # bulb -- but fixing it needs the task to DECLARE its manipuland, which is #76 Step 3.
         self._bulb_entity = "fresh_bulb" if "fresh_bulb" in env.scene.rigid_objects else "old_bulb"
+        # Issue #202: every bulb the scene carries, not the one this leg happens to manipulate.
+        # The old guess pointed S03-S06's penalty channels at a fresh bulb parked on the bench,
+        # so a dropped or crushed old bulb scored `penalties: none`.
+        self._bulb_entities = [n for n in ("fresh_bulb", "old_bulb") if n in env.scene.rigid_objects]
+        self._old_bulb_binned = _old_bulb_starts_binned(env)
 
         # The grip channel (issue #106), optional: only the legs that hold something wire
         # ``grip_contact``. Resolved once for the same reason the bulb is -- a key that appeared
@@ -443,6 +449,7 @@ class TrajectoryRecorder:
                 else {}
             ),
             "bulb_pos": bulb.data.root_pos_w,
+            **{f"{name}_pos": env.scene[name].data.root_pos_w for name in self._bulb_entities},
             "bulb_quat": bulb.data.root_quat_w,
             "bulb_lin_vel": bulb.data.root_lin_vel_w,
             "socket_pos": socket.data.root_pos_w,
@@ -629,10 +636,30 @@ class TrajectoryRecorder:
             "success_pos_threshold": float(success_params.get("pos_threshold", 0.015)),
             "success_ori_threshold": float(success_params.get("ori_threshold", 0.2)),
             "drop_min_height": float(drop_params.get("min_height", 0.4)),
+            # Issue #202: breaking either bulb is a penalty in every subtask, so both are
+            # scored. Dropping is per bulb against its own floor -- a binned old bulb rests
+            # at ~0.1 m by design (``scene_cfg.park_old_bulb_in_crate``) and is not a drop.
+            "penalised_bulbs": list(self._bulb_entities),
+            # ``null`` == exempt: a bulb that starts in the crate is already disposed of, and
+            # rests at z ~= 0.01-0.04 by construction, so no drop floor applies to it.
+            "drop_min_height_by_bulb": {
+                name: (None if name == "old_bulb" and self._old_bulb_binned else 0.4)
+                for name in self._bulb_entities
+            },
+            "glass_contact_limit_n": GLASS_CONTACT_LIMIT_N,
             # Issue #167: says whether the *_phase columns are present, so an offline reader
             # does not have to probe the arrays to find out.
             "has_bulb_attachment": self._attachment is not None,
         }
+
+
+def _old_bulb_starts_binned(env) -> bool:
+    """Whether the old bulb begins the episode already in the disposal crate (issue #202)."""
+    if "old_bulb" not in env.scene.rigid_objects or "bin" not in env.scene.rigid_objects:
+        return False
+    bulb = env.scene["old_bulb"].data.root_pos_w[0]
+    crate = env.scene["bin"].data.root_pos_w[0]
+    return bool((bulb[:2] - crate[:2]).norm() < 0.35 and bulb[2] < 0.4)
 
 
 def _ee_body_name(env) -> str:
