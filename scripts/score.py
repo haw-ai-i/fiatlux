@@ -158,6 +158,28 @@ def episode_gate_progress(ep: dict[str, np.ndarray]) -> float | None:
     return float(np.clip((float(counts.max()) - at_reset) / (n - at_reset), 0.0, 1.0))
 
 
+def apply_bag_metadata(cfg: ScoreConfig, meta: dict) -> ScoreConfig:
+    """Take the thresholds the bag itself recorded, and return ``cfg``.
+
+    A bag knows what its own task counts as a dropped bulb; a caller scoring it with bare
+    defaults silently substitutes the family numbers instead. That is not academic -- the
+    per-bulb floors (issue #202) live only here, so a caller that skips this scores S06's
+    disposal against a height the task never asked for, or misses an old bulb that fell.
+    Call it wherever a bag is scored, and apply any explicit overrides AFTER it.
+    """
+    if "drop_min_height" in meta:
+        cfg.drop_min_height = float(meta["drop_min_height"])
+    if isinstance(meta.get("drop_min_height_by_bulb"), dict):
+        cfg.drop_floors_by_bulb = {
+            name: (None if floor is None else float(floor)) for name, floor in meta["drop_min_height_by_bulb"].items()
+        }
+    if "fragility_threshold" in meta:
+        cfg.fragility_threshold = float(meta["fragility_threshold"])
+    elif "glass_contact_limit_n" in meta:
+        cfg.fragility_threshold = float(meta["glass_contact_limit_n"])
+    return cfg
+
+
 def score_episode(ep: dict[str, np.ndarray], cfg: ScoreConfig) -> dict:
     success = ep.get("success_term")
     seated = bool(success[-1]) if success is not None and getattr(success, "size", 0) else False
@@ -290,14 +312,7 @@ def main():
 
     episodes, meta = load_bag(args.bag)
 
-    cfg = ScoreConfig()
-    # Thresholds default from the bag's metadata when present.
-    if "drop_min_height" in meta:
-        cfg.drop_min_height = float(meta["drop_min_height"])
-    if isinstance(meta.get("drop_min_height_by_bulb"), dict):
-        cfg.drop_floors_by_bulb = {
-            name: (None if floor is None else float(floor)) for name, floor in meta["drop_min_height_by_bulb"].items()
-        }
+    cfg = apply_bag_metadata(ScoreConfig(), meta)
     for name, value in [
         ("fragility_threshold", args.fragility_threshold),
         ("broken_penalty", args.broken_penalty),
