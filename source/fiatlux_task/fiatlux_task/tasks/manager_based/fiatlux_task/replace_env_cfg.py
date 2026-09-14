@@ -157,6 +157,11 @@ class ObservationsCfg:
             scale=0.1,
             params={"sensor_cfg": SceneEntityCfg("hand_contact")},
         )
+        left_hand_contact = ObsTerm(
+            func=mdp.contact_net_forces,
+            scale=0.1,
+            params={"sensor_cfg": SceneEntityCfg("left_hand_contact")},
+        )
         # Camera-derived features (head-mounted RGB; requires --enable_cameras).
         ego_rgb = ObsTerm(
             func=mdp.image_features,

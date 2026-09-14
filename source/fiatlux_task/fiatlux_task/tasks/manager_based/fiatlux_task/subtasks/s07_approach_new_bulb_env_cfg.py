@@ -70,5 +70,4 @@ class S07ApproachNewBulbEnvCfg(NavigateSubtaskCfg):
         face_robot_at(self.scene, self.scene.fresh_bulb.init_state.pos[:2])
         add_ego_camera(self.scene)
         add_mid360_lidar(self.scene)
-        self.episode_length_s = 120.0
         frame_viewer_between(self.viewer, self.scene.robot.init_state.pos, self.scene.fresh_bulb.init_state.pos)

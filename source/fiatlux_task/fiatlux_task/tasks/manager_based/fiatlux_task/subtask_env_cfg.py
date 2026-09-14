@@ -42,7 +42,7 @@ from isaaclab.utils.noise import AdditiveUniformNoiseCfg as Unoise
 from fiatlux_task.robots.g1 import G1_FINGER_JOINT_PATTERNS, G1_WAIST_JOINT_PATTERNS
 
 from . import mdp
-from .scene_cfg import ROOM_ENV_SPACING, G1ReplaceSceneCfg
+from .scene_cfg import ROOM_ENV_SPACING, SUBTASK_EPISODE_LENGTH_S, G1ReplaceSceneCfg
 
 # Fall gates, one definition for every subtask. Standing pelvis is 0.79 m, a deep mounting crouch
 # stays above 0.35 m, a collapsed robot reads under 0.30 m; beyond ~57 deg a position-controlled
@@ -70,8 +70,12 @@ class SubtaskObservationsCfg:
     argument is sim-to-real, not tidiness: this is the sensor-realizable mode, and real hardware
     does not change its sensor suite between subtasks. One observation space for the family also
     means a single policy can attempt any of them and GR00T's adapter needs no per-subtask change.
-    It stays fixed-width because the filtered hand-contact channel sums over its filter targets,
+    It stays fixed-width because the filtered hand-contact channels sum over their filter targets,
     giving ``(N, B, 3)`` whichever objects a subtask filters for -- only the meaning changes.
+
+    Both hands are carried (issue #191). Scoring has been hand-agnostic since #151, so a
+    right-hand-only observation scores a left-handed grasp on a fragility bound through forces it
+    cannot feel.
 
     Extend ``privileged`` instead: it reaches only the critic, and rsl_rl's ``obs_groups`` routing
     is per-task anyway.
@@ -91,6 +95,9 @@ class SubtaskObservationsCfg:
         # Force on the manipulated objects (filtered channel, not the unfiltered net force).
         hand_contact = ObsTerm(
             func=mdp.contact_net_forces, scale=0.1, params={"sensor_cfg": SceneEntityCfg("hand_contact")}
+        )
+        left_hand_contact = ObsTerm(
+            func=mdp.contact_net_forces, scale=0.1, params={"sensor_cfg": SceneEntityCfg("left_hand_contact")}
         )
         # Exteroception; needs --enable_cameras.
         ego_rgb = ObsTerm(
@@ -264,6 +271,8 @@ class SubtaskEnvCfg(ManagerBasedRLEnvCfg):
         # Partial credit reads the same gate, decomposed. A leaf whose gate is one opaque
         # predicate becomes a single conjunct, and its partial credit is then its success flag.
         self.rewards.gate_progress.params["predicates"] = mdp.conjuncts_of(self.success_predicate, self.success_params)
+
+        self.episode_length_s = SUBTASK_EPISODE_LENGTH_S
 
         # Family control rate (50 Hz).
         self.decimation = 4

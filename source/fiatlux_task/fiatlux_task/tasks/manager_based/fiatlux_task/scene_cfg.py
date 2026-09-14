@@ -197,6 +197,8 @@ LADDER_APPROACH_RADIUS = G1_HORIZONTAL_REACH + LADDER_NEAR_RAIL_OFFSET - 0.05
 # Must clear the room's own wall box (9.04 x 8.26 m): each env carries its own room. Overlap is
 # harmless (filter_collisions=True isolates each env) but makes num_envs > 1 renders unreadable.
 ROOM_ENV_SPACING = 10.0
+
+SUBTASK_EPISODE_LENGTH_S = 120.0  # issue #184
 PENDANT_RADIUS = 0.012  # the rod a ceiling fixture hangs from
 # Decorative per-env ceiling fixture, flush against the ceiling: these are ceiling-mount
 # BEHAVIOR-1K assets.

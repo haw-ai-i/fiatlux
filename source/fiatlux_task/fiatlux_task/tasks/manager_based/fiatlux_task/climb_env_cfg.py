@@ -52,6 +52,7 @@ from . import mdp
 from .scene_cfg import (
     LADDER_WORK_PELVIS_Z,
     ROOM_ENV_SPACING,
+    SUBTASK_EPISODE_LENGTH_S,
     TOP_ROBOT_POSITION,
     G1ReplaceSceneCfg,
     add_ego_camera,
@@ -328,7 +329,7 @@ class ClimbEnvCfg(ManagerBasedRLEnvCfg):
         self.decimation = 4
         self.sim.dt = 1.0 / 200.0
         self.sim.render_interval = self.decimation
-        self.episode_length_s = 20.0
+        self.episode_length_s = SUBTASK_EPISODE_LENGTH_S
 
         # PhysX floors + stabilization (family finding: an uncontrolled free-base G1
         # against kinematic furniture accumulates solver kicks; see unification spec)
