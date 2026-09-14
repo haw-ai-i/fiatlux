@@ -85,6 +85,10 @@ class S06DisposeBulbEnvCfg(PlaceSubtaskCfg):
 
     success_predicate = mdp.sustained
     # No old_bulb_dropped termination: letting go is the goal here, not a failure mode.
+    # And for the same reason it has no drop FLOOR either (issue #202): a take that succeeds
+    # leaves the old bulb resting on the crate floor, so scoring it against a height would
+    # turn every correct disposal into a dropped bulb.
+    bulb_drop_floors: dict[str, float | None] = {"old_bulb": None}
     success_params: dict | None = {
         "predicate_fn": mdp.all_of,
         "seconds": PLACE_SUSTAIN_SECONDS,

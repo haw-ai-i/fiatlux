@@ -147,3 +147,93 @@ def test_a_bag_with_no_task_id_or_empty_meta_scores_cleanly(score):
     assert "subtask_score" not in out_none
     assert out_none["gate_progress"] == 1.0
 
+
+
+# --------------------------------------------------------------------------- #
+# Issue #202: the penalty channels followed ONE bulb, and in S03-S06 it was the
+# wrong one -- a fresh bulb parked on the bench while the operator manipulated
+# the old one. Dropping is therefore scored per bulb, against a floor the task
+# sets, because the height that means "dropped" depends on where the task wants
+# that bulb to END: S05 carries the old bulb and losing it is a fault, while S06
+# disposes of the same bulb and a success leaves it on the crate floor.
+# --------------------------------------------------------------------------- #
+
+
+def _two_bulb_episode(*, fresh_z, old_z, seated=True, steps=20):
+    """A bag-shaped episode carrying both bulbs' position columns."""
+
+    def column(z):
+        pos = np.zeros((steps, 3), dtype=np.float32)
+        pos[:, 2] = np.linspace(z[0], z[1], steps) if isinstance(z, tuple) else z
+        return pos
+
+    return {
+        "success_term": np.full((steps,), seated, dtype=bool),
+        "fresh_bulb_pos": column(fresh_z),
+        "old_bulb_pos": column(old_z),
+        # ``bulb_pos`` is the legacy single column; in S03-S06 it aliases the FRESH bulb,
+        # which is exactly why it could not see the old one fall.
+        "bulb_pos": column(fresh_z),
+    }
+
+
+def test_old_bulb_falling_is_penalised_even_though_the_legacy_column_is_clean(score):
+    """The reported bug: S03 drops the old bulb, ``bulb_pos`` never moves, score says clean."""
+    ep = _two_bulb_episode(fresh_z=0.958, old_z=(2.1, 0.005))
+    floors = {"fresh_bulb": 0.4, "old_bulb": 0.15}
+
+    legacy = score.score_episode(ep, score.ScoreConfig(drop_min_height=0.15))
+    assert not legacy["dropped"], "precondition: the single-column rule misses it"
+
+    scored = score.score_episode(ep, score.ScoreConfig(drop_floors_by_bulb=floors))
+    assert scored["dropped"], "a dropped old bulb must register"
+    assert scored["score"] < legacy["score"]
+
+
+def test_disposing_of_the_old_bulb_is_not_a_drop(score):
+    """S06 puts the old bulb on the crate floor on purpose; ``None`` means exempt."""
+    ep = _two_bulb_episode(fresh_z=0.958, old_z=(0.82, -0.006))
+    floors = {"fresh_bulb": 0.4, "old_bulb": None}
+
+    scored = score.score_episode(ep, score.ScoreConfig(drop_floors_by_bulb=floors))
+    assert not scored["dropped"], "a successful disposal is not a dropped bulb"
+    assert scored["score"] == 1.0
+
+
+def test_a_carried_old_bulb_still_has_a_floor(score):
+    """S05 carries the same bulb, so there the fall IS the fault."""
+    floors = {"fresh_bulb": 0.4, "old_bulb": 0.4}
+    cfg = score.ScoreConfig(drop_floors_by_bulb=floors)
+    assert score.score_episode(_two_bulb_episode(fresh_z=0.958, old_z=(0.97, 0.26)), cfg)["dropped"]
+    assert not score.score_episode(_two_bulb_episode(fresh_z=0.958, old_z=0.95), cfg)["dropped"]
+
+
+def test_either_bulb_can_trip_the_penalty(score):
+    """Both are scored, not whichever one the recorder happened to guess."""
+    floors = {"fresh_bulb": 0.4, "old_bulb": 0.15}
+    cfg = score.ScoreConfig(drop_floors_by_bulb=floors)
+    assert score.score_episode(_two_bulb_episode(fresh_z=(1.0, 0.02), old_z=2.1), cfg)["dropped"]
+    assert score.score_episode(_two_bulb_episode(fresh_z=0.958, old_z=(2.1, 0.02)), cfg)["dropped"]
+
+
+def test_bags_recorded_before_the_per_bulb_floors_still_score(score):
+    """No floors in the metadata: fall back to the single column rather than scoring nothing."""
+    ep = _two_bulb_episode(fresh_z=(1.0, 0.02), old_z=2.1)
+    assert score.score_episode(ep, score.ScoreConfig(drop_min_height=0.4))["dropped"]
+
+
+def test_floors_naming_a_column_the_bag_lacks_fall_back_instead_of_passing_silently(score):
+    """A penalty that cannot be evaluated must not read as 'no penalty' -- that is this bug."""
+    ep = _two_bulb_episode(fresh_z=(1.0, 0.02), old_z=2.1)
+    del ep["fresh_bulb_pos"]
+    del ep["old_bulb_pos"]
+    cfg = score.ScoreConfig(drop_floors_by_bulb={"fresh_bulb": 0.4}, drop_min_height=0.4)
+    scored = score.score_episode(ep, cfg)
+    assert scored["dropped"], "fell back to bulb_pos rather than silently scoring clean"
+
+
+def test_an_exempt_bulb_does_not_suppress_the_other_one(score):
+    """S11 shape: old bulb binned and exempt, fresh bulb dropped -- still a penalty."""
+    ep = _two_bulb_episode(fresh_z=(2.1, 0.03), old_z=0.016)
+    floors = {"fresh_bulb": 0.4, "old_bulb": None}
+    assert score.score_episode(ep, score.ScoreConfig(drop_floors_by_bulb=floors))["dropped"]
