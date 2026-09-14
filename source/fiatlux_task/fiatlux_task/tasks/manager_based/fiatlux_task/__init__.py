@@ -53,80 +53,22 @@ from . import agents
 # Register Gym environments.
 ##
 
-gym.register(
-    id="FIATLUX-Insert-v0",
-    entry_point="isaaclab.envs:ManagerBasedRLEnv",
-    disable_env_checker=True,
-    kwargs={
-        "env_cfg_entry_point": f"{__name__}.g1_bulb_env_cfg:G1BulbInsertEnvCfg",
-        "rsl_rl_cfg_entry_point": f"{agents.__name__}.rsl_rl_ppo_cfg:PPORunnerCfg",
-    },
-)
-
 # NOTE: the teleop task variants (FIATLUX-{Insert,Carry,LadderGallery}-Teleop-v0) live in the separate
 # `fiatlux_teleop` extension package (source/fiatlux_teleop) and are registered by importing it -- kept
 # out of the benchmark so this package imports/runs without teleop's OpenXR/CloudXR/SONIC deps.
-
-gym.register(
-    id="FIATLUX-Climb-v0",
-    entry_point="isaaclab.envs:ManagerBasedRLEnv",
-    disable_env_checker=True,
-    kwargs={
-        "env_cfg_entry_point": f"{__name__}.climb_env_cfg:ClimbEnvCfg",
-        "rsl_rl_cfg_entry_point": f"{agents.__name__}.rsl_rl_ppo_cfg:ClimbPPORunnerCfg",
-    },
-)
 
 ##
 # The shared scene-only scaffold (non-RL; not a task -- see module docstring).
 ##
 
-gym.register(
-    id="FIATLUX-Base-v0",
-    entry_point="isaaclab.envs:ManagerBasedEnv",
-    disable_env_checker=True,
-    kwargs={"env_cfg_entry_point": f"{__name__}.base_env_cfg:FamilyBaseEnvCfg"},
-)
-
 ##
 # Remaining family RL members.
 ##
-
-gym.register(
-    id="FIATLUX-Carry-v0",
-    entry_point="isaaclab.envs:ManagerBasedRLEnv",
-    disable_env_checker=True,
-    kwargs={
-        "env_cfg_entry_point": f"{__name__}.carry_env_cfg:CarryEnvCfg",
-        "rsl_rl_cfg_entry_point": f"{agents.__name__}.rsl_rl_ppo_cfg:CarryPPORunnerCfg",
-    },
-)
 
 # NOTE: Descend/Remove/Install intentionally carry no rsl_rl_cfg_entry_point yet -- no
 # PPORunnerCfg (network sizes, obs_groups routing) has been designed/tuned for them. They
 # work fully with record_run.py / eval.py / any non-rsl_rl policy (including groot); only
 # scripts/rsl_rl/{train,play}.py would need one added first.
-
-gym.register(
-    id="FIATLUX-Descend-v0",
-    entry_point="isaaclab.envs:ManagerBasedRLEnv",
-    disable_env_checker=True,
-    kwargs={"env_cfg_entry_point": f"{__name__}.descend_env_cfg:DescendEnvCfg"},
-)
-
-gym.register(
-    id="FIATLUX-Remove-v0",
-    entry_point="isaaclab.envs:ManagerBasedRLEnv",
-    disable_env_checker=True,
-    kwargs={"env_cfg_entry_point": f"{__name__}.remove_env_cfg:RemoveEnvCfg"},
-)
-
-gym.register(
-    id="FIATLUX-Install-v0",
-    entry_point="isaaclab.envs:ManagerBasedRLEnv",
-    disable_env_checker=True,
-    kwargs={"env_cfg_entry_point": f"{__name__}.install_env_cfg:InstallEnvCfg"},
-)
 
 ##
 # The full-task benchmark (RL).

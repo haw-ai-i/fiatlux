@@ -7,10 +7,8 @@ extension — no ROS, no distributed harness — so it plugs into the standard
 
 > **Status (honest):** the **full replacement** (`FIATLUX-Replace-v0`) is the scored
 > benchmark task — randomized room layout, normalized-progress scoring,
-> standard/cheatcode observation modes. The **insertion** (`FIATLUX-Insert-v0`) and
-> **climbing** (`FIATLUX-Climb-v0`) subtasks are functional RL tasks kept as
-> development aids; the rest of the family exists as loadable non-RL scene
-> **scaffolds**. The bulb/socket retention mechanic is implemented (`mdp.bulb_attachment`),
+> standard/cheatcode observation modes. The benchmark is the full-length
+> `FIATLUX-Replace-v0` plus the twelve subtasks it decomposes into. The bulb/socket retention mechanic is implemented (`mdp.bulb_attachment`),
 > so Replace's removal and disposal score channels are now achievable. See
 > [docs/roadmap.md](docs/roadmap.md).
 
@@ -18,19 +16,27 @@ extension — no ROS, no distributed harness — so it plugs into the standard
 
 | Env id | Description | Status |
 | --- | --- | --- |
-| `FIATLUX-Replace-v0` | **the benchmark**: full replacement — insert fresh bulb, remove old bulb, dispose of it (randomized room) | ✅ functional |
-| `FIATLUX-Insert-v0` | G1 seats a bulb into a socket (tabletop manipulation) | ✅ functional |
-| `FIATLUX-Climb-v0` | G1 climbs the step ladder to the fixture height (whole-body RL) | ✅ functional |
-| `FIATLUX-Base-v0` | shared G1 + ladder + lamp + bulb scene, no task logic | 🧱 scaffold (non-RL) |
-| `FIATLUX-Carry-v0` | G1 walks to a ladder, grasps it, and carries it upright to a target (whole-body RL) | ✅ functional |
-| `FIATLUX-Descend-v0` | bipedal ladder descent | 🧱 scaffold (non-RL) |
-| `FIATLUX-Remove-v0` | remove the seated bulb from the fixture | 🧱 scaffold (non-RL) |
-| `FIATLUX-Install-v0` | seat a new bulb at the fixture (the at-fixture counterpart of `Insert`) | 🧱 scaffold (non-RL) |
+| `FIATLUX-Replace-v0` | **the benchmark**: full replacement — fetch the ladder, swap the bulb, dispose of the old one (randomized room) | ✅ functional |
+| `FIATLUX-S01-MoveLadder-v0` | carry the ladder to the fixture and stand it up | ✅ functional |
+| `FIATLUX-S02-ClimbLadder-v0` | climb to working height, hands free | ✅ functional |
+| `FIATLUX-S03-RemoveOldBulb-v0` | free the old bulb from the fixture | ✅ functional |
+| `FIATLUX-S04-DescendWithBulb-v0` | carry the old bulb down the ladder | ✅ functional |
+| `FIATLUX-S05-CarryBulbToDisposal-v0` | carry it to the disposal crate | ✅ functional |
+| `FIATLUX-S06-DisposeBulb-v0` | put it in the crate and let go | ✅ functional |
+| `FIATLUX-S07-ApproachNewBulb-v0` | walk to the fresh bulb on the bench | ✅ functional |
+| `FIATLUX-S08-GrabNewBulb-v0` | pick it up without crushing it | ✅ functional |
+| `FIATLUX-S09-CarryBulbToLadder-v0` | carry it back to the ladder | ✅ functional |
+| `FIATLUX-S10-ClimbWithBulb-v0` | climb one-handed holding the bulb | ✅ functional |
+| `FIATLUX-S11-ScrewInBulb-v0` | seat the fresh bulb in the fixture | ✅ functional |
+| `FIATLUX-S12-ClimbDown-v0` | come back down, bulb still seated | ✅ functional |
 
-All seven ids are members of **one task family** backed by **one scene** with preset
-layouts; the scaffolds share a non-RL base env (observation/action/event managers only).
-The train / eval / record scripts apply to the RL members; `scripts/verify_scene.py`
-covers every member.
+The benchmark is **one full-length task and the twelve subtasks it decomposes into**, backed
+by one scene with preset layouts. Each subtask starts from its predecessor's end state, so a
+policy can be trained and scored on any leg independently; `FIATLUX-Replace-v0` runs the whole
+chain. Each subtask also has a `-Training-v0` variant (replicated physics, shaping rewards) and
+a `-Teleop-v0` variant for operator recording.
+
+The train / eval / record scripts apply to every id; `scripts/verify_scene.py` covers them all.
 
 ## Repository layout
 
@@ -72,21 +78,21 @@ uv sync
 
 # 3. Sanity-check registration and launch a baseline:
 uv run python scripts/list_envs.py                                        # all 7 FIATLUX ids
-uv run python scripts/verify_scene.py --headless                          # FIATLUX-Base-v0 checks
-uv run python scripts/verify_scene.py --headless --task FIATLUX-Climb-v0  # any family member
+uv run python scripts/verify_scene.py --headless --task FIATLUX-Replace-v0   # scene checks
+uv run python scripts/verify_scene.py --headless --task FIATLUX-S02-ClimbLadder-v0  # any member
 
 # 4. Evaluate (standardized, reproducible):
-uv run python scripts/eval.py --task FIATLUX-Insert-v0 --policy random --episodes 20 --seed 0
+uv run python scripts/eval.py --task FIATLUX-S08-GrabNewBulb-v0 --policy random --episodes 20 --seed 0
 
 # 5. Record a run, then score it offline (no simulator needed for scoring).
 #    --enable_cameras is required: the env carries a wrist-camera sensor.
-uv run python scripts/record_run.py --task FIATLUX-Insert-v0 --policy random \
+uv run python scripts/record_run.py --task FIATLUX-S08-GrabNewBulb-v0 --policy random \
     --episodes 2 --record bag --headless --enable_cameras --out logs/runs/random0
 uv run python scripts/score.py logs/runs/random0
 
 # 6. Train a policy:
-uv run python scripts/rsl_rl/train.py --task FIATLUX-Insert-v0
-uv run python scripts/rsl_rl/train.py --task FIATLUX-Climb-v0
+uv run python scripts/rsl_rl/train.py --task FIATLUX-S08-GrabNewBulb-Training-v0
+uv run python scripts/rsl_rl/train.py --task FIATLUX-S02-ClimbLadder-Training-v0
 
 # 7. Run the GR00T N1.7 model baseline on the benchmark (needs the external
 #    PolicyServer -- setup in journal/specs/groot-sonic-baseline.md):

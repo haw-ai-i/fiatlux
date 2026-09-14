@@ -1,13 +1,12 @@
 # Roadmap
 
 The scored benchmark is the **full replacement task** (`FIATLUX-Replace-v0`); the
-**insertion** (`FIATLUX-Insert-v0`), **climbing** (`FIATLUX-Climb-v0`), and
-**ladder-positioning** (`FIATLUX-Carry-v0`: walk to the ladder, grasp it, and carry it
+**insertion**, **climbing**, and **ladder-positioning** (walk to the ladder, grasp it, and carry it
 upright to a target — whole-body RL, `carry_env_cfg.py`) subtasks remain as functional
 development environments, not benchmark targets. Unfinished items below are listed so the
 extension seams are intentional.
 
-## 1. Climbing subtask — `FIATLUX-Climb-v0` — ✅ DONE (2026-07-06)
+## 1. Climbing subtask — ✅ DONE (2026-07-06), now `FIATLUX-S02-ClimbLadder-v0`
 
 G1 climbs the work-site step ladder (`fiatlux_task.assets.STEP_LADDER_USD`, the
 at-height preset) to the fixture height. All three deliverables landed in
@@ -51,7 +50,7 @@ descoping still stands — it is one flat RL episode, chaining is solution struc
   spring-damper WRENCH while seated, release on a real physics-driven axial pull past
   `release_threshold`. No twist/lock semantics (this asset has no physical lug/groove; the
   bayonet never modeled a real feature). Wired for Replace, the S01/S03/S11 subtask-teleop
-  tasks, and `FIATLUX-Insert-v0` (RL). **Not yet wired for `FIATLUX-Insert-Teleop-v0`**: that
+  tasks. **Not yet wired for every teleop id**: that
   task swaps in a differently-scaled OMNI socket/bulb asset whose seat/plug geometry hasn't
   been measured against the family asset's calibrated offsets, so retention there needs its
   own calibration pass first (see the TODO in `insert_teleop_env_cfg.py`).

@@ -59,7 +59,6 @@ from fiatlux_task.robots.g1 import (
 )
 
 from . import mdp
-from .climb_env_cfg import FALL_MIN_HEIGHT, FALL_TILT_LIMIT
 from .scene_cfg import (
     LADDER_READY_FACING_TOLERANCE,
     LADDER_READY_REACH,
@@ -69,6 +68,7 @@ from .scene_cfg import (
     add_mid360_lidar,
     apply_replace_preset,
 )
+from .subtask_env_cfg import FALL_MIN_HEIGHT, FALL_TILT_LIMIT
 
 ##
 # Task thresholds

@@ -20,22 +20,8 @@ import gymnasium as gym
 
 # Teleop variant of Insert (arm differential-IK + binary grip); drive with scripts/teleop/sonic_teleop.py
 # (whole-body: SONIC legs + arm teleop, --input vr|keyboard).
-gym.register(
-    id="FIATLUX-Insert-Teleop-v0",
-    entry_point="isaaclab.envs:ManagerBasedRLEnv",
-    disable_env_checker=True,
-    kwargs={"env_cfg_entry_point": f"{__name__}.insert_teleop_env_cfg:G1BulbInsertTeleopEnvCfg"},
-)
-
 # Teleop variant of Carry (ladder-positioning): bimanual arm IK + Dex3 grip, SONIC legs
 # (scripts/teleop/sonic_teleop.py).
-gym.register(
-    id="FIATLUX-Carry-Teleop-v0",
-    entry_point="isaaclab.envs:ManagerBasedRLEnv",
-    disable_env_checker=True,
-    kwargs={"env_cfg_entry_point": f"{__name__}.carry_teleop_env_cfg:CarryTeleopEnvCfg"},
-)
-
 # Walk-through gallery of every ladder design (open floor, all designs in a grid), same teleop
 # machinery as Carry-Teleop.
 gym.register(

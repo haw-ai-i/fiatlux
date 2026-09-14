@@ -57,10 +57,10 @@ If your assets live elsewhere, point the env at them with
 
 ```bash
 uv run python scripts/list_envs.py                              # list registered tasks
-uv run python scripts/zero_agent.py --task FIATLUX-Insert-v0    # launch the scene
-uv run python scripts/eval.py --task FIATLUX-Insert-v0 --policy random --episodes 20
-uv run python scripts/rsl_rl/train.py --task FIATLUX-Insert-v0  # train PPO
-uv run python scripts/rsl_rl/play.py  --task FIATLUX-Insert-v0  # roll out a checkpoint
+uv run python scripts/zero_agent.py --task FIATLUX-S08-GrabNewBulb-v0    # launch the scene
+uv run python scripts/eval.py --task FIATLUX-S08-GrabNewBulb-v0 --policy random --episodes 20
+uv run python scripts/rsl_rl/train.py --task FIATLUX-S08-GrabNewBulb-Training-v0  # train PPO
+uv run python scripts/rsl_rl/play.py  --task FIATLUX-S08-GrabNewBulb-Training-v0  # roll out a checkpoint
 ```
 
 ## 4. Record and score a run
@@ -72,7 +72,7 @@ re-running the simulator:
 scoring reads the recorded bag and needs no simulator.
 
 ```bash
-uv run python scripts/record_run.py --task FIATLUX-Insert-v0 --policy random \
+uv run python scripts/record_run.py --task FIATLUX-S08-GrabNewBulb-v0 --policy random \
     --episodes 2 --record bag --headless --enable_cameras --out logs/runs/random0
 uv run python scripts/score.py logs/runs/random0
 ```
@@ -81,7 +81,7 @@ Pass `--record video` (or `--record both` to get the bag too) to also render an 
 of the rollout to `<out>/video/`:
 
 ```bash
-uv run python scripts/record_run.py --task FIATLUX-Insert-v0 --policy random \
+uv run python scripts/record_run.py --task FIATLUX-S08-GrabNewBulb-v0 --policy random \
     --episodes 2 --record both --headless --enable_cameras --out logs/runs/random0
 ```
 
@@ -105,7 +105,7 @@ into per-commit CI (a full Isaac Sim launch per check is too costly there):
 
 ```bash
 # the scene is solid: assets present, colliders exist, nothing explodes or sinks
-uv run python scripts/verify_scene.py --headless --task FIATLUX-Base-v0
+uv run python scripts/verify_scene.py --headless --task FIATLUX-Replace-v0
 
 # the graded interactions are modeled correctly: seated bulb rests stably, the
 # success pose is attainable, a hand press stays gentle and doesn't launch the
