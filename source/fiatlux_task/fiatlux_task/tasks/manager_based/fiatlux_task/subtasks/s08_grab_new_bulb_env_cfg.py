@@ -26,6 +26,8 @@ from .. import mdp
 from ..mdp import grasp_terms, place_terms
 from ..mdp.nav_terms import BULB_APPROACH_OFFSET
 from ..scene_cfg import (
+    TABLE_COLLISION_HALF_EXTENT,
+    TABLE_POSITION,
     TABLETOP_SURFACE_Z,
     add_ego_camera,
     add_mid360_lidar,
@@ -36,10 +38,6 @@ from ..scene_cfg import (
 )
 from ..subtask_env_cfg import FALL_MIN_HEIGHT, FALL_TILT_LIMIT, SubtaskRewardsCfg, SubtaskTerminationsCfg
 from ..subtask_tiers.grasp import GRASP_SUSTAIN_SECONDS, GraspRewardsCfg, GraspSubtaskCfg, add_grasp_contact_sensor
-
-# Clearance above the table the whole bulb must reach to count as lifted. PROVISIONAL.
-BULB_LIFT_CLEARANCE_M = 0.03  # m
-BULB_LIFTED_HEIGHT_M = TABLETOP_SURFACE_Z + BULB_LIFT_CLEARANCE_M
 
 # Below the tabletop rest height, above the floor (~-0.036 m): catches "knocked off the table"
 # before it lands. PROVISIONAL.
@@ -53,7 +51,15 @@ BULB_HELD_MIN_HAND_BODIES = 2
 # The success gate, as reviewable data (mdp.all_of) rather than a hand-written conjunction --
 # an omitted conjunct here is a gate that passes vacuously.
 BULB_GRASPED_CONJUNCTS = [
-    (grasp_terms.object_lifted, {"asset_cfg": SceneEntityCfg("fresh_bulb"), "min_height": BULB_LIFTED_HEIGHT_M}),
+    (
+        grasp_terms.object_clear_of_surface,
+        {
+            "asset_cfg": SceneEntityCfg("fresh_bulb"),
+            "surface_z": TABLETOP_SURFACE_Z,
+            "surface_centre": TABLE_POSITION[:2],  # rebound to this layout's bench in __post_init__
+            "surface_half_extent": TABLE_COLLISION_HALF_EXTENT,
+        },
+    ),
     (
         grasp_terms.hand_bodies_in_contact,
         {
@@ -123,4 +129,9 @@ class S08GrabNewBulbEnvCfg(GraspSubtaskCfg):
         add_ego_camera(self.scene)
         add_mid360_lidar(self.scene)
         add_grasp_contact_sensor(self.scene, self.scene.fresh_bulb.prim_path)
+        # The bench moves with the layout draw, so the footprint the gate tests is this
+        # layout's bench, not the tabletop preset's constant.
+        for _fn, _params in BULB_GRASPED_CONJUNCTS:
+            if _fn is grasp_terms.object_clear_of_surface:
+                _params["surface_centre"] = tuple(self.scene.table.init_state.pos[:2])
         frame_viewer_on(self.viewer, self.scene.robot.init_state.pos)

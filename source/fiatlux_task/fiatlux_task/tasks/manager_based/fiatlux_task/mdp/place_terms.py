@@ -33,7 +33,7 @@ from isaaclab.managers import SceneEntityCfg
 from isaaclab.sensors import ContactSensor
 from isaaclab.utils.math import quat_apply, quat_apply_inverse, quat_error_magnitude
 
-from fiatlux_task.assets import BULB_MERIDIAN
+from fiatlux_task.assets import BULB_BODY_CENTRE_OFFSET
 
 if TYPE_CHECKING:
     from isaaclab.envs import ManagerBasedRLEnv
@@ -51,7 +51,9 @@ LADDER_STEP_FACE_LOCAL = (0.0, -1.0, 0.0)
 CRATE_RIM_Z = 0.17  # m
 # Interior half-extent, measured by ray-casting the crate collision mesh (#131);
 # re-measure if the crate USD changes.
-CRATE_INTERIOR_HALF_EXTENT = (0.2873, 0.1876)  # m; #131
+# MEASURED 2026-09-14 by scripts/measure_container_geometry.py (issue #204): the crate body's
+# interior, which is narrower in x than the rim value this held before (0.2873).
+CRATE_INTERIOR_HALF_EXTENT = (0.155, 0.188)  # m
 # Outer footprint, from the same measurement: what "standing at the crate" is measured against.
 CRATE_FOOTPRINT_HALF_EXTENT = (0.3007, 0.2009)  # m; #149
 # An object resting against an inner wall touches it, so equality is inside.
@@ -331,15 +333,23 @@ def old_bulb_in_bin(
     asset_cfg: SceneEntityCfg = SceneEntityCfg("old_bulb"),
     bin_cfg: SceneEntityCfg = SceneEntityCfg("bin"),
 ) -> torch.Tensor:
-    """``object_in_container`` bound to a bulb and the disposal crate."""
-    return object_in_container(
-        env,
-        asset_cfg=asset_cfg,
-        container_cfg=bin_cfg,
-        interior_half_extent=CRATE_INTERIOR_HALF_EXTENT,
-        rim_z=CRATE_RIM_Z,
-        meridian=BULB_MERIDIAN,
+    """True where the bulb's BODY CENTRE is inside the crate (issues #131, #204).
+
+    The centre, not the whole swept body: requiring every part of the bulb inside the interior
+    fails a bulb resting against an inner wall, which is disposed of by any reasonable reading
+    and is how a dropped bulb usually comes to rest (#204). The centre is still a point ON the
+    bulb -- ``BULB_BODY_CENTRE_OFFSET``, measured -- which is what #131 needed and the root
+    (36 mm off its own cap) is not.
+    """
+    bulb: RigidObject = env.scene[asset_cfg.name]
+    crate: RigidObject = env.scene[bin_cfg.name]
+    offset = torch.tensor(BULB_BODY_CENTRE_OFFSET, device=env.device).expand(env.num_envs, 3)
+    centre = bulb.data.root_pos_w + quat_apply(bulb.data.root_quat_w, offset)
+    local = quat_apply_inverse(crate.data.root_quat_w, centre - crate.data.root_pos_w)
+    inside = (local[:, 0].abs() <= CRATE_INTERIOR_HALF_EXTENT[0]) & (
+        local[:, 1].abs() <= CRATE_INTERIOR_HALF_EXTENT[1]
     )
+    return inside & (local[:, 2] <= CRATE_RIM_Z)
 
 
 # ---------------------------------------------------------------------------
