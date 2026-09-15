@@ -850,8 +850,8 @@ def face_robot_at(scene: G1ReplaceSceneCfg, target: Vec2) -> None:
     scene.robot.init_state.rot = _quat_z_deg(math.degrees(math.atan2(target[1] - y, target[0] - x)))
 
 
-def stand_robot_near(scene: G1ReplaceSceneCfg, target: Vec2, standoff: float) -> None:
-    """Pull the robot's sampled spawn in to within ``standoff`` of ``target`` and face it.
+def stand_robot_near(scene: G1ReplaceSceneCfg, target: Vec2, standoff: float, min_standoff: float = 0.0) -> None:
+    """Bring the robot's sampled spawn into ``[min_standoff, standoff]`` of ``target`` and face it.
 
     ``apply_replace_preset`` draws the robot's spawn from its own floor zone, independent of
     every other occupant -- correct for the leaves whose whole job is covering that gap (S01,
@@ -860,15 +860,22 @@ def stand_robot_near(scene: G1ReplaceSceneCfg, target: Vec2, standoff: float) ->
     assumption only the full chained curriculum enforces. Built standalone, as every one of these
     envs is for training, eval, and this render, the robot's own random zone can land metres from
     the object it is meant to already be holding or reaching for. No-ops if the sampled spawn is
-    already within ``standoff``, so a draw that happens to land close is left alone.
+    already inside the band, so a draw that happens to land well placed is left alone.
+
+    ``min_standoff`` pushes a draw that lands too CLOSE back out along the same bearing. Without
+    it there is no floor at all, which is how two recorded S07 takes spawned with the base inside
+    the disposal crate's footprint (#205). Moving outward is the safe direction: it walks the
+    robot back toward its own sampled zone, never further into another occupant's.
     """
     rx, ry, rz = scene.robot.init_state.pos
     tx, ty = target
     dx, dy = tx - rx, ty - ry
     dist = math.hypot(dx, dy)
-    if dist > standoff:
-        ux, uy = dx / dist, dy / dist
-        scene.robot.init_state.pos = (tx - ux * standoff, ty - uy * standoff, rz)
+    if dist > standoff or dist < min_standoff:
+        # A spawn exactly on the target has no bearing to push out along; +x is as good as any.
+        ux, uy = (dx / dist, dy / dist) if dist > 1e-6 else (-1.0, 0.0)
+        placed = min(max(dist, min_standoff), standoff)
+        scene.robot.init_state.pos = (tx - ux * placed, ty - uy * placed, rz)
     face_robot_at(scene, target)
 
 
