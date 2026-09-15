@@ -35,6 +35,7 @@ from ..mdp.nav_terms import (
     base_calm,
     base_facing,
     base_near,
+    base_on_step_side,
     compose_carried_pose,
     ladder_upright,
     payload_held,
@@ -52,6 +53,8 @@ from ..scene_cfg import (
 from ..subtask_env_cfg import (
     ARRIVAL_FACING_TOLERANCE,
     ARRIVAL_MAX_SPEED,
+    ARRIVAL_STEP_SIDE_MARGIN,
+    ARRIVAL_SUSTAIN_SECONDS,
     NavigateRewardsCfg,
     NavigateSubtaskCfg,
     SubtaskEventCfg,
@@ -65,6 +68,9 @@ from ..subtask_tiers.carrying import add_bulb_crush_gate
 AT_LADDER_WITH_BULB_CONJUNCTS = [
     (base_near, {"asset_cfg": SceneEntityCfg("ladder"), "xy_radius": LADDER_MOUNT_RADIUS}),
     (base_facing, {"asset_cfg": SceneEntityCfg("ladder"), "facing_tolerance": ARRIVAL_FACING_TOLERANCE}),
+    # A ladder is climbable from one side only, so near + facing is not arrival: stopping BEHIND
+    # it, facing it, satisfies both and scores as ready to climb (issue #206).
+    (base_on_step_side, {"asset_cfg": SceneEntityCfg("ladder"), "margin": ARRIVAL_STEP_SIDE_MARGIN}),
     (base_calm, {"max_speed": ARRIVAL_MAX_SPEED}),
     (
         payload_held,
@@ -124,8 +130,12 @@ class S09CarryBulbToLadderEnvCfg(NavigateSubtaskCfg):
     orbit_radius: float = 5.0
     orbit_height: float = 2.4
 
-    success_predicate = mdp.all_of
-    success_params: dict | None = {"predicates": AT_LADDER_WITH_BULB_CONJUNCTS}
+    success_predicate = mdp.sustained
+    success_params: dict | None = {
+        "predicate_fn": mdp.all_of,
+        "seconds": ARRIVAL_SUSTAIN_SECONDS,
+        "predicate_params": {"predicates": AT_LADDER_WITH_BULB_CONJUNCTS},
+    }
     progress_distance_fn = mdp.base_ladder_distance
 
     events: S09EventCfg = S09EventCfg()
