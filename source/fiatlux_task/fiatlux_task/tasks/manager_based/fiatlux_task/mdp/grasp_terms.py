@@ -194,6 +194,31 @@ def ladder_near_vertical(
 # ---------------------------------------------------------------------------
 
 
+def object_clear_of_surface(
+    env: ManagerBasedRLEnv,
+    asset_cfg: SceneEntityCfg,
+    surface_z: float,
+    surface_centre: tuple[float, float],
+    surface_half_extent: tuple[float, float],
+    rest_band: float = 0.12,
+) -> torch.Tensor:
+    """True where the bulb's body centre is not sitting on the surface (issue #207).
+
+    The resting slab is the surface's footprint, from the surface up by ``rest_band``. MEASURED:
+    a bulb resting on the bench puts its centre 0.073 m above the surface, so the 0.12 m band
+    clears it by 0.047. (0.11 m is the centre's offset from the bulb's own origin, not from the
+    bench.) Outside that slab the bulb is off the surface, whether it is held above it, held
+    BELOW it, or carried off its footprint. The old test only asked whether the bulb was high
+    enough, so a bulb held securely below the bench scored 0.
+    """
+    centre = _bulb_body_centre_w(env, asset_cfg.name)
+    over = torch.ones(env.num_envs, dtype=torch.bool, device=env.device)
+    for axis, (c, half) in enumerate(zip(surface_centre, surface_half_extent, strict=True)):
+        over &= (centre[:, axis] - c).abs() <= half
+    resting = over & (centre[:, 2] >= surface_z) & (centre[:, 2] <= surface_z + rest_band)
+    return ~resting
+
+
 def object_lifted(
     env: ManagerBasedRLEnv,
     asset_cfg: SceneEntityCfg,

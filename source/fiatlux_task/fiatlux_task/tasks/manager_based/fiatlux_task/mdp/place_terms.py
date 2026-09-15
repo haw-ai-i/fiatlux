@@ -33,7 +33,7 @@ from isaaclab.managers import SceneEntityCfg
 from isaaclab.sensors import ContactSensor
 from isaaclab.utils.math import quat_apply, quat_apply_inverse, quat_error_magnitude
 
-from fiatlux_task.assets import BULB_MERIDIAN
+from fiatlux_task.assets import BULB_BODY_CENTRE_OFFSET, BULB_MERIDIAN
 
 if TYPE_CHECKING:
     from isaaclab.envs import ManagerBasedRLEnv
@@ -48,12 +48,20 @@ if TYPE_CHECKING:
 # rotates this by the live quaternion rather than assuming a world direction.
 LADDER_STEP_FACE_LOCAL = (0.0, -1.0, 0.0)
 
+# The crate's rim height. ``old_bulb_in_bin`` no longer reads it; ``object_in_container`` does.
 CRATE_RIM_Z = 0.17  # m
-# Interior half-extent, measured by ray-casting the crate collision mesh (#131);
-# re-measure if the crate USD changes.
-CRATE_INTERIOR_HALF_EXTENT = (0.2873, 0.1876)  # m; #131
+# Interior half-extent, measured off the crate mesh's inner wall faces per height slice
+# (scripts/measure_container_geometry.py); re-measure if the crate USD or its scale changes.
+CRATE_INTERIOR_HALF_EXTENT = (0.2873, 0.1876)  # m
 # Outer footprint, from the same measurement: what "standing at the crate" is measured against.
 CRATE_FOOTPRINT_HALF_EXTENT = (0.3007, 0.2009)  # m; #149
+# How high the bulb's lowest point may sit and still count as IN the crate rather than
+# balanced on its wall. MEASURED over five orientations: at rest inside, 0.004-0.034 m;
+# perched on the wall top, 0.076-0.119 m. The rim does not separate them -- a draped bulb
+# hangs part of itself inside, so its lowest point dips below the rim too.
+CRATE_SEATED_MAX_Z = 0.05  # m
+# Slack below the crate floor for contact jitter; not enough to admit a bulb under the crate.
+CRATE_FLOOR_TOLERANCE = 0.05  # m
 # An object resting against an inner wall touches it, so equality is inside.
 CONTAINMENT_TOLERANCE = 0.001  # m
 
@@ -331,15 +339,32 @@ def old_bulb_in_bin(
     asset_cfg: SceneEntityCfg = SceneEntityCfg("old_bulb"),
     bin_cfg: SceneEntityCfg = SceneEntityCfg("bin"),
 ) -> torch.Tensor:
-    """``object_in_container`` bound to a bulb and the disposal crate."""
-    return object_in_container(
-        env,
-        asset_cfg=asset_cfg,
-        container_cfg=bin_cfg,
-        interior_half_extent=CRATE_INTERIOR_HALF_EXTENT,
-        rim_z=CRATE_RIM_Z,
-        meridian=BULB_MERIDIAN,
+    """True where the bulb is down in the crate (issues #131, #204).
+
+    ACROSS, the body centre: requiring the whole swept body inside fails a bulb resting against an
+    inner wall, which is disposed of by any reasonable reading (#204). DOWN, the bulb's LOWEST
+    point, which has to be on the crate floor: a bulb balanced across the wall top keeps its
+    centre inside the footprint and below the rim, so the centre cannot tell perched from inside.
+    """
+    bulb: RigidObject = env.scene[asset_cfg.name]
+    crate: RigidObject = env.scene[bin_cfg.name]
+    crate_quat = crate.data.root_quat_w
+    offset = torch.tensor(BULB_BODY_CENTRE_OFFSET, device=env.device).expand(env.num_envs, 3)
+    centre = bulb.data.root_pos_w + quat_apply(bulb.data.root_quat_w, offset)
+    local = quat_apply_inverse(crate_quat, centre - crate.data.root_pos_w)
+
+    inside = (local[:, 0].abs() <= CRATE_INTERIOR_HALF_EXTENT[0]) & (
+        local[:, 1].abs() <= CRATE_INTERIOR_HALF_EXTENT[1]
     )
+
+    # Depth from the bulb's own lowest point, not its centre -- see the docstring.
+    outline = torch.tensor(BULB_MERIDIAN, dtype=torch.float32, device=env.device)
+    axis_local = torch.tensor((0.0, 0.0, 1.0), device=env.device).expand(env.num_envs, 3)
+    axis = quat_apply_inverse(crate_quat, quat_apply(bulb.data.root_quat_w, axis_local))
+    origin = quat_apply_inverse(crate_quat, bulb.data.root_pos_w - crate.data.root_pos_w)
+    lowest = _revolved_extent(axis, origin, outline, 2)[0]
+    # Bounded at both ends: an open side is a penalty that cannot fire.
+    return inside & (lowest >= -CRATE_FLOOR_TOLERANCE) & (lowest <= CRATE_SEATED_MAX_Z)
 
 
 # ---------------------------------------------------------------------------
