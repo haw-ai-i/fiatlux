@@ -48,6 +48,7 @@ from ..scene_cfg import (
     TABLETOP_ROBOT_POSITION,
     G1ReplaceSceneCfg,
 )
+from .place_terms import LADDER_STEP_FACE_LOCAL
 from .rewards import base_facing_error, ladder_tipped
 
 if TYPE_CHECKING:
@@ -375,6 +376,25 @@ def base_near(
 def base_facing(env: ManagerBasedRLEnv, asset_cfg: SceneEntityCfg, facing_tolerance: float) -> torch.Tensor:
     """True where the robot's heading is within ``facing_tolerance`` of the bearing to the entity."""
     return base_facing_error(env, asset_cfg) < facing_tolerance
+
+
+def base_on_step_side(
+    env: ManagerBasedRLEnv,
+    asset_cfg: SceneEntityCfg = SceneEntityCfg("ladder"),
+    margin: float = 0.0,
+) -> torch.Tensor:
+    """True where the robot is on the side of the ladder its STEPS face (issue #206).
+
+    Near and facing are not enough: a ladder is climbable from one side only, so a robot that
+    stops behind it, facing it, satisfies both and scores as ready to climb while standing where
+    it cannot start. Evaluated in the ladder's own frame, where the step side is the sign of
+    ``LADDER_STEP_FACE_LOCAL``, so a yawed or carried ladder is handled -- and S01 moves it.
+    """
+    robot: Articulation = env.scene["robot"]
+    ladder: RigidObject = env.scene[asset_cfg.name]
+    rel = quat_apply_inverse(ladder.data.root_quat_w, robot.data.root_pos_w - ladder.data.root_pos_w)
+    face = torch.tensor(LADDER_STEP_FACE_LOCAL[:2], device=env.device)
+    return (rel[:, :2] * face).sum(dim=1) > margin
 
 
 def base_calm(env: ManagerBasedRLEnv, max_speed: float) -> torch.Tensor:
