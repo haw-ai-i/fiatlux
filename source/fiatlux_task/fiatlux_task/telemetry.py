@@ -12,7 +12,7 @@ extended here and nowhere else:
   ``extras``, done counts) into named metrics -- the manager score channels
   (``Episode_Reward/<term>``, ``Episode_Termination/<term>``), success, episode length,
   control effort, contact force. Add a metric here and it shows up everywhere at once:
-  the live sinks, the final summary, and ``eval.py``'s JSON (which is
+  the live sinks and the final summary (the scored headline is
   :meth:`ScoreLogger.close`'s return value -- scripts do not aggregate on their own).
 - **Sinks** (*where*): the :class:`Sink` protocol (``log`` / ``video`` / ``close``).
   ``WandbSink`` is the shipped backend; a TensorBoard or CSV sink is a new class in
