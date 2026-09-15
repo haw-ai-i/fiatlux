@@ -129,9 +129,23 @@ class S08GrabNewBulbEnvCfg(GraspSubtaskCfg):
         add_ego_camera(self.scene)
         add_mid360_lidar(self.scene)
         add_grasp_contact_sensor(self.scene, self.scene.fresh_bulb.prim_path)
-        # The bench moves with the layout draw, so the footprint the gate tests is this
-        # layout's bench, not the tabletop preset's constant.
-        for _fn, _params in BULB_GRASPED_CONJUNCTS:
-            if _fn is grasp_terms.object_clear_of_surface:
-                _params["surface_centre"] = tuple(self.scene.table.init_state.pos[:2])
+        # This layout's bench, not the preset's constant. Built per instance: writing it back
+        # into the module-level BULB_GRASPED_CONJUNCTS let the last config built win for all of
+        # them, and a gate aimed at another layout's bench reads a bulb resting on this one as
+        # lifted.
+        bench_centre = tuple(self.scene.table.init_state.pos[:2])
+        self.success_params = {
+            **self.success_params,
+            "predicate_params": {
+                "predicates": [
+                    (
+                        fn,
+                        {**params, "surface_centre": bench_centre}
+                        if fn is grasp_terms.object_clear_of_surface
+                        else dict(params),
+                    )
+                    for fn, params in BULB_GRASPED_CONJUNCTS
+                ]
+            },
+        }
         frame_viewer_on(self.viewer, self.scene.robot.init_state.pos)

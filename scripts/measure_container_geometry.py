@@ -17,8 +17,8 @@ the same way -- a container is not a box of constant width:
 
 Method follows ``measure_bore_geometry.py``: pull each mesh's authored points, push them
 through the prim's own local-to-world transform, and profile them by height slice. For the
-crate the statistic per slice is the MAXIMUM |x| and |y| of points near the walls -- the inner
-surface a bulb can rest against. For the bench it is the top surface height and the full
+crate the statistic per slice is the INNER FACE of each wall -- measured on the wall it
+belongs to, which is the surface a bulb can rest against. For the bench it is the top surface height and the full
 footprint.
 
 Run via ./pyrun (repo root), not a bare .venv/bin/python.
@@ -93,19 +93,23 @@ def interior_profile(pts: np.ndarray, origin: np.ndarray, slice_m: float) -> lis
     rows = []
     z = rel[:, 2]
     lo, hi = float(z.min()), float(z.max())
-    edge = max(abs(rel[:, 0]).max(), abs(rel[:, 1]).max())
     step = slice_m
     h = lo
     while h < hi:
         sel = rel[(z >= h) & (z < h + step)]
         if len(sel) >= 8:
-            # wall points only: ignore the floor slab, which spans the whole footprint
-            wall_x = np.abs(sel[:, 0])
-            wall_y = np.abs(sel[:, 1])
-            outer_x = wall_x[wall_x > 0.5 * edge]
-            outer_y = wall_y[wall_y > 0.5 * edge]
-            if len(outer_x) and len(outer_y):
-                rows.append((h + step / 2.0, float(outer_x.min()), float(outer_y.min())))
+            # Each wall measured on the wall it belongs to. Filtering both axes with one
+            # combined `0.5 * edge` threshold and taking the minimum returned the THRESHOLD
+            # (0.1504), not a wall, putting the inner x face at 0.155 when it is at 0.2873.
+            x_wall = sel[np.abs(sel[:, 1]) < 0.6 * np.abs(sel[:, 1]).max()]
+            y_wall = sel[np.abs(sel[:, 0]) < 0.6 * np.abs(sel[:, 0]).max()]
+            if len(x_wall) and len(y_wall):
+                x_shell = np.abs(x_wall[:, 0])
+                y_shell = np.abs(y_wall[:, 1])
+                inner_x = x_shell[x_shell > 0.8 * x_shell.max()]
+                inner_y = y_shell[y_shell > 0.8 * y_shell.max()]
+                if len(inner_x) and len(inner_y):
+                    rows.append((h + step / 2.0, float(inner_x.min()), float(inner_y.min())))
         h += step
     return rows
 

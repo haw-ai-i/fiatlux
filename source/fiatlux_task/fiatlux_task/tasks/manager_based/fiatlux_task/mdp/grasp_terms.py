@@ -204,11 +204,12 @@ def object_clear_of_surface(
 ) -> torch.Tensor:
     """True where the bulb's body centre is not sitting on the surface (issue #207).
 
-    The resting slab is the surface's footprint, from the surface up by ``rest_band`` -- a bulb
-    standing on the bench puts its centre 0.11 m above it. Outside that slab the bulb is off the
-    surface, whether it is held above it, held BELOW it, or carried off its footprint. The old
-    test only asked whether the bulb was high enough, so a bulb held securely below the bench
-    scored 0.
+    The resting slab is the surface's footprint, from the surface up by ``rest_band``. MEASURED:
+    a bulb resting on the bench puts its centre 0.073 m above the surface, so the 0.12 m band
+    clears it by 0.047. (0.11 m is the centre's offset from the bulb's own origin, not from the
+    bench.) Outside that slab the bulb is off the surface, whether it is held above it, held
+    BELOW it, or carried off its footprint. The old test only asked whether the bulb was high
+    enough, so a bulb held securely below the bench scored 0.
     """
     centre = _bulb_body_centre_w(env, asset_cfg.name)
     over = torch.ones(env.num_envs, dtype=torch.bool, device=env.device)
