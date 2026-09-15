@@ -48,6 +48,7 @@ from ..scene_cfg import (
     TABLETOP_ROBOT_POSITION,
     G1ReplaceSceneCfg,
 )
+from .place_terms import CRATE_FOOTPRINT_HALF_EXTENT
 from .rewards import base_facing_error, ladder_tipped
 
 if TYPE_CHECKING:
@@ -114,10 +115,23 @@ if abs((_APPROACH_UX, _APPROACH_UY)[_OTHER_AXIS] * CARRY_CLEARANCE_STANDOFF) > T
 # robot can put a hand over the crate, which is what arrival is for.
 DISPOSAL_ARRIVAL_CLEARANCE = G1_HORIZONTAL_REACH
 
-# Where staging PUTS the robot, as a radius from the crate's origin -- a different quantity from
-# the gate above, which is a clearance from its footprint. PROVISIONAL: the crate's own layout
-# zone half-extent; no authored robot-relative standoff exists.
+# Where staging PUTS the robot to WORK at the crate, as a radius from its origin -- a different
+# quantity from the gate above, which is a clearance from its footprint. PROVISIONAL: the crate's
+# own layout zone half-extent; no authored robot-relative standoff exists. Safe only because the
+# legs that use it also FACE the crate, so SONIC's settle backstep carries them away from it.
 DISPOSAL_STANCE_RADIUS = DISPOSAL_ZONE_HALF_SIZE
+
+# Where staging puts a robot that is DONE with the crate and turned away from it (S07). That turn
+# is what makes the work radius unsafe here: facing the bench, the crate lands at any bearing,
+# including straight behind, and the settle backstep then walks the robot into it. Measured over
+# the 11 recorded S07 takes -- crate bearings from -134 to +147 deg, and the two furthest behind
+# both ended with the base INSIDE the crate footprint, which is what the first hard walk command
+# trips over (#205). So: clear of the footprint whichever way the robot happens to be turned.
+# 0.45 m from the nearest wall at spawn. The settle then pulls the base back TOWARD the crate,
+# so what survives is less: measured over 10 headless S07 spawns, 0.18-0.43 m once settled
+# (main: 0.01-0.17 m, and inside the footprint on 1 of 5 seeds).
+DISPOSAL_DEPARTURE_CLEARANCE = 0.45  # m
+DISPOSAL_DEPARTURE_RADIUS = max(CRATE_FOOTPRINT_HALF_EXTENT) + DISPOSAL_DEPARTURE_CLEARANCE
 
 # Grip-presence floor for the carrying legs' arrival gate: subtask_tiers.place's
 # RELEASE_FORCE_THRESHOLD_N read the other way. PROVISIONAL.

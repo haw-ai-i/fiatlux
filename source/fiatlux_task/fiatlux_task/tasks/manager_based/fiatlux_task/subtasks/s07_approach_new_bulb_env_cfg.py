@@ -16,7 +16,7 @@ from isaaclab.utils import configclass
 from .. import mdp
 from ..mdp.nav_terms import (
     BULB_APPROACH_RADIUS,
-    DISPOSAL_STANCE_RADIUS,
+    DISPOSAL_DEPARTURE_RADIUS,
     base_bulb_distance,
     base_calm,
     base_facing,
@@ -63,8 +63,14 @@ class S07ApproachNewBulbEnvCfg(NavigateSubtaskCfg):
         # the preset's seated old bulb is still overhead, three subtasks after it was disposed
         # of -- and with no attach FSM on this tier it drops out of the inverted socket at reset.
         park_old_bulb_in_crate(self.scene)
-        # S06's end state: standing at the disposal crate, hands free.
-        stand_robot_near(self.scene, self.scene.bin.init_state.pos[:2], DISPOSAL_STANCE_RADIUS)
+        # S06's end state: standing at the disposal crate, hands free -- but turned away from it
+        # below, so it has to be clear of the crate on every bearing, not just in front (#205).
+        stand_robot_near(
+            self.scene,
+            self.scene.bin.init_state.pos[:2],
+            DISPOSAL_DEPARTURE_RADIUS,
+            min_standoff=DISPOSAL_DEPARTURE_RADIUS,
+        )
         # This leg's target is the bulb itself, not the table's own origin apply_replace_preset
         # aims at.
         face_robot_at(self.scene, self.scene.fresh_bulb.init_state.pos[:2])
