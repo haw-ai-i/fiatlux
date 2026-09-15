@@ -76,7 +76,9 @@ uv run python scripts/verify_scene.py --headless                          # FIAT
 uv run python scripts/verify_scene.py --headless --task FIATLUX-Climb-v0  # any family member
 
 # 4. Evaluate (standardized, reproducible):
-uv run python scripts/eval.py --task FIATLUX-Insert-v0 --policy random --episodes 20 --seed 0
+uv run python scripts/record_run.py --task FIATLUX-Insert-v0 --policy random \
+    --episodes 20 --seed 0 --record bag --out logs/runs/random0
+python scripts/score.py logs/runs/random0
 
 # 5. Record a run, then score it offline (no simulator needed for scoring).
 #    --enable_cameras is required: the env carries a wrist-camera sensor.
@@ -92,7 +94,7 @@ uv run python scripts/rsl_rl/train.py --task FIATLUX-Climb-v0
 #    PolicyServer -- setup in journal/specs/groot-sonic-baseline.md):
 uv sync --extra groot
 scripts/groot/serve.sh &   # terminal 1: the VLA server (own venv, HF token required)
-uv run python scripts/eval.py --task FIATLUX-Replace-v0 --policy groot \
+uv run python scripts/record_run.py --task FIATLUX-Replace-v0 --policy groot --record bag \
     --episodes 20 --seed 0 --enable_cameras
 
 # 8. Teleoperate the tasks (whole-body: SONIC walking + bimanual arms; keyboard or
