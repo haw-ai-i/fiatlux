@@ -60,8 +60,10 @@ the PICO Browser can install an APK directly, the Quest Browser cannot — use `
 with Developer Mode on.
 
 Keyboard: arrows walk, `SPACE` stops, `TAB` switches arm, `W/S A/D Q/E` move the end effector,
-`U/O I/K J/L` rotate the wrist, `G` grips, `C` toggles recording, `R` resets. Forward reach
-saturates around 0.35 m from the pelvis — past that the arm is at its kinematic limit.
+`U/O I/K J/L` rotate the wrist, `G` grips, `T`/`Y` lean forward/back, `H` toggles the rail
+hand (only on the tasks that brace one), `C` toggles recording, `R` resets, `ESCAPE` quits.
+Forward reach saturates around 0.35 m from the pelvis — past that the arm is at its kinematic
+limit.
 
 ### Driver flags
 
@@ -83,14 +85,19 @@ saturates around 0.35 m from the pelvis — past that the arm is at its kinemati
 | `--out` | path | where takes go; default is the `teleop-captures/` layout below |
 | `--camera` | **`auto`** / `follow` / `static` / `fixture` / `bench` / `crate` | the third-person shot. `auto` picks per task: socket side view on S03/S11, bench side view on S07/S08, crate side view on S06, chase cam framing the task's objects elsewhere |
 | `--stop-on-success` / `--no-stop-on-success` | **on** | close the take the moment the success gate latches |
-| `--no-arm-pin` | | do not pin the idle arm at its settle joints. The pin stops IK droop but makes a hands-off robot fall at ~3 s; use this whenever the robot must still be standing when you connect |
 | `--lock-base` | | bolt the pelvis to the world (legs inert) — testing the manipulation half of an on-ladder task only, not demo-valid |
-| `--max_steps` | int, **0** = run until quit | stop after N loop steps |
+| `--max_steps` | int, **0** = run until quit | stop after N loop steps, writing the bag cleanly. Killing the process instead skips the final write |
+| `--keys` | `NAME@SECONDS,...` | scripted key presses for hands-off runs, e.g. `"G@4,R@8,ESCAPE@15"`; keyboard input only. Pair with `--max_steps` |
 | `--teleop_device` | **`controller_rel`** | which XR device config to drive the arms with |
 | `--walk_onnx`, `--balance_onnx` | paths | the SONIC policies (`$SONIC_POLICY_DIR`) |
 | `--num_envs` | **1** | |
 
-`restart_sonic_teleop.sh` forwards these as `FIATLUX_*` environment variables — see its header.
+`restart_sonic_teleop.sh` is the VR entry point and takes the same settings as `FIATLUX_*`
+environment variables: `FIATLUX_TASK`, `FIATLUX_HAND`, `FIATLUX_LAYOUT_SEED`,
+`FIATLUX_WALK_SCALE`, `FIATLUX_CAMERA`, `FIATLUX_LOCK_BASE`, `FIATLUX_RECORD`,
+`FIATLUX_RECORD_FORMAT`, `FIATLUX_RECORD_START`, `FIATLUX_RECORD_SETTLE`,
+`FIATLUX_RECORD_VIDEO`, `FIATLUX_OUT` and `FIATLUX_REPO`. Anything unset falls back to the
+driver default above.
 
 ## The 12 subtasks
 
