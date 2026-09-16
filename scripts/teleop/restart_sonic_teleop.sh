@@ -94,8 +94,12 @@ if grep -q "Teleop ready" "$LOGDIR/sonic_teleop.log"; then echo "   sim ready"; 
 echo "[5/5] READY."
 cat <<EOF
   1. In the Isaac Sim window: AR panel -> Output OpenXR, Runtime System OpenXR Runtime -> Start AR.
-  2. On the Pico browser: https://$TAILNET_IP:48322/client/  (accept cert -> Advanced -> Proceed)
-     Settings: Server IP $TAILNET_IP, Port 48322, Device Profile Pico 4 Ultra -> Connect.
+  2. In the headset's browser: https://$TAILNET_IP:48322/client/  (accept cert -> Advanced -> Proceed)
+     Settings: Server IP $TAILNET_IP, Port 48322, then pick your Device Profile:
+       Quest 3S / Quest 3 / Quest 2  -- also switch on "Quest Texture Optimization" and,
+                                        on Quest 3/3S, "Quest Color Workaround" (Display P3).
+       Pico 4 Ultra
+     -> Connect.
   3. Walk to the table (LEFT stick) + insert (controller_rel arm teleop: grip-clutch + move, trigger grasp).
   Logs: $LOGDIR/runtime.log , $LOGDIR/sonic_teleop.log
 EOF

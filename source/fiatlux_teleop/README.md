@@ -3,7 +3,7 @@
 Teleop **on top of** the `fiatlux_task` benchmark. It's a separate package so the benchmark
 installs/runs without teleop's deps (OpenXR / CloudXR / the SONIC onnxruntime stack). The dependency
 arrow points **teleop → benchmark**: each teleop env here subclasses a benchmark env and swaps its RL
-whole-body action for a human-drivable **arm-IK + binary-grip** interface, driven over a Pico headset
+whole-body action for a human-drivable **arm-IK + binary-grip** interface, driven over a VR headset
 (CloudXR) **or the keyboard** (`sonic_teleop.py --input vr|keyboard`).
 
 - **Operator** (running a session): **no code** — one launcher command.
@@ -17,7 +17,7 @@ One command installs everything (idempotent; `verify` mode checks without instal
 
 ```bash
 ./scripts/teleop/setup_sim_teleop.sh            # keyboard tier: sim env + assets + SONIC onnx
-./scripts/teleop/setup_sim_teleop.sh vr         # + the CloudXR/Pico tier
+./scripts/teleop/setup_sim_teleop.sh vr         # + the CloudXR headset tier
 ./scripts/teleop/setup_sim_teleop.sh verify     # check every piece
 ```
 
@@ -38,10 +38,10 @@ Teleop runs as **two processes in two envs**, kept separate so the CloudXR deps 
 > setup script prints) and it self-heals regardless of what was synced before.
 
 Also needed:
-- **Headset** — Pico 4 Ultra (or any CloudXR-compatible OpenXR headset) on the **same Tailscale
-  tailnet** as the GPU box (install the Tailscale APK on the Pico, log into the same tailnet).
+- **Headset** — Quest 3S/3/2 or Pico 4 Ultra (any headset the CloudXR web client profiles) on
+  the **same Tailscale tailnet** as the GPU box, or simply the same LAN.
 - **`~/.cloudxr/`** — CloudXR install dir with `openxr_cloudxr.json` + a self-signed cert whose SAN
-  carries your **tailnet IP** (else the Pico browser can't get past the cert warning).
+  carries your **tailnet IP** (else the headset's browser can't get past the cert warning).
 
 The launcher activates both envs for you — you never switch them by hand. Full first-time install,
 firewall ports, network topology, and every hard-won gotcha:
@@ -114,13 +114,13 @@ releases it. For hands-off tests, `--keys "G@4,R@8,ESCAPE@15"` injects timed key
 Once `[5/5] READY` prints, the launcher echoes these — in order:
 1. **In the Isaac Sim window** → **AR** panel → Output Plugin **OpenXR**, Runtime **System OpenXR
    Runtime** → **Start AR**.
-2. **On the Pico browser** → `https://<tailnet-ip>:48322/client/` → cert warning → **Advanced →
+2. **In the headset's browser** → `https://<tailnet-ip>:48322/client/` → cert warning → **Advanced →
    Proceed**.
-3. Client **Settings**: Device Profile **Pico 4 Ultra**, Server IP **`<tailnet-ip>`**, **Port
+3. Client **Settings**: Device Profile **your headset** (Quest 3S/3/2 or Pico 4 Ultra), Server IP **`<tailnet-ip>`**, **Port
    `48322`** — **not** the default `49100` (48322 is the TLS/WSS proxy; 49100 is the raw backend).
 4. **Connect** → the scene streams to the headset. Then drive with the controls below.
 
-### Controls (Pico controllers)
+### Controls (motion controllers)
 | Input | Action |
 |---|---|
 | **grip-clutch + move** controller | move the arm (release grip to reposition without moving the arm) |
@@ -289,4 +289,4 @@ scripts/teleop/
 ## Scope note
 This is a *bespoke* harness (G1 arm-IK + SONIC legs + CloudXR), tuned for these scenes — not a generic
 "point at any env and teleop." Adding a new teleop task is the ~30-line cfg above, following the
-templates. For the CloudXR / Pico setup itself, see `journal/specs/vr-teleop-cloudxr-setup.md`.
+templates. For the CloudXR headset setup itself, see `journal/specs/vr-teleop-cloudxr-setup.md`.

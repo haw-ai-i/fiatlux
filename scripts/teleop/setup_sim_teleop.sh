@@ -4,7 +4,7 @@
 # Two tiers (see source/fiatlux_teleop/README.md for how the stack is wired):
 #   KEYBOARD tier -- whole-body teleop (SONIC legs + arm IK) from the desktop, NO headset:
 #       sim env (uv) + assets + SONIC policy ONNX. This is the minimum to drive the robot in sim.
-#   VR tier -- adds the Pico-over-CloudXR path on top:
+#   VR tier -- adds the headset-over-CloudXR path on top (Quest 3S/3/2, Pico 4 Ultra):
 #       vr_teleop venv (isaacteleop/CloudXR runtime) + network checks. The CloudXR deps NEVER go
 #       into the sim env (known dep conflict; the launcher runs them as two processes).
 #
@@ -184,7 +184,7 @@ stage_vr(){
     # auto-launch here (it wants a GPU/X session); tell the operator instead.
     if [ -f "$HOME/.cloudxr/openxr_cloudxr.json" ]; then ok "CloudXR runtime installed (~/.cloudxr)"
     else warn "CloudXR runtime not bootstrapped yet -- first VR launch does it: restart_sonic_teleop.sh (or: python -m isaacteleop.cloudxr --accept-eula --host-client)"; fi
-    # Network for the Pico path: the headset needs SOME route to this box -- same LAN/WiFi (best
+    # Network for the headset: it needs SOME route to this box -- same LAN/WiFi (best
     # latency, use the LAN IP) or Tailscale (the remote option). Neither is "required"; report both.
     local lan_ip; lan_ip=$(hostname -I 2>/dev/null | tr ' ' '\n' | grep -E '^(192\.168|10|172)\.' | head -1)
     [ -n "$lan_ip" ] && ok "LAN path: headset on the same WiFi -> NV_CXR_ENDPOINT_IP=$lan_ip" \
@@ -194,16 +194,31 @@ stage_vr(){
     if need command -v ufw && sudo -n ufw status 2>/dev/null | grep -q active; then
         for rule in 47998/udp 48322/tcp 49100/tcp; do sudo -n ufw allow "$rule" >/dev/null 2>&1 || true; done
         ok "ufw ports opened (47998/udp, 48322,49100/tcp)"
-    else warn "could not adjust ufw non-interactively -- if the Pico can't connect: sudo ufw allow 47998/udp && sudo ufw allow 48322,49100/tcp"; fi
+    else warn "could not adjust ufw non-interactively -- if the headset can't connect: sudo ufw allow 47998/udp && sudo ufw allow 48322,49100/tcp"; fi
     cat <<'EOF'
-  Headset (one-time, manual -- Pico 4 Ultra). Pick the network path:
-    SAME WiFi/LAN (preferred, lowest latency): put the Pico on the same network as this box.
-       Nothing to install on the headset; use the LAN IP printed above as NV_CXR_ENDPOINT_IP.
-    REMOTE (different networks) -- Tailscale:
-       1. Settings -> Security -> Install unknown apps -> allow for PICO Browser.
-       2. In the PICO Browser download + install the Tailscale APK:
-          pkgs.tailscale.com/stable/tailscale-android-universal-<ver>.apk
-       3. Open Tailscale on the Pico, log into the SAME tailnet as this box; use the tailnet IP.
+  Headset (one-time, manual). The client is a WEB PAGE, so nothing is installed for the
+  streaming itself -- any headset whose browser does WebXR works. Tested: Quest 3S, Quest 3,
+  Quest 2, Pico 4 Ultra.
+
+  Network path -- pick one:
+    SAME WiFi/LAN (preferred, lowest latency): put the headset on this box's network.
+       Nothing to install; use the LAN IP printed above as NV_CXR_ENDPOINT_IP.
+    REMOTE (different networks) -- Tailscale, sideloaded into the headset's Android:
+       Quest 3S / 3 / 2:
+         1. Enable Developer Mode for the headset in the Meta Horizon phone app, then
+            connect it by USB and `adb install tailscale-android-universal-<ver>.apk`
+            (Quest Browser cannot install APKs, unlike the PICO one).
+         2. Open Tailscale from the app library (Unknown Sources), join THIS tailnet.
+       Pico 4 Ultra:
+         1. Settings -> Security -> Install unknown apps -> allow for PICO Browser.
+         2. In the PICO Browser download + install the Tailscale APK:
+            pkgs.tailscale.com/stable/tailscale-android-universal-<ver>.apk
+         3. Open Tailscale on the Pico, join THIS tailnet.
+       Either way, use the tailnet IP as NV_CXR_ENDPOINT_IP.
+
+  In the client page (https://<ip>:48322/client/), set Device Profile to your headset. On
+  Quest also enable "Quest Texture Optimization"; on Quest 3/3S enable "Quest Color
+  Workaround" (Display P3) or the stream looks washed out.
 EOF
 }
 

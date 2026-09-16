@@ -5,8 +5,10 @@ drives legs+waist with the pre-trained NVIDIA SONIC policy so the operator can w
 the scene and manipulate -- true whole-body teleop, on any task.
 
 Two input modes (``--input``):
-  * vr        -- Pico controllers over CloudXR: LEFT stick walks, the env's own bimanual arm teleop
-                 (controller pose -> IK, trigger -> grip) drives the arms.
+  * vr        -- motion controllers over CloudXR: LEFT stick walks, the env's own bimanual arm
+                 teleop (controller pose -> IK, trigger -> grip) drives the arms. Any headset the
+                 CloudXR web client profiles works -- Quest 3S/3/2 and Pico 4 Ultra are the tested
+                 ones; the driver reads Isaac Lab's abstract controller row, not a vendor SDK.
   * keyboard  -- desktop, no headset: arrow keys walk; TAB picks the active arm; W/S A/D Q/E move it,
                  U/O I/K J/L rotate the wrist, G grips -- both arms + wrist rotation, i.e. VR parity.
 
@@ -38,7 +40,7 @@ parser.add_argument(
     "--input",
     choices=["vr", "keyboard"],
     default="vr",
-    help="vr = Pico controllers over CloudXR; keyboard = desktop keys (no headset)",
+    help="vr = motion controllers over CloudXR (Quest 3S/3/2, Pico 4 Ultra); keyboard = desktop keys",
 )
 parser.add_argument(
     "--layout_seed",
@@ -1861,7 +1863,7 @@ def main():  # noqa: C901  (one long orchestration: env setup + settle/resettle 
     )
     if args.input == "vr":
         print(
-            "Teleop ready. In the Isaac Sim UI: AR panel -> Start AR, then connect the Pico. "
+            "Teleop ready. In the Isaac Sim UI: AR panel -> Start AR, then connect the headset. "
             "LEFT stick = walk, RIGHT stick X = turn, RIGHT btn = stop, LEFT X/Y = lean. "
             "Arms: the usual controller_rel teleop (grip-clutch + move, trigger to grasp)."
             + (

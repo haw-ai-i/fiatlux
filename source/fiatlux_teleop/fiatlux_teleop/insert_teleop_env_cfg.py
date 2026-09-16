@@ -12,7 +12,7 @@ terminations -- is inherited unchanged from :class:`G1BulbInsertEnvCfg`, so only
 interface* differs and recorded demos stay compatible with the RL env's observation / reward defs.
 
 Drive it with ``scripts/teleop/sonic_teleop.py --task FIATLUX-Insert-Teleop-v0`` -- ``--input keyboard``
-for desktop keys or ``--input vr`` for a Pico headset over CloudXR (whole-body: SONIC legs + arm teleop).
+for desktop keys or ``--input vr`` for a headset over CloudXR (whole-body: SONIC legs + arm teleop).
 """
 
 from fiatlux_task.assets import OMNI_BULB_USD, OMNI_SOCKET_USD
@@ -299,7 +299,7 @@ class G1BulbInsertTeleopEnvCfg(G1BulbInsertEnvCfg):
 
         # Devices the teleop script can instantiate for this env. keyboard/spacemouse drive the
         # flat-screen path; the OpenXR ``controller`` / ``controller_rel`` devices drive the arm from a
-        # Pico headset CONTROLLER over CloudXR (see journal/specs/vr-teleop-cloudxr-setup.md).
+        # Headset CONTROLLER over CloudXR (see journal/specs/vr-teleop-cloudxr-setup.md).
         self.teleop_devices = DevicesCfg(
             devices={
                 "keyboard": Se3KeyboardCfg(
@@ -309,7 +309,7 @@ class G1BulbInsertTeleopEnvCfg(G1BulbInsertEnvCfg):
                     pos_sensitivity=0.05, rot_sensitivity=0.05, sim_device=self.sim.device
                 ),
                 # Motion-controller variant: same absolute-IK arm + binary grip, but driven by the
-                # headset CONTROLLER instead of hand tracking (the Pico CloudXR web client streams
+                # headset CONTROLLER instead of hand tracking (the CloudXR web client streams
                 # controllers, not optical hand joints -- see journal/specs/vr-teleop-cloudxr-setup.md). Right grip
                 # pose -> EE target, trigger -> grip. Pick it with ``--teleop_device controller``.
                 "controller": OpenXRDeviceCfg(

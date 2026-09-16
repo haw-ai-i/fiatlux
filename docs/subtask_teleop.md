@@ -40,6 +40,25 @@ Always use `restart_sonic_teleop.sh` for VR. It restarts the CloudXR runtime and
 state files. Reusing a runtime across Isaac restarts leaves signalling working while media
 negotiation fails — the client connects, looks healthy, and drops after about 30 seconds.
 
+### Headsets
+
+No headset software is installed: the client is the web page CloudXR serves at
+`https://<ip>:48322/client/`, so any headset whose browser does WebXR can drive the sim. The
+driver reads Isaac Lab's abstract controller row (thumbstick, trigger, squeeze, two face
+buttons), not a vendor SDK, so the controls below are the same on every headset — only the
+button *names* differ.
+
+| headset | Device Profile | also switch on | face buttons |
+|---|---|---|---|
+| Quest 3S / Quest 3 | `Quest 3S` / `Quest 3` | Quest Texture Optimization, Quest Color Workaround | left `X`/`Y`, right `A`/`B` |
+| Quest 2 | `Quest 2` | Quest Texture Optimization | left `X`/`Y`, right `A`/`B` |
+| Pico 4 Ultra | `Pico 4 Ultra` | — | left/right face buttons |
+
+Quest Color Workaround is the Display P3 fix; without it a Quest 3/3S stream looks washed
+out. Sideloading Tailscale (only needed when the headset is on a different network) differs:
+the PICO Browser can install an APK directly, the Quest Browser cannot — use `adb install`
+with Developer Mode on.
+
 Keyboard: arrows walk, `SPACE` stops, `TAB` switches arm, `W/S A/D Q/E` move the end effector,
 `U/O I/K J/L` rotate the wrist, `G` grips, `C` toggles recording, `R` resets. Forward reach
 saturates around 0.35 m from the pelvis — past that the arm is at its kinematic limit.
