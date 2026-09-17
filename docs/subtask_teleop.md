@@ -226,7 +226,7 @@ Shared thresholds: **robot standing** = pelvis above 0.35 m and tilt under 1.0 r
 
 | | Task | Gate | Complete when |
 |---|---|---|---|
-| S01 | MoveLadder | sustained | ladder within **0.67 m** of the fixture, upright · feet down within **2 cm** of the floor · ladder at rest · robot standing |
+| S01 | MoveLadder | sustained | the stance that ladder pose would produce could grasp the bulb: its shoulder within **0.419 m** of the bulb's body centre in **3-D**, facing it within **45°**, and standing off far enough that the fixture is not inside its torso · ladder upright · feet down within **2 cm** of the floor · ladder at rest · robot standing |
 | S02 | ClimbLadder | all_of | pelvis within **0.15 m** of the top stance height · within **0.6 m** of the ladder in xy · moving under **1.5 m/s** · standing · ladder vertical |
 | S03 | RemoveOldBulb | sustained | old bulb **0.10 m** clear of the fixture after release · held (>1 N) · lifted above **0.15 m** · standing · ladder vertical |
 | S04 | DescendWithBulb | all_of | pelvis below the floor-stance height, within **0.6 m** of the ladder, under **1.5 m/s** · bulb held · lifted · standing · ladder vertical |

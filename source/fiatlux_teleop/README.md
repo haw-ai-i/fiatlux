@@ -38,10 +38,12 @@ Teleop runs as **two processes in two envs**, kept separate so the CloudXR deps 
 > setup script prints) and it self-heals regardless of what was synced before.
 
 Also needed:
-- **Headset** — Quest 3S/3/2 or Pico 4 Ultra (any headset the CloudXR web client profiles) on
-  the **same Tailscale tailnet** as the GPU box, or simply the same LAN.
+- **Headset** — Quest 3S/3/2 or Pico 4 Ultra (any headset the CloudXR web client profiles),
+  reaching this box either on the **same LAN** (nothing to install) or over **Tailscale** (running
+  on the headset too).
 - **`~/.cloudxr/`** — CloudXR install dir with `openxr_cloudxr.json` + a self-signed cert whose SAN
-  carries your **tailnet IP** (else the headset's browser can't get past the cert warning).
+  carries **the address the headset dials** (else its browser can't get past the cert warning).
+  Browsing by hostname instead of that address gives a name mismatch some browsers refuse outright.
 
 The launcher activates both envs for you — you never switch them by hand. Full first-time install,
 firewall ports, network topology, and every hard-won gotcha:
@@ -51,12 +53,16 @@ firewall ports, network topology, and every hard-won gotcha:
 
 ## Quickstart — teleop an existing task (operator)
 
-Three teleop tasks ship ready to run: `FIATLUX-Insert-Teleop-v0`, `FIATLUX-Carry-Teleop-v0`,
-`FIATLUX-LadderGallery-Teleop-v0`.
+The benchmark's twelve subtasks each have a teleop twin -- the subtask id with `-Teleop-v0` on
+the end, e.g. `FIATLUX-S07-ApproachNewBulb-Teleop-v0`. They are what demos are collected on and
+scored against; the launcher lists them all if `FIATLUX_TASK` is unset. Three earlier standalone
+envs also still run (`FIATLUX-Insert-Teleop-v0`, `FIATLUX-Carry-Teleop-v0`,
+`FIATLUX-LadderGallery-Teleop-v0`) and serve as templates below, but they are not part of the
+12-subtask benchmark and do not score against it.
 
 ```bash
 # from the repo root. Walking + arm teleop (SONIC legs):
-NV_CXR_ENDPOINT_IP=<ip> FIATLUX_TASK=FIATLUX-Carry-Teleop-v0 FIATLUX_HAND=dex3 \
+NV_CXR_ENDPOINT_IP=<ip> FIATLUX_TASK=FIATLUX-S07-ApproachNewBulb-Teleop-v0 FIATLUX_HAND=dex3 \
   bash scripts/teleop/restart_sonic_teleop.sh
 # recording is armed by default (bag + video, started by the right face button);
 # FIATLUX_RECORD=none drives without writing anything.
@@ -104,7 +110,7 @@ Same SONIC walking + arm teleop, from the desktop — run the driver directly (n
 ```bash
 conda activate env_isaaclab
 export PYTHONPATH=$PWD/source/fiatlux_task:$PWD/source/fiatlux_teleop
-python scripts/teleop/sonic_teleop.py --task FIATLUX-Carry-Teleop-v0 --input keyboard
+python scripts/teleop/sonic_teleop.py --task FIATLUX-S07-ApproachNewBulb-Teleop-v0 --input keyboard
 ```
 Click the Isaac Sim viewport to focus it. The full key map lives in
 [docs/subtask_teleop.md](../../docs/subtask_teleop.md#running) — **Tab** switches the active arm,
@@ -116,9 +122,9 @@ injects timed key presses
 Once `[5/5] READY` prints, the launcher echoes these — in order:
 1. **In the Isaac Sim window** → **AR** panel → Output Plugin **OpenXR**, Runtime **System OpenXR
    Runtime** → **Start AR**.
-2. **In the headset's browser** → `https://<tailnet-ip>:48322/client/` → cert warning → **Advanced →
-   Proceed**.
-3. Client **Settings**: Device Profile **your headset** (Quest 3S/3/2 or Pico 4 Ultra), Server IP **`<tailnet-ip>`**, **Port
+2. **In the headset's browser** → `https://<ip>:48322/client/` → cert warning → **Advanced →
+   Proceed**. `<ip>` is the same `NV_CXR_ENDPOINT_IP` the launcher was given.
+3. Client **Settings**: Device Profile **your headset** (Quest 3S/3/2 or Pico 4 Ultra), Server IP **`<ip>`**, **Port
    `48322`** — **not** the default `49100` (48322 is the TLS/WSS proxy; 49100 is the raw backend).
 4. **Connect** → the scene streams to the headset. Then drive with the controls below.
 
@@ -143,7 +149,7 @@ record everything below, in a standard layout.)
 
 ```bash
 # keyboard
-... sonic_teleop.py --task FIATLUX-Carry-Teleop-v0 --input keyboard --record bag
+... sonic_teleop.py --task FIATLUX-S07-ApproachNewBulb-Teleop-v0 --input keyboard --record bag
 # VR: armed by default -- bag + video, right face button starts and ends each take
 NV_CXR_ENDPOINT_IP=<ip> FIATLUX_TASK=... bash scripts/teleop/restart_sonic_teleop.sh
 # opt out, or change the shape: FIATLUX_RECORD=none | FIATLUX_RECORD_VIDEO=0
@@ -165,15 +171,14 @@ session keeps every closed episode (Kit's SIGINT handler skips the final write, 
 trailing unclosed episode can be lost; use `--max_steps N` for clean scripted endings).
 
 **Options** (each is a flag; see `--help`):
-- `--record-start auto|toggle` -- record from launch, or start OFF until the operator toggles.
+- `--record-start auto|toggle` -- record from launch, or (**default**) start OFF until the
+  operator toggles it with the right face button / `C`.
 - `--record-format hdf5|npz` -- robomimic-style HDF5 (default) or flat npz.
 - `--record-video` -- `video.mp4` (third-person) + `ego.mp4` (head camera) + poster PNGs, streamed
   to disk (review footage). `--camera auto|follow|static|fixture|bench|crate` picks the third-person
   shot; `auto` (default) chooses per task so the robot and the task's own objects stay in frame.
 - `--record-settle` -- include the ~90-step startup settle in the take (spawn-time failures happen
   there; a take that starts at the main loop only shows the aftermath).
-- `--no-arm-pin` -- don't pin the idle arm at its settle joints; the pin makes a hands-off robot
-  fall at ~3 s, so use this when the robot must still be standing when you connect.
 - `--record-images --images-stride N` -- the env's own `wrist_camera`/`ego_camera` as JPEGs in
   `<session>/images/<camera>/f<step>.jpg` (default every 5th step = 10 Hz). The filename index is
   the bag's flat row number, so each frame pairs 1:1 with that row's `policy_obs`/`actions`; the
