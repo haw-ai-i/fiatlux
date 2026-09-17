@@ -90,15 +90,25 @@ echo "   display: $DISPLAY"
 # upstairs is "sim not ready yet". Passed through if the caller already set it; the default
 # matches what setup_sim_teleop.sh in this same directory already uses.
 export OMNI_KIT_ACCEPT_EULA="${OMNI_KIT_ACCEPT_EULA:-YES}"
-# WHICH SONIC POLICY DIRECTORY. The driver still defaults to the old gr00t_wbc/ layout, and that
-# directory usually still EXISTS but is empty, so the failure reads as a missing file rather than
-# a moved one: "SONIC policy ONNX file not found ... gr00t_wbc/...". Probe both, newest first.
-_WBC="${GR00T_WBC_DIR:-$HOME/robotica_project/GR00T-WholeBodyControl}"
-for _c in "$_WBC/decoupled_wbc/sim2mujoco/resources/robots/g1/policy" \
-          "$_WBC/gr00t_wbc/sim2mujoco/resources/robots/g1/policy"; do
-    [ -f "$_c/GR00T-WholeBodyControl-Walk.onnx" ] && { export SONIC_POLICY_DIR="$_c"; break; }
-done
-[ -n "${SONIC_POLICY_DIR:-}" ] || { echo "   no SONIC policy onnx under $_WBC -- run setup_sim_teleop.sh verify"; exit 1; }
+# WHICH SONIC POLICY DIRECTORY. SONIC_POLICY_DIR is the documented override, so an explicit one
+# wins -- but only if the onnx is actually there, since the stale default points at the old
+# gr00t_wbc/ layout, and that directory usually still EXISTS while being empty: the failure then
+# reads as a missing file rather than a moved one ("SONIC policy ONNX file not found ...
+# gr00t_wbc/..."), and upstairs the only symptom is "sim not ready yet". Otherwise search, taking
+# the checkout's location from GR00T_WBC_DIR or from this repo, never from one machine's $HOME.
+_ONNX=GR00T-WholeBodyControl-Walk.onnx
+if [ ! -f "${SONIC_POLICY_DIR:-}/$_ONNX" ]; then
+    unset SONIC_POLICY_DIR
+    for _b in "${GR00T_WBC_DIR:-}" "$REPO/../../GR00T-WholeBodyControl" "$HOME/GR00T-WholeBodyControl"; do
+        [ -n "$_b" ] && [ -d "$_b" ] || continue
+        for _l in decoupled_wbc gr00t_wbc; do
+            _c="$_b/$_l/sim2mujoco/resources/robots/g1/policy"
+            [ -f "$_c/$_ONNX" ] && { SONIC_POLICY_DIR="$(cd "$_c" && pwd)"; break 2; }
+        done
+    done
+fi
+[ -n "${SONIC_POLICY_DIR:-}" ] || { echo "   no $_ONNX found -- set GR00T_WBC_DIR (or SONIC_POLICY_DIR), or run setup_sim_teleop.sh verify"; exit 1; }
+export SONIC_POLICY_DIR
 echo "   policy dir: $SONIC_POLICY_DIR"
 echo "   task=$TASK hand=$HAND"
 nohup "$SIM_PY" -u scripts/teleop/sonic_teleop.py --task "$TASK" --hand "$HAND" \
