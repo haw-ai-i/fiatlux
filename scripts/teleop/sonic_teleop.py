@@ -272,6 +272,7 @@ _ROW = DeviceBase.MotionControllerDataRowIndex.INPUTS.value
 _IDX = DeviceBase.MotionControllerInputIndex
 _TL = DeviceBase.TrackingTarget.CONTROLLER_LEFT
 _TR = DeviceBase.TrackingTarget.CONTROLLER_RIGHT
+_XR_DEBUG = os.environ.get("FIATLUX_XR_DEBUG") == "1"  # print the raw controller row on change
 
 
 class WalkRetargeter(RetargeterBase):
@@ -282,6 +283,25 @@ class WalkRetargeter(RetargeterBase):
     def __init__(self, cfg):
         super().__init__(cfg)
         self.cfg = cfg
+
+    _dbg_prev = None
+
+    def _debug_row(self, data):
+        """Print the whole controller row whenever it changes (FIATLUX_XR_DEBUG=1).
+
+        Which physical button lands on which index is the headset's business, not ours, so the
+        only way to map a new one is to watch the raw row while the operator presses things.
+        """
+        rows = []
+        for tag, tgt in (("L", _TL), ("R", _TR)):
+            cd = data.get(tgt) if data else None
+            vals = list(cd[_ROW]) if cd is not None and len(cd) > _ROW else []
+            rows.append(f"{tag}[" + " ".join(f"{float(v):+.2f}" for v in vals) + "]")
+        now = " ".join(rows)
+        if now != WalkRetargeter._dbg_prev:
+            WalkRetargeter._dbg_prev = now
+            names = "stickX stickY trigger squeeze btn0 btn1 pad"
+            print(f"[xr] {now}   ({names})", flush=True)
 
     @staticmethod
     def _read(data, target):
@@ -300,6 +320,8 @@ class WalkRetargeter(RetargeterBase):
     def retarget(self, data):
         lx, ly, lb0, lb1, lsq = self._read(data, _TL)
         rx, ry, rb0, rb1, _rsq = self._read(data, _TR)
+        if _XR_DEBUG:
+            self._debug_row(data)
         dz = self.cfg.deadzone
         lx = lx if abs(lx) > dz else 0.0  # deadzone: idle thumbstick drift must not walk the robot
         ly = ly if abs(ly) > dz else 0.0

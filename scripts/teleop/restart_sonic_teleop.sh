@@ -77,12 +77,29 @@ fi
 source ~/.cloudxr/run/cloudxr.env
 cd "$REPO"
 export PYTHONPATH="$REPO/source/fiatlux_task:$REPO/source/fiatlux_teleop"
-export DISPLAY="${DISPLAY:-:1001}"
+# WHICH X DISPLAY the Isaac window opens on -- you have to click Start AR in it, so a default
+# pointing at a display that does not exist means an invisible window and a headset that can
+# never connect. Take the caller's, else the first socket in /tmp/.X11-unix.
+if [ -z "${DISPLAY:-}" ]; then
+    for _x in /tmp/.X11-unix/X*; do [ -e "$_x" ] && { export DISPLAY=":${_x##*/X}"; break; }; done
+fi
+[ -n "${DISPLAY:-}" ] || { echo "   no X display found -- set DISPLAY to the desktop running Isaac"; exit 1; }
+echo "   display: $DISPLAY"
 # Kit prompts for the EULA on stdin, and this launches under nohup with no tty -- the prompt then
 # fails with "Unable to bootstrap inner kit kernel: EOF when reading a line" and the only symptom
 # upstairs is "sim not ready yet". Passed through if the caller already set it; the default
 # matches what setup_sim_teleop.sh in this same directory already uses.
 export OMNI_KIT_ACCEPT_EULA="${OMNI_KIT_ACCEPT_EULA:-YES}"
+# WHICH SONIC POLICY DIRECTORY. The driver still defaults to the old gr00t_wbc/ layout, and that
+# directory usually still EXISTS but is empty, so the failure reads as a missing file rather than
+# a moved one: "SONIC policy ONNX file not found ... gr00t_wbc/...". Probe both, newest first.
+_WBC="${GR00T_WBC_DIR:-$HOME/robotica_project/GR00T-WholeBodyControl}"
+for _c in "$_WBC/decoupled_wbc/sim2mujoco/resources/robots/g1/policy" \
+          "$_WBC/gr00t_wbc/sim2mujoco/resources/robots/g1/policy"; do
+    [ -f "$_c/GR00T-WholeBodyControl-Walk.onnx" ] && { export SONIC_POLICY_DIR="$_c"; break; }
+done
+[ -n "${SONIC_POLICY_DIR:-}" ] || { echo "   no SONIC policy onnx under $_WBC -- run setup_sim_teleop.sh verify"; exit 1; }
+echo "   policy dir: $SONIC_POLICY_DIR"
 echo "   task=$TASK hand=$HAND"
 nohup "$SIM_PY" -u scripts/teleop/sonic_teleop.py --task "$TASK" --hand "$HAND" \
     ${RECORD_ARGS[@]+"${RECORD_ARGS[@]}"} ${EXTRA_ARGS[@]+"${EXTRA_ARGS[@]}"} \

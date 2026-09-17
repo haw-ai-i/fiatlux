@@ -54,6 +54,11 @@ button *names* differ.
 | Quest 2 | `Quest 2` | Quest Texture Optimization | left `X`/`Y`, right `A`/`B` |
 | Pico 4 Ultra | `Pico 4 Ultra` | — | left/right face buttons |
 
+Every index the driver reads lands in the same place on both, measured on a Quest 3S over
+486 controller rows (`FIATLUX_XR_DEBUG=1`): sticks 0/1, trigger 2, grip squeeze 3, and the two
+face buttons 4/5 — left X/Y lean, right A stops the walk, right B toggles a take. No code
+change is needed for a Quest.
+
 Quest Color Workaround is the Display P3 fix; without it a Quest 3/3S stream looks washed
 out. Sideloading Tailscale (only needed when the headset is on a different network) differs:
 the PICO Browser can install an APK directly, the Quest Browser cannot — use `adb install`
@@ -91,6 +96,7 @@ limit.
 | `--teleop_device` | **`controller_rel`** | which XR device config to drive the arms with |
 | `--walk_onnx`, `--balance_onnx` | paths | the SONIC policies (`$SONIC_POLICY_DIR`) |
 | `--num_envs` | **1** | |
+| `FIATLUX_XR_DEBUG=1` | env var | print the raw controller row (`stickX stickY trigger squeeze btn0 btn1 pad`) for both hands whenever it changes — how you map a new headset's buttons |
 
 `restart_sonic_teleop.sh` is the VR entry point and takes the same settings as `FIATLUX_*`
 environment variables: `FIATLUX_TASK`, `FIATLUX_HAND`, `FIATLUX_LAYOUT_SEED`,
