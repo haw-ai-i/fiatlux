@@ -27,6 +27,11 @@ all-False vector, so every recorded demo silently scores `success_rate 0.0`.
 
 ## Running
 
+Run these **from the repo root** — the driver needs `PYTHONPATH` pointing at this checkout's
+`source/`, which is what the setup script's printed command sets for you. The VR launcher is the
+exception: it finds its own repo and `cd`s there, so it works from anywhere, and the copy you
+invoke decides which branch runs (each worktree has its own).
+
 ```bash
 # keyboard, no headset
 python scripts/teleop/sonic_teleop.py --task FIATLUX-S07-ApproachNewBulb-Teleop-v0 --input keyboard
