@@ -67,7 +67,12 @@ EXTRA_ARGS=()
 [ -n "${FIATLUX_OUT:-}" ] && EXTRA_ARGS+=(--out "$FIATLUX_OUT")
 REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"   # the checkout this script lives in
 LOGDIR="/tmp/fiatlux-xr"; mkdir -p "$LOGDIR"
-source ~/miniconda3/etc/profile.d/conda.sh
+# Conda is only needed for the LEGACY envs (vr_teleop for the runtime, env_isaaclab for the sim);
+# the uv .venv path needs none of it. Find its profile script rather than assuming ~/miniconda3,
+# and carry on without it -- the checks below fall back to .venv and report what they found.
+for _c in "${CONDA_ROOT:-}" "$HOME/miniconda3" "$HOME/anaconda3" "$HOME/miniforge3" "/opt/conda"; do
+    [ -n "$_c" ] && [ -f "$_c/etc/profile.d/conda.sh" ] && { . "$_c/etc/profile.d/conda.sh"; break; }
+done
 
 echo "[1/5] stopping existing sim + runtime..."
 for p in $(pgrep -f "scripts/teleop/sonic_teleop.py" || true); do kill "$p" 2>/dev/null || true; done
@@ -123,16 +128,20 @@ echo "   display: $DISPLAY"
 # upstairs is "sim not ready yet". Passed through if the caller already set it; the default
 # matches what setup_sim_teleop.sh in this same directory already uses.
 export OMNI_KIT_ACCEPT_EULA="${OMNI_KIT_ACCEPT_EULA:-YES}"
-# WHICH SONIC POLICY DIRECTORY. SONIC_POLICY_DIR is the documented override, so an explicit one
-# wins -- but only if the onnx is actually there, since the stale default points at the old
-# gr00t_wbc/ layout, and that directory usually still EXISTS while being empty: the failure then
-# reads as a missing file rather than a moved one ("SONIC policy ONNX file not found ...
-# gr00t_wbc/..."), and upstairs the only symptom is "sim not ready yet". Otherwise search, taking
-# the checkout's location from GR00T_WBC_DIR or from this repo, never from one machine's $HOME.
+# WHICH SONIC POLICY DIRECTORY. SONIC_POLICY_DIR is the documented override, but it wins only when
+# the onnx is really under it. The two layouts are branches, not old and new: upstream main keeps the onnx under
+# gr00t_wbc/, the gear-sonic-v1.1 branch under decoupled_wbc/ (same files, verified by md5).
+# A checkout of one can leave an EMPTY directory for the other, so a path that exists proves
+# nothing -- always probe for the .onnx itself.
+# Otherwise search, taking the checkout from GR00T_WBC_DIR or from this repo, never from a $HOME.
 _ONNX=GR00T-WholeBodyControl-Walk.onnx
 if [ ! -f "${SONIC_POLICY_DIR:-}/$_ONNX" ]; then
     unset SONIC_POLICY_DIR
-    for _b in "${GR00T_WBC_DIR:-}" "$REPO/../../GR00T-WholeBodyControl" "$HOME/GR00T-WholeBodyControl"; do
+    # $REPO/.. is the project workspace -- the folder holding this checkout, its worktrees and
+    # teleop-captures. A tool repo there is one copy shared by every worktree, at the same
+    # relative path from each. ../.. is where it landed historically; kept so existing boxes work.
+    for _b in "${GR00T_WBC_DIR:-}" "$REPO/../GR00T-WholeBodyControl" \
+              "$REPO/../../GR00T-WholeBodyControl" "$HOME/GR00T-WholeBodyControl"; do
         [ -n "$_b" ] && [ -d "$_b" ] || continue
         for _l in decoupled_wbc gr00t_wbc; do
             _c="$_b/$_l/sim2mujoco/resources/robots/g1/policy"

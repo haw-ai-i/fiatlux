@@ -29,10 +29,37 @@ import re
 
 from isaaclab.app import AppLauncher
 
-_DEFAULT_POLICY_DIR = os.path.expanduser(
-    "~/robotica_project/GR00T-WholeBodyControl/gr00t_wbc/sim2mujoco/resources/robots/g1/policy"
-)
-_POLICY_DIR = os.environ.get("SONIC_POLICY_DIR", _DEFAULT_POLICY_DIR)
+# WHERE THE SONIC .onnx LIVE. SONIC_POLICY_DIR wins, then GR00T_WBC_DIR, then the checkout beside
+# this repo -- never one machine's home.
+# The two layouts are branches, not old and new: upstream main keeps the onnx under
+# gr00t_wbc/, the gear-sonic-v1.1 branch under decoupled_wbc/ (same files, verified by md5).
+# A checkout of one can leave an EMPTY directory for the other, so a path that exists proves
+# nothing -- always probe for the .onnx itself.
+# The launcher exports SONIC_POLICY_DIR; this is what makes a direct `--input keyboard` run work
+# on a machine that is not the one this file was written on.
+_ONNX = "GR00T-WholeBodyControl-Walk.onnx"
+_REPO = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+
+def _find_policy_dir() -> str:
+    explicit = os.environ.get("SONIC_POLICY_DIR")
+    if explicit and os.path.isfile(os.path.join(explicit, _ONNX)):
+        return explicit
+    roots = [os.environ.get("GR00T_WBC_DIR", "")]
+    roots += [
+        os.path.join(_REPO, "..", "GR00T-WholeBodyControl"),  # the project workspace
+        os.path.join(_REPO, "..", "..", "GR00T-WholeBodyControl"),  # where it landed historically
+        os.path.expanduser("~/GR00T-WholeBodyControl"),
+    ]
+    for root in roots:
+        for layout in ("decoupled_wbc", "gr00t_wbc"):
+            cand = os.path.join(root, layout, "sim2mujoco/resources/robots/g1/policy")
+            if root and os.path.isfile(os.path.join(cand, _ONNX)):
+                return os.path.normpath(cand)
+    return explicit or os.path.join(_REPO, "..", "GR00T-WholeBodyControl")
+
+
+_POLICY_DIR = _find_policy_dir()
 
 parser = argparse.ArgumentParser()
 # No default: the old one (FIATLUX-Insert-Teleop-v0) is stationary tabletop manipulation with
