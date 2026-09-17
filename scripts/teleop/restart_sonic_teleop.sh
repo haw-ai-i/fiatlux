@@ -5,34 +5,67 @@
 # (FIATLUX_TASK). For the KEYBOARD whole-body path (no headset), run sonic_teleop.py --input keyboard
 # directly instead -- see source/fiatlux_teleop/README.md.
 #
-# Env overrides: NV_CXR_ENDPOINT_IP (tailnet IP), NV_CXR_MEDIA_PORT, DISPLAY.
+# FIATLUX_TASK and NV_CXR_ENDPOINT_IP are required; everything else has a default. Run it with
+# either unset and it prints the valid values -- the 12 task ids, or this box's addresses.
+# Recording is armed by default (bag + video, right face button starts it); FIATLUX_RECORD=none
+# turns it off. See docs/subtask_teleop.md for the full table.
 set -u
-TAILNET_IP="${NV_CXR_ENDPOINT_IP:?set NV_CXR_ENDPOINT_IP to the IP the headset can reach -- the LAN IP of this box (same WiFi, preferred) or its tailnet IP (remote)}"
+# WHICH TASK. Required: the old default was FIATLUX-Insert-Teleop-v0, from when that was the
+# only teleop env -- it is stationary tabletop manipulation with the pelvis bolted, which this
+# driver then unbolts, so falling back to it silently hands you a scene that is not one of the
+# 12 subtasks and cannot be scored against the campaign. Better to say so.
+if [ -z "${FIATLUX_TASK:-}" ]; then
+    echo "set FIATLUX_TASK to the env to drive, e.g."
+    echo "    FIATLUX_TASK=FIATLUX-S07-ApproachNewBulb-Teleop-v0 bash ${BASH_SOURCE[0]##*/}"
+    echo "  the 12 subtasks (each id + '-Teleop-v0'):"
+    sed -n 's/^    ("\(FIATLUX-S[0-9][0-9]-[A-Za-z]*\)".*/    \1-Teleop-v0/p' \
+        "$(dirname "${BASH_SOURCE[0]}")/../../source/fiatlux_teleop/fiatlux_teleop/subtask_teleop.py" 2>/dev/null
+    exit 1
+fi
+TASK="$FIATLUX_TASK"
+# WHICH ADDRESS THE HEADSET DIALS. Required, and deliberately not guessed: only you know which
+# network the headset is on, and getting it wrong is the failure where the client page loads
+# fine and CONNECT then hangs -- the page came over a route the media cannot use. So list this
+# box's addresses and let the operator pick.
+if [ -z "${NV_CXR_ENDPOINT_IP:-}" ]; then
+    echo "set NV_CXR_ENDPOINT_IP to the address the headset can reach:"
+    _ts="$(tailscale ip -4 2>/dev/null | head -1)"
+    [ -n "$_ts" ] && echo "    $_ts   tailnet -- headset anywhere, needs Tailscale on it too"
+    ip -4 -o addr show scope global 2>/dev/null | awk '{print $4}' | cut -d/ -f1 \
+        | grep -vE '^(172\.1[7-9]\.|100\.)' \
+        | while read -r _a; do echo "    $_a   LAN -- headset on this WiFi, nothing to install"; done
+    exit 1
+fi
+TAILNET_IP="$NV_CXR_ENDPOINT_IP"
 MEDIA_PORT="${NV_CXR_MEDIA_PORT:-47998}"
-TASK="${FIATLUX_TASK:-FIATLUX-Insert-Teleop-v0}"   # e.g. FIATLUX-Carry-Teleop-v0
 HAND="${FIATLUX_HAND:-dex3}"                       # dex3 | inspire
 # Demo recording (all optional; see sonic_teleop.py --help):
-#   FIATLUX_RECORD=1        record the session as a demo bag (score in meta.json)
-#   FIATLUX_RECORD_VIDEO=1  also render a follow-cam MP4 (implies RECORD)
-#   FIATLUX_RECORD_START=toggle   start with recording OFF (right controller B = upper button toggles)
+#   FIATLUX_RECORD=none     do NOT record (default: armed, bag + video)
+#   FIATLUX_RECORD_VIDEO=0  skip the follow-cam MP4 (default: on)
+#   FIATLUX_RECORD_START=auto     record from launch (default: toggle -- right face button starts it)
 #   FIATLUX_RECORD_FORMAT=npz     bag as npz instead of hdf5
 #   FIATLUX_WALK_SCALE=1.2        m/s at full left-stick deflection (default 1.0)
 #   FIATLUX_LAYOUT_SEED=42        room layout: an integer reproduces that exact room,
 #                                 'random' draws one. The seed in use is always printed
 #                                 and stored in the demo bag's meta.json.
+# Recording is ARMED by default -- the common case is wanting the take, and --record-start
+# toggle means nothing is written until the right face button is pressed, so arming costs
+# nothing. FIATLUX_RECORD=none opts out. Accepts 1 or bag, since both read as "yes".
 RECORD_ARGS=()
-[ "${FIATLUX_RECORD:-0}" = 1 ] && RECORD_ARGS+=(--record bag)
-[ "${FIATLUX_RECORD_VIDEO:-0}" = 1 ] && RECORD_ARGS+=(--record-video)
-[ -n "${FIATLUX_RECORD_START:-}" ] && RECORD_ARGS+=(--record-start "$FIATLUX_RECORD_START")
+case "${FIATLUX_RECORD:-bag}" in
+    none|0) ;;
+    *) RECORD_ARGS+=(--record bag)
+       [ "${FIATLUX_RECORD_VIDEO:-1}" = 1 ] && RECORD_ARGS+=(--record-video) ;;
+esac
+RECORD_ARGS+=(--record-start "${FIATLUX_RECORD_START:-toggle}")
 [ -n "${FIATLUX_RECORD_FORMAT:-}" ] && RECORD_ARGS+=(--record-format "$FIATLUX_RECORD_FORMAT")
 EXTRA_ARGS=()
 [ -n "${FIATLUX_LAYOUT_SEED:-}" ] && EXTRA_ARGS+=(--layout_seed "$FIATLUX_LAYOUT_SEED")
 [ -n "${FIATLUX_WALK_SCALE:-}" ] && EXTRA_ARGS+=(--walk_scale "$FIATLUX_WALK_SCALE")
 [ -n "${FIATLUX_CAMERA:-}" ] && EXTRA_ARGS+=(--camera "$FIATLUX_CAMERA")
-[ "${FIATLUX_LOCK_BASE:-0}" = 1 ] && EXTRA_ARGS+=(--lock-base)
 [ "${FIATLUX_RECORD_SETTLE:-0}" = 1 ] && EXTRA_ARGS+=(--record-settle)
 [ -n "${FIATLUX_OUT:-}" ] && EXTRA_ARGS+=(--out "$FIATLUX_OUT")
-REPO="${FIATLUX_REPO:-$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)}"
+REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"   # the checkout this script lives in
 LOGDIR="/tmp/fiatlux-xr"; mkdir -p "$LOGDIR"
 source ~/miniconda3/etc/profile.d/conda.sh
 

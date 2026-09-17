@@ -29,12 +29,61 @@ all-False vector, so every recorded demo silently scores `success_rate 0.0`.
 
 ```bash
 # keyboard, no headset
-python scripts/teleop/sonic_teleop.py --task FIATLUX-S03-RemoveOldBulb-Teleop-v0 --input keyboard
+python scripts/teleop/sonic_teleop.py --task FIATLUX-S07-ApproachNewBulb-Teleop-v0 --input keyboard
 
-# VR over CloudXR
-NV_CXR_ENDPOINT_IP=<ip> FIATLUX_TASK=FIATLUX-S03-RemoveOldBulb-Teleop-v0 \
+# VR over CloudXR -- one command, and the usual one. Two things to set: the task, and the
+# address the headset dials. Recording is armed, so a bag and a video are written from the
+# moment you press the right face button.
+NV_CXR_ENDPOINT_IP=<ip> FIATLUX_TASK=FIATLUX-S07-ApproachNewBulb-Teleop-v0 \
   bash scripts/teleop/restart_sonic_teleop.sh
 ```
+
+What the launcher takes. These are environment variables, not flags -- the full flag reference is
+[Driver flags](#driver-flags) below, and anything not listed here keeps the driver's own default.
+
+| variable | default | |
+|---|---|---|
+| `FIATLUX_TASK` | **required** | which subtask; unset prints all twelve |
+| `NV_CXR_ENDPOINT_IP` | **required** | address the headset dials; unset prints this box's |
+| `FIATLUX_HAND` | `dex3` | or `inspire` |
+| `FIATLUX_LAYOUT_SEED` | random | an int reproduces that exact room |
+| `FIATLUX_RECORD` | `bag` | `none` to drive without writing anything |
+| `FIATLUX_RECORD_START` | `toggle` | `auto` records from launch instead of on the button |
+| `FIATLUX_RECORD_SETTLE` | off | include the ~90 spawn-settle steps, for spawn-time bugs |
+
+`FIATLUX_TASK` is any subtask id with `-Teleop-v0` on the end -- the launcher lists all twelve if
+you leave it unset:
+
+| | | | |
+|---|---|---|---|
+| `FIATLUX-S01-MoveLadder-Teleop-v0` | `FIATLUX-S04-DescendWithBulb-Teleop-v0` | `FIATLUX-S07-ApproachNewBulb-Teleop-v0` | `FIATLUX-S10-ClimbWithBulb-Teleop-v0` |
+| `FIATLUX-S02-ClimbLadder-Teleop-v0` | `FIATLUX-S05-CarryBulbToDisposal-Teleop-v0` | `FIATLUX-S08-GrabNewBulb-Teleop-v0` | `FIATLUX-S11-ScrewInBulb-Teleop-v0` |
+| `FIATLUX-S03-RemoveOldBulb-Teleop-v0` | `FIATLUX-S06-DisposeBulb-Teleop-v0` | `FIATLUX-S09-CarryBulbToLadder-Teleop-v0` | `FIATLUX-S12-ClimbDown-Teleop-v0` |
+
+Reproduce a room -- the seed is printed at launch and stored in every bag's `meta.json`, so this
+is how a take, a bug report or an A/B comparison gets repeated on the exact same layout:
+
+```bash
+FIATLUX_LAYOUT_SEED=561366545 NV_CXR_ENDPOINT_IP=<ip> \
+  FIATLUX_TASK=FIATLUX-S07-ApproachNewBulb-Teleop-v0 bash scripts/teleop/restart_sonic_teleop.sh
+```
+
+`NV_CXR_ENDPOINT_IP` is the address the **headset** dials, so it depends on where the headset is,
+not on this box. Same WiFi: use this box's LAN address -- a direct hop, nothing to install on the
+headset. Any other network: use its tailnet address, with Tailscale running on the headset too.
+Leave it unset and the launcher lists what this box has, labelled:
+
+```
+$ FIATLUX_TASK=FIATLUX-S07-ApproachNewBulb-Teleop-v0 bash scripts/teleop/restart_sonic_teleop.sh
+set NV_CXR_ENDPOINT_IP to the address the headset can reach:
+    100.x.y.z    tailnet -- headset anywhere, needs Tailscale on it too
+    192.168.x.y  LAN -- headset on this WiFi, nothing to install
+```
+
+`<ip>` above is whichever of those two the headset can reach.
+
+Getting it wrong is the failure where the client page loads fine and CONNECT then hangs: the page
+arrived over a route the media stream cannot use.
 
 Always use `restart_sonic_teleop.sh` for VR. It restarts the CloudXR runtime and clears its
 state files. Reusing a runtime across Isaac restarts leaves signalling working while media
@@ -64,11 +113,24 @@ out. Sideloading Tailscale (only needed when the headset is on a different netwo
 the PICO Browser can install an APK directly, the Quest Browser cannot — use `adb install`
 with Developer Mode on.
 
-Keyboard: arrows walk, `SPACE` stops, `TAB` switches arm, `W/S A/D Q/E` move the end effector,
-`U/O I/K J/L` rotate the wrist, `G` grips, `T`/`Y` lean forward/back, `H` toggles the rail
-hand (only on the tasks that brace one), `C` toggles recording, `R` resets, `ESCAPE` quits.
+Keyboard — click the Isaac Sim viewport to focus it first. `TAB` switches the active arm (R ↔ L):
+
+| | |
+|---|---|
+| `W/S` `A/D` `Q/E` | move the active arm in X / Y / Z |
+| `U/O` `I/K` `J/L` | roll / pitch / yaw the wrist |
+| `G` | toggle grip |
+| arrows | walk (↑↓ forward/back, ←→ turn) |
+| `,` `.` | strafe left / right |
+| `T` / `Y` | lean forward / back |
+| `SPACE` | stop walking |
+| `H` | toggle the rail hand (only on tasks that brace one) |
+| `C` | start / stop recording |
+| `R` reset · `ESCAPE` quit | |
+
 Forward reach saturates around 0.35 m from the pelvis — past that the arm is at its kinematic
-limit.
+limit. On the six in-hand legs the right grip **starts closed** on the seated bulb, so the first
+`G` releases it.
 
 ### Driver flags
 
@@ -76,7 +138,7 @@ limit.
 
 | flag | values | what it does |
 |---|---|---|
-| `--task` | env id | which twin to drive (**`FIATLUX-Insert-Teleop-v0`**) |
+| `--task` | env id | which twin to drive. **Required** — there is no default, since the old one was a legacy scene that is not one of the 12 subtasks |
 | `--input` | **`vr`** / `keyboard` | headset over CloudXR, or the desktop keys above |
 | `--hand` | **`dex3`** / `inspire` | which G1 hand the env is built with; the driver prints the one it actually got |
 | `--layout_seed` | int / **`random`** | the room layout; the seed in use is printed and stored in `meta.json` |
@@ -90,7 +152,6 @@ limit.
 | `--out` | path | where takes go; default is the `teleop-captures/` layout below |
 | `--camera` | **`auto`** / `follow` / `static` / `fixture` / `bench` / `crate` | the third-person shot. `auto` picks per task: socket side view on S03/S11, bench side view on S07/S08, crate side view on S06, chase cam framing the task's objects elsewhere |
 | `--stop-on-success` / `--no-stop-on-success` | **on** | close the take the moment the success gate latches |
-| `--lock-base` | | bolt the pelvis to the world (legs inert) — testing the manipulation half of an on-ladder task only, not demo-valid |
 | `--max_steps` | int, **0** = run until quit | stop after N loop steps, writing the bag cleanly. Killing the process instead skips the final write |
 | `--keys` | `NAME@SECONDS,...` | scripted key presses for hands-off runs, e.g. `"G@4,R@8,ESCAPE@15"`; keyboard input only. Pair with `--max_steps` |
 | `--teleop_device` | **`controller_rel`** | which XR device config to drive the arms with |
@@ -98,12 +159,12 @@ limit.
 | `--num_envs` | **1** | |
 | `FIATLUX_XR_DEBUG=1` | env var | print the raw controller row (`stickX stickY trigger squeeze btn0 btn1 pad`) for both hands whenever it changes — how you map a new headset's buttons |
 
-`restart_sonic_teleop.sh` is the VR entry point and takes the same settings as `FIATLUX_*`
-environment variables: `FIATLUX_TASK`, `FIATLUX_HAND`, `FIATLUX_LAYOUT_SEED`,
-`FIATLUX_WALK_SCALE`, `FIATLUX_CAMERA`, `FIATLUX_LOCK_BASE`, `FIATLUX_RECORD`,
-`FIATLUX_RECORD_FORMAT`, `FIATLUX_RECORD_START`, `FIATLUX_RECORD_SETTLE`,
-`FIATLUX_RECORD_VIDEO`, `FIATLUX_OUT` and `FIATLUX_REPO`. Anything unset falls back to the
-driver default above.
+`restart_sonic_teleop.sh` is the VR entry point and reaches these through `FIATLUX_*` environment
+variables rather than flags: `FIATLUX_HAND`, `FIATLUX_LAYOUT_SEED`, `FIATLUX_WALK_SCALE`,
+`FIATLUX_CAMERA`, `FIATLUX_RECORD`, `FIATLUX_RECORD_FORMAT`, `FIATLUX_RECORD_START`,
+`FIATLUX_RECORD_SETTLE`, `FIATLUX_RECORD_VIDEO` and `FIATLUX_OUT` -- those fall back to the driver
+defaults above when unset. Two do NOT have a default and the launcher stops if either is missing:
+`FIATLUX_TASK` and `NV_CXR_ENDPOINT_IP`; see [Running](#running).
 
 ## The 12 subtasks
 

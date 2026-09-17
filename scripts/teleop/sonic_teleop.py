@@ -35,7 +35,10 @@ _DEFAULT_POLICY_DIR = os.path.expanduser(
 _POLICY_DIR = os.environ.get("SONIC_POLICY_DIR", _DEFAULT_POLICY_DIR)
 
 parser = argparse.ArgumentParser()
-parser.add_argument("--task", default="FIATLUX-Insert-Teleop-v0")
+# No default: the old one (FIATLUX-Insert-Teleop-v0) is stationary tabletop manipulation with
+# the pelvis bolted, which this driver then unbolts -- not one of the 12 subtasks, and not
+# scoreable against them. Falling back to it silently is worse than asking.
+parser.add_argument("--task", required=True, help="env id, e.g. FIATLUX-S07-ApproachNewBulb-Teleop-v0")
 parser.add_argument(
     "--input",
     choices=["vr", "keyboard"],
@@ -59,17 +62,6 @@ parser.add_argument(
     "(default on). Keeps a take to ONE episode: the scene no longer resets "
     "on success, so recording past it would append a second, failed episode "
     "and halve the take's score. --no-stop-on-success to keep rolling.",
-)
-parser.add_argument(
-    "--lock-base",
-    dest="lock_base",
-    action="store_true",
-    help="bolt the pelvis to the world and stop driving the legs. For testing the "
-    "MANIPULATION half of an on-ladder task while the spawn settle is losing "
-    "height (the robot slides ~0.9 m off its staged tread): a bolted base "
-    "holds the staged pose exactly, so the arms can be exercised against the "
-    "fixture. NOT for collecting demos -- the legs are inert and the base "
-    "cannot fall, so the trajectory is not a real attempt.",
 )
 parser.add_argument(
     "--record-settle",
@@ -444,13 +436,7 @@ def main():  # noqa: C901  (one long orchestration: env setup + settle/resettle 
     env_cfg.sim.render_interval = 4
     env_cfg.terminations.time_out = None
     # FREE the base so SONIC can balance + walk (the teleop env bolts it down for stationary insert)
-    env_cfg.scene.robot.spawn.articulation_props.fix_root_link = bool(args.lock_base)
-    if args.lock_base:
-        print(
-            "[sonic] LOCK-BASE: pelvis bolted to the world, legs not driven. The robot cannot "
-            "fall or slide -- use for exercising the arms against the scene, NOT for demos.",
-            flush=True,
-        )
+    env_cfg.scene.robot.spawn.articulation_props.fix_root_link = False
     # Harden the spawn against the intermittent PhysX launch: cap depenetration velocity (a bad
     # contact can't fling the free base metres up) and drop the random joint-offset reset (it
     # perturbs the free-base start pose out of SONIC's balance basin). Keep the bulb reset.
@@ -2232,9 +2218,6 @@ def main():  # noqa: C901  (one long orchestration: env setup + settle/resettle 
                 sess = walk_sess if np.linalg.norm(loco_cmd) > 0.05 else bal_sess
                 last_action = sess.run(None, {in_name: flat})[0][0]
                 leg_target = torch.as_tensor(last_action * ACTION_SCALE + DEFAULT_15, device=dev)
-                if args.lock_base:
-                    # hold the staged stance; SONIC's balance output means nothing on a fixed root
-                    leg_target = torch.as_tensor(DEFAULT_15, device=dev)
                 robot.set_joint_position_target(leg_target.unsqueeze(0), joint_ids=act_idx)
                 if _staged_close is not None:
                     for _sc in _staged_close:

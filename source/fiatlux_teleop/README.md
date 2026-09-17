@@ -56,7 +56,10 @@ Three teleop tasks ship ready to run: `FIATLUX-Insert-Teleop-v0`, `FIATLUX-Carry
 
 ```bash
 # from the repo root. Walking + arm teleop (SONIC legs):
-FIATLUX_TASK=FIATLUX-Carry-Teleop-v0 FIATLUX_HAND=dex3 bash scripts/teleop/restart_sonic_teleop.sh
+NV_CXR_ENDPOINT_IP=<ip> FIATLUX_TASK=FIATLUX-Carry-Teleop-v0 FIATLUX_HAND=dex3 \
+  bash scripts/teleop/restart_sonic_teleop.sh
+# recording is armed by default (bag + video, started by the right face button);
+# FIATLUX_RECORD=none drives without writing anything.
 ```
 
 That one command starts **both** processes (CloudXR runtime in `vr_teleop` + the sim/driver in
@@ -91,8 +94,10 @@ That one command starts **both** processes (CloudXR runtime in `vr_teleop` + the
     to disable) caps the hand actuators at the physical RH56DFTP's fingertip force (~10 N). Without
     it, a blocked close grinds saturated PD torques through the bulb→thumb→palm loop and the
     vibration can tip SONIC (2 of 3 hands-off in-hand settles fell before the cap; 0 after).
-- `NV_CXR_ENDPOINT_IP` — **required** for the VR launchers (your GPU box's tailnet IP); they exit with
-  a clear error if it's unset. e.g. `NV_CXR_ENDPOINT_IP=100.x.y.z FIATLUX_TASK=… bash …restart_sonic_teleop.sh`.
+- `NV_CXR_ENDPOINT_IP` — **required**: the address the *headset* dials, so it depends on where the
+  headset is. Same WiFi as this box → its LAN address (direct, nothing to install on the headset).
+  Any other network → its tailnet address, with Tailscale on the headset too. Leave it unset and the
+  launcher prints this box's addresses, labelled, so you can pick.
 
 ### Keyboard (whole-body, no headset)
 Same SONIC walking + arm teleop, from the desktop — run the driver directly (no CloudXR, no headset):
@@ -101,13 +106,10 @@ conda activate env_isaaclab
 export PYTHONPATH=$PWD/source/fiatlux_task:$PWD/source/fiatlux_teleop
 python scripts/teleop/sonic_teleop.py --task FIATLUX-Carry-Teleop-v0 --input keyboard
 ```
-Click the Isaac Sim viewport to focus it. **Bimanual** — **Tab** switches the active arm (R ↔ L):
-- active arm: **W/S A/D Q/E** move X/Y/Z, **U/O I/K J/L** roll/pitch/yaw, **G** toggles grip
-- walk: **arrows** (↑↓ forward/back, ←→ turn), **, / .** strafe, **T/Y** lean, **Space** stop
-- **R** reset, **Esc** quit
-
-On the six in-hand legs the right grip **starts closed** on the seated bulb, so the first **G**
-releases it. For hands-off tests, `--keys "G@4,R@8,ESCAPE@15"` injects timed key presses
+Click the Isaac Sim viewport to focus it. The full key map lives in
+[docs/subtask_teleop.md](../../docs/subtask_teleop.md#running) — **Tab** switches the active arm,
+**W/S A/D Q/E** move it, **arrows** walk. For hands-off tests, `--keys "G@4,R@8,ESCAPE@15"`
+injects timed key presses
 (seconds of teleop time) into the same queue as real ones.
 
 ### Activate XR (in the headset)
@@ -142,9 +144,10 @@ record everything below, in a standard layout.)
 ```bash
 # keyboard
 ... sonic_teleop.py --task FIATLUX-Carry-Teleop-v0 --input keyboard --record bag
-# VR (the launcher forwards these):
-FIATLUX_RECORD=1 [FIATLUX_RECORD_VIDEO=1] [FIATLUX_RECORD_START=toggle] [FIATLUX_RECORD_FORMAT=npz] \
-    NV_CXR_ENDPOINT_IP=<ip> FIATLUX_TASK=... bash scripts/teleop/restart_sonic_teleop.sh
+# VR: armed by default -- bag + video, right face button starts and ends each take
+NV_CXR_ENDPOINT_IP=<ip> FIATLUX_TASK=... bash scripts/teleop/restart_sonic_teleop.sh
+# opt out, or change the shape: FIATLUX_RECORD=none | FIATLUX_RECORD_VIDEO=0
+#                               FIATLUX_RECORD_START=auto | FIATLUX_RECORD_FORMAT=npz
 ```
 
 **What a session records** (per step, all envs' joints -- dex3 = 43 columns, inspire = 53):
@@ -253,7 +256,8 @@ might touch the *driver* — there's only one, the whole-body `sonic_teleop.py`.
 
 ### 4. Run it
 ```bash
-FIATLUX_TASK=FIATLUX-MyTask-Teleop-v0 FIATLUX_HAND=dex3 bash scripts/teleop/restart_sonic_teleop.sh
+NV_CXR_ENDPOINT_IP=<ip> FIATLUX_TASK=FIATLUX-MyTask-Teleop-v0 FIATLUX_HAND=dex3 \
+  bash scripts/teleop/restart_sonic_teleop.sh
 ```
 
 **Effort per new task:** the cfg (copy + tweak, ~30–50 lines) + one `gym.register` + maybe a 1-line
