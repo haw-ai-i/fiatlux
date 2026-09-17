@@ -36,7 +36,25 @@ python scripts/teleop/sonic_teleop.py --task FIATLUX-S07-ApproachNewBulb-Teleop-
 # moment you press the right face button.
 NV_CXR_ENDPOINT_IP=<ip> FIATLUX_TASK=FIATLUX-S07-ApproachNewBulb-Teleop-v0 \
   bash scripts/teleop/restart_sonic_teleop.sh
+
+# ...and to collect into a dataset folder of your own (keeps the tree below):
+NV_CXR_ENDPOINT_IP=<ip> FIATLUX_TASK=FIATLUX-S07-ApproachNewBulb-Teleop-v0 \
+  FIATLUX_CAPTURES_DIR=~/my-dataset bash scripts/teleop/restart_sonic_teleop.sh
 ```
+
+**Where takes land.** Unset, the root is `../teleop-captures` **beside** the repo — outside the
+git tree, so sessions never pollute it. `FIATLUX_CAPTURES_DIR` moves that root, keeping the tree.
+Under the root, one dimension per level:
+
+```
+<captures>/<task>/<hand>/<kind>/<input>/<YYYY-MM-DD>/<HHMMSS>/epNN_score<X.XX>/
+teleop-captures/FIATLUX-S07-ApproachNewBulb-Teleop-v0/dex3/hdf5/vr/2026-09-17/143052/ep00_score1.00/
+```
+
+One `epNN_score<X.XX>/` folder per record-on..off take, each holding `run.h5`, `meta.json`,
+`score_report.txt` and the videos — so a listing reads as per-demo results, and
+`<task>/<hand>/<kind>/` is always a schema-homogeneous training set (dex3 bags have 43 joint
+columns, inspire 53; never mixable).
 
 What the launcher takes. These are environment variables, not flags -- the full flag reference is
 [Driver flags](#driver-flags) below, and anything not listed here keeps the driver's own default.
@@ -50,6 +68,7 @@ What the launcher takes. These are environment variables, not flags -- the full 
 | `FIATLUX_RECORD` | `bag` | `none` to drive without writing anything |
 | `FIATLUX_RECORD_START` | `toggle` | `auto` records from launch instead of on the button |
 | `FIATLUX_RECORD_SETTLE` | off | include the ~90 spawn-settle steps, for spawn-time bugs |
+| `FIATLUX_CAPTURES_DIR` | `../teleop-captures` | dataset root; keeps the `<task>/<hand>/…` tree under it |
 
 `FIATLUX_TASK` is any subtask id with `-Teleop-v0` on the end -- the launcher lists all twelve if
 you leave it unset:
@@ -149,7 +168,7 @@ limit. On the six in-hand legs the right grip **starts closed** on the seated bu
 | `--record-settle` | | include the ~90-step startup settle in the take, so spawn-time failures are in the footage |
 | `--record-format` | **`hdf5`** / `npz` | bag format |
 | `--record-images`, `--images-stride` | , **5** | the env's own cameras as JPEGs, every Nth step |
-| `--out` | path | where takes go; default is the `teleop-captures/` layout below |
+| `--out` | path | dump takes flat into ONE folder (`<dir>/epNN_score<X.XX>/`), no tree — for a one-off, not for collecting a dataset. Unset uses the tree below |
 | `--camera` | **`auto`** / `follow` / `static` / `fixture` / `bench` / `crate` | the third-person shot. `auto` picks per task: socket side view on S03/S11, bench side view on S07/S08, crate side view on S06, chase cam framing the task's objects elsewhere |
 | `--stop-on-success` / `--no-stop-on-success` | **on** | close the take the moment the success gate latches |
 | `--max_steps` | int, **0** = run until quit | stop after N loop steps, writing the bag cleanly. Killing the process instead skips the final write |
@@ -162,7 +181,7 @@ limit. On the six in-hand legs the right grip **starts closed** on the seated bu
 `restart_sonic_teleop.sh` is the VR entry point and reaches these through `FIATLUX_*` environment
 variables rather than flags: `FIATLUX_HAND`, `FIATLUX_LAYOUT_SEED`, `FIATLUX_WALK_SCALE`,
 `FIATLUX_CAMERA`, `FIATLUX_RECORD`, `FIATLUX_RECORD_FORMAT`, `FIATLUX_RECORD_START`,
-`FIATLUX_RECORD_SETTLE`, `FIATLUX_RECORD_VIDEO` and `FIATLUX_OUT` -- those fall back to the driver
+`FIATLUX_RECORD_SETTLE`, `FIATLUX_RECORD_VIDEO` and `FIATLUX_CAPTURES_DIR` -- those fall back to the driver
 defaults above when unset. Two do NOT have a default and the launcher stops if either is missing:
 `FIATLUX_TASK` and `NV_CXR_ENDPOINT_IP`; see [Running](#running).
 

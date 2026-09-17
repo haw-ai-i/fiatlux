@@ -44,6 +44,8 @@ HAND="${FIATLUX_HAND:-dex3}"                       # dex3 | inspire
 #   FIATLUX_RECORD_VIDEO=0  skip the follow-cam MP4 (default: on)
 #   FIATLUX_RECORD_START=auto     record from launch (default: toggle -- right face button starts it)
 #   FIATLUX_RECORD_FORMAT=npz     bag as npz instead of hdf5
+#   FIATLUX_CAPTURES_DIR=<dir>    dataset root (default: ../teleop-captures beside the repo);
+#                                 the <task>/<hand>/<kind>/... tree is kept under it
 #   FIATLUX_WALK_SCALE=1.2        m/s at full left-stick deflection (default 1.0)
 #   FIATLUX_LAYOUT_SEED=42        room layout: an integer reproduces that exact room,
 #                                 'random' draws one. The seed in use is always printed
@@ -64,7 +66,6 @@ EXTRA_ARGS=()
 [ -n "${FIATLUX_WALK_SCALE:-}" ] && EXTRA_ARGS+=(--walk_scale "$FIATLUX_WALK_SCALE")
 [ -n "${FIATLUX_CAMERA:-}" ] && EXTRA_ARGS+=(--camera "$FIATLUX_CAMERA")
 [ "${FIATLUX_RECORD_SETTLE:-0}" = 1 ] && EXTRA_ARGS+=(--record-settle)
-[ -n "${FIATLUX_OUT:-}" ] && EXTRA_ARGS+=(--out "$FIATLUX_OUT")
 REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"   # the checkout this script lives in
 LOGDIR="/tmp/fiatlux-xr"; mkdir -p "$LOGDIR"
 # Conda is only needed for the LEGACY envs (vr_teleop for the runtime, env_isaaclab for the sim);
