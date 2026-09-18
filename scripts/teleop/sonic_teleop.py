@@ -408,7 +408,10 @@ def main():  # noqa: C901  (one long orchestration: env setup + settle/resettle 
         _tf = G1_USD[: -len(".usd")] + "_thumbfix.usd"
         if not os.path.isfile(_tf) and os.path.isfile(G1_USD):
             _rel = os.path.relpath(_tf, FIATLUX_ASSETS_DIR)
-            print(f"[sonic] Inspire thumb-fix asset missing locally; trying haw-ai-i/fiatlux-assets: {_rel}", flush=True)
+            print(
+                f"[sonic] Inspire thumb-fix asset missing locally; trying haw-ai-i/fiatlux-assets: {_rel}",
+                flush=True,
+            )
             try:
                 import shutil
 
