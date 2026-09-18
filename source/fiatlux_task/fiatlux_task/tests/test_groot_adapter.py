@@ -29,7 +29,6 @@ import pytest
 import torch
 
 
-
 def test_retarget_reduces_to_q_des_when_gains_match():
     """When our PD gains equal the decoder's own training gains, the general
     torque-retargeting derivation must collapse to using the decoder's position

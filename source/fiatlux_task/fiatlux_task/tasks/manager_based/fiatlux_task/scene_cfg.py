@@ -56,7 +56,6 @@ from fiatlux_task.assets import (
     BULB_USD,
     CRATE_USD,
     ELEVATED_SOCKET_USD,
-    FIATLUX_ASSETS_DIR,
     G1_HORIZONTAL_REACH,
     G1_OVERHEAD_REACH,
     G1_PALM_REACH,
