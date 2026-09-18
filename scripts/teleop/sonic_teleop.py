@@ -5,8 +5,10 @@ drives legs+waist with the pre-trained NVIDIA SONIC policy so the operator can w
 the scene and manipulate -- true whole-body teleop, on any task.
 
 Two input modes (``--input``):
-  * vr        -- Pico controllers over CloudXR: LEFT stick walks, the env's own bimanual arm teleop
-                 (controller pose -> IK, trigger -> grip) drives the arms.
+  * vr        -- motion controllers over CloudXR: LEFT stick walks, the env's own bimanual arm
+                 teleop (controller pose -> IK, trigger -> grip) drives the arms. Any headset the
+                 CloudXR web client profiles works -- Quest 3S/3/2 and Pico 4 Ultra are the tested
+                 ones; the driver reads Isaac Lab's abstract controller row, not a vendor SDK.
   * keyboard  -- desktop, no headset: arrow keys walk; TAB picks the active arm; W/S A/D Q/E move it,
                  U/O I/K J/L rotate the wrist, G grips -- both arms + wrist rotation, i.e. VR parity.
 
@@ -27,18 +29,48 @@ import re
 
 from isaaclab.app import AppLauncher
 
-_DEFAULT_POLICY_DIR = os.path.expanduser(
-    "~/robotica_project/GR00T-WholeBodyControl/gr00t_wbc/sim2mujoco/resources/robots/g1/policy"
-)
-_POLICY_DIR = os.environ.get("SONIC_POLICY_DIR", _DEFAULT_POLICY_DIR)
+# WHERE THE SONIC .onnx LIVE. SONIC_POLICY_DIR wins, then GR00T_WBC_DIR, then the checkout beside
+# this repo -- never one machine's home.
+# The two layouts are branches, not old and new: upstream main keeps the onnx under
+# gr00t_wbc/, the gear-sonic-v1.1 branch under decoupled_wbc/ (same files, verified by md5).
+# A checkout of one can leave an EMPTY directory for the other, so a path that exists proves
+# nothing -- always probe for the .onnx itself.
+# The launcher exports SONIC_POLICY_DIR; this is what makes a direct `--input keyboard` run work
+# on a machine that is not the one this file was written on.
+_ONNX = "GR00T-WholeBodyControl-Walk.onnx"
+_REPO = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+
+def _find_policy_dir() -> str:
+    explicit = os.environ.get("SONIC_POLICY_DIR")
+    if explicit and os.path.isfile(os.path.join(explicit, _ONNX)):
+        return explicit
+    roots = [os.environ.get("GR00T_WBC_DIR", "")]
+    roots += [
+        os.path.join(_REPO, "..", "GR00T-WholeBodyControl"),  # the project workspace
+        os.path.join(_REPO, "..", "..", "GR00T-WholeBodyControl"),  # where it landed historically
+        os.path.expanduser("~/GR00T-WholeBodyControl"),
+    ]
+    for root in roots:
+        for layout in ("decoupled_wbc", "gr00t_wbc"):
+            cand = os.path.join(root, layout, "sim2mujoco/resources/robots/g1/policy")
+            if root and os.path.isfile(os.path.join(cand, _ONNX)):
+                return os.path.normpath(cand)
+    return explicit or os.path.join(_REPO, "..", "GR00T-WholeBodyControl")
+
+
+_POLICY_DIR = _find_policy_dir()
 
 parser = argparse.ArgumentParser()
-parser.add_argument("--task", default="FIATLUX-Insert-Teleop-v0")
+# No default: the old one (FIATLUX-Insert-Teleop-v0) is stationary tabletop manipulation with
+# the pelvis bolted, which this driver then unbolts -- not one of the 12 subtasks, and not
+# scoreable against them. Falling back to it silently is worse than asking.
+parser.add_argument("--task", required=True, help="env id, e.g. FIATLUX-S07-ApproachNewBulb-Teleop-v0")
 parser.add_argument(
     "--input",
     choices=["vr", "keyboard"],
     default="vr",
-    help="vr = Pico controllers over CloudXR; keyboard = desktop keys (no headset)",
+    help="vr = motion controllers over CloudXR (Quest 3S/3/2, Pico 4 Ultra); keyboard = desktop keys",
 )
 parser.add_argument(
     "--layout_seed",
@@ -57,17 +89,6 @@ parser.add_argument(
     "(default on). Keeps a take to ONE episode: the scene no longer resets "
     "on success, so recording past it would append a second, failed episode "
     "and halve the take's score. --no-stop-on-success to keep rolling.",
-)
-parser.add_argument(
-    "--lock-base",
-    dest="lock_base",
-    action="store_true",
-    help="bolt the pelvis to the world and stop driving the legs. For testing the "
-    "MANIPULATION half of an on-ladder task while the spawn settle is losing "
-    "height (the robot slides ~0.9 m off its staged tread): a bolted base "
-    "holds the staged pose exactly, so the arms can be exercised against the "
-    "fixture. NOT for collecting demos -- the legs are inert and the base "
-    "cannot fall, so the trajectory is not a real attempt.",
 )
 parser.add_argument(
     "--record-settle",
@@ -270,6 +291,7 @@ _ROW = DeviceBase.MotionControllerDataRowIndex.INPUTS.value
 _IDX = DeviceBase.MotionControllerInputIndex
 _TL = DeviceBase.TrackingTarget.CONTROLLER_LEFT
 _TR = DeviceBase.TrackingTarget.CONTROLLER_RIGHT
+_XR_DEBUG = os.environ.get("FIATLUX_XR_DEBUG") == "1"  # print the raw controller row on change
 
 
 class WalkRetargeter(RetargeterBase):
@@ -280,6 +302,25 @@ class WalkRetargeter(RetargeterBase):
     def __init__(self, cfg):
         super().__init__(cfg)
         self.cfg = cfg
+
+    _dbg_prev = None
+
+    def _debug_row(self, data):
+        """Print the whole controller row whenever it changes (FIATLUX_XR_DEBUG=1).
+
+        Which physical button lands on which index is the headset's business, not ours, so the
+        only way to map a new one is to watch the raw row while the operator presses things.
+        """
+        rows = []
+        for tag, tgt in (("L", _TL), ("R", _TR)):
+            cd = data.get(tgt) if data else None
+            vals = list(cd[_ROW]) if cd is not None and len(cd) > _ROW else []
+            rows.append(f"{tag}[" + " ".join(f"{float(v):+.2f}" for v in vals) + "]")
+        now = " ".join(rows)
+        if now != WalkRetargeter._dbg_prev:
+            WalkRetargeter._dbg_prev = now
+            names = "stickX stickY trigger squeeze btn0 btn1 pad"
+            print(f"[xr] {now}   ({names})", flush=True)
 
     @staticmethod
     def _read(data, target):
@@ -298,6 +339,8 @@ class WalkRetargeter(RetargeterBase):
     def retarget(self, data):
         lx, ly, lb0, lb1, lsq = self._read(data, _TL)
         rx, ry, rb0, rb1, _rsq = self._read(data, _TR)
+        if _XR_DEBUG:
+            self._debug_row(data)
         dz = self.cfg.deadzone
         lx = lx if abs(lx) > dz else 0.0  # deadzone: idle thumbstick drift must not walk the robot
         ly = ly if abs(ly) > dz else 0.0
@@ -420,13 +463,7 @@ def main():  # noqa: C901  (one long orchestration: env setup + settle/resettle 
     env_cfg.sim.render_interval = 4
     env_cfg.terminations.time_out = None
     # FREE the base so SONIC can balance + walk (the teleop env bolts it down for stationary insert)
-    env_cfg.scene.robot.spawn.articulation_props.fix_root_link = bool(args.lock_base)
-    if args.lock_base:
-        print(
-            "[sonic] LOCK-BASE: pelvis bolted to the world, legs not driven. The robot cannot "
-            "fall or slide -- use for exercising the arms against the scene, NOT for demos.",
-            flush=True,
-        )
+    env_cfg.scene.robot.spawn.articulation_props.fix_root_link = False
     # Harden the spawn against the intermittent PhysX launch: cap depenetration velocity (a bad
     # contact can't fling the free base metres up) and drop the random joint-offset reset (it
     # perturbs the free-base start pose out of SONIC's balance basin). Keep the bulb reset.
@@ -1861,7 +1898,7 @@ def main():  # noqa: C901  (one long orchestration: env setup + settle/resettle 
     )
     if args.input == "vr":
         print(
-            "Teleop ready. In the Isaac Sim UI: AR panel -> Start AR, then connect the Pico. "
+            "Teleop ready. In the Isaac Sim UI: AR panel -> Start AR, then connect the headset. "
             "LEFT stick = walk, RIGHT stick X = turn, RIGHT btn = stop, LEFT X/Y = lean. "
             "Arms: the usual controller_rel teleop (grip-clutch + move, trigger to grasp)."
             + (
@@ -2208,9 +2245,6 @@ def main():  # noqa: C901  (one long orchestration: env setup + settle/resettle 
                 sess = walk_sess if np.linalg.norm(loco_cmd) > 0.05 else bal_sess
                 last_action = sess.run(None, {in_name: flat})[0][0]
                 leg_target = torch.as_tensor(last_action * ACTION_SCALE + DEFAULT_15, device=dev)
-                if args.lock_base:
-                    # hold the staged stance; SONIC's balance output means nothing on a fixed root
-                    leg_target = torch.as_tensor(DEFAULT_15, device=dev)
                 robot.set_joint_position_target(leg_target.unsqueeze(0), joint_ids=act_idx)
                 if _staged_close is not None:
                     for _sc in _staged_close:

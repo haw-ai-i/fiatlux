@@ -6,7 +6,7 @@
 """Motion-controller retargeters for XR teleoperation (issue #51).
 
 Isaac Lab's stock SE(3)/gripper retargeters read **hand tracking** (thumb/index/wrist joints). The
-Pico CloudXR *web client*, however, streams **motion controllers**, not optical hand
+CloudXR *web client*, however, streams **motion controllers**, not optical hand
 joints -- with the controllers down, hand tracking falls back to a useless head-locked placeholder
 (``'Right Head Device Hand'``). These retargeters mirror :class:`Se3AbsRetargeter` /
 :class:`GripperRetargeter` but read the controller instead: the right controller's grip pose drives

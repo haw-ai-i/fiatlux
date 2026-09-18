@@ -27,22 +27,134 @@ all-False vector, so every recorded demo silently scores `success_rate 0.0`.
 
 ## Running
 
+Run these **from the repo root** — the driver needs `PYTHONPATH` pointing at this checkout's
+`source/`, which is what the setup script's printed command sets for you. The VR launcher is the
+exception: it finds its own repo and `cd`s there, so it works from anywhere, and the copy you
+invoke decides which branch runs (each worktree has its own).
+
 ```bash
 # keyboard, no headset
-python scripts/teleop/sonic_teleop.py --task FIATLUX-S03-RemoveOldBulb-Teleop-v0 --input keyboard
+python scripts/teleop/sonic_teleop.py --task FIATLUX-S07-ApproachNewBulb-Teleop-v0 --input keyboard
 
-# VR over CloudXR
-NV_CXR_ENDPOINT_IP=<ip> FIATLUX_TASK=FIATLUX-S03-RemoveOldBulb-Teleop-v0 \
+# VR over CloudXR -- one command, and the usual one. Two things to set: the task, and the
+# address the headset dials. Recording is armed, so a bag and a video are written from the
+# moment you press the right face button.
+NV_CXR_ENDPOINT_IP=<ip> FIATLUX_TASK=FIATLUX-S07-ApproachNewBulb-Teleop-v0 \
   bash scripts/teleop/restart_sonic_teleop.sh
+
+# ...and to collect into a dataset folder of your own (keeps the tree below):
+NV_CXR_ENDPOINT_IP=<ip> FIATLUX_TASK=FIATLUX-S07-ApproachNewBulb-Teleop-v0 \
+  FIATLUX_CAPTURES_DIR=~/my-dataset bash scripts/teleop/restart_sonic_teleop.sh
 ```
+
+**Where takes land.** Unset, the root is `../teleop-captures` **beside** the repo — outside the
+git tree, so sessions never pollute it. `FIATLUX_CAPTURES_DIR` moves that root, keeping the tree.
+Under the root, one dimension per level:
+
+```
+<captures>/<task>/<hand>/<kind>/<input>/<YYYY-MM-DD>/<HHMMSS>/epNN_score<X.XX>/
+teleop-captures/FIATLUX-S07-ApproachNewBulb-Teleop-v0/dex3/hdf5/vr/2026-09-17/143052/ep00_score1.00/
+```
+
+One `epNN_score<X.XX>/` folder per record-on..off take, each holding `run.h5`, `meta.json`,
+`score_report.txt` and the videos — so a listing reads as per-demo results, and
+`<task>/<hand>/<kind>/` is always a schema-homogeneous training set (dex3 bags have 43 joint
+columns, inspire 53; never mixable).
+
+What the launcher takes. These are environment variables, not flags -- the full flag reference is
+[Driver flags](#driver-flags) below, and anything not listed here keeps the driver's own default.
+
+| variable | default | |
+|---|---|---|
+| `FIATLUX_TASK` | **required** | which subtask; unset prints all twelve |
+| `NV_CXR_ENDPOINT_IP` | **required** | address the headset dials; unset prints this box's |
+| `FIATLUX_HAND` | `dex3` | or `inspire` |
+| `FIATLUX_LAYOUT_SEED` | random | an int reproduces that exact room |
+| `FIATLUX_RECORD` | `bag` | `none` to drive without writing anything |
+| `FIATLUX_RECORD_START` | `toggle` | `auto` records from launch instead of on the button |
+| `FIATLUX_RECORD_SETTLE` | off | include the ~90 spawn-settle steps, for spawn-time bugs |
+| `FIATLUX_CAPTURES_DIR` | `../teleop-captures` | dataset root; keeps the `<task>/<hand>/…` tree under it |
+
+`FIATLUX_TASK` is any subtask id with `-Teleop-v0` on the end -- the launcher lists all twelve if
+you leave it unset:
+
+| | | | |
+|---|---|---|---|
+| `FIATLUX-S01-MoveLadder-Teleop-v0` | `FIATLUX-S04-DescendWithBulb-Teleop-v0` | `FIATLUX-S07-ApproachNewBulb-Teleop-v0` | `FIATLUX-S10-ClimbWithBulb-Teleop-v0` |
+| `FIATLUX-S02-ClimbLadder-Teleop-v0` | `FIATLUX-S05-CarryBulbToDisposal-Teleop-v0` | `FIATLUX-S08-GrabNewBulb-Teleop-v0` | `FIATLUX-S11-ScrewInBulb-Teleop-v0` |
+| `FIATLUX-S03-RemoveOldBulb-Teleop-v0` | `FIATLUX-S06-DisposeBulb-Teleop-v0` | `FIATLUX-S09-CarryBulbToLadder-Teleop-v0` | `FIATLUX-S12-ClimbDown-Teleop-v0` |
+
+Reproduce a room -- the seed is printed at launch and stored in every bag's `meta.json`, so this
+is how a take, a bug report or an A/B comparison gets repeated on the exact same layout:
+
+```bash
+FIATLUX_LAYOUT_SEED=561366545 NV_CXR_ENDPOINT_IP=<ip> \
+  FIATLUX_TASK=FIATLUX-S07-ApproachNewBulb-Teleop-v0 bash scripts/teleop/restart_sonic_teleop.sh
+```
+
+`NV_CXR_ENDPOINT_IP` is the address the **headset** dials, so it depends on where the headset is,
+not on this box. Same WiFi: use this box's LAN address -- a direct hop, nothing to install on the
+headset. Any other network: use its tailnet address, with Tailscale running on the headset too.
+Leave it unset and the launcher lists what this box has, labelled:
+
+```
+$ FIATLUX_TASK=FIATLUX-S07-ApproachNewBulb-Teleop-v0 bash scripts/teleop/restart_sonic_teleop.sh
+set NV_CXR_ENDPOINT_IP to the address the headset can reach:
+    100.x.y.z    tailnet -- headset anywhere, needs Tailscale on it too
+    192.168.x.y  LAN -- headset on this WiFi, nothing to install
+```
+
+`<ip>` above is whichever of those two the headset can reach.
+
+Getting it wrong is the failure where the client page loads fine and CONNECT then hangs: the page
+arrived over a route the media stream cannot use.
 
 Always use `restart_sonic_teleop.sh` for VR. It restarts the CloudXR runtime and clears its
 state files. Reusing a runtime across Isaac restarts leaves signalling working while media
 negotiation fails — the client connects, looks healthy, and drops after about 30 seconds.
 
-Keyboard: arrows walk, `SPACE` stops, `TAB` switches arm, `W/S A/D Q/E` move the end effector,
-`U/O I/K J/L` rotate the wrist, `G` grips, `C` toggles recording, `R` resets. Forward reach
-saturates around 0.35 m from the pelvis — past that the arm is at its kinematic limit.
+### Headsets
+
+No headset software is installed: the client is the web page CloudXR serves at
+`https://<ip>:48322/client/`, so any headset whose browser does WebXR can drive the sim. The
+driver reads Isaac Lab's abstract controller row (thumbstick, trigger, squeeze, two face
+buttons), not a vendor SDK, so the controls below are the same on every headset — only the
+button *names* differ.
+
+| headset | Device Profile | also switch on | face buttons |
+|---|---|---|---|
+| Quest 3S / Quest 3 | `Quest 3S` / `Quest 3` | Quest Texture Optimization, Quest Color Workaround | left `X`/`Y`, right `A`/`B` |
+| Quest 2 | `Quest 2` | Quest Texture Optimization | left `X`/`Y`, right `A`/`B` |
+| Pico 4 Ultra | `Pico 4 Ultra` | — | left/right face buttons |
+
+Every index the driver reads lands in the same place on both, measured on a Quest 3S over
+486 controller rows (`FIATLUX_XR_DEBUG=1`): sticks 0/1, trigger 2, grip squeeze 3, and the two
+face buttons 4/5 — left X/Y lean, right A stops the walk, right B toggles a take. No code
+change is needed for a Quest.
+
+Quest Color Workaround is the Display P3 fix; without it a Quest 3/3S stream looks washed
+out. Sideloading Tailscale (only needed when the headset is on a different network) differs:
+the PICO Browser can install an APK directly, the Quest Browser cannot — use `adb install`
+with Developer Mode on.
+
+Keyboard — click the Isaac Sim viewport to focus it first. `TAB` switches the active arm (R ↔ L):
+
+| | |
+|---|---|
+| `W/S` `A/D` `Q/E` | move the active arm in X / Y / Z |
+| `U/O` `I/K` `J/L` | roll / pitch / yaw the wrist |
+| `G` | toggle grip |
+| arrows | walk (↑↓ forward/back, ←→ turn) |
+| `,` `.` | strafe left / right |
+| `T` / `Y` | lean forward / back |
+| `SPACE` | stop walking |
+| `H` | toggle the rail hand (only on tasks that brace one) |
+| `C` | start / stop recording |
+| `R` reset · `ESCAPE` quit | |
+
+Forward reach saturates around 0.35 m from the pelvis — past that the arm is at its kinematic
+limit. On the six in-hand legs the right grip **starts closed** on the seated bulb, so the first
+`G` releases it.
 
 ### Driver flags
 
@@ -50,7 +162,7 @@ saturates around 0.35 m from the pelvis — past that the arm is at its kinemati
 
 | flag | values | what it does |
 |---|---|---|
-| `--task` | env id | which twin to drive (**`FIATLUX-Insert-Teleop-v0`**) |
+| `--task` | env id | which twin to drive. **Required** — there is no default, since the old one was a legacy scene that is not one of the 12 subtasks |
 | `--input` | **`vr`** / `keyboard` | headset over CloudXR, or the desktop keys above |
 | `--hand` | **`dex3`** / `inspire` | which G1 hand the env is built with; the driver prints the one it actually got |
 | `--layout_seed` | int / **`random`** | the room layout; the seed in use is printed and stored in `meta.json` |
@@ -61,17 +173,22 @@ saturates around 0.35 m from the pelvis — past that the arm is at its kinemati
 | `--record-settle` | | include the ~90-step startup settle in the take, so spawn-time failures are in the footage |
 | `--record-format` | **`hdf5`** / `npz` | bag format |
 | `--record-images`, `--images-stride` | , **5** | the env's own cameras as JPEGs, every Nth step |
-| `--out` | path | where takes go; default is the `teleop-captures/` layout below |
+| `--out` | path | dump takes flat into ONE folder (`<dir>/epNN_score<X.XX>/`), no tree — for a one-off, not for collecting a dataset. Unset uses the tree below |
 | `--camera` | **`auto`** / `follow` / `static` / `fixture` / `bench` / `crate` | the third-person shot. `auto` picks per task: socket side view on S03/S11, bench side view on S07/S08, crate side view on S06, chase cam framing the task's objects elsewhere |
 | `--stop-on-success` / `--no-stop-on-success` | **on** | close the take the moment the success gate latches |
-| `--no-arm-pin` | | do not pin the idle arm at its settle joints. The pin stops IK droop but makes a hands-off robot fall at ~3 s; use this whenever the robot must still be standing when you connect |
-| `--lock-base` | | bolt the pelvis to the world (legs inert) — testing the manipulation half of an on-ladder task only, not demo-valid |
-| `--max_steps` | int, **0** = run until quit | stop after N loop steps |
+| `--max_steps` | int, **0** = run until quit | stop after N loop steps, writing the bag cleanly. Killing the process instead skips the final write |
+| `--keys` | `NAME@SECONDS,...` | scripted key presses for hands-off runs, e.g. `"G@4,R@8,ESCAPE@15"`; keyboard input only. Pair with `--max_steps` |
 | `--teleop_device` | **`controller_rel`** | which XR device config to drive the arms with |
 | `--walk_onnx`, `--balance_onnx` | paths | the SONIC policies (`$SONIC_POLICY_DIR`) |
 | `--num_envs` | **1** | |
+| `FIATLUX_XR_DEBUG=1` | env var | print the raw controller row (`stickX stickY trigger squeeze btn0 btn1 pad`) for both hands whenever it changes — how you map a new headset's buttons |
 
-`restart_sonic_teleop.sh` forwards these as `FIATLUX_*` environment variables — see its header.
+`restart_sonic_teleop.sh` is the VR entry point and reaches these through `FIATLUX_*` environment
+variables rather than flags: `FIATLUX_HAND`, `FIATLUX_LAYOUT_SEED`, `FIATLUX_WALK_SCALE`,
+`FIATLUX_CAMERA`, `FIATLUX_RECORD`, `FIATLUX_RECORD_FORMAT`, `FIATLUX_RECORD_START`,
+`FIATLUX_RECORD_SETTLE`, `FIATLUX_RECORD_VIDEO` and `FIATLUX_CAPTURES_DIR` -- those fall back to the driver
+defaults above when unset. Two do NOT have a default and the launcher stops if either is missing:
+`FIATLUX_TASK` and `NV_CXR_ENDPOINT_IP`; see [Running](#running).
 
 ## The 12 subtasks
 
@@ -133,7 +250,7 @@ Shared thresholds: **robot standing** = pelvis above 0.35 m and tilt under 1.0 r
 
 | | Task | Gate | Complete when |
 |---|---|---|---|
-| S01 | MoveLadder | sustained | ladder within **0.67 m** of the fixture, upright · feet down within **2 cm** of the floor · ladder at rest · robot standing |
+| S01 | MoveLadder | sustained | the stance that ladder pose would produce could grasp the bulb: its shoulder within **0.419 m** of the bulb's body centre in **3-D**, facing it within **45°**, and standing off far enough that the fixture is not inside its torso · ladder upright · feet down within **2 cm** of the floor · ladder at rest · robot standing |
 | S02 | ClimbLadder | all_of | pelvis within **0.15 m** of the top stance height · within **0.6 m** of the ladder in xy · moving under **1.5 m/s** · standing · ladder vertical |
 | S03 | RemoveOldBulb | sustained | old bulb **0.10 m** clear of the fixture after release · held (>1 N) · lifted above **0.15 m** · standing · ladder vertical |
 | S04 | DescendWithBulb | all_of | pelvis below the floor-stance height, within **0.6 m** of the ladder, under **1.5 m/s** · bulb held · lifted · standing · ladder vertical |

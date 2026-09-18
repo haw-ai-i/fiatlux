@@ -3,7 +3,7 @@
 Teleop **on top of** the `fiatlux_task` benchmark. It's a separate package so the benchmark
 installs/runs without teleop's deps (OpenXR / CloudXR / the SONIC onnxruntime stack). The dependency
 arrow points **teleop → benchmark**: each teleop env here subclasses a benchmark env and swaps its RL
-whole-body action for a human-drivable **arm-IK + binary-grip** interface, driven over a Pico headset
+whole-body action for a human-drivable **arm-IK + binary-grip** interface, driven over a VR headset
 (CloudXR) **or the keyboard** (`sonic_teleop.py --input vr|keyboard`).
 
 - **Operator** (running a session): **no code** — one launcher command.
@@ -17,7 +17,7 @@ One command installs everything (idempotent; `verify` mode checks without instal
 
 ```bash
 ./scripts/teleop/setup_sim_teleop.sh            # keyboard tier: sim env + assets + SONIC onnx
-./scripts/teleop/setup_sim_teleop.sh vr         # + the CloudXR/Pico tier
+./scripts/teleop/setup_sim_teleop.sh vr         # + the CloudXR headset tier
 ./scripts/teleop/setup_sim_teleop.sh verify     # check every piece
 ```
 
@@ -38,10 +38,12 @@ Teleop runs as **two processes in two envs**, kept separate so the CloudXR deps 
 > setup script prints) and it self-heals regardless of what was synced before.
 
 Also needed:
-- **Headset** — Pico 4 Ultra (or any CloudXR-compatible OpenXR headset) on the **same Tailscale
-  tailnet** as the GPU box (install the Tailscale APK on the Pico, log into the same tailnet).
+- **Headset** — Quest 3S/3/2 or Pico 4 Ultra (any headset the CloudXR web client profiles),
+  reaching this box either on the **same LAN** (nothing to install) or over **Tailscale** (running
+  on the headset too).
 - **`~/.cloudxr/`** — CloudXR install dir with `openxr_cloudxr.json` + a self-signed cert whose SAN
-  carries your **tailnet IP** (else the Pico browser can't get past the cert warning).
+  carries **the address the headset dials** (else its browser can't get past the cert warning).
+  Browsing by hostname instead of that address gives a name mismatch some browsers refuse outright.
 
 The launcher activates both envs for you — you never switch them by hand. Full first-time install,
 firewall ports, network topology, and every hard-won gotcha:
@@ -51,12 +53,19 @@ firewall ports, network topology, and every hard-won gotcha:
 
 ## Quickstart — teleop an existing task (operator)
 
-Three teleop tasks ship ready to run: `FIATLUX-Insert-Teleop-v0`, `FIATLUX-Carry-Teleop-v0`,
-`FIATLUX-LadderGallery-Teleop-v0`.
+The benchmark's twelve subtasks each have a teleop twin -- the subtask id with `-Teleop-v0` on
+the end, e.g. `FIATLUX-S07-ApproachNewBulb-Teleop-v0`. They are what demos are collected on and
+scored against; the launcher lists them all if `FIATLUX_TASK` is unset. Three earlier standalone
+envs also still run (`FIATLUX-Insert-Teleop-v0`, `FIATLUX-Carry-Teleop-v0`,
+`FIATLUX-LadderGallery-Teleop-v0`) and serve as templates below, but they are not part of the
+12-subtask benchmark and do not score against it.
 
 ```bash
 # from the repo root. Walking + arm teleop (SONIC legs):
-FIATLUX_TASK=FIATLUX-Carry-Teleop-v0 FIATLUX_HAND=dex3 bash scripts/teleop/restart_sonic_teleop.sh
+NV_CXR_ENDPOINT_IP=<ip> FIATLUX_TASK=FIATLUX-S07-ApproachNewBulb-Teleop-v0 FIATLUX_HAND=dex3 \
+  bash scripts/teleop/restart_sonic_teleop.sh
+# recording is armed by default (bag + video, started by the right face button);
+# FIATLUX_RECORD=none drives without writing anything.
 ```
 
 That one command starts **both** processes (CloudXR runtime in `vr_teleop` + the sim/driver in
@@ -91,36 +100,35 @@ That one command starts **both** processes (CloudXR runtime in `vr_teleop` + the
     to disable) caps the hand actuators at the physical RH56DFTP's fingertip force (~10 N). Without
     it, a blocked close grinds saturated PD torques through the bulb→thumb→palm loop and the
     vibration can tip SONIC (2 of 3 hands-off in-hand settles fell before the cap; 0 after).
-- `NV_CXR_ENDPOINT_IP` — **required** for the VR launchers (your GPU box's tailnet IP); they exit with
-  a clear error if it's unset. e.g. `NV_CXR_ENDPOINT_IP=100.x.y.z FIATLUX_TASK=… bash …restart_sonic_teleop.sh`.
+- `NV_CXR_ENDPOINT_IP` — **required**: the address the *headset* dials, so it depends on where the
+  headset is. Same WiFi as this box → its LAN address (direct, nothing to install on the headset).
+  Any other network → its tailnet address, with Tailscale on the headset too. Leave it unset and the
+  launcher prints this box's addresses, labelled, so you can pick.
 
 ### Keyboard (whole-body, no headset)
 Same SONIC walking + arm teleop, from the desktop — run the driver directly (no CloudXR, no headset):
 ```bash
 conda activate env_isaaclab
 export PYTHONPATH=$PWD/source/fiatlux_task:$PWD/source/fiatlux_teleop
-python scripts/teleop/sonic_teleop.py --task FIATLUX-Carry-Teleop-v0 --input keyboard
+python scripts/teleop/sonic_teleop.py --task FIATLUX-S07-ApproachNewBulb-Teleop-v0 --input keyboard
 ```
-Click the Isaac Sim viewport to focus it. **Bimanual** — **Tab** switches the active arm (R ↔ L):
-- active arm: **W/S A/D Q/E** move X/Y/Z, **U/O I/K J/L** roll/pitch/yaw, **G** toggles grip
-- walk: **arrows** (↑↓ forward/back, ←→ turn), **, / .** strafe, **T/Y** lean, **Space** stop
-- **R** reset, **Esc** quit
-
-On the six in-hand legs the right grip **starts closed** on the seated bulb, so the first **G**
-releases it. For hands-off tests, `--keys "G@4,R@8,ESCAPE@15"` injects timed key presses
+Click the Isaac Sim viewport to focus it. The full key map lives in
+[docs/subtask_teleop.md](../../docs/subtask_teleop.md#running) — **Tab** switches the active arm,
+**W/S A/D Q/E** move it, **arrows** walk. For hands-off tests, `--keys "G@4,R@8,ESCAPE@15"`
+injects timed key presses
 (seconds of teleop time) into the same queue as real ones.
 
 ### Activate XR (in the headset)
 Once `[5/5] READY` prints, the launcher echoes these — in order:
 1. **In the Isaac Sim window** → **AR** panel → Output Plugin **OpenXR**, Runtime **System OpenXR
    Runtime** → **Start AR**.
-2. **On the Pico browser** → `https://<tailnet-ip>:48322/client/` → cert warning → **Advanced →
-   Proceed**.
-3. Client **Settings**: Device Profile **Pico 4 Ultra**, Server IP **`<tailnet-ip>`**, **Port
+2. **In the headset's browser** → `https://<ip>:48322/client/` → cert warning → **Advanced →
+   Proceed**. `<ip>` is the same `NV_CXR_ENDPOINT_IP` the launcher was given.
+3. Client **Settings**: Device Profile **your headset** (Quest 3S/3/2 or Pico 4 Ultra), Server IP **`<ip>`**, **Port
    `48322`** — **not** the default `49100` (48322 is the TLS/WSS proxy; 49100 is the raw backend).
 4. **Connect** → the scene streams to the headset. Then drive with the controls below.
 
-### Controls (Pico controllers)
+### Controls (motion controllers)
 | Input | Action |
 |---|---|
 | **grip-clutch + move** controller | move the arm (release grip to reposition without moving the arm) |
@@ -141,10 +149,11 @@ record everything below, in a standard layout.)
 
 ```bash
 # keyboard
-... sonic_teleop.py --task FIATLUX-Carry-Teleop-v0 --input keyboard --record bag
-# VR (the launcher forwards these):
-FIATLUX_RECORD=1 [FIATLUX_RECORD_VIDEO=1] [FIATLUX_RECORD_START=toggle] [FIATLUX_RECORD_FORMAT=npz] \
-    NV_CXR_ENDPOINT_IP=<ip> FIATLUX_TASK=... bash scripts/teleop/restart_sonic_teleop.sh
+... sonic_teleop.py --task FIATLUX-S07-ApproachNewBulb-Teleop-v0 --input keyboard --record bag
+# VR: armed by default -- bag + video, right face button starts and ends each take
+NV_CXR_ENDPOINT_IP=<ip> FIATLUX_TASK=... bash scripts/teleop/restart_sonic_teleop.sh
+# opt out, or change the shape: FIATLUX_RECORD=none | FIATLUX_RECORD_VIDEO=0
+#                               FIATLUX_RECORD_START=auto | FIATLUX_RECORD_FORMAT=npz
 ```
 
 **What a session records** (per step, all envs' joints -- dex3 = 43 columns, inspire = 53):
@@ -162,15 +171,14 @@ session keeps every closed episode (Kit's SIGINT handler skips the final write, 
 trailing unclosed episode can be lost; use `--max_steps N` for clean scripted endings).
 
 **Options** (each is a flag; see `--help`):
-- `--record-start auto|toggle` -- record from launch, or start OFF until the operator toggles.
+- `--record-start auto|toggle` -- record from launch, or (**default**) start OFF until the
+  operator toggles it with the right face button / `C`.
 - `--record-format hdf5|npz` -- robomimic-style HDF5 (default) or flat npz.
 - `--record-video` -- `video.mp4` (third-person) + `ego.mp4` (head camera) + poster PNGs, streamed
   to disk (review footage). `--camera auto|follow|static|fixture|bench|crate` picks the third-person
   shot; `auto` (default) chooses per task so the robot and the task's own objects stay in frame.
 - `--record-settle` -- include the ~90-step startup settle in the take (spawn-time failures happen
   there; a take that starts at the main loop only shows the aftermath).
-- `--no-arm-pin` -- don't pin the idle arm at its settle joints; the pin makes a hands-off robot
-  fall at ~3 s, so use this when the robot must still be standing when you connect.
 - `--record-images --images-stride N` -- the env's own `wrist_camera`/`ego_camera` as JPEGs in
   `<session>/images/<camera>/f<step>.jpg` (default every 5th step = 10 Hz). The filename index is
   the bag's flat row number, so each frame pairs 1:1 with that row's `policy_obs`/`actions`; the
@@ -253,7 +261,8 @@ might touch the *driver* — there's only one, the whole-body `sonic_teleop.py`.
 
 ### 4. Run it
 ```bash
-FIATLUX_TASK=FIATLUX-MyTask-Teleop-v0 FIATLUX_HAND=dex3 bash scripts/teleop/restart_sonic_teleop.sh
+NV_CXR_ENDPOINT_IP=<ip> FIATLUX_TASK=FIATLUX-MyTask-Teleop-v0 FIATLUX_HAND=dex3 \
+  bash scripts/teleop/restart_sonic_teleop.sh
 ```
 
 **Effort per new task:** the cfg (copy + tweak, ~30–50 lines) + one `gym.register` + maybe a 1-line
@@ -289,4 +298,4 @@ scripts/teleop/
 ## Scope note
 This is a *bespoke* harness (G1 arm-IK + SONIC legs + CloudXR), tuned for these scenes — not a generic
 "point at any env and teleop." Adding a new teleop task is the ~30-line cfg above, following the
-templates. For the CloudXR / Pico setup itself, see `journal/specs/vr-teleop-cloudxr-setup.md`.
+templates. For the CloudXR headset setup itself, see `journal/specs/vr-teleop-cloudxr-setup.md`.
