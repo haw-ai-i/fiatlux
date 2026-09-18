@@ -472,8 +472,8 @@ def scenario_socket():
     cfg.scene.table = None
     cfg.scene.fresh_bulb.init_state.pos = TABLETOP_SEATED_BULB_POSITION
     cfg.scene.fresh_bulb.spawn.activate_contact_sensors = True
-    # The Omniverse bulb/socket carry their rigid body on the spawned prim itself; the
-    # <entity>/base_link nesting was the BEHAVIOR-1K pair's layout.
+    # The Omniverse bulb/socket carry their rigid body on the spawned prim itself, so the
+    # filter paths are the entity prims with no <entity>/base_link nesting underneath.
     cfg.scene.bulb_socket_contact = ContactSensorCfg(
         prim_path="{ENV_REGEX_NS}/Bulb",
         filter_prim_paths_expr=["{ENV_REGEX_NS}/Socket"],

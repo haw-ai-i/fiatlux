@@ -12,8 +12,8 @@ Idempotent; edits USDs in place. Run ``behavior1k_fix_flat_texpaths.py`` for the
 texture-path fix. Re-run after a fresh download.
 
 Usage:
-  python scripts/behavior1k_fix_mdl_path.py [ASSETS_DIR]            # dry-run
-  python scripts/behavior1k_fix_mdl_path.py [ASSETS_DIR] --apply    # write changes
+  python scripts/behavior1k/behavior1k_fix_mdl_path.py [ASSETS_DIR]            # dry-run
+  python scripts/behavior1k/behavior1k_fix_mdl_path.py [ASSETS_DIR] --apply    # write changes
 """
 
 import glob

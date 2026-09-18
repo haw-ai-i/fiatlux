@@ -45,7 +45,9 @@ parser.add_argument(
     "--policy",
     type=str,
     default="zero",
-    help="Policy spec: zero | random | <path>.pt | rsl_rl[:<ckpt>].",
+    help="Policy spec: zero | random | basic_standard | basic_cheatcode | wbc_stand | "
+    "sonic_stand | groot[:<host:port>] | rsl_rl[:<ckpt>] | <path>.pt (or jit:<path>). "
+    "See fiatlux_task/policy.py.",
 )
 parser.add_argument("--checkpoint", type=str, default=None, help="Checkpoint path for rsl_rl policies.")
 parser.add_argument(

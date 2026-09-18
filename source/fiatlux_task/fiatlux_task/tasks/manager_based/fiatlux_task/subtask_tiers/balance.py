@@ -60,7 +60,7 @@ from ..subtask_env_cfg import (
 
 @configclass
 class BulbAttachmentEventCfg(SubtaskEventCfg):
-    """Axial retention spring, with ``FIATLUX-Replace-v0``'s parameters.
+    """Axial detent, with ``FIATLUX-Replace-v0``'s parameters.
 
     Nothing ladder-specific: S01 (Place tier, off-ladder) wires this in directly, so it must stay
     usable on its own, without whatever ``BalanceEventCfg`` adds for the on-the-ladder tier.

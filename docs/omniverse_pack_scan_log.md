@@ -483,8 +483,10 @@ A home-interior pack — **507 model files**. Full breakdown, every category →
 ### ⚠️ Important: probably no *separable* bulb
 There is **no standalone light-bulb asset** in this pack, and these ArchVis lamps are
 most likely **one fused model** (base + shade + bulb together), not a removable bulb in a
-socket. The Fiatlux task needs a bulb you can take out and replace — which is why the
-BEHAVIOR-1K lamps (with socket metadata) were used. So treat these as **fixture / lamp
+socket. The Fiatlux task needs a bulb you can take out and replace — which at the time of this
+scan pointed at the BEHAVIOR-1K lamps (with socket metadata). That is no longer the case: the
+shipped pair is the separable Omniverse LightBulb from pack 8; the BEHAVIOR-1K lamps are no
+longer loaded by any task, and survive only as opt-in scene dressing (see `assets/README.md`). So treat these as **fixture / lamp
 variety and scene dressing** unless inspection shows the bulb is a separate part.
 
 ---

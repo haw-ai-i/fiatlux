@@ -77,8 +77,9 @@ def make_policy(
 
     Args:
         spec: One of ``"zero"``, ``"random"``, ``"basic_standard"``, ``"basic_cheatcode"``,
-            a TorchScript ``.pt`` path, ``"rsl_rl"`` / ``"rsl_rl:<checkpoint>"``,
-            ``"sonic_stand"``, or ``"groot"`` / ``"groot:<host:port>"``.
+            ``"wbc_stand"``, ``"sonic_stand"``, ``"rsl_rl"`` / ``"rsl_rl:<checkpoint>"``, or
+            ``"groot"`` / ``"groot:<host:port>"``. Anything else is treated as a TorchScript
+            path (optionally prefixed ``jit:``).
         env: The (unwrapped) environment; used for ``num_envs``/``action_space``/``device``.
         checkpoint: Checkpoint path for ``"rsl_rl"`` (alternative to the ``rsl_rl:`` suffix).
         device: Override device; defaults to ``env.device``.

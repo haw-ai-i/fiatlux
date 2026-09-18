@@ -65,7 +65,7 @@ def orbit_pose(
 
 
 # Orbit geometry for the fixture view: low enough to be a genuine upward look at a mount at
-# 2.2 m (wall) or 3.0 m (ceiling), close enough that the fixture is more than a speck.
+# 2.2 m (wall) or 2.37 m (ceiling), close enough that the fixture is more than a speck.
 FIXTURE_VIEW_RADIUS = 2.2
 FIXTURE_VIEW_HEIGHT = 1.5
 FIXTURE_VIEW_MIN_RADIUS = 0.6  # closer than this and the fixture overflows the frame

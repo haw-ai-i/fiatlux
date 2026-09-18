@@ -89,7 +89,7 @@ def all_meshes(stage, prefix: str) -> list[tuple[str, np.ndarray]]:
     """Every mesh under ``prefix``, as (path, world-space points).
 
     Enumerating rather than guessing one mesh name: the socket half of this asset is 8 separate
-    base/switch collider meshes (``assets/omneverse_bulb/CHANGES.md``), and which of them
+    base/switch collider meshes (``assets/omniverse_bulb/CHANGES.md``), and which of them
     carries the cylindrical bore is exactly what needs finding rather than assuming. Picking
     the first path that merely *ends with* a plausible name also silently crosses bulbs -- the
     fresh bulb parked across the room has the same mesh names as the seated old one.

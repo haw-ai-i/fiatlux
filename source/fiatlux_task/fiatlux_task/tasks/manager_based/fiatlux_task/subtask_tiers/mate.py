@@ -12,7 +12,7 @@ stance, and adds a filtered hand-force channel with a compliance penalty and a c
 No limb-on-ladder bootstrap: ``ladder_contact_fraction`` pays for limbs ON the ladder, and the
 whole job here is to get a hand off it and onto the fixture.
 
-The axial retention spring (issue #167, ``mdp.bulb_attachment``) is wired at the balance tier
+The axial detent (issue #167, ``mdp.bulb_attachment``) is wired at the balance tier
 (``subtask_tiers.balance.BalanceEventCfg``), not here -- every on-ladder subtask starts with the
 old bulb seated in the inverted fixture, not just these two, so it belongs one level up. Both
 leaves' success gates read the attach-aware predicates (``mdp.old_bulb_removed_after_release``,

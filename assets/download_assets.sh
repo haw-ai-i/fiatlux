@@ -14,10 +14,8 @@
 #   unitreerobotics/unitree_sim_isaaclab_usds (Apache-2.0).
 #
 # Task assets (bulb/socket mechanic + ladder):
-#   behavior1k_bulb/          light_bulb models (bulblampM Male plug)
-#   behavior1k_bulb_broken/   broken_light_bulb models
-#   behavior1k_lamp/          table_lamp models with bulblampF Female socket
-#   behavior1k_ladder/        ladder models
+#   omniverse_bulb/           the graspable bulb + its guide-sleeve socket (BULB_USD/SOCKET_USD)
+#   omniverse_ladder/         step ladders; AlumStep_D is the one the benchmark climbs
 #
 # Room dressing (always synced -- defines the default look of every recorded
 # run): table, warehouse backdrop + clutter props, and an HDRI sky, mirrored
@@ -27,7 +25,13 @@
 #   isaac_room/                room backdrop (walls/floor/windows)
 #   isaac_skies/              PolyHaven HDRI sky for the dome light
 #
-# Scene dressing (environment lighting, no bulb socket):
+# Scene dressing -- opt-in via --scene-dressing. NOTE: no benchmark preset spawns these. They
+# are here so you can dress a scene of your own, or add a fixture to an existing one, without
+# hunting down the source datasets. The task scene's own bulb/socket/ladder are the omniverse_*
+# groups above.
+#   behavior1k_materials/     REQUIRED FIRST: the shared OmniGibson vray mdls every
+#                             behavior1k asset binds. Without it they all render RED
+#                             (issue 18) -- the assets load, they just have no material.
 #   behavior1k_downlight/     recessed ceiling fixtures
 #   behavior1k_room_light/    ceiling/pendant/wall fixtures
 #   behavior1k_spotlight/     directional ceiling/track fixtures
@@ -39,6 +43,8 @@
 #   behavior1k_paper_lantern/ hanging pendant lanterns
 #   behavior1k_lampshade/     shade housing components
 #   behavior1k_floor_lamp/    standing lamps
+#   omniverse_climb/          Mezzanine/OfficeSet elevated-platform climb structures
+#   omniverse_lamp/           Omniverse residential lamps/fixtures
 #
 # Override bucket with FIATLUX_ASSET_BUCKET env var.
 # USD/mesh files are git-ignored.
@@ -65,13 +71,8 @@ ROBOT_ASSETS=(
 )
 
 TASK_ASSETS=(
-    behavior1k_bulb
-    behavior1k_bulb_broken
-    behavior1k_lamp
-    behavior1k_ladder
-    behavior1k_materials    # shared OmniGibson vray mdls -- every behavior1k asset needs these to render
-    omniverse_ladder        # 98 climb-ready ladders/platforms (convex-decomp collision)
-    omniverse_bulb          # separable LightBulb (bulb-swap candidate)
+    omniverse_ladder        # climb-ready ladders/platforms (convex-decomp / SDF collision)
+    omniverse_bulb          # the separable LightBulb: BULB_USD + SOCKET_USD
 )
 
 ROOM_ASSETS=(
@@ -80,7 +81,11 @@ ROOM_ASSETS=(
     isaac_skies
 )
 
+# Opt-in dressing. behavior1k_materials MUST come first: every other behavior1k group binds
+# OmniGibson's shared ``OmniGibsonVRayMtl`` by relative path into this bundle, and without it
+# they render red rather than failing loudly (issue 18).
 SCENE_DRESSING_ASSETS=(
+    behavior1k_materials    # shared OmniGibson vray mdls -- prerequisite for every group below
     behavior1k_downlight
     behavior1k_room_light
     behavior1k_spotlight
@@ -191,7 +196,7 @@ if [[ -f "$LADDER_COLLISION_USD" ]]; then
     if ! (cd "${TARGET_DIR}/.." && uv run python scripts/omniverse/omniverse_ladder_platform.py \
             "$LADDER_COLLISION_USD" "${PLATFORM_ARGS[@]}"); then
         echo "  WARNING: could not author the platform collider. Until it is, the at-height" >&2
-        echo "  subtasks (S05-S07, S13-S15) drop the robot straight through the ladder." >&2
+        echo "  subtasks (S02-S04, S10-S12) drop the robot straight through the ladder." >&2
         echo "  Re-run by hand from the repo root:" >&2
         echo "    uv run python scripts/omniverse/omniverse_ladder_platform.py \\" >&2
         echo "        $LADDER_COLLISION_USD ${PLATFORM_ARGS[*]}" >&2

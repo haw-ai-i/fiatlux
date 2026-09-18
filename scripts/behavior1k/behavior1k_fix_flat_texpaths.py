@@ -11,8 +11,8 @@ This rewrites ``../material/`` -> ``material/`` on the *flat* USDs only (nested 
 already correct and are left untouched). Edits USDs in place; re-run after a fresh download.
 
 Usage:
-  python scripts/behavior1k_fix_flat_texpaths.py [ASSETS_DIR]            # dry-run
-  python scripts/behavior1k_fix_flat_texpaths.py [ASSETS_DIR] --apply    # write changes
+  python scripts/behavior1k/behavior1k_fix_flat_texpaths.py [ASSETS_DIR]            # dry-run
+  python scripts/behavior1k/behavior1k_fix_flat_texpaths.py [ASSETS_DIR] --apply    # write changes
 """
 
 import glob

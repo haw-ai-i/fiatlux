@@ -10,7 +10,7 @@ renderer is unavailable. Three phases:
 
 * ``--phase base`` -- FIATLUX-Base-v0 (scaffold defaults, ``replicate_physics=False``):
   per-env ladder/socket/bulb scale within range and varying across envs, room/ladder
-  materials tinted with the anti-compounding customData cache, B1K materials untouched,
+  materials tinted with the anti-compounding customData cache, the bulb's materials untouched,
   key/dome light orientation moving within their cones across resets.
 * ``--phase rl`` -- FIATLUX-Carry-v0 (RL defaults, ``replicate_physics=True``): NO scale
   DR (ladder stays at its authored 0.01), but room tint + light orientation active.
@@ -197,7 +197,7 @@ def child_base(seed: int, num_envs: int) -> dict:
     bulb_tinted = tinted_attrs(stage, "/World/envs/env_0/Bulb")
     record("base:room_materials_tinted", len(room_tinted) > 0, f"{len(room_tinted)} tinted color inputs")
     record("base:ladder_materials_tinted", len(ladder_tinted) > 0, f"{len(ladder_tinted)} tinted color inputs")
-    record("base:b1k_materials_untouched", len(bulb_tinted) == 0, "no cache keys under the B1K bulb")
+    record("base:bulb_materials_untouched", len(bulb_tinted) == 0, "no cache keys under the bulb")
 
     key_authored = tuple(env.scene.cfg.key_light.init_state.rot)
     orients = []

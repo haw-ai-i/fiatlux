@@ -111,6 +111,33 @@ The USD only stores the *directive* (`apiSchemas` + the `convexDecomposition` to
 collision shapes are **cooked by PhysX at load time** in Isaac Sim. That's why authoring needs
 no GPU, and why the verify step (loading into PhysX) is what actually proves it works.
 
+## The third pass: the top tread PhysX cannot see
+
+Convex decomposition is run on the render meshes, and on `AlumStep_D` — the ladder the
+benchmark actually uses — **the standing platform at the top does not survive it**. The tread is
+there in the render mesh and absent from the collider, so a robot placed on it falls straight
+through. `scripts/omniverse/omniverse_ladder_platform.py` is the fix: it authors an explicit box
+collider for the tread into the same `_collision` overlay (which the `_rigid` tier sublayers, so
+both the static and the carryable ladder pick it up). A box, not a mesh — exact, cheap, and legal
+on a dynamic body, which a triangle mesh is not. `download_assets.sh` passes it the asset's own
+centimetre frame: `--centre 0 10 116 --half-extent 24 20 2`, i.e. a 48 x 40 cm tread whose top
+surface lands at **1.18 m** — `STEP_LADDER_TOP_OFFSET`'s z, the height every on-ladder stance is
+staged against. The script is idempotent; it replaces its own prim on each run.
+
+This is why `download_assets.sh` runs **three** scripts over a freshly synced ladder, not one:
+
+```
+omniverse_ladder_collision.py   # SDF / convexDecomposition colliders + friction  (every design)
+omniverse_ladder_rigid.py       # RigidBody + Mass overlay                        (carryable tier)
+omniverse_ladder_platform.py    # the explicit top-tread box                      (AlumStep_D)
+```
+
+Skipping the platform pass produces an asset that loads, renders, reports colliders, and
+silently fails the one thing the benchmark needs it for. The mass pass matters for the same
+reason in reverse: `omniverse_ladder_rigid.py --mass` must be given the benchmark's
+`LADDER_MASS_KG` (10.9), because the overlay also authors a centre of mass and an inertia
+tensor, and PhysX does **not** rescale an authored inertia when code overrides the mass.
+
 ## Making it movable: the `_collision_rigid.usd` variant
 
 The collision overlay above is the **static** ladder (fixed in place). A second script,
@@ -124,14 +151,17 @@ the original:
 
 over "<defaultPrim>" ( prepend apiSchemas = ["PhysicsRigidBodyAPI", "PhysicsMassAPI"] )
 {
-    float physics:mass = 12.5      # size-based: round(clamp(2 + 3*height_m, 2, 40), 1)
+    float physics:mass = 12.5      # size-based fallback: round(clamp(2 + 3*height_m, 2, 40), 1)
+                                   # -- pass --mass with a catalogue figure for a scored ladder
 }
 ```
 
 Because it sublayers `<name>_collision.usd`, it inherits **all** the collision meshes for free,
 then just applies `RigidBodyAPI` + a size-based `MassAPI` on the default prim. The file is only
 ~900 bytes — **no geometry is duplicated**. Mass scales with the ladder's height (taller ⇒
-heavier, clamped 2–40 kg). CCD (helps thin rungs not tunnel) is enabled at the PhysX *scene*
+heavier, clamped 2–40 kg) — a **shape-blind fallback** for the gallery designs nobody has looked
+up. It runs ~30% light on the one design the benchmark scores (7.6 kg against a measured 10.9),
+so `AlumStep_D` is authored with an explicit `--mass`; see `LADDER_MASS_KG`. CCD (helps thin rungs not tunnel) is enabled at the PhysX *scene*
 level when the asset is used, so no Isaac-only `PhysxSchema` dependency is baked into the file.
 
 ## Three files per ladder — the scene builder picks one

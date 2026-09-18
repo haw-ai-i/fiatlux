@@ -32,12 +32,15 @@ Design notes (full-task benchmark plan, ``journal/specs/full-task-benchmark-plan
   ending physical event. **Both bulbs are dynamic**, seated in the fixture by contact rather
   than pinned kinematic, so removal and disposal are real physical events.
 
-  ``mdp.bulb_attachment`` (issue #167) adds a simple axial retention spring on top of that
+  ``mdp.bulb_attachment`` (issue #167) adds a simple axial detent on top of that
   contact geometry: reaching the seat while reasonably aligned, with the socket unoccupied,
   seats the bulb; a real, physics-driven pull past a release threshold frees it again.
-  Lateral position and orientation are left entirely to real bulb-socket contact -- there is
-  no scripted lock or twist requirement, since this asset has no physical lug/groove for one
-  to model. The state machine reads bulb motion, never wrist pose.
+  Real bulb-socket contact is still the primary constraint on lateral position and
+  orientation; issue #171 added a much gentler lateral + tilt centering term on top of it,
+  which only damps the wobble real contact leaves. There is no scripted lock and no twist
+  term at all, since this asset has no physical lug/groove for one to model (and the one
+  twist term that was tried turned out to be generating the spin it was meant to damp -- see
+  ``mdp/attach.py``). The state machine reads bulb motion, never wrist pose.
   ``fresh_bulb_inserted`` and ``success`` read the attachment state, not raw seating
   geometry, so every score channel is genuinely achievable. Remove/Install do not gate on
   attachment at all: their bulbs are dynamic and simply lift out of / drop into the socket.
@@ -95,7 +98,7 @@ BULB_RELEASE_THRESHOLD = 0.015
 
 
 def bulb_attachment_event() -> EventTerm:
-    """The axial retention spring event term, with this task's parameters.
+    """The axial detent event term, with this task's parameters.
 
     A factory, not a shared instance, so each caller gets its own ``EventTermCfg`` to attach to
     its own config class -- ``EventCfg`` here, ``BulbAttachmentEventCfg``
@@ -211,7 +214,7 @@ class ObservationsCfg:
 class EventCfg:
     """Reset-time randomization (the room layout itself randomizes per scene build)."""
 
-    # Axial retention spring (issue #167). Zero interval -> enforce it every env step.
+    # Axial detent (issue #167). Zero interval -> enforce it every env step.
     bulb_attachment = bulb_attachment_event()
     reset_all = EventTerm(func=mdp.reset_scene_to_default, mode="reset")
     reset_robot_joints = EventTerm(

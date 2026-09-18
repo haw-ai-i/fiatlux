@@ -153,7 +153,7 @@ class EventCfg:
     same layering Climb/Carry/Replace use.
     """
 
-    # Axial retention spring (issue #167), same parameters as Replace/the on-the-ladder
+    # Axial detent (issue #167), same parameters as Replace/the on-the-ladder
     # subtasks. This scene has no old_bulb (nothing to remove), which bulb_attachment
     # handles on its own -- see attach.py. Zero interval -> enforce it every env step.
     bulb_attachment = bulb_attachment_event()
@@ -335,7 +335,6 @@ class G1BulbInsertEnvCfg(ManagerBasedRLEnvCfg):
         # Family scene -> manipulation bench layout; no random ceiling fixture (that
         # would force replicate_physics=False; see FamilyBaseEnvCfg's dressing flag).
         apply_tabletop_preset(self.scene)
-        self.scene.fixture = None
 
         # Wrist-mounted RGB camera (sensor-realizable observation). Requires launching
         # with --enable_cameras.

@@ -11,10 +11,12 @@ empty parts crate beside the bench as its destination.
 
 **Honesty note:** the bulb lifts straight out -- nothing gates unscrewing here, so the
 task is "pick it up and bin it" rather than "unscrew it". ``FIATLUX-Replace-v0`` now gates
-removal on ``mdp.bulb_attachment`` (issue #54); porting that term here is the remaining
-work (unification spec Phase 4: a revolute/screw
-joint or a make/break fixed-joint attach gated by rotation, anchored at the lamp's socket
-seat pose). The reward/termination code below is real, not a placeholder -- it is
+removal on ``mdp.bulb_attachment`` (issue #167, which superseded the issue #54 bayonet);
+porting that term here is the remaining work (unification spec Phase 4, issue #76 Step 2).
+Note the mechanic is a continuous WRENCH while seated plus a release past an axial
+threshold -- not a joint: the revolute/screw and make/break-fixed-joint designs the original
+spec proposed were dropped, and rotation gates nothing, since this asset has no lug or
+groove to turn into. The reward/termination code below is real, not a placeholder -- it is
 Replace's own ``old_bulb_removed`` / ``old_bulb_disposed`` channels, parametrized
 to point at this scene's ``bulb`` entity instead of Replace's ``old_bulb``. A policy can
 solve it today by lifting the bulb out and binning it; what the mechanic would add is the
@@ -271,11 +273,11 @@ class RemoveEnvCfg(ManagerBasedRLEnvCfg):
     def __post_init__(self) -> None:
         super().__post_init__()
         apply_remove_preset(self.scene)
-        self.scene.fixture = None
         # Tabletop preset has no ladder; the top-level SceneEntityCfg would fail to resolve.
         self.events.randomize_ladder_scale = None
-        # TODO(task phase): create a bulb<->socket joint at the seat pose (revolute/screw or a
-        #   fixed joint broken by rotation), add a grasp/attach action, and a removal reward.
+        # TODO(#76 Step 2): wire ``mdp.bulb_attachment`` here (as Replace does via
+        #   ``bulb_attachment_event``) so the bulb is held seated and must be genuinely pulled
+        #   out, rather than lifting straight out. Not a joint -- see the module docstring.
 
         add_wrist_camera(self.scene)
         # GrootPolicy looks up ``scene["ego_camera"]`` unconditionally (same gap

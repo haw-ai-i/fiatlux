@@ -5,15 +5,20 @@
 
 """Shared scene vocabulary for the Fiatlux benchmark scenes.
 
-The Insert task scene (``g1_bulb_env_cfg``) and the ladder-family scene
-(``ladder_scene_cfg``) are deliberately different *layouts* -- tabletop subtask vs
-at-fixture task family -- but they describe the same world. This module holds the pieces
-that must stay literally identical across them:
+Every task in the family shares one scene -- ``scene_cfg.G1ReplaceSceneCfg`` -- and differs only
+by which *preset layout* its env cfg applies (tabletop for Insert, replace for the benchmark and
+the twelve subtasks, and so on). This module holds the part of that world which is not a preset
+knob at all:
 
-- :class:`DressedSceneCfg` -- the common room dressing (HDRI sky dome + Simple Room).
+- :class:`DressedSceneCfg` -- the common room dressing (HDRI sky dome + Simple Room backdrop).
+  ``G1ReplaceSceneCfg`` subclasses it, so the room and sky are inherited rather than re-declared.
 
-Per-scene knobs that *differ on purpose* (ground friction, key light, sensors, task
-furniture) stay in the task scene cfgs.
+Per-task knobs that *differ on purpose* (ground friction, key light, sensors, task furniture)
+stay in the scene cfg and its presets.
+
+(Historical note: this used to bridge two separate scenes, ``g1_bulb_env_cfg``'s tabletop and a
+``ladder_scene_cfg`` for the ladder family. The unification merged them into the single preset-
+driven scene above, and ``ladder_scene_cfg`` became ``scene_cfg``.)
 """
 
 import re
