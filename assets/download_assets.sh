@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# Pull Fiatlux benchmark USD assets from the GCS bucket into this folder.
+# Pull Fiatlux benchmark USD assets from the haw-ai-i/fiatlux-assets HF dataset into this folder.
 #
 # Usage:
 #   ./download_assets.sh                   # robot + task assets
@@ -21,7 +21,7 @@
 #
 # Room dressing (always synced -- defines the default look of every recorded
 # run): table, warehouse backdrop + clutter props, and an HDRI sky, mirrored
-# once from Isaac Sim's own Nucleus content library into our bucket so nothing
+# once from Isaac Sim's own Nucleus content library into our own dataset repo so nothing
 # is fetched live from NVIDIA's CDN at sim launch.
 #   isaac_packing_table/      table the lamp/bulb rest on
 #   isaac_room/                room backdrop (walls/floor/windows)
@@ -40,11 +40,11 @@
 #   behavior1k_lampshade/     shade housing components
 #   behavior1k_floor_lamp/    standing lamps
 #
-# Override bucket with FIATLUX_ASSET_BUCKET env var.
+# Override the dataset repo with FIATLUX_ASSET_REPO env var.
 # USD/mesh files are git-ignored.
 set -euo pipefail
 
-ASSET_BUCKET="${FIATLUX_ASSET_BUCKET:-gs://fiatlux/assets}"
+ASSET_REPO="${FIATLUX_ASSET_REPO:-haw-ai-i/fiatlux-assets}"
 TARGET_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SCENE_DRESSING=0
 
@@ -55,10 +55,12 @@ for arg in "$@"; do
     esac
 done
 
-if ! command -v gsutil &> /dev/null; then
-    echo "error: gsutil not found. Install the Google Cloud SDK and run 'gcloud auth login'."
+if ! command -v uvx &> /dev/null; then
+    echo "error: uvx not found. Install uv (https://docs.astral.sh/uv/)." >&2
     exit 1
 fi
+
+HF_DOWNLOAD=(uvx --from huggingface_hub hf download "$ASSET_REPO" --repo-type dataset --local-dir "$TARGET_DIR")
 
 ROBOT_ASSETS=(
     unitree_g1
@@ -99,24 +101,28 @@ SCENE_DRESSING_ASSETS=(
 sync_group() {
     local group="$1"
     echo "  $group"
-    mkdir -p "${TARGET_DIR}/${group}"
-    gsutil -m rsync -r "${ASSET_BUCKET}/${group}" "${TARGET_DIR}/${group}"
+    if ! "${HF_DOWNLOAD[@]}" "${group}/"; then
+        echo "error: could not fetch '${group}' from ${ASSET_REPO}. It's a private dataset in the" >&2
+        echo "haw-ai-i org -- run 'uvx --from huggingface_hub hf auth login' or set HF_TOKEN to a" >&2
+        echo "token scoped to that org, then retry." >&2
+        exit 1
+    fi
 }
 
-echo "Syncing robot assets from ${ASSET_BUCKET} ..."
+echo "Syncing robot assets from ${ASSET_REPO} ..."
 for group in "${ROBOT_ASSETS[@]}"; do
     sync_group "$group"
 done
 
-echo "Syncing task assets from ${ASSET_BUCKET} ..."
+echo "Syncing task assets from ${ASSET_REPO} ..."
 for group in "${TASK_ASSETS[@]}"; do
     sync_group "$group"
 done
 
-# Author the socket's guide sleeve (issue #171): the bucket only ships the stock socket, and
+# Author the socket's guide sleeve (issue #171): the dataset only ships the stock socket, and
 # fiatlux_task/assets.py's SOCKET_USD/OMNI_SOCKET_USD point at the additive "_sleeve" layers this
 # script generates on top of it (see its module docstring). Doing it here rather than baking the
-# sleeve into the bucket keeps the synced asset as the stock socket, and means a fresh sync always
+# sleeve into the dataset keeps the synced asset as the stock socket, and means a fresh sync always
 # leaves SOCKET_USD resolvable instead of failing at scene build with a missing-file error.
 BULB_DIR="${TARGET_DIR}/omniverse_bulb"
 if [[ -d "$BULB_DIR" ]]; then
@@ -130,7 +136,7 @@ if [[ -d "$BULB_DIR" ]]; then
     fi
 fi
 
-echo "Syncing room dressing assets from ${ASSET_BUCKET} ..."
+echo "Syncing room dressing assets from ${ASSET_REPO} ..."
 for group in "${ROOM_ASSETS[@]}"; do
     sync_group "$group"
 done
@@ -147,12 +153,12 @@ fi
 # Re-author the ladder colliders and their rigid overlays, in that order, BEFORE the platform box
 # below (the collision pass rewrites <name>_collision.usd, which would drop the box).
 #
-# The bucket ships colliders authored as SDF. SDF is a signed distance field: its sign is the
+# The dataset ships colliders authored as SDF. SDF is a signed distance field: its sign is the
 # inside/outside of a CLOSED surface, and 92 of the 98 collected designs are open meshes, so the
 # field is undefined wherever a hole is -- on AlumStep_D01 the holes cluster in the bottom 24 cm,
 # the legs. omniverse_ladder_collision.py now measures that (_has_open_mesh) and routes an open
 # design to convexDecomposition, which ignores topology; the 6 genuinely watertight designs keep
-# SDF. Doing it here rather than re-baking the bucket keeps the synced asset as the vendor
+# SDF. Doing it here rather than re-baking the dataset keeps the synced asset as the vendor
 # shipped it, and keeps a re-sync from silently reinstating the SDF colliders.
 LADDER_DIR="${TARGET_DIR}/omniverse_ladder"
 # The task ladder's real mass. Werner P400-4 catalogue net weight (24 lb); AlumStep_D01 matches
@@ -169,7 +175,7 @@ if [[ -d "$LADDER_DIR" ]]; then
             && uv run python scripts/omniverse/omniverse_ladder_rigid.py \
                 "$TASK_LADDER_COLLISION" --mass "$TASK_LADDER_MASS"); then
         echo "  WARNING: could not author the ladder colliders. Until they are, the ladders keep" >&2
-        echo "  the bucket's SDF colliders, whose fields are undefined where the meshes are open," >&2
+        echo "  the dataset's SDF colliders, whose fields are undefined where the meshes are open," >&2
         echo "  and their mass properties stay derived from collider volume." >&2
         echo "  Re-run by hand from the repo root:" >&2
         echo "    uv run python scripts/omniverse/omniverse_ladder_collision.py $LADDER_DIR" >&2
@@ -182,7 +188,7 @@ fi
 # The step ladder's standing platform exists in its render mesh but not in its collider: the
 # collision overlay's convexDecomposition leaves open air where the tread is, and a robot placed
 # on it falls through the ladder. Author the box collider that fixes it here rather than baking
-# it into the bucket, so the synced asset stays as the vendor shipped it. Idempotent -- the
+# it into the dataset, so the synced asset stays as the vendor shipped it. Idempotent -- the
 # script replaces its own prim on every run.
 LADDER_COLLISION_USD="${TARGET_DIR}/omniverse_ladder/AlumStep_D/AluminumStepLadder_D01_PR_NVD_01_collision.usd"
 PLATFORM_ARGS=(--centre 0 10 116 --half-extent 24 20 2)

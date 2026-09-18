@@ -400,22 +400,25 @@ def main():  # noqa: C901  (one long orchestration: env setup + settle/resettle 
     # Inspire thumb-fix asset (teleop only): the stock thumb frame leans over the palm and buries
     # itself in a held bulb; the wrapper USD (scripts/omniverse/inspire_thumb_frame.py) re-authors
     # it to stand off and grasp cleanly. On by default for Inspire, resolved dynamically so any
-    # machine works: local copy, else GCS, else regenerate in-process. Explicit
-    # FIATLUX_TELEOP_ROBOT_USD wins; fall back to the stock hand only if all three fail.
+    # machine works: local copy, else the fiatlux-assets HF dataset, else regenerate in-process.
+    # Explicit FIATLUX_TELEOP_ROBOT_USD wins; fall back to the stock hand only if all three fail.
     if args.hand == "inspire" and not os.environ.get("FIATLUX_TELEOP_ROBOT_USD"):
         from fiatlux_task.assets import FIATLUX_ASSETS_DIR, G1_USD
 
         _tf = G1_USD[: -len(".usd")] + "_thumbfix.usd"
         if not os.path.isfile(_tf) and os.path.isfile(G1_USD):
-            _gcs = "gs://fiatlux/assets/" + os.path.relpath(_tf, FIATLUX_ASSETS_DIR)
-            print(f"[sonic] Inspire thumb-fix asset missing locally; trying GCS: {_gcs}", flush=True)
+            _rel = os.path.relpath(_tf, FIATLUX_ASSETS_DIR)
+            print(f"[sonic] Inspire thumb-fix asset missing locally; trying haw-ai-i/fiatlux-assets: {_rel}", flush=True)
             try:
-                import subprocess
+                import shutil
 
-                subprocess.run(["gsutil", "-q", "cp", _gcs, _tf], check=True, timeout=180)
-                print("[sonic] fetched the thumb-fix asset from GCS.", flush=True)
+                from huggingface_hub import hf_hub_download
+
+                _fetched = hf_hub_download(repo_id="haw-ai-i/fiatlux-assets", repo_type="dataset", filename=_rel)
+                shutil.copy(_fetched, _tf)
+                print("[sonic] fetched the thumb-fix asset from Hugging Face.", flush=True)
             except Exception as _e:  # noqa: BLE001
-                print(f"[sonic] GCS fetch unavailable ({_e}); regenerating the thumb-fix asset...", flush=True)
+                print(f"[sonic] HF fetch unavailable ({_e}); regenerating the thumb-fix asset...", flush=True)
                 try:
                     import importlib.util
 

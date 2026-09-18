@@ -58,8 +58,8 @@ fiatlux/
 
 See [docs/getting_started.md](docs/getting_started.md) for the full setup.
 
-Requires [uv](https://docs.astral.sh/uv/), an NVIDIA GPU with a CUDA 12.8-capable
-driver, and `gsutil` (Google Cloud SDK) for the assets.
+Requires [uv](https://docs.astral.sh/uv/) (also used to fetch the assets via `uvx`, from the
+haw-ai-i/fiatlux-assets HF dataset) and an NVIDIA GPU with a CUDA 12.8-capable driver.
 
 ```bash
 # 1. Build the full environment (Isaac Sim 5.1 + Isaac Lab 2.3.2 + this package).

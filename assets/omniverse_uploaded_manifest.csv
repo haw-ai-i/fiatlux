@@ -1,4 +1,4 @@
-gcs_path,category,model,source_pack,units,state,collision_verified,usage,notes
+asset_path,category,model,source_pack,units,state,collision_verified,usage,notes
 omniverse_ladder,multipurpose_ladder,AluminiumMultiPurposeLadder_A01_PR_NVD_01,Warehouse,cm,open,passed,task_asset,
 omniverse_ladder,multipurpose_ladder,AluminiumMultiPurposeLadder_A02_PR_NVD_01,Warehouse,cm,open,passed,task_asset,
 omniverse_ladder,multipurpose_ladder,AluminiumMultiPurposeLadder_A03_PR_NVD_01,Warehouse,cm,open,passed,task_asset,

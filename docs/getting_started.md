@@ -4,7 +4,8 @@
 
 - [uv](https://docs.astral.sh/uv/) (the only thing you install by hand).
 - An NVIDIA GPU with a driver new enough for CUDA 12.8 (the pinned torch build).
-- `gsutil` (Google Cloud SDK), authenticated, for the assets in step 2.
+- Access to the `haw-ai-i` HF org (`uvx --from huggingface_hub hf auth login`, or an `HF_TOKEN`
+  scoped to it), for the assets in step 2.
 
 ## 1. Build the environment
 
@@ -26,14 +27,14 @@ run commands below with `uv run` to use this environment.
 
 ## 2. Download the assets
 
-The G1, bulb/socket, and ladder USDs are pulled from a GCS bucket (they are not
-checked into git). This also pulls the table/warehouse/HDRI sky that dress up
-the scene by default (see `assets/README.md`):
+The G1, bulb/socket, and ladder USDs are pulled from the `haw-ai-i/fiatlux-assets` HF
+dataset (they are not checked into git). This also pulls the table/warehouse/HDRI sky
+that dress up the scene by default (see `assets/README.md`):
 
 ```bash
 ./assets/download_assets.sh
-# override the bucket if needed:
-FIATLUX_ASSET_BUCKET=gs://my-bucket/assets ./assets/download_assets.sh
+# override the source dataset repo if needed:
+FIATLUX_ASSET_REPO=my-org/my-assets ./assets/download_assets.sh
 ```
 
 This produces:
