@@ -10,12 +10,24 @@ see _approximation_for) + a ~6 mm contact offset on every mesh, binds a high-fri
 material, and stays static.
 
 Usage: python scripts/omniverse/omniverse_ladder_collision.py <dir> [<dir> ...]
+
+Runs under any python with USD -- a plain ``pxr`` install, or the repo's Isaac Lab venv, where
+``pxr`` only resolves once Kit is up (bootstrapped below). Each output is built in a hidden sibling
+and moved over the old file only once complete, so a failed run leaves the existing file in place.
 """
 
 import os
 import sys
 
-from pxr import Sdf, Usd, UsdGeom, UsdPhysics, UsdShade
+import numpy as np
+
+try:
+    from pxr import Sdf, Usd, UsdGeom, UsdPhysics, UsdShade
+except ModuleNotFoundError:  # pxr only resolves once Kit has been bootstrapped
+    from isaaclab.app import AppLauncher
+
+    _APP = AppLauncher(headless=True).app
+    from pxr import Sdf, Usd, UsdGeom, UsdPhysics, UsdShade
 
 SF, DF, RES = 1.2, 1.0, 0.0
 # Convex-decomposition tightness. Left at PhysX defaults the decomposition is a handful of fat
@@ -57,8 +69,6 @@ def _has_inverted_mesh(stage):
     - "Clearly negative" is relative to the design's largest mesh, so flat decals (~0 volume) and unit
       scale (cm vs metre) don't matter.
     Points are transformed and volumes summed with numpy (vectorised matmul) so it stays fast."""
-    import numpy as np
-
     vols = []
     for prim in stage.Traverse():
         if prim.GetTypeName() != "Mesh":
@@ -106,8 +116,6 @@ def _has_open_mesh(stage):
     unwelded every seam edge counts as a boundary, which would fail every asset. The weld tolerance
     is relative to the design's own bbox, so cm- and metre-authored assets behave alike.
     """
-    import numpy as np
-
     for prim in stage.Traverse():
         if prim.GetTypeName() != "Mesh":
             continue
@@ -135,6 +143,8 @@ def _has_open_mesh(stage):
         if np.any(counts != 2):  # 1 = hole in the surface, >2 = non-manifold junction
             return True
     return False
+
+
 # The collision authoring below is universal (every mesh -> convex collider, any up-axis/unit);
 # only this file *selection* is convention-based. These suffixes are the SimReady sublayer parts
 # (_base/_inst/_inst_base, skipped so we author on the entry file, not its pieces) and our own
@@ -147,13 +157,23 @@ def _has_open_mesh(stage):
 PRIMARY_SKIP = ("_base", "_inst", "_inst_base", "_collision", "_collision_rigid")
 
 
+def _tmp_for(out):
+    """Hidden sibling to author into before it replaces ``out``.
+
+    Same directory, so the relative sublayer path resolves identically after the rename; a leading
+    dot, so a leftover from an interrupted run is never walked as an input.
+    """
+    d, name = os.path.split(out)
+    return os.path.join(d, "." + name[: -len(".usd")] + ".tmp.usd")
+
+
 def primary_usds(root):
     out = []
     for d, _, files in os.walk(root):
         if any(x in d.lower() for x in ("/materials/", "/material/", "/textures/", "/.thumbs/")):
             continue
         for f in files:
-            if not f.lower().endswith(".usd"):
+            if f.startswith(".") or not f.lower().endswith(".usd"):  # dot = our temp files
                 continue
             stem = f[:-4]
             if stem.endswith(PRIMARY_SKIP):
@@ -166,8 +186,9 @@ def author(src):
     d = os.path.dirname(src)
     stem = os.path.basename(src)[:-4]
     out = os.path.join(d, f"{stem}_collision.usd")
-    if os.path.exists(out):
-        os.remove(out)
+    tmp = _tmp_for(out)
+    if os.path.exists(tmp):
+        os.remove(tmp)
 
     src_stage = Usd.Stage.Open(src)
     default = src_stage.GetDefaultPrim()
@@ -176,7 +197,9 @@ def author(src):
     up = UsdGeom.GetStageUpAxis(src_stage)
     mpu = UsdGeom.GetStageMetersPerUnit(src_stage)
 
-    stage = Usd.Stage.CreateNew(out)
+    # Authored into `tmp`, NOT `out`: this used to delete `out` first, so any failure below left the
+    # ladder with no collider at all -- the scenes' ray casters then find zero meshes and crash.
+    stage = Usd.Stage.CreateNew(tmp)
     stage.GetRootLayer().subLayerPaths.append(f"./{os.path.basename(src)}")
     UsdGeom.SetStageUpAxis(stage, up)
     UsdGeom.SetStageMetersPerUnit(stage, mpu)
@@ -242,6 +265,7 @@ def author(src):
 
     stage.SetDefaultPrim(stage.GetPrimAtPath(default.GetPath()))
     stage.GetRootLayer().Save()
+    os.replace(tmp, out)  # atomic: `out` is now either the old collider or the complete new one
     return out, nmesh, f"{approx} mpu={mpu}"
 
 
@@ -250,7 +274,7 @@ def main():
     if not roots:
         print(__doc__)
         sys.exit(1)
-    total = ok = 0
+    total = ok = failed = 0
     for root in roots:
         for src in primary_usds(root):
             total += 1
@@ -261,8 +285,14 @@ def main():
                     ok += 1
                 print(f"  [{status}] {os.path.relpath(src, root)}  ({nm} meshes, {info})")
             except Exception as e:
+                failed += 1
                 print(f"  [FAIL] {os.path.relpath(src, root)}: {e}")
+                tmp = _tmp_for(os.path.join(os.path.dirname(src), os.path.basename(src)[:-4] + "_collision.usd"))
+                if os.path.exists(tmp):
+                    os.remove(tmp)
     print(f"\nAuthored collision on {ok}/{total} ladder USDs.")
+    if failed:  # non-zero, so download_assets.sh reports it instead of carrying on
+        sys.exit(f"{failed} design(s) failed -- their existing colliders were left untouched.")
 
 
 if __name__ == "__main__":

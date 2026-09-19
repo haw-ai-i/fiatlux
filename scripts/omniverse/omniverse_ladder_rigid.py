@@ -11,6 +11,10 @@ Load `_collision.usd` for a fixed ladder to climb; load `_collision_rigid.usd` f
 a movable ladder to carry/knock over.
 
 Usage: python scripts/omniverse/omniverse_ladder_rigid.py <dir> [<dir> ...]
+
+Runs under any python with USD -- a plain ``pxr`` install, or the repo's Isaac Lab venv, where
+``pxr`` only resolves once Kit is up (bootstrapped below). Each output is built in a hidden sibling
+and moved over the old file only once complete, so a failed run leaves the existing file in place.
 """
 
 import argparse
@@ -18,13 +22,29 @@ import os
 
 import numpy as np
 
-from pxr import Gf, Usd, UsdGeom, UsdPhysics
+try:
+    from pxr import Gf, Usd, UsdGeom, UsdPhysics
+except ModuleNotFoundError:  # pxr only resolves once Kit has been bootstrapped
+    from isaaclab.app import AppLauncher
+
+    _APP = AppLauncher(headless=True).app
+    from pxr import Gf, Usd, UsdGeom, UsdPhysics
 
 # The collision helper omniverse_ladder_platform.py authors into the _collision overlay. It is a
 # solid box standing in for a tread the render mesh has but the decomposed collider does not, so
 # it is collision-only: counting it as material would put ~30% of a phantom solid at platform
 # height. Excluded from the mass model below.
 PLATFORM_PRIM = "PlatformCollider"
+
+
+def _tmp_for(out):
+    """Hidden sibling to author into before it replaces ``out``.
+
+    Same directory, so the relative sublayer path resolves identically after the rename; a leading
+    dot, so a leftover from an interrupted run is never walked as an input.
+    """
+    d, name = os.path.split(out)
+    return os.path.join(d, "." + name[: -len(".usd")] + ".tmp.usd")
 
 
 def mass_for(height_m):
@@ -125,8 +145,9 @@ def author(collision_usd, mass_override=None):
     d = os.path.dirname(collision_usd)
     stem = os.path.basename(collision_usd)[: -len("_collision.usd")]
     out = os.path.join(d, f"{stem}_collision_rigid.usd")
-    if os.path.exists(out):
-        os.remove(out)
+    tmp = _tmp_for(out)
+    if os.path.exists(tmp):
+        os.remove(tmp)
 
     src = Usd.Stage.Open(collision_usd)
     default = src.GetDefaultPrim()
@@ -143,7 +164,9 @@ def author(collision_usd, mass_override=None):
     mass = mass_override if mass_override is not None else mass_for(dz)
     props = shell_mass_properties(src, mpu, mass)
 
-    stage = Usd.Stage.CreateNew(out)
+    # Authored into `tmp` and moved over `out` only once complete (this used to delete `out` first,
+    # so a failure -- or a collider with no default prim -- left the ladder with no rigid overlay).
+    stage = Usd.Stage.CreateNew(tmp)
     stage.GetRootLayer().subLayerPaths.append(f"./{os.path.basename(collision_usd)}")
     UsdGeom.SetStageUpAxis(stage, up)
     UsdGeom.SetStageMetersPerUnit(stage, mpu)
@@ -173,6 +196,7 @@ def author(collision_usd, mass_override=None):
     # so no PhysxSchema dependency is baked into the asset.
     stage.SetDefaultPrim(stage.GetPrimAtPath(default.GetPath()))
     stage.GetRootLayer().Save()
+    os.replace(tmp, out)  # atomic: `out` is now either the old overlay or the complete new one
     return out, mass, props
 
 
@@ -208,7 +232,12 @@ def main():
     args = ap.parse_args()
     n = 0
     for c in find_collision(args.dirs):
-        out, mass, props = author(c, args.mass)
+        try:
+            out, mass, props = author(c, args.mass)
+        finally:  # an exception still propagates; just don't leave the half-built overlay behind
+            tmp = _tmp_for(c[: -len("_collision.usd")] + "_collision_rigid.usd")
+            if os.path.exists(tmp):
+                os.remove(tmp)
         if mass is None:
             print(f"  [SKIP] {os.path.basename(out)} (no default prim)")
             continue
