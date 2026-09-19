@@ -22,7 +22,7 @@ remaining lines are benign engine notices (a mesh smooth-normal fallback; a GPU 
 ## Where the fixes were applied
 
 - All fixes were applied to **`assets/omniverse_ladder/`** — the repo copy the playground
-  loads (synced from GCS, git-ignored binaries).
+  loads (synced from the HF dataset, git-ignored binaries).
 - Files changed: ~50 ladder USDs edited **in place** (path strings only); **6 texture `.png`
   files added** (the typo copies). Nothing deleted. `.mdl` count unchanged (343); base `.png`
   63 → 69.
@@ -33,7 +33,7 @@ remaining lines are benign engine notices (a mesh smooth-normal fallback; a GPU 
   texture extraction + typo reconcile (`scripts/omniverse/omniverse_pack_extract.py`); path
   collapse (incl. Material-prim inputs), SimPBR bare-name rewrite, and ThumbRig `/Tagging`
   strip (`scripts/omniverse/omniverse_ladder_fix_materials.py`).
-- **Re-synced to GCS:** the fixed set (edited USDs + 6 texture copies) was rsync'd to
-  `gs://fiatlux/assets/omniverse_ladder` (67 objects / 521 MiB), so `download_assets.sh` now
-  pulls the clean assets. This doc covers only the ladder material fix (the one with
+- **Re-synced to the asset store:** the fixed set (edited USDs + 6 texture copies) was rsync'd to
+  the original GCS bucket (67 objects / 521 MiB) and carried over into `haw-ai-i/fiatlux-assets`'s
+  `omniverse_ladder/` in the move to Hugging Face, so `download_assets.sh` pulls the clean assets. This doc covers only the ladder material fix (the one with
   reproducible scripts).

@@ -10,11 +10,11 @@ sockets, and ladders**.
 2. Scan it (`scripts/omniverse/omniverse_pack_scan.py`) and write the
    **full detailed inventory** here — every category → subgroup (count) → each item, one per bullet.
 3. Extract the Fiatlux-relevant assets (lamps, bulbs, fixtures, ladders, climb structures), author
-   physics + restore materials, and upload the **curated set to GCS** —
-   `gs://fiatlux/assets/omniverse_{ladder,climb,lamp,bulb}/`.
-4. The ZIP and local staging are transient; the **canonical assets live in GCS** (synced via
+   physics + restore materials, and upload the **curated set to the asset dataset** —
+   `omniverse_{ladder,climb,lamp,bulb}/` in `haw-ai-i/fiatlux-assets`.
+4. The ZIP and local staging are transient; the **canonical assets live in the HF dataset** (synced via
    [`assets/download_assets.sh`](../assets/download_assets.sh)). The destination annotations below
-   are GCS paths.
+   are dataset paths.
 
 A few words used below:
 - **design** = one named asset (e.g. "TiltAndRoll ladder").
@@ -44,8 +44,8 @@ A few words used below:
 Packs skipped entirely (not asset catalogs): materials, skies, automotive, city/AEC.
 All 14 prop/scene packs are scanned below — even the ones with nothing for us.
 
-Disk: scanned ZIPs and local staging are transient; the curated assets live in GCS
-(`gs://fiatlux/assets/omniverse_*/`).
+Disk: scanned ZIPs and local staging are transient; the curated assets live in the HF dataset
+(`omniverse_*/` in `haw-ai-i/fiatlux-assets`).
 
 ---
 
@@ -309,7 +309,7 @@ Full breakdown, every category → subgroup (count) → items:
 > — potentially a ready-made environment for the G1 climbing task.
 
 ### What we kept: the ladders
-**16 ladder designs, 86 model files (902 MB)** → `gs://fiatlux/assets/omniverse_ladder/ (Warehouse designs)`.
+**16 ladder designs, 86 model files (902 MB)** → `omniverse_ladder/ (Warehouse designs)`.
 This includes ladder types we couldn't find before (extension, A-frame, scaffold):
 
 | Ladder design | Model files | What it is |
@@ -468,7 +468,7 @@ A home-interior pack — **507 model files**. Full breakdown, every category →
 - Fixtures: 2
 
 ### What we kept: lighting + fixtures + ladder
-**27 model files + 1 ladder (1.2 GB)** → `gs://fiatlux/assets/omniverse_lamp/ (+ omniverse_ladder for the 1 ladder)`:
+**27 model files + 1 ladder (1.2 GB)** → `omniverse_lamp/ (+ omniverse_ladder for the 1 ladder)`:
 
 | Asset | Model files |
 |---|---|
@@ -515,12 +515,12 @@ ladders** came from.
 - recycledwoodpallet: 8
 - metalfencing: 3
 
-#### 🪜 Ladders — 7  *(kept)*  → `gs://fiatlux/assets/omniverse_ladder/ (SimReady ladders)` (990 MB)
+#### 🪜 Ladders — 7  *(kept)*  → `omniverse_ladder/ (SimReady ladders)` (990 MB)
 - tiltandrollladder: 4  (a01–a04)
 - aluminumstepstand: 3  (a01–a03)
 - (these are the same 7 as our original Phase-1 set)
 
-#### Work platforms — 4  *(kept)*  → `gs://fiatlux/assets/omniverse_ladder/ (SimReady work platforms)` (860 MB)
+#### Work platforms — 4  *(kept)*  → `omniverse_ladder/ (SimReady work platforms)` (860 MB)
 - stationaryworkplatform: a01, a02, a03, a04
 
 #### Misc — 1
@@ -789,7 +789,7 @@ Assembled showcase scenes (each also mirrored under `Examples/Rendering/`). Scen
 - **Flight** 11 · **EuclidVR** 4 · **Claire** 2 · **Astronaut** 1
 - **Visual Scripting** 1 — (← contains the LightBulb)
 
-### KEPT — lighting (71 MB) → `gs://fiatlux/assets/omniverse_bulb/ (LightBulb only; other SampleScenes lamps not uploaded)`
+### KEPT — lighting (71 MB) → `omniverse_bulb/ (LightBulb only; other SampleScenes lamps not uploaded)`
 **🔌 LightBulb** (`Visual Scripting/LightBulb`) — the ONLY standalone, *modeled* light
 bulb in any Omniverse pack. Geometry is structured as a desk fixture with a **separable
 bulb**: `/World/Geom/BulbGrp` = **Bulb** (glass) + **Base** (screw cap), distinct from the

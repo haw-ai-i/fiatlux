@@ -60,7 +60,9 @@ if ! command -v uvx &> /dev/null; then
     exit 1
 fi
 
-HF_DOWNLOAD=(uvx --from huggingface_hub hf download "$ASSET_REPO" --repo-type dataset --local-dir "$TARGET_DIR")
+# Pinned floor: the "<group>/" subfolder form (expanded to "<group>/**") only exists in recent
+# huggingface_hub, and older CLIs read it as a literal filename and 404. uvx otherwise takes latest.
+HF_DOWNLOAD=(uvx --from 'huggingface_hub>=1.16' hf download "$ASSET_REPO" --repo-type dataset --local-dir "$TARGET_DIR")
 
 ROBOT_ASSETS=(
     unitree_g1
@@ -102,9 +104,17 @@ sync_group() {
     local group="$1"
     echo "  $group"
     if ! "${HF_DOWNLOAD[@]}" "${group}/"; then
-        echo "error: could not fetch '${group}' from ${ASSET_REPO}. It's a private dataset in the" >&2
-        echo "haw-ai-i org -- run 'uvx --from huggingface_hub hf auth login' or set HF_TOKEN to a" >&2
-        echo "token scoped to that org, then retry." >&2
+        echo "error: could not fetch '${group}' from ${ASSET_REPO}." >&2
+        echo "  If that was an auth failure: the dataset is private to the haw-ai-i org -- run" >&2
+        echo "  'uvx --from huggingface_hub hf auth login', or set HF_TOKEN to a token scoped to" >&2
+        echo "  that org, then retry." >&2
+        exit 1
+    fi
+    # A pattern that matches nothing is a no-op for snapshot_download, NOT an error: without this
+    # check a group that is missing from the dataset (never uploaded, renamed) reports a clean
+    # sync and only fails much later, at scene build, as a missing-USD error.
+    if [[ -z "$(ls -A "${TARGET_DIR}/${group}" 2>/dev/null)" ]]; then
+        echo "error: '${group}' downloaded nothing -- is it still in ${ASSET_REPO}?" >&2
         exit 1
     fi
 }

@@ -1,6 +1,6 @@
 # Asset Collection TODO
 
-This document tracks the required assets for the Fiatlux benchmark that need to be aggregated, converted (if necessary), and uploaded to the GCP bucket (`gs://fiatlux/assets`).
+This document tracks the required assets for the Fiatlux benchmark that need to be aggregated, converted (if necessary), and uploaded to the `haw-ai-i/fiatlux-assets` HF dataset.
 
 ## Required Assets
 
@@ -16,12 +16,12 @@ This document tracks the required assets for the Fiatlux benchmark that need to 
   - [x] Pulled the official, pre-assembled G1 USDs (Inspire + Dex3 + gripper) — no local assets used.
   - [x] Verified joint/link names, actuator-group coverage (53 joints, disjoint, complete),
         and reference closure (self-contained, no stray external/local paths).
-  - [x] Uploaded all baseline variants to `gs://fiatlux/assets/unitree_g1/` (see layout below).
+  - [x] Uploaded all baseline variants to the dataset's `unitree_g1/` (see layout below).
   - [x] Wired the legged **wholebody Inspire** variant into `g1_bulb_env_cfg.py` as the env
         default (`G1_USD`) — keeps the legs so the same robot can later locomote/climb —
         with `G1_DEX3_USD` staged for an easy swap.
 
-**Bucket layout** (`gs://fiatlux/assets/unitree_g1/`, pulled by `download_assets.sh`).
+**Dataset layout** (`unitree_g1/` in `haw-ai-i/fiatlux-assets`, pulled by `download_assets.sh`).
 `base`: `free` = floating/legged base (can stand, walk, climb); `fixed` = pelvis welded
 to the world (stationary manipulation only).
 
@@ -45,21 +45,24 @@ to the world (stationary manipulation only).
   - [ ] Extract the relevant lamp and light bulb USDs or URDFs from the BEHAVIOR-1K dataset.
   - [ ] Ensure the light bulbs are separated as graspable, rigid body objects with correct collision meshes.
   - [ ] Verify the lamp sockets are properly defined for the light bulb insertion task.
-  - [ ] Upload the final assets to `gs://fiatlux/assets/behavior1k_lamps`.
+  - [ ] Upload the final assets to the dataset's `behavior1k_lamps/`.
 
 ### 3. Ladders
 - **Source:** The Omniverse USD ecosystem contains ladder assets.
 - **TODO:**
   - [ ] Locate a suitable ladder asset from the Omniverse ecosystem (or generate one).
   - [ ] Verify the physics, collision meshes, and scale of the ladder in Isaac Lab (must support the robot climbing it).
-  - [ ] Upload the final assets to `gs://fiatlux/assets/ladders`.
+  - [ ] Upload the final assets to the dataset's `ladders/`.
 
-## GCP Bucket Information
-- **Bucket:** `gs://fiatlux/assets`
-- **Access:** The bucket is accessible to everyone involved in the project. 
-- **Troubleshooting:** If you encounter an access error (e.g., 403 Forbidden) when trying to upload or download assets, please reach out to **molybog@hawaii.edu**.
+## Asset Dataset
+- **Dataset:** `haw-ai-i/fiatlux-assets` on Hugging Face (private).
+- **Access:** members of the `haw-ai-i` HF org. Log in with `hf auth login`, or set `HF_TOKEN` to a
+  token scoped to the org.
+- **Upload:** `hf upload haw-ai-i/fiatlux-assets <local_dir> <group>/ --repo-type dataset`.
+- **Troubleshooting:** a 401/404 on download or upload means your account is not in the org yet --
+  ask a `haw-ai-i` org admin to add you.
 
 ## Next Steps
-Once the assets are uploaded to the GCP bucket, run `./assets/download_assets.sh` to
+Once the assets are uploaded to the dataset, run `./assets/download_assets.sh` to
 sync them into the git-ignored `assets/` directory (`assets/unitree_g1/`,
 `assets/bulb_socket/`, `assets/ladder/`). You do not need to check these assets into Git.

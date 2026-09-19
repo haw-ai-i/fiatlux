@@ -50,7 +50,7 @@ fiatlux/
 │       ├── agents/              # rsl_rl PPO config
 │       └── __init__.py          # gym.register(...) x7
 ├── scripts/                  # zero / random / teleop / list_envs / rsl_rl / eval / verify_scene
-├── assets/                   # download_assets.sh (pulls USDs from GCS; git-ignored)
+├── assets/                   # download_assets.sh (pulls USDs from the HF dataset; git-ignored)
 └── docs/                     # overview, getting_started, task_spec, scoring, roadmap
 ```
 
@@ -67,7 +67,7 @@ haw-ai-i/fiatlux-assets HF dataset) and an NVIDIA GPU with a CUDA 12.8-capable d
 #    First run pulls ~10 GB; if a big CUDA wheel stalls: UV_HTTP_TIMEOUT=1200 uv sync
 uv sync
 
-# 2. Pull the USD assets (G1, bulb/socket, ladder) from the bucket:
+# 2. Pull the USD assets (G1, bulb/socket, ladder) from the HF dataset:
 ./assets/download_assets.sh
 
 # 3. Sanity-check registration and launch a baseline:

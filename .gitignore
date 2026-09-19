@@ -29,8 +29,8 @@ _isaac_sim*
 .venv/
 .ruff_cache/
 
-# Assets are handled by assets/.gitignore (pulled from GCS, not tracked)
-# Large USD/mesh assets pulled from Omniverse S3 / GCS — never tracked in Git.
+# Assets are handled by assets/.gitignore (pulled from the HF dataset, not tracked)
+# Large USD/mesh assets pulled from Omniverse S3 / the HF dataset — never tracked in Git.
 /fiatlux_assets/
 # image->mesh->USD pipeline. Ignore auto/'s *contents* by default -- the two
 # vendored upstream clones carry their own .git (~700 MB) and the run tree holds

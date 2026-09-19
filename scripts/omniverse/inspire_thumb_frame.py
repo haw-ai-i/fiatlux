@@ -93,7 +93,7 @@ def generate_thumbfix(src: str, out: str | None = None, joint_specs: str = DEFAU
     wrapper = Usd.Stage.CreateNew(out)
     prim = wrapper.DefinePrim(root.GetPath())
     # Reference the vendor file by a RELATIVE path so the wrapper stays portable when copied
-    # elsewhere (e.g. fetched from GCS); an absolute path would bake in this machine's location.
+    # elsewhere (e.g. fetched from the HF dataset); an absolute path would bake in this machine's location.
     prim.GetReferences().AddReference("./" + os.path.relpath(src, os.path.dirname(out)))
     wrapper.SetDefaultPrim(prim)
     for key in ("upAxis", "metersPerUnit"):
