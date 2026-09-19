@@ -29,7 +29,7 @@ Presets are plain functions called from an env cfg's ``__post_init__`` --
 cannot live here as fields. Optional entities (``table``, ``ladder``, ``fixture``) are
 dropped by setting them to ``None``; ``InteractiveScene`` skips ``None`` entities.
 
-All assets come from the ``gs://fiatlux`` bucket (see ``fiatlux_task.assets`` and
+All assets come from the ``haw-ai-i/fiatlux-assets`` HF dataset (see ``fiatlux_task.assets`` and
 ``assets/download_assets.sh``): the same Inspire-hand G1 and BEHAVIOR-1K bulb/lamp
 everywhere, plus the primary BEHAVIOR-1K climb ladder (``shfvtl``). The room dressing (the
 Simple Room backdrop and the PolyHaven HDRI sky) comes from ``DressedSceneCfg``, plus one

@@ -50,7 +50,7 @@ fiatlux/
 │       ├── agents/              # rsl_rl PPO config
 │       └── __init__.py          # gym.register(...) x7
 ├── scripts/                  # zero / random / teleop / list_envs / rsl_rl / eval / verify_scene
-├── assets/                   # download_assets.sh (pulls USDs from GCS; git-ignored)
+├── assets/                   # download_assets.sh (pulls USDs from the HF dataset; git-ignored)
 └── docs/                     # overview, getting_started, task_spec, scoring, roadmap
 ```
 
@@ -58,8 +58,8 @@ fiatlux/
 
 See [docs/getting_started.md](docs/getting_started.md) for the full setup.
 
-Requires [uv](https://docs.astral.sh/uv/), an NVIDIA GPU with a CUDA 12.8-capable
-driver, and `gsutil` (Google Cloud SDK) for the assets.
+Requires [uv](https://docs.astral.sh/uv/) (also used to fetch the assets via `uvx`, from the
+haw-ai-i/fiatlux-assets HF dataset) and an NVIDIA GPU with a CUDA 12.8-capable driver.
 
 ```bash
 # 1. Build the full environment (Isaac Sim 5.1 + Isaac Lab 2.3.2 + this package).
@@ -67,7 +67,7 @@ driver, and `gsutil` (Google Cloud SDK) for the assets.
 #    First run pulls ~10 GB; if a big CUDA wheel stalls: UV_HTTP_TIMEOUT=1200 uv sync
 uv sync
 
-# 2. Pull the USD assets (G1, bulb/socket, ladder) from the bucket:
+# 2. Pull the USD assets (G1, bulb/socket, ladder) from the HF dataset:
 ./assets/download_assets.sh
 
 # 3. Sanity-check registration and launch a baseline:

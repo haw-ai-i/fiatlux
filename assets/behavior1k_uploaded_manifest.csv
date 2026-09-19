@@ -1,4 +1,4 @@
-gcs_path,category,model,has_lights,has_socket,has_physics,physics_notes,b1k_path,notes,usage
+hf_path,category,model,has_lights,has_socket,has_physics,physics_notes,b1k_path,notes,usage
 behavior1k_bulb,light_bulb,kfmkwd,False,True,True,"2 rigid bodies, 2 convex hulls, articulated",light_bulb/kfmkwd,Canonical replacement bulb; bulblampM attachment mates with table_lamp/ehjsdz socket,task_asset
 behavior1k_bulb,light_bulb,sxkjea,False,False,True,"2 rigid bodies, 5 convex hulls, articulated",light_bulb/sxkjea,Replacement bulb variant,task_asset
 behavior1k_bulb,light_bulb,ymomhw,False,False,True,"1 rigid body, 3 convex hulls, single rigid body",light_bulb/ymomhw,Replacement bulb variant,task_asset

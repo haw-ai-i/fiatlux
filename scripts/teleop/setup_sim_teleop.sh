@@ -162,9 +162,9 @@ stage_assets(){
     if [ -f "$REPO/assets/unitree_g1/wholebody_inspire/g1_29dof_with_inspire_rev_1_0.usd" ]; then
         ok "assets already downloaded"; return
     fi
-    need command -v gsutil || die "gsutil missing (Google Cloud SDK) -- install + authenticate, then re-run. The G1/bulb/ladder USDs live in a GCS bucket (assets/README.md)."
-    log "downloading assets from GCS ..."
-    ( cd "$REPO" && ./assets/download_assets.sh ) || die "asset download failed (is gsutil authenticated?)"
+    need command -v uvx || die "uvx missing (install uv: https://docs.astral.sh/uv/) -- then re-run. The G1/bulb/ladder USDs live in the haw-ai-i/fiatlux-assets HF dataset (assets/README.md)."
+    log "downloading assets from Hugging Face ..."
+    ( cd "$REPO" && ./assets/download_assets.sh ) || die "asset download failed (is HF_TOKEN set / are you logged in via 'hf auth login'?)"
     ok "assets downloaded"
 }
 
