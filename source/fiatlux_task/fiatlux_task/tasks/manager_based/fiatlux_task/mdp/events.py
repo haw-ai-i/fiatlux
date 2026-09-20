@@ -3,13 +3,13 @@
 #
 # SPDX-License-Identifier: BSD-3-Clause
 
-"""Reset-time and prestartup events for the Fiatlux tasks.
+"""Reset-time, prestartup, and startup events for the Fiatlux tasks.
 
 Bulb and socket pose randomization use Isaac Lab's built-in
 ``reset_root_state_uniform``; the custom terms here cover what the built-ins
-cannot: shared global prims (lights, the room), multiplicative scale on assets
-with a baked spawn scale, and in-place material tinting that keeps the curated
-MDL bindings.
+cannot: shared global prims (lights, the room) on reset, multiplicative scale
+on assets with a baked spawn scale at prestartup, in-place material tinting on
+reset that keeps the curated MDL bindings, and hand grip friction at startup.
 """
 
 from __future__ import annotations

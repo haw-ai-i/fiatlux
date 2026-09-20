@@ -3,7 +3,9 @@
 #
 # SPDX-License-Identifier: BSD-3-Clause
 
-"""Predicates and distance fns for the grasp mode (S08 grab-the-bulb).
+"""Predicates and distance fns for the grasp mode: mainly S08 (grab the fresh bulb), plus the
+bulb-reach, crush-force, and ladder-standing conjuncts several other climbing and mate leaves
+(S02-S04, S10-S12) reuse from it rather than duplicate.
 
 The subtask ends in the hand taking an object's weight, so the gate has to distinguish *holding*
 from merely *touching*: filtered contact force past a threshold, plus whatever geometric fact
