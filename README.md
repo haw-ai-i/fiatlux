@@ -51,7 +51,7 @@ thresholds (`FRESH_BULB_DROP_HEIGHT`, `REMOVAL_CLEARANCE`, `SEAT_*_THRESHOLD`,
 `Descend`, `Remove` and `Install` have no such dependants and no teleop twin — a subtask covers
 each of their jobs now, so they are candidates for retirement.
 
-Every id is a member of **one task family** backed by **one scene** with preset layouts; the
+Every id is a member of **one task family** backed by **one scene** with preset layouts; they
 all share one non-RL base env (observation/action/event managers only). `scripts/list_envs.py`
 prints the live list — 32 ids from `fiatlux_task` plus 16 teleop ids from `fiatlux_teleop`. The
 train / eval / record scripts apply to the RL members; `scripts/verify_scene.py` covers every
