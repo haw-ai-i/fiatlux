@@ -112,7 +112,7 @@ class CarryTeleopEnvCfg(CarryEnvCfg):
 
         # (Ladder collision -- SDF exact surface + a ~6 mm contact offset -- is authored into the
         # asset by scripts/omniverse/omniverse_ladder_collision.py, so no code-side override is
-        # needed here; see journal/specs/issue-70-ladder-collision-fix.md.)
+        # needed here.)
 
         # teleop action interface (arms + hands); legs+waist are SONIC's, driven in sonic_teleop.py.
         self.actions = CarryTeleopActionsCfg()
