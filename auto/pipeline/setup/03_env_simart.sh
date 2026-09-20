@@ -19,7 +19,7 @@ UV="${UV:-$HOME/.local/bin/uv}"
 PY="$VENV/bin/python"
 
 # --no-config is load-bearing: these venvs live inside the fiatlux tree, and uv
-# walks up to /home/shadeform/fiatlux/pyproject.toml, whose
+# walks up to the repo root's own pyproject.toml, whose
 # `override-dependencies = ["torch==2.7.0", ...]` and `requires-python ==3.11.*`
 # would otherwise be forced onto this (deliberately different) environment.
 echo "==> creating $VENV (CPython 3.10)"

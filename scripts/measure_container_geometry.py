@@ -21,11 +21,11 @@ crate the statistic per slice is the INNER FACE of each wall -- measured on the 
 belongs to, which is the surface a bulb can rest against. For the bench it is the top surface height and the full
 footprint.
 
-Run via ./pyrun (repo root), not a bare .venv/bin/python.
+Run with `uv run python` from the repo root, not a bare .venv/bin/python.
 
 Example
 -------
-    ./pyrun scripts/measure_container_geometry.py --headless
+    uv run python scripts/measure_container_geometry.py --headless
 """
 
 import argparse

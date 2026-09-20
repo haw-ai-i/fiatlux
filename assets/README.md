@@ -109,8 +109,7 @@ these paths after any Isaac Sim upgrade.
 
 **BEHAVIOR-1K** (scene dressing, above) is from [BEHAVIOR-1K](https://behavior.stanford.edu/) (Stanford
 OmniGibson dataset), decrypted from `.encrypted.usd` using the `omnigibson.key`. The key and
-decrypted binaries were never committed to git. Intake record:
-`journal/specs/issue-2-behavior1k-lamp-assets.md`; the intake scripts are `scripts/behavior1k/`.
+decrypted binaries were never committed to git. The intake scripts are `scripts/behavior1k/`.
 
 **Omniverse** assets are from the NVIDIA [Omniverse downloadable USD packs](https://docs.omniverse.nvidia.com/usd/latest/usd_content_samples/downloadable_packs.html#d-openusd-asset-packs)
 (Warehouse, SimReady Warehouse 01, Residential, Sample Scenes). Used under non-commercial

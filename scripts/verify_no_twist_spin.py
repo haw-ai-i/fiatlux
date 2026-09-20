@@ -45,13 +45,13 @@ cause.
 The ``--hold_force``/``--bore_depth`` overrides are kept for exactly the job they did above --
 separating "does it spin" from "does it stay in" when one of the two is broken.
 
-Run via ./pyrun (repo root), not a bare .venv/bin/python -- see verify_twist_damping.py's
-docstring for why.
+Run with `uv run python` from the repo root, not a bare .venv/bin/python -- see
+verify_twist_damping.py's docstring for why.
 
 Example
 -------
-    ./pyrun scripts/verify_no_twist_spin.py --headless
-    ./pyrun scripts/verify_no_twist_spin.py --headless --seconds 15
+    uv run python scripts/verify_no_twist_spin.py --headless
+    uv run python scripts/verify_no_twist_spin.py --headless --seconds 15
 """
 
 """Launch Isaac Sim Simulator first."""

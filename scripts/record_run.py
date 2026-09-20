@@ -9,9 +9,10 @@ A single rollout produces both artifacts so they describe the *same* run:
 
 - ``video/`` : an MP4 of the run plus a poster PNG, captured by an RTX sensor camera
   (``fiatlux_task.viz``) posed by ``--cam``: fixed ``third_person`` / ``closeup``
-  viewpoints, a 360-degree ``orbit`` of the scene, or ``ego`` -- the robot's own
-  head-mounted ``ego_camera`` sensor (any task whose scene attaches one), unposed
-  since it already moves with the robot.
+  viewpoints, a 360-degree ``orbit`` of the scene, a low ``fixture`` orbit looking up
+  at the mounted fixture, a ``hand`` view tracking the working hand, or ``ego`` -- the
+  robot's own head-mounted ``ego_camera`` sensor (any task whose scene attaches one),
+  unposed since it already moves with the robot.
 - ``run.h5`` + ``meta.json`` : the experiment bag -- every per-step signal needed to
   score the run offline (see ``scripts/score.py``). ``--format npz`` for a flat fallback.
 

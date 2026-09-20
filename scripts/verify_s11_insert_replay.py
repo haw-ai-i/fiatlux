@@ -24,8 +24,8 @@ dropped; new gains, given the identical action sequence, are what's under test.
 
 Usage
 -----
-    ./pyrun scripts/verify_s11_insert_replay.py --headless --episode ep00_replay.pt
-    ./pyrun scripts/verify_s11_insert_replay.py --headless --episode ep00_replay.pt --old_gains
+    uv run python scripts/verify_s11_insert_replay.py --headless --episode ep00_replay.pt
+    uv run python scripts/verify_s11_insert_replay.py --headless --episode ep00_replay.pt --old_gains
 
 ``--episode`` points at a ``.pt`` file produced by extracting a bag's own ``run.h5`` (fields:
 actions, gate_fresh_bulb_attached, fresh_bulb_pos/quat, socket_pos/quat, contact_force(_left),

@@ -26,9 +26,9 @@ def assert_right_checkout(cfg, required_attr: str) -> None:
     """Fail loudly if ``fiatlux_task`` resolved to the wrong checkout.
 
     On a machine where ``.venv`` is shared with a different checkout, a bare invocation can
-    silently resolve ``fiatlux_task`` to the WRONG checkout's source -- run via ``./pyrun`` (repo
-    root), which points ``PYTHONPATH`` at this repo's own ``source/`` first, to avoid it. This is
-    the fallback check for when that still goes wrong.
+    silently resolve ``fiatlux_task`` to the WRONG checkout's source. Run scripts with
+    ``uv run python`` from this repo's root to avoid that; this is the fallback check for when
+    it still goes wrong.
     """
     assert hasattr(cfg.scene, required_attr), (
         f"cfg.scene ({type(cfg.scene)} from {sys.modules[type(cfg.scene).__module__].__file__}) has no "

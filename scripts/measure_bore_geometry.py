@@ -22,12 +22,12 @@ surface the plug rides against. For the plug it is the MAXIMUM radius, its wides
 height. The bore is open where its min radius is near 20.2 mm and closed where the slice fills
 in toward the axis.
 
-Run via ./pyrun (repo root), not a bare .venv/bin/python -- see verify_twist_damping.py's
-docstring for why.
+Run with `uv run python` from the repo root, not a bare .venv/bin/python: a .venv shared across
+checkouts can otherwise resolve fiatlux_task to the wrong one (see verify_common.py).
 
 Example
 -------
-    ./pyrun scripts/measure_bore_geometry.py --headless
+    uv run python scripts/measure_bore_geometry.py --headless
 """
 
 """Launch Isaac Sim Simulator first."""

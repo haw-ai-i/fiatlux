@@ -1,4 +1,4 @@
-1# How the Ladder Collision Was Authored
+# How the Ladder Collision Was Authored
 
 The Omniverse ladder packs ship as **rendering geometry only — zero PhysX collision**, so a
 robot would clip straight through them. This doc explains in detail how we added collision,
@@ -101,9 +101,11 @@ UsdShade.MaterialBindingAPI.Apply(over).Bind(mat, ..., "physics")   # grip
 > **This doc describes the original convexDecomposition authoring. The script now defaults to `SDF`**
 > (signed distance field) — the exact-surface collider that also keeps *concave* features (the
 > C-channel rail groove) open, which convexDecomposition cannot. convexDecomposition (tuned:
-> `maxConvexHulls`, `hullVertexLimit`, `voxelResolution`, `shrinkWrap`) is kept as the fallback for
-> designs whose mesh is wound inside-out (SDF would be inside-out there). It also authors a ~6 mm
-> contact offset. See [`issue-70-ladder-collision-fix.md`](../journal/specs/issue-70-ladder-collision-fix.md).
+> `maxConvexHulls`, `hullVertexLimit`, `voxelResolution`, `shrinkWrap`) is kept as the fallback for a
+> mesh wound inside-out, or -- the common case -- a mesh with no closed surface (SDF needs an
+> inside to define). Most collected designs are open meshes: 92 of 98 fall back to
+> convexDecomposition, including `AlumStep_D01`, the ladder the benchmark climbs; only the 6
+> genuinely watertight designs keep SDF. It also authors a ~6 mm contact offset.
 
 ## When the actual collision geometry is created
 

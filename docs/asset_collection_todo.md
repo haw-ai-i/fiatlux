@@ -76,8 +76,9 @@ to the world (stationary manipulation only).
 
 ## GCP Bucket Information
 - **Bucket:** `gs://fiatlux/assets`
-- **Access:** The bucket is accessible to everyone involved in the project. 
-- **Troubleshooting:** If you encounter an access error (e.g., 403 Forbidden) when trying to upload or download assets, please reach out to **molybog@hawaii.edu**.
+- **Access:** Private to the project team. A 403 on download or upload means your
+  `gcloud` account has not been granted access to the bucket; it is not a public
+  endpoint.
 
 ## Status
 

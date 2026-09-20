@@ -18,13 +18,13 @@ straight off the real, contact-resolved simulation. Real hold: phase stays SEATE
 stays bounded the whole run. Real drop (the original bug): phase flips to FREE partway through
 and axial runs away.
 
-Run via ./pyrun (repo root), not a bare .venv/bin/python: on a machine where .venv is shared
-with a different checkout, a bare invocation can silently resolve fiatlux_task to the WRONG
-checkout's source -- pyrun fixes that by pointing PYTHONPATH at this repo's own source/ first.
+Run with `uv run python` from the repo root, not a bare .venv/bin/python: on a machine where
+.venv is shared with a different checkout, a bare invocation can silently resolve fiatlux_task
+to the WRONG checkout's source.
 
 Example
 -------
-    ./pyrun scripts/verify_ceiling_hold.py --headless
+    uv run python scripts/verify_ceiling_hold.py --headless
 """
 
 """Launch Isaac Sim Simulator first."""
