@@ -3,7 +3,7 @@
 #
 # SPDX-License-Identifier: BSD-3-Clause
 
-"""``FIATLUX-TestLightbulbMechanism-Teleop-v0`` -- teleop bench for the bayonet bulb mechanism.
+"""``FIATLUX-TestLightbulbMechanism-Teleop-v0`` -- teleop bench for the bulb attach/retention mechanism.
 
 Purpose: drive the Replace task's **bulb attach/lock mechanism** (``mdp.bulb_attachment``,
 issue #77) by hand and record what it does, so its behaviour can be debugged from bags instead
@@ -18,9 +18,9 @@ pelvis-follow XR camera), on :class:`ReplaceEnvCfg`'s room scene, with two debug
   the ladder; sessions test the MECHANISM, not ladder logistics.)
 
 Hands stay the Replace scene's native **Inspire** (trigger = grasp). Record with
-``--record bag``: the teleop recorder mirrors ``recording.py``'s bayonet lock telemetry
-(per-bulb phase/theta + the per-env sampled lock parameters) into the bag whenever the task
-wires ``mdp.bulb_attachment`` -- which this one does.
+``--record bag``: the teleop recorder mirrors ``recording.py``'s bulb attachment telemetry
+(per-bulb FREE/SEATED phase) into the bag whenever the task wires ``mdp.bulb_attachment`` --
+which this one does.
 
 Run:
     PYTHONPATH=source/fiatlux_task:source/fiatlux_teleop \\
@@ -96,7 +96,7 @@ class TestLightbulbMechanismActionsCfg:
 
 @configclass
 class TestLightbulbMechanismEnvCfg(ReplaceEnvCfg):
-    """``FIATLUX-Replace-v0`` with a teleop action interface, benched for bayonet debugging."""
+    """``FIATLUX-Replace-v0`` with a teleop action interface, benched for attach-mechanism debugging."""
 
     # Debug bench: reachable ladder relative to the fixture (ReplaceEnvCfg's own aid).
     couple_ladder_to_fixture: bool = True

@@ -15,7 +15,7 @@ interface, so changes to a subtask flow through to its twin automatically.
 |---|---|---|
 | Actions | `joint_pos`, all joints | bimanual IK (`arm_action`, `left_arm_action`) + binary grips |
 | Terminations | task's own set | failures and timeout cleared; `success` kept |
-| Legs | policy | SONIC walk/balance ONNX, driven outside the action manager |
+| Legs | policy | GEAR-SONIC walk/balance ONNX, driven outside the action manager |
 | Camera | task viewer | pelvis-anchored `XrCfg` follow camera |
 
 Scene, assets, events, `sim.dt` and decimation are untouched.
@@ -191,6 +191,11 @@ defaults above when unset. Two do NOT have a default and the launcher stops if e
 `FIATLUX_TASK` and `NV_CXR_ENDPOINT_IP`; see [Running](#running).
 
 ## The 12 subtasks
+
+All twelve subtasks have a registered teleop adapter under `subtasks/`. That is not the same as
+reaching the gate: a teleoperated take clears the success gate on eight of them (S01, S03, S05,
+S06, S07, S08, S09, S11). The four climbing legs -- S02, S04, S10, S12 -- have no take that
+satisfies their gate yet.
 
 The four ladder legs were folded into `S01-MoveLadder`; everything after it shifted down by
 three. On-ladder tasks are staged at the tread (1.18 m) plus `TOP_STANCE_PELVIS_OFFSET`
