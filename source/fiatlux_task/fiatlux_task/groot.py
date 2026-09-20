@@ -3,7 +3,7 @@
 #
 # SPDX-License-Identifier: BSD-3-Clause
 
-"""GR00T N1.7 whole-body baseline adapter (see ``journal/specs/groot-sonic-baseline.md``).
+"""GR00T N1.7 whole-body baseline adapter.
 
 Three policy specs, two in-process whole-body-controller decoders:
 
@@ -27,7 +27,7 @@ camera frames (head-mounted, on ``d435_link``), IMU (base angular velocity / pro
 and wrist poses obtainable by forward kinematics from proprioception. The
 adapter reads them from the scene handles rather than the flattened ``policy``
 observation group because the models need them raw, not normalized and
-feature-extracted; no privileged (cheatcode) state is touched.
+feature-extracted; no privileged state is touched.
 
 Both decoder contracts are reverse-engineered from GR00T-WholeBodyControl
 (``gear_sonic_deploy`` C++ / ``decoupled_wbc`` Python) and verified against the

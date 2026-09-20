@@ -3,9 +3,10 @@
 #
 # SPDX-License-Identifier: BSD-3-Clause
 
-"""Fiatlux benchmark: Unitree G1 humanoid inserting a light bulb into a socket.
+"""``FIATLUX-Insert-v0`` -- Unitree G1 humanoid seating a light bulb into a socket
+(development aid; see the family ``__init__`` module docstring).
 
-This is the *insertion* subtask (manipulation only): the G1 starts at the
+This is the *seating* subtask (manipulation only): the G1 starts at the
 fixture holding a bulb and must align and seat it into the socket. It is built
 as a standard Isaac Lab ``ManagerBasedRLEnvCfg`` so it slots into the usual
 train / play / teleop / eval scripts.
@@ -129,7 +130,7 @@ class ObservationsCfg:
 
     @configclass
     class PrivilegedCfg(ObsGroup):
-        """Ground-truth ("cheat") observations for the critic / scripted baselines."""
+        """Ground-truth (privileged) observations for the critic / scripted baselines."""
 
         bulb_pose = ObsTerm(func=mdp.root_pose_w, params={"asset_cfg": SceneEntityCfg("fresh_bulb")})
         socket_pose = ObsTerm(func=mdp.root_pose_w, params={"asset_cfg": SceneEntityCfg("socket")})
@@ -309,7 +310,7 @@ class TerminationsCfg:
 
 @configclass
 class G1BulbInsertEnvCfg(ManagerBasedRLEnvCfg):
-    """Fiatlux insertion subtask: G1 seats a bulb into a socket (family tabletop preset)."""
+    """Fiatlux seating subtask: G1 seats a bulb into a socket (family tabletop preset)."""
 
     scene_preset: str = "tabletop"
     # orbit-recording framing (verify_scene --record): around the bench

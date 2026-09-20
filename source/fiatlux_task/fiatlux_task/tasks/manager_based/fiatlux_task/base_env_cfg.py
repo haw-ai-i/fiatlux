@@ -13,9 +13,9 @@ task) use ``ManagerBasedRLEnvCfg`` directly on the same scene + presets.
 
 The event manager carries the reset term and *enabled* per-reset light randomization, plus a
 *disabled* randomization scaffold: every future randomization knob is written out, commented,
-wired to the right ``SceneEntityCfg`` and tagged ``TODO`` -- enabling it later is just
-uncommenting. (Per-env asset randomization -- the ceiling ``fixture`` -- happens at spawn time
-in the scene cfg, not here.)
+and wired to the right ``SceneEntityCfg`` -- enabling it later is just uncommenting. (Per-env
+asset randomization -- the ceiling ``fixture`` -- happens at spawn time in the scene cfg, not
+here.)
 """
 
 from isaaclab.envs import ManagerBasedEnvCfg

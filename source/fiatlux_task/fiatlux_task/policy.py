@@ -26,7 +26,8 @@ Supported specs (``make_policy(spec, env)``):
                            interface / resets / episode loop / recording / scoring run
                            end-to-end -- acceptance is valid episode execution and score
                            artifact generation, not task success.
-- ``"basic_cheatcode"`` -- smoke-test policy for the *cheatcode* mode: additionally asserts
+- ``"basic_cheatcode"`` -- smoke-test policy for the *privileged* observation mode (the
+                           spec value keeps its original name): additionally asserts
                            the ``privileged`` group exists and reads it every step, still
                            acting through the normal action space (zero action). Not a
                            solver; same acceptance bar as ``basic_standard``.
@@ -98,7 +99,7 @@ def make_policy(
 
         def basic_standard(obs):
             # The standard contract: the sensor-realizable group must exist and is the
-            # ONLY thing consumed -- privileged/cheat state is never touched.
+            # ONLY thing consumed -- privileged state is never touched.
             assert isinstance(obs, dict) and "policy" in obs, (
                 "basic_standard requires a 'policy' observation group (the standard, sensor-realizable mode)"
             )
@@ -110,8 +111,8 @@ def make_policy(
     if spec == "basic_cheatcode":
 
         def basic_cheatcode(obs):
-            # The cheatcode contract: privileged simulator state must be present and
-            # readable; actions still go through the normal action space.
+            # Contract for this (privileged-mode) smoke test: privileged simulator state
+            # must be present and readable; actions still go through the normal action space.
             assert isinstance(obs, dict) and "privileged" in obs, (
                 "basic_cheatcode requires a 'privileged' observation group (the cheatcode "
                 "mode); this env exposes only sensor-realizable observations"

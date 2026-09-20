@@ -3,9 +3,9 @@
 #
 # SPDX-License-Identifier: BSD-3-Clause
 
-"""``FIATLUX-Install-v0`` -- insert/screw in a new bulb (functional RL task).
+"""``FIATLUX-Install-v0`` -- seat a new bulb (functional RL task).
 
-The screw-in counterpart of ``FIATLUX-Insert-v0`` on the same bench world: the table
+The counterpart of ``FIATLUX-Insert-v0`` on the same bench world: the table
 lamp's socket starts EMPTY and the fresh bulb rests in a parts crate on the floor
 beside the bench (instead of Insert's bulb-at-hand-height tabletop start).
 

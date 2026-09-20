@@ -29,11 +29,11 @@ Presets are plain functions called from an env cfg's ``__post_init__`` --
 cannot live here as fields. Optional entities (``table``, ``ladder``) are dropped by setting
 them to ``None``; ``InteractiveScene`` skips ``None`` entities.
 
-All assets come from the ``gs://fiatlux`` bucket (see ``fiatlux_task.assets`` and
-``assets/download_assets.sh``): the same Inspire-hand G1 everywhere, the curated Omniverse
-bulb/socket pair (``BULB_USD`` / ``SOCKET_USD``), and the Omniverse AlumStep_D step ladder
-(``STEP_LADDER_USD``). The room dressing -- the Simple Room backdrop and the PolyHaven HDRI
-sky -- comes from ``DressedSceneCfg``.
+All assets are synced locally by ``assets/download_assets.sh`` (see ``fiatlux_task.assets``):
+the same Inspire-hand G1 everywhere, the curated Omniverse bulb/socket pair (``BULB_USD`` /
+``SOCKET_USD``), and the Omniverse AlumStep_D step ladder (``STEP_LADDER_USD``). The room
+dressing -- the Simple Room backdrop and the PolyHaven HDRI sky -- comes from
+``DressedSceneCfg``.
 """
 
 import math
@@ -628,7 +628,7 @@ class G1ReplaceSceneCfg(DressedSceneCfg):
     # ended up calling its single seated bulb ``bulb`` and the scoring layer ``old_bulb``.
     fresh_bulb: RigidObjectCfg | None = None
     # Seated in the socket. Retention is ``mdp.bulb_attachment``, which pins it at the seat until
-    # it is rotated to the release angle and travels out of the channel.
+    # it is pulled axially past the release threshold and travels out of the channel.
     old_bulb: RigidObjectCfg | None = None
     # Rod a ceiling-mounted fixture hangs from (see add_ceiling_pendant). Only the presets
     # that mount overhead spawn it; wall mounts and the bench have no pendant.

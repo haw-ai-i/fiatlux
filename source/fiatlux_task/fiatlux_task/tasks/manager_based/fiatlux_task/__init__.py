@@ -7,28 +7,36 @@
 
 Task hierarchy (see docs/roadmap.md):
 
-One family, one scene (``scene_cfg.G1ReplaceSceneCfg``), preset layouts per task:
+One family, one scene (``scene_cfg.G1ReplaceSceneCfg``), preset layouts per task. The
+published benchmark is ``FIATLUX-Replace-v0`` plus the twelve ``FIATLUX-S01``..``S12``
+subtask ids registered further down this file. The rest of the ids below predate that
+twelve-subtask decomposition and stay registered as development aids -- smaller-scope
+scaffolds used while building and debugging the family scene, not part of what the paper
+reports on:
 
 - ``FIATLUX-Replace-v0`` : THE BENCHMARK -- the full light-bulb replacement (randomized
-  room layout, normalized-progress scoring, standard/cheatcode observation modes; see
-  ``journal/specs/full-task-benchmark-plan.md``). FUNCTIONAL, RL.
-- ``FIATLUX-Insert-v0``  : G1 seats a bulb into a socket (manipulation, *tabletop* preset).
+  room layout, normalized-progress scoring, standard/privileged observation modes).
   FUNCTIONAL, RL.
-- ``FIATLUX-Climb-v0``   : G1 climbs the step ladder to the fixture height (*at-height*
-  preset, whole-body RL). FUNCTIONAL, RL.
-- ``FIATLUX-Carry-v0``   : G1 grasps a ladder and positions it upright at a target (ladder-
-  handling, *carry* preset, arm+hand manipulation RL). FUNCTIONAL, RL.
-- ``FIATLUX-Descend-v0`` : bipedal ladder descent -- the mirror image of Climb's ascent
-  reward/termination scheme (``descend_env_cfg.py``). FUNCTIONAL, RL.
-- ``FIATLUX-Install-v0`` : seat a new bulb from a floor parts crate into the same bench
-  lamp socket ``FIATLUX-Insert-v0`` uses (``install_env_cfg.py``, Insert's own reward/
-  termination set unchanged -- same entities, larger starting gap). FUNCTIONAL, RL.
-- ``FIATLUX-Remove-v0``  : unscrew / remove the seated bulb (``remove_env_cfg.py``,
+- ``FIATLUX-Insert-v0``  : development aid -- G1 seats a bulb into a socket (manipulation,
+  *tabletop* preset). FUNCTIONAL, RL.
+- ``FIATLUX-Climb-v0``   : development aid -- G1 climbs the step ladder to the fixture
+  height (*at-height* preset, whole-body RL). FUNCTIONAL, RL.
+- ``FIATLUX-Carry-v0``   : development aid -- G1 grasps a ladder and positions it upright
+  at a target (ladder-handling, *carry* preset, arm+hand manipulation RL). FUNCTIONAL, RL.
+- ``FIATLUX-Descend-v0`` : development aid -- bipedal ladder descent, the mirror image of
+  Climb's ascent reward/termination scheme (``descend_env_cfg.py``). FUNCTIONAL, RL.
+- ``FIATLUX-Install-v0`` : development aid -- seat a new bulb from a floor parts crate into
+  the same bench lamp socket ``FIATLUX-Insert-v0`` uses (``install_env_cfg.py``, Insert's
+  own reward/termination set unchanged -- same entities, larger starting gap).
+  FUNCTIONAL, RL.
+- ``FIATLUX-Remove-v0``  : development aid -- remove the seated bulb (``remove_env_cfg.py``,
   Replace's own removal/disposal reward channels, parametrized onto this scene's
   standalone ``bulb`` entity). RL and achievable -- the bulb is dynamic and lifts out of
-  the socket's open hole -- but nothing gates unscrewing here, so it scores "pick it up
-  and bin it". Replace gates removal on ``mdp.bulb_attachment`` (issue #54); porting that
-  term here is what would make this a genuine unscrew task.
+  the socket's open hole -- but nothing here gates removal on breaking a retention hold,
+  so it scores "pick it up and bin it". Replace gates removal on ``mdp.bulb_attachment``
+  (issue #54, superseded by #167): a seated bulb is held by a continuous magnetic wrench
+  and freed only by a sustained axial pull, with no rotation involved; porting that term
+  here is what would make this task genuinely gated the same way.
 - ``FIATLUX-Base-v0``    : the shared scene-only cfg, deliberately **non-RL**
   (:class:`base_env_cfg.FamilyBaseEnvCfg` -- observation/action/event managers only, no
   task to reward). Not a task; ``verify_scene.py``'s default target.

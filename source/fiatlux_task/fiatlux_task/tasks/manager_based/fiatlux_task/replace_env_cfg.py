@@ -13,7 +13,7 @@ remove the old bulb, and place it in the disposal crate. No policy stitching or
 staged-curriculum chaining -- that is solution structure, not benchmark structure (the
 issue-#20 descoping that still stands).
 
-Design notes (full-task benchmark plan, ``journal/specs/full-task-benchmark-plan.md``):
+Design notes:
 
 - **Scoring** uses *normalized* distance progress -- ``(d0 - d) / d0`` clamped to [0, 1],
   per episode, paid as best-progress increments -- so randomized spawn distances cannot
@@ -24,10 +24,10 @@ Design notes (full-task benchmark plan, ``journal/specs/full-task-benchmark-plan
   per-term episode sums in ``extras['log']`` *are* the score breakdown.
 - **Observation modes**: the ``policy`` group is the *standard* (sensor-realizable) mode --
   IMU, estimated base state, proprioception, hand contact, a head-mounted RGB camera, previous
-  action. The ``privileged`` group is the *cheatcode* mode -- exact robot/object/fixture/
-  target poses and the score-relevant distances. The group names stay ``policy``/
-  ``privileged`` because rsl_rl's ``obs_groups`` routing is keyed to them (see
-  ``ClimbPPORunnerCfg``); the benchmark docs map standard->policy, cheatcode->privileged.
+  action. The ``privileged`` group is the *privileged* mode -- exact robot/object/fixture/
+  target poses and the score-relevant distances. The group is named ``policy`` rather than
+  ``standard`` because rsl_rl's ``obs_groups`` routing is keyed to it (see
+  ``ClimbPPORunnerCfg``); the benchmark docs call it the standard mode regardless.
 - **The ladder is dynamic** (only here): knocking it over is a real, penalized, episode-
   ending physical event. **Both bulbs are dynamic**, seated in the fixture by contact rather
   than pinned kinematic, so removal and disposal are real physical events.
@@ -138,7 +138,7 @@ class ActionsCfg:
 @configclass
 class ObservationsCfg:
     """Two groups: ``policy`` = the *standard* (sensor-realizable) observation mode,
-    ``privileged`` = the *cheatcode* (exact simulator state) mode."""
+    ``privileged`` = the *privileged* (exact simulator state) mode."""
 
     @configclass
     class PolicyCfg(ObsGroup):
@@ -188,7 +188,7 @@ class ObservationsCfg:
 
     @configclass
     class PrivilegedCfg(ObsGroup):
-        """Cheatcode mode: exact poses of everything score-relevant + the score distances."""
+        """Privileged mode: exact poses of everything score-relevant + the score distances."""
 
         robot_pose = ObsTerm(func=mdp.root_pose_w, params={"asset_cfg": SceneEntityCfg("robot")})
         ladder_pose = ObsTerm(func=mdp.root_pose_w, params={"asset_cfg": SceneEntityCfg("ladder")})
@@ -426,7 +426,7 @@ class TerminationsCfg:
 
 @configclass
 class ReplaceEnvCfg(ManagerBasedRLEnvCfg):
-    """The full replacement task (randomized room layout, standard/cheatcode obs modes)."""
+    """The full replacement task (randomized room layout, standard/privileged obs modes)."""
 
     scene_preset: str = "replace"
     # wide framing: the room-scale layout, not a fixed bench corner. The Simple Room is NOT
