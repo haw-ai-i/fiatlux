@@ -12,6 +12,11 @@ grasp it, and carry it upright to a target — whole-body RL, `carry_env_cfg.py`
 functional development environments, not benchmark targets. Unfinished items below are listed
 so the extension seams are intentional.
 
+**Subtask status.** Teleoperation reaches the success gate on eight of the twelve subtasks
+(S01, S03, S05–S09, S11). The four climbing subtasks (S02, S04, S10, S12) have no teleoperated
+take that satisfies their gate. None of the released baselines (zero, random, zero-shot
+GR00T N1.7) completes any subtask.
+
 ## 1. Climbing subtask — `FIATLUX-Climb-v0` — ✅ DONE (2026-07-06)
 
 G1 climbs the work-site step ladder (`fiatlux_task.assets.STEP_LADDER_USD`, the
@@ -33,18 +38,18 @@ Phase 5).
 
 ## 2. Full task — `FIATLUX-Replace-v0` — ✅ PRIMARY BENCHMARK (2026-07-09)
 
-Promoted from scene-only scaffold to the scored full-task RL environment per
-`journal/specs/full-task-benchmark-plan.md` (this deliberately reverses the earlier
-"stays off the roadmap" call for the *task itself*; the policy-stitching part of that
-descoping still stands — it is one flat RL episode, chaining is solution structure).
+Promoted from scene-only scaffold to the scored full-task RL environment (this deliberately
+reverses the earlier "stays off the roadmap" call for the *task itself*; the policy-stitching
+part of that descoping still stands — it is one flat RL episode, chaining is solution
+structure).
 
 - ~~Build and verify the full combined-family scene: robot, ladder, table+bulb, and the
   elevated fixture together, each randomized into its own non-overlapping floor "safe
   zone" per scene build, fixture randomly ceiling- or wall-mounted.~~ DONE (2026-07-07):
   `scene_cfg.apply_replace_preset`.
 - ~~Reward/termination logic: normalized-progress scoring (spawn-distance fair), sparse
-  completions, fall/tip/drop penalties, full-success termination; `standard` (sensor) vs
-  `cheatcode` (privileged) observation modes; `basic_standard`/`basic_cheatcode`
+  completions, fall/tip/drop penalties, full-success termination; `standard` vs `privileged`
+  observation modes; `basic_standard`/`basic_cheatcode`
   smoke-test policies.~~ DONE (2026-07-09): `replace_env_cfg.py`, see
   `docs/task_spec.md` / `docs/scoring.md`.
 - Policy stitching / staged-curriculum chaining: not planned (solution structure).
@@ -134,17 +139,17 @@ descoping still stands — it is one flat RL episode, chaining is solution struc
 
 ## 3. Learned-policy support
 
-- Imitation pre-training (ACT / Diffusion) from teleop or scripted "cheat-code"
-  demos, using the `privileged` observation group. **The demos exist now**: the subtask
-  teleop twins record scored HDF5 bags per take (`docs/subtask_teleop.md`), so this is a
-  consumer-side gap, not a collection one.
+- Imitation pre-training (ACT / Diffusion) from teleop demos, or from a scripted policy
+  that reads the `privileged` observation group directly. **The teleop demos exist now**:
+  the subtask teleop twins record scored HDF5 bags per take (`docs/subtask_teleop.md`), so
+  this is a consumer-side gap, not a collection one.
 - The current PPO config (`agents/rsl_rl_ppo_cfg.py`) covers RL fine-tuning.
 - Demo recording lives in `source/fiatlux_teleop/` behind the `teleop` extra, keeping its
   dataset tooling out of the core install.
 
-## 4. Sim-to-real (physical G1)
+## 4. Sim-to-real (physical G1) — future work, not started
 
-Added as a **separate optional deployment adapter**, never the old ROS/Zenoh
+Planned as a **separate optional deployment adapter**, never the old ROS/Zenoh
 harness:
 
 - **Action bridge:** policy joint-position targets → Unitree SDK joint commands.

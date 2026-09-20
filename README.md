@@ -1,8 +1,9 @@
 # Fiatlux Benchmark
 
-A minimal Isaac Lab benchmark for **humanoid light-bulb replacement**: a Unitree
-G1 robot inserts a light bulb into a socket. It is a plain Python / Isaac Lab
-extension — no ROS, no distributed harness — so it plugs into the standard
+A minimal Isaac Lab benchmark for **humanoid ladder climbing and light-bulb replacement**: a
+Unitree G1 robot positions a step ladder under a ceiling or wall fixture, climbs it, exchanges
+the spent bulb for a fresh one, and drops the spent one in a disposal crate. It is a plain
+Python / Isaac Lab extension — no ROS, no distributed harness — so it plugs into the standard
 `train` / `play` / `teleop` / `eval` scripts.
 
 > **Status (honest):** the benchmark has two framings of the same job. **`FIATLUX-Replace-v0`**
@@ -40,16 +41,15 @@ scene.
 | `FIATLUX-Climb-v0` | G1 climbs the step ladder to the fixture height (whole-body RL) | ✅ RL |
 | `FIATLUX-Carry-v0` | G1 walks to a ladder, grasps it, and carries it upright to a target | ✅ RL · has a teleop twin |
 | `FIATLUX-Descend-v0` | bipedal ladder descent — Climb's reward scheme mirrored | ✅ RL · superseded by S04/S12 |
-| `FIATLUX-Remove-v0` | remove the seated bulb from the fixture | ✅ RL · superseded by S03 |
-| `FIATLUX-Install-v0` | seat a new bulb at the fixture (the at-fixture counterpart of `Insert`) | ✅ RL · superseded by S11 |
+| `FIATLUX-Remove-v0` | remove the seated bulb from the bench-lamp socket (`Insert`'s bench, not the elevated fixture) | ✅ RL · superseded by S03 |
+| `FIATLUX-Install-v0` | seat a new bulb into that same empty bench-lamp socket | ✅ RL · superseded by S11 |
 | `FIATLUX-Base-v0` | shared scene, no task logic — `verify_scene.py`'s default target | 🧱 non-RL |
 
 `Replace-v0` and `Climb-v0` are also **load-bearing for the subtasks**, which import their
 thresholds (`FRESH_BULB_DROP_HEIGHT`, `REMOVAL_CLEARANCE`, `SEAT_*_THRESHOLD`,
 `bulb_attachment_event`; `FALL_MIN_HEIGHT` / `FALL_TILT_LIMIT`) rather than redeclaring them.
 `Descend`, `Remove` and `Install` have no such dependants and no teleop twin — a subtask covers
-each of their jobs now, so they are candidates for retirement (see
-`journal/TO_BE_DISCUSSED.md`).
+each of their jobs now, so they are candidates for retirement.
 
 Every id is a member of **one task family** backed by **one scene** with preset layouts; the
 all share one non-RL base env (observation/action/event managers only). `scripts/list_envs.py`
@@ -105,13 +105,15 @@ uv sync
 # 2. Pull the USD assets (G1, bulb/socket, ladder) from the bucket:
 ./assets/download_assets.sh
 
-# 3. Sanity-check registration and launch a baseline:
-uv run python scripts/list_envs.py                                        # every registered FIATLUX id
-uv run python scripts/verify_scene.py --headless                          # FIATLUX-Base-v0 checks
-uv run python scripts/verify_scene.py --headless --task FIATLUX-Climb-v0  # any family member
+# 3. Sanity-check registration and launch a baseline. Every task carries a camera sensor,
+#    so --enable_cameras is required even here (headless verification, no video):
+uv run python scripts/list_envs.py                                                        # every registered FIATLUX id
+uv run python scripts/verify_scene.py --headless --enable_cameras                         # FIATLUX-Base-v0 checks
+uv run python scripts/verify_scene.py --headless --enable_cameras --task FIATLUX-Climb-v0  # any family member
 
 # 4. Evaluate (standardized, reproducible):
-uv run python scripts/eval.py --task FIATLUX-Insert-v0 --policy random --episodes 20 --seed 0
+uv run python scripts/eval.py --task FIATLUX-Insert-v0 --policy random --episodes 20 --seed 0 \
+    --enable_cameras
 
 # 5. Record a run, then score it offline (no simulator needed for scoring).
 #    --enable_cameras is required: the env carries a wrist-camera sensor.
@@ -120,11 +122,11 @@ uv run python scripts/record_run.py --task FIATLUX-Insert-v0 --policy random \
 uv run python scripts/score.py logs/runs/random0
 
 # 6. Train a policy:
-uv run python scripts/rsl_rl/train.py --task FIATLUX-Insert-v0
-uv run python scripts/rsl_rl/train.py --task FIATLUX-Climb-v0
+uv run python scripts/rsl_rl/train.py --task FIATLUX-Insert-v0 --enable_cameras
+uv run python scripts/rsl_rl/train.py --task FIATLUX-Climb-v0 --enable_cameras
 
 # 7. Run the GR00T N1.7 model baseline on the benchmark (needs the external
-#    PolicyServer -- setup in journal/specs/groot-sonic-baseline.md):
+#    PolicyServer -- setup and required env vars are in scripts/groot/serve.sh's header):
 uv sync --extra groot
 scripts/groot/serve.sh &   # terminal 1: the VLA server (own venv, HF token required)
 uv run python scripts/eval.py --task FIATLUX-Replace-v0 --policy groot \
@@ -140,11 +142,29 @@ uv run --extra teleop python scripts/teleop/sonic_teleop.py \
 
 ## Sim-to-real
 
-The benchmark stays pure-Python; a physical-G1 deployment adapter is intentionally
-kept separate (future work). To keep that path cheap, the env uses a
-**hardware-realizable action space** (joint-position targets) and a default
-**sensor-realizable observation group**, with ground-truth ("cheat") observations
-isolated in a separate `privileged` group. See [docs/roadmap.md](docs/roadmap.md).
+The benchmark stays pure-Python; a deployment adapter that bridges its joint-position
+targets to Unitree SDK commands on a physical G1 is future work. To keep that path cheap,
+the env uses a **hardware-realizable action space** (joint-position targets) and a default
+**sensor-realizable observation group**, with ground-truth observations isolated in a
+separate `privileged` group. See [docs/roadmap.md](docs/roadmap.md).
+
+## Paper
+
+Fiatlux is described in *Fiatlux: A Long-Horizon Benchmark for Humanoid Ladder Climbing and
+Light-Bulb Replacement* (Pavel Bushuyeu, Yujin Chen, Anton Nikolaev, Brian Shu, Igor Molybog;
+the first four authors contributed equally, order alphabetical by surname). The code and the
+teleoperated recordings used to specify and check the success gates are at
+[fiatlux.github.io](https://fiatlux.github.io).
+
+```bibtex
+@misc{fiatlux,
+  title  = {Fiatlux: A Long-Horizon Benchmark for Humanoid Ladder Climbing and Light-Bulb Replacement},
+  author = {Bushuyeu, Pavel and Chen, Yujin and Nikolaev, Anton and Shu, Brian and Molybog, Igor},
+  year   = {2026},
+  note   = {The first four authors contributed equally; author order is alphabetical by surname.},
+  url    = {https://fiatlux.github.io},
+}
+```
 
 ## License
 

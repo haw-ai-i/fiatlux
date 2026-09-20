@@ -1,9 +1,10 @@
 # Overview
 
-The Fiatlux Benchmark evaluates a robot's ability to perform **light-bulb
-replacement** with a Unitree G1 humanoid in NVIDIA Isaac Lab. It is an internal
-research benchmark: a small, reproducible Isaac Lab extension you can train and
-compare policies against.
+The Fiatlux Benchmark evaluates a robot's ability to climb a ladder and perform
+**light-bulb replacement** with a Unitree G1 humanoid in NVIDIA Isaac Lab. It is a public
+benchmark released with the paper it accompanies: a small, reproducible Isaac Lab extension
+you can train and compare policies against. The code and the teleoperated recordings used to
+specify and check the success gates are at [fiatlux.github.io](https://fiatlux.github.io).
 
 ## Goal
 
@@ -26,9 +27,10 @@ Two framings of the same work, both standard Isaac Lab manager-based RL environm
 - **Sensor-realizable by default.** The default observation group only uses
   signals available on the real robot (proprioception, head-mounted RGB camera and lidar,
   contact forces). Ground-truth poses live in a separate `privileged` group — the benchmark
-  calls the two modes **standard** and **cheatcode**.
-- **Hardware-realizable actions.** Joint-position targets map directly to the
-  Unitree SDK for later sim-to-real.
+  calls the two modes **standard** and **privileged**.
+- **Hardware-realizable actions.** Joint-position targets map directly to low-level PD
+  controllers, which keeps a later bridge to the Unitree SDK cheap. That bridge itself is
+  future work (see [roadmap.md](roadmap.md)).
 
 ## Documents
 

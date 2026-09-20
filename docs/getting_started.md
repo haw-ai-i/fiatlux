@@ -54,12 +54,15 @@ If your assets live elsewhere, point the env at them with
 
 ## 3. Run
 
+Every FIATLUX task carries a camera sensor (wrist and/or head-mounted), so `--enable_cameras`
+is required to build any of them, even without `--headless` or video recording:
+
 ```bash
-uv run python scripts/list_envs.py                              # list registered tasks
-uv run python scripts/zero_agent.py --task FIATLUX-Insert-v0    # launch the scene
-uv run python scripts/eval.py --task FIATLUX-Insert-v0 --policy random --episodes 20
-uv run python scripts/rsl_rl/train.py --task FIATLUX-Insert-v0  # train PPO
-uv run python scripts/rsl_rl/play.py  --task FIATLUX-Insert-v0  # roll out a checkpoint
+uv run python scripts/list_envs.py                                                # list registered tasks
+uv run python scripts/zero_agent.py --task FIATLUX-Insert-v0 --enable_cameras    # launch the scene
+uv run python scripts/eval.py --task FIATLUX-Insert-v0 --policy random --episodes 20 --enable_cameras
+uv run python scripts/rsl_rl/train.py --task FIATLUX-Insert-v0 --enable_cameras  # train PPO
+uv run python scripts/rsl_rl/play.py  --task FIATLUX-Insert-v0 --enable_cameras  # roll out a checkpoint
 ```
 
 ## 4. Record and score a run
@@ -104,7 +107,7 @@ into per-commit CI (a full Isaac Sim launch per check is too costly there):
 
 ```bash
 # the scene is solid: assets present, colliders exist, nothing explodes or sinks
-uv run python scripts/verify_scene.py --headless --task FIATLUX-Base-v0
+uv run python scripts/verify_scene.py --headless --enable_cameras --task FIATLUX-Base-v0
 
 # the graded interactions are modeled correctly: seated bulb rests stably, the
 # success pose is attainable, a hand press stays gentle and doesn't launch the

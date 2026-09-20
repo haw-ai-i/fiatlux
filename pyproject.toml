@@ -6,7 +6,7 @@
 [project]
 name = "fiatlux"
 version = "0.1.0"
-description = "Reproducible runtime environment for the Fiatlux humanoid light-bulb benchmark."
+description = "Reproducible runtime environment for the Fiatlux humanoid ladder-climbing and light-bulb replacement benchmark."
 readme = "README.md"
 license = { text = "Apache-2.0" }
 # Isaac Sim 5.1 requires CPython 3.11.
