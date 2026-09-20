@@ -49,3 +49,8 @@ _isaac_sim*
 
 #npz
 *.npz
+
+# Design specs and meeting notes live in the private paper repo
+# (igormolybog/fiatlux-report-2026-q3, journal/). Symlink or copy it here for
+# local reading; it must never be committed to this repo.
+/journal/
