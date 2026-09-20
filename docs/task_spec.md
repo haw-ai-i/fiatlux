@@ -88,20 +88,21 @@ alone no longer scores.
 Whole-body joint-position targets (all DoF incl. fingers, like Climb): the task spans
 locomotion, ladder work, and manipulation.
 
-## Observations — `standard` vs `cheatcode` modes
+## Observations — `standard` vs `privileged` modes
 
-Two groups (named `policy`/`privileged` for rsl_rl's routing; the benchmark calls the
-modes **standard** and **cheatcode**):
+Two groups (named `policy`/`privileged` for rsl_rl's routing; the paper calls the modes
+**standard** and **privileged** — "cheatcode" is retired naming that survives only in the
+`basic_cheatcode` baseline's identifier below):
 
 - **`policy` = standard mode** (sensor-realizable only): IMU (base angular velocity,
   projected gravity), estimated base height + linear velocity (the documented
   estimator-realizable exception, as in Climb), joint pos/vel, hand contact forces,
   **head-mounted (`d435_link`) RGB camera features** and **head-mounted (`mid360_link`)
   lidar ranges** (camera needs `--enable_cameras`), last action. Corruption enabled.
-- **`privileged` = cheatcode mode** (exact simulator state): world poses of the robot,
+- **`privileged` mode** (exact simulator state): world poses of the robot,
   ladder, fixture, fresh bulb, old bulb, and disposal crate, plus the four score-relevant
   distances (`replace_score_distances`). Critic-only during RL
-  (`ReplacePPORunnerCfg.obs_groups`); a cheatcode policy may consume it directly.
+  (`ReplacePPORunnerCfg.obs_groups`); a privileged-mode policy may consume it directly.
 
 Smoke-test policies (`fiatlux_task/policy.py`): `basic_standard` consumes only the
 standard group and holds posture; `basic_cheatcode` additionally asserts and reads the
@@ -135,9 +136,9 @@ at 1.0). Completion bonuses pay once per episode.
 | `fresh_bulb_progress` (+) | dense | fresh-bulb plug → fixture seat, normalized progress |
 | `old_bulb_removal` (+) | dense | old-bulb clearance from the seat vs an absolute 0.10 m threshold (its d0 ≈ 0, so toward-style normalization can't apply) |
 | `old_bulb_disposal_progress` (+) | dense | old bulb → disposal crate, normalized progress |
-| `ladder_ready` (+) | completion | upright ladder top horizontally within 0.9 m of the fixture |
-| `fresh_bulb_inserted` (+) | completion | fresh bulb screwed in (the attach gate; Insert's 1.5 cm / 0.2 rad seating tolerances are enforced at attach time) |
-| `old_bulb_removed` (+) | completion | old bulb unscrewed and cleared the seat by 0.10 m (a held bulb reads as seated) |
+| `ladder_ready` (+) | completion | ladder upright and placed so the top-tread stance's shoulder is within 0.419 m of the seated bulb and facing it (`LADDER_READY_REACH`) |
+| `fresh_bulb_inserted` (+) | completion | fresh bulb seated (the attach gate; Insert's 1.5 cm / 0.2 rad seating tolerances are enforced at attach time) |
+| `old_bulb_removed` (+) | completion | old bulb released and cleared the seat by 0.10 m (a held bulb reads as seated) |
 | `old_bulb_disposed` (+) | completion | old bulb inside the disposal crate (containment, any orientation) |
 | `success_bonus` (+) | sparse | full replacement (fires on the terminating step) |
 | `robot_fall`, `ladder_tipped`, `fresh_bulb_dropped`, `old_bulb_dropped` (−) | penalty | each fires once — the same predicate also terminates |
@@ -146,7 +147,7 @@ at 1.0). Completion bonuses pay once per episode.
 
 ## Success & termination
 
-- **Success** (`attached_replacement_success`): fresh bulb screwed in (attachment state,
+- **Success** (`attached_replacement_success`): fresh bulb seated (attachment state,
   not raw seating geometry) **and** old bulb inside the disposal crate (containment, any orientation).
 - **Robot fall**: root below 0.35 m or tilt beyond 1.0 rad (family thresholds).
 - **Ladder tipped**: ladder up-axis beyond 0.6 rad from vertical.
@@ -166,7 +167,8 @@ USD writes require `replicate_physics=False`); see `base_env_cfg.py`'s EventCfg.
 
 # `FIATLUX-Insert-v0`
 
-Defined in
+A development aid that predates the twelve-subtask decomposition, not part of what the
+paper reports on. Defined in
 `source/fiatlux_task/fiatlux_task/tasks/manager_based/fiatlux_task/g1_bulb_env_cfg.py`.
 
 ## Scene
@@ -220,7 +222,7 @@ Two groups:
 - **Success** (`bulb_seated`): bulb within `pos_threshold` (1.5 cm) **and**
   `ori_threshold` (0.2 rad) of the socket.
 - **Fall** (`fell_below` / `fell_over`): root below **0.35 m** (standing pelvis is
-  0.75 m; a collapsed robot reads < 0.30 m) or tilt beyond **1.0 rad**. This is the
+  0.79 m; a collapsed robot reads < 0.30 m) or tilt beyond **1.0 rad**. This is the
   family's fall-detection RL gate: solver-kick episodes against the kinematic table
   end immediately (thresholds shared from `climb_env_cfg.py`).
 - **Timeout**: `episode_length_s = 15 s`.
@@ -235,7 +237,9 @@ global room albedo tint. Prop-scale randomization is an RL opt-in (see
 
 # `FIATLUX-Climb-v0`
 
-Defined in
+A development aid that predates the twelve-subtask decomposition, not part of what the
+paper reports on (the paper's own climbing evaluation runs the `S02`/`S04`/`S10`/`S12`
+subtasks — see `docs/scoring.md`). Defined in
 `source/fiatlux_task/fiatlux_task/tasks/manager_based/fiatlux_task/climb_env_cfg.py`.
 
 ## Scene
@@ -291,7 +295,7 @@ forward lean.
   upper steps (1.6, 0), at
   root speed < **1.5 m/s** (rejects ballistic fly-throughs).
 - **Fall** (`fell_below` / `fell_over`): root below **0.35 m** (standing pelvis is
-  0.75 m; a collapsed robot reads < 0.30 m) or tilt beyond **1.0 rad**. This is the
+  0.79 m; a collapsed robot reads < 0.30 m) or tilt beyond **1.0 rad**. This is the
   family's fall-detection RL gate: solver-kick episodes end immediately.
 - **Timeout**: `episode_length_s = SUBTASK_EPISODE_LENGTH_S` (120 s).
 
