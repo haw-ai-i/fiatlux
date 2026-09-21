@@ -209,7 +209,7 @@ Two groups:
 - **Success** (`bulb_seated`): bulb within `pos_threshold` (1.5 cm) **and**
   `ori_threshold` (0.2 rad) of the socket.
 - **Fall** (`fell_below` / `fell_over`): root below **0.35 m** (standing pelvis is
-  0.75 m; a collapsed robot reads < 0.30 m) or tilt beyond **1.0 rad**. This is the
+  0.79 m; a collapsed robot reads < 0.30 m) or tilt beyond **1.0 rad**. This is the
   family's fall-detection RL gate: solver-kick episodes against the kinematic table
   end immediately (thresholds shared from `climb_env_cfg.py`).
 - **Timeout**: `episode_length_s = 15 s`.
@@ -280,7 +280,7 @@ forward lean.
   upper steps (1.6, 0), at
   root speed < **1.5 m/s** (rejects ballistic fly-throughs).
 - **Fall** (`fell_below` / `fell_over`): root below **0.35 m** (standing pelvis is
-  0.75 m; a collapsed robot reads < 0.30 m) or tilt beyond **1.0 rad**. This is the
+  0.79 m; a collapsed robot reads < 0.30 m) or tilt beyond **1.0 rad**. This is the
   family's fall-detection RL gate: solver-kick episodes end immediately.
 - **Timeout**: `episode_length_s = SUBTASK_EPISODE_LENGTH_S` (120 s).
 
