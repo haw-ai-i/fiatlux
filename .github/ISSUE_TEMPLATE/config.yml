@@ -1,0 +1,5 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Known issues
+    url: https://github.com/haw-ai-i/fiatlux/issues?q=is%3Aissue+state%3Aopen+label%3A%22known+issue%22
+    about: Check existing known issues before opening a new ticket.

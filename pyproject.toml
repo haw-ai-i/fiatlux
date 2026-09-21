@@ -1,0 +1,234 @@
+# Copyright (c) 2022-2026, The Isaac Lab Project Developers (https://github.com/isaac-sim/IsaacLab/blob/main/CONTRIBUTORS.md).
+# All rights reserved.
+#
+# SPDX-License-Identifier: BSD-3-Clause
+
+[project]
+name = "fiatlux"
+version = "0.1.0"
+description = "Reproducible runtime environment for the Fiatlux humanoid light-bulb benchmark."
+readme = "README.md"
+license = { text = "Apache-2.0" }
+# Isaac Sim 5.1 requires CPython 3.11.
+requires-python = "==3.11.*"
+dependencies = [
+    # Isaac Lab 2.3.2 for Isaac Sim 5.1. The [isaacsim] extra pulls Isaac Sim itself
+    # and [all] pulls the isaaclab-{tasks,rl,assets,mimic} sub-extensions plus the RL
+    # frameworks -- all from the NVIDIA index (see [[tool.uv.index]] below).
+    "isaaclab[isaacsim,all]==2.3.2.post1",
+    # Pinned to the combo Isaac Lab ships for Sim 5.1 (CUDA 12.8).
+    "torch==2.7.0",
+    "torchvision==0.22.0",
+    # scripts/rsl_rl/train.py hard-checks this exact minimum.
+    "rsl-rl-lib==3.0.1",
+    # Imported by the benchmark but not guaranteed transitively.
+    "h5py",
+    "prettytable",
+    "psutil",
+    # scripts/verify_scene.py --record renders MP4s (libx264 via the ffmpeg plugin).
+    "imageio",
+    "imageio-ffmpeg",
+    # Benchmark telemetry (fiatlux_task.telemetry; imported lazily behind --wandb).
+    "wandb",
+    # The benchmark task package itself (editable, see [tool.uv.sources]).
+    "fiatlux_task",
+]
+
+[project.optional-dependencies]
+# GR00T+SONIC baseline adapter (fiatlux_task.groot, imported lazily by the
+# "groot"/"sonic_stand" policy specs): in-process SONIC/WBC ONNX decoding and
+# the ZMQ+msgpack client for NVIDIA's Isaac-GR00T PolicyServer.
+groot = [
+    "onnxruntime",
+    "pyzmq",
+    "msgpack-numpy",
+]
+# Whole-body sim teleop (scripts/teleop/sonic_teleop.py + fiatlux_teleop): SONIC legs
+# need onnxruntime in the SIM env. CloudXR/OpenXR deps stay OUT of this env by design --
+# they live in the separate vr_teleop venv (see scripts/teleop/setup_sim_teleop.sh).
+teleop = [
+    "onnxruntime",
+]
+
+[tool.uv]
+# Root is a managed environment, not a distributable package.
+package = false
+environments = ["sys_platform != 'darwin'"]
+# Stop Isaac Sim / Isaac Lab from resolving a different torch than the cu128 build.
+override-dependencies = ["torch==2.7.0", "torchvision==0.22.0"]
+
+[[tool.uv.index]]
+name = "nvidia"
+url = "https://pypi.nvidia.com"
+
+[[tool.uv.index]]
+name = "pytorch-cu128"
+url = "https://download.pytorch.org/whl/cu128"
+explicit = true
+
+[tool.uv.sources]
+torch = { index = "pytorch-cu128" }
+torchvision = { index = "pytorch-cu128" }
+fiatlux_task = { path = "source/fiatlux_task", editable = true }
+
+[tool.ruff]
+line-length = 120
+target-version = "py310"
+
+# Exclude directories
+extend-exclude = [
+    "logs",
+    "_isaac_sim",
+    ".vscode",
+    "_*",
+    ".git",
+]
+
+[tool.ruff.lint]
+# Enable flake8 rules and other useful ones
+select = [
+    "E",      # pycodestyle errors
+    "W",      # pycodestyle warnings
+    "F",      # pyflakes
+    "I",      # isort
+    "UP",     # pyupgrade
+    "C90",    # mccabe complexity
+    # "D",      # pydocstyle
+    "SIM",    # flake8-simplify
+    "RET",    # flake8-return
+]
+
+# Ignore specific rules (matching your flake8 config)
+ignore = [
+    "E402",   # Module level import not at top of file
+    "D401",   # First line should be in imperative mood
+    "RET504", # Unnecessary variable assignment before return statement
+    "RET505", # Unnecessary elif after return statement
+    "SIM102", # Use a single if-statement instead of nested if-statements
+    "SIM103", # Return the negated condition directly
+    "SIM108", # Use ternary operator instead of if-else statement
+    "SIM117", # Merge with statements for context managers
+    "SIM118", # Use {key} in {dict} instead of {key} in {dict}.keys()
+    "UP006",  # Use 'dict' instead of 'Dict' type annotation
+    "UP018",  # Unnecessary `float` call (rewrite as a literal)
+]
+
+[tool.ruff.lint.per-file-ignores]
+"__init__.py" = ["F401"]  # Allow unused imports in __init__.py files
+
+[tool.ruff.lint.mccabe]
+max-complexity = 30
+
+[tool.ruff.lint.pydocstyle]
+convention = "google"
+
+[tool.ruff.lint.isort]
+
+# Custom import sections with separate sections for each Isaac Lab extension
+section-order = [
+    "future",
+    "standard-library",
+    "third-party",
+    # Group omniverse extensions separately since they are run-time dependencies
+    # which are pulled in by Isaac Lab extensions
+    "omniverse-extensions",
+    # Group Isaac Lab extensions together since they are all part of the Isaac Lab project
+    "isaaclab",
+    "isaaclab-contrib",
+    "isaaclab-rl",
+    "isaaclab-mimic",
+    "isaaclab-tasks",
+    "isaaclab-assets",
+    # First-party is reserved for project templates
+    "first-party",
+    "local-folder",
+]
+
+[tool.ruff.lint.isort.sections]
+# Define what belongs in each custom section
+
+"omniverse-extensions" = [
+    "isaacsim",
+    "omni",
+    "pxr",
+    "carb",
+    "usdrt",
+    "Semantics",
+    "curobo",
+]
+
+"isaaclab" = ["isaaclab"]
+"isaaclab-assets" = ["isaaclab_assets"]
+"isaaclab-contrib" = ["isaaclab_contrib"]
+"isaaclab-rl" = ["isaaclab_rl"]
+"isaaclab-mimic" = ["isaaclab_mimic"]
+"isaaclab-tasks" = ["isaaclab_tasks"]
+
+[tool.ruff.format]
+
+docstring-code-format = true
+
+[tool.pyright]
+
+include = ["source", "scripts"]
+exclude = [
+    "**/__pycache__",
+    "**/_isaac_sim",
+    "**/docs",
+    "**/logs",
+    ".git",
+    ".vscode",
+]
+
+typeCheckingMode = "basic"
+pythonVersion = "3.11"
+pythonPlatform = "Linux"
+enableTypeIgnoreComments = true
+
+# This is required as the CI pre-commit does not download the module (i.e. numpy, torch, prettytable)
+# Therefore, we have to ignore missing imports
+reportMissingImports = "none"
+# This is required to ignore for type checks of modules with stubs missing.
+reportMissingModuleSource = "none" # -> most common: prettytable in mdp managers
+
+reportGeneralTypeIssues = "none"       # -> raises 218 errors (usage of literal MISSING in dataclasses)
+reportOptionalMemberAccess = "warning" # -> raises 8 errors
+reportPrivateUsage = "warning"
+
+
+[tool.deptry]
+# fiatlux_task's own setup.py is a build-time helper (setuptools/toml), not a runtime concern.
+extend_exclude = ["source/fiatlux_task/setup.py"]
+
+[tool.deptry.package_module_name_map]
+"rsl-rl-lib" = "rsl_rl"
+"pyzmq" = "zmq"
+
+[tool.deptry.per_rule_ignores]
+# All transitive through the single isaaclab[isaacsim,all] dependency (gymnasium, isaaclab_rl,
+# isaaclab_tasks, isaacsim, numpy, omni, carb, pxr, yaml) or msgpack-numpy (msgpack), or
+# intentionally-optional imports
+# gated behind their own runtime/CLI opt-in (huggingface_hub, pinocchio), or a sibling script
+# resolved via the launcher's own sys.path convention, not a package (cli_args).
+DEP001 = [
+    "carb", "cli_args", "gymnasium", "huggingface_hub", "isaaclab_rl", "isaaclab_tasks",
+    "isaacsim", "msgpack", "numpy", "omni", "pinocchio", "pxr", "yaml",
+]
+# Each declared for a reason that isn't a direct import: torchvision/psutil pin an exact
+# version isaaclab needs without importing them ourselves; imageio-ffmpeg is a plugin backend
+# imageio loads internally.
+DEP002 = ["torchvision", "psutil", "imageio-ffmpeg"]
+DEP003 = ["packaging", "tomli"]
+
+[tool.codespell]
+skip = '*.usd,*.usda,*.usdz,*.svg,*.png,_isaac_sim*,*.bib,*.css,*/_build'
+quiet-level = 0
+# the world list should always have words in lower case
+ignore-words-list = "haa,slq,collapsable,buss,reacher,thirdparty,retuned,tread"
+
+
+[tool.pytest.ini_options]
+
+markers = [
+    "isaacsim_ci: mark test to run in isaacsim ci",
+]

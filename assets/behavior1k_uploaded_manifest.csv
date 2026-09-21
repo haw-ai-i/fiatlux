@@ -1,0 +1,131 @@
+hf_path,category,model,has_lights,has_socket,has_physics,physics_notes,b1k_path,notes,usage
+behavior1k_bulb,light_bulb,kfmkwd,False,True,True,"2 rigid bodies, 2 convex hulls, articulated",light_bulb/kfmkwd,Canonical replacement bulb; bulblampM attachment mates with table_lamp/ehjsdz socket,task_asset
+behavior1k_bulb,light_bulb,sxkjea,False,False,True,"2 rigid bodies, 5 convex hulls, articulated",light_bulb/sxkjea,Replacement bulb variant,task_asset
+behavior1k_bulb,light_bulb,ymomhw,False,False,True,"1 rigid body, 3 convex hulls, single rigid body",light_bulb/ymomhw,Replacement bulb variant,task_asset
+behavior1k_bulb_broken,broken_light_bulb,cugtye,False,True,True,"3 rigid bodies, 16 convex hulls, articulated",broken_light_bulb/cugtye,Broken/faulty bulb; bulblampM attachment; used in BEHAVIOR changing_light_bulbs task,task_asset
+behavior1k_lamp,table_lamp,bbentu,True,False,True,"3 rigid bodies, 19 convex hulls, articulated",table_lamp/bbentu,Table lamp with lights metadata,scene_dressing
+behavior1k_lamp,table_lamp,ehjsdz,True,True,True,"4 rigid bodies, 32 convex hulls, articulated",table_lamp/ehjsdz,Canonical lamp fixture for kfmkwd bulb; has lights + togglebutton + attachment socket,task_asset
+behavior1k_lamp,table_lamp,erfbgw,True,False,True,"3 rigid bodies, 27 convex hulls, articulated",table_lamp/erfbgw,Table lamp with lights metadata,scene_dressing
+behavior1k_lamp,table_lamp,fhsorf,True,False,True,"5 rigid bodies, 11 convex hulls, articulated",table_lamp/fhsorf,Table lamp with lights metadata,scene_dressing
+behavior1k_lamp,table_lamp,gycqmt,True,False,True,"3 rigid bodies, 5 convex hulls, articulated",table_lamp/gycqmt,Table lamp with lights metadata,scene_dressing
+behavior1k_lamp,table_lamp,htmtsr,True,False,True,"3 rigid bodies, 10 convex hulls, articulated",table_lamp/htmtsr,Table lamp with lights metadata,scene_dressing
+behavior1k_lamp,table_lamp,lshxmu,True,False,True,"3 rigid bodies, 32 convex hulls, articulated",table_lamp/lshxmu,Table lamp with lights metadata,scene_dressing
+behavior1k_lamp,table_lamp,qgdwbh,True,False,True,"3 rigid bodies, 8 convex hulls, articulated",table_lamp/qgdwbh,Table lamp with lights metadata,scene_dressing
+behavior1k_lamp,table_lamp,qsajsm,True,False,True,"3 rigid bodies, 29 convex hulls, articulated",table_lamp/qsajsm,Table lamp with lights metadata,scene_dressing
+behavior1k_lamp,table_lamp,uzrovn,True,False,True,"3 rigid bodies, 22 convex hulls, articulated",table_lamp/uzrovn,Table lamp with lights metadata,scene_dressing
+behavior1k_lamp,table_lamp,wbcgev,True,False,True,"3 rigid bodies, 34 convex hulls, articulated",table_lamp/wbcgev,Table lamp with lights metadata,scene_dressing
+behavior1k_lamp,table_lamp,ykhxso,True,False,True,"5 rigid bodies, 12 convex hulls, articulated",table_lamp/ykhxso,Table lamp with lights metadata,scene_dressing
+behavior1k_downlight,downlight,adwcsx,True,False,True,"2 rigid bodies, 1 convex hull, articulated",downlight/adwcsx,Recessed ceiling fixture; canonical Fiatlux target,scene_dressing
+behavior1k_downlight,downlight,avpijm,True,False,True,"7 rigid bodies, 15 convex hulls, articulated",downlight/avpijm,Multi-bulb track downlight,scene_dressing
+behavior1k_downlight,downlight,dfjhxs,True,False,True,"2 rigid bodies, 1 convex hull, articulated",downlight/dfjhxs,Recessed ceiling fixture,scene_dressing
+behavior1k_downlight,downlight,fisfbn,True,False,True,"4 rigid bodies, 4 convex hulls, articulated",downlight/fisfbn,Recessed ceiling fixture,scene_dressing
+behavior1k_downlight,downlight,foxnlo,True,False,True,"2 rigid bodies, 32 convex hulls, articulated",downlight/foxnlo,Recessed ceiling fixture,scene_dressing
+behavior1k_downlight,downlight,ggwgmo,True,False,True,"2 rigid bodies, 1 convex hull, articulated",downlight/ggwgmo,Recessed ceiling fixture,scene_dressing
+behavior1k_downlight,downlight,ghdczp,True,False,True,"2 rigid bodies, 1 convex hull, articulated",downlight/ghdczp,Recessed ceiling fixture,scene_dressing
+behavior1k_downlight,downlight,hbqwek,True,False,True,"2 rigid bodies, 1 convex hull, articulated",downlight/hbqwek,Recessed ceiling fixture,scene_dressing
+behavior1k_downlight,downlight,hpkvem,True,False,True,"2 rigid bodies, 1 convex hull, articulated",downlight/hpkvem,Recessed ceiling fixture,scene_dressing
+behavior1k_downlight,downlight,jexffy,True,False,True,"2 rigid bodies, 1 convex hull, articulated",downlight/jexffy,Recessed ceiling fixture,scene_dressing
+behavior1k_downlight,downlight,jrrugm,True,False,True,"2 rigid bodies, 1 convex hull, articulated",downlight/jrrugm,Recessed ceiling fixture,scene_dressing
+behavior1k_downlight,downlight,kpobtc,True,False,True,"2 rigid bodies, 1 convex hull, articulated",downlight/kpobtc,Recessed ceiling fixture,scene_dressing
+behavior1k_downlight,downlight,ldapja,True,False,True,"2 rigid bodies, 8 convex hulls, articulated",downlight/ldapja,Recessed ceiling fixture,scene_dressing
+behavior1k_downlight,downlight,miioxs,True,False,True,"3 rigid bodies, 1 convex hull, articulated",downlight/miioxs,Recessed ceiling fixture,scene_dressing
+behavior1k_downlight,downlight,nlhffs,True,False,True,"2 rigid bodies, 1 convex hull, articulated",downlight/nlhffs,Recessed ceiling fixture,scene_dressing
+behavior1k_downlight,downlight,pawfmw,True,False,True,"2 rigid bodies, 3 convex hulls, articulated",downlight/pawfmw,Recessed ceiling fixture,scene_dressing
+behavior1k_downlight,downlight,pxrmnt,True,False,True,"2 rigid bodies, 1 convex hull, articulated",downlight/pxrmnt,Recessed ceiling fixture,scene_dressing
+behavior1k_downlight,downlight,qnleip,True,False,True,"2 rigid bodies, 1 convex hull, articulated",downlight/qnleip,Recessed ceiling fixture,scene_dressing
+behavior1k_downlight,downlight,tghdrr,True,False,True,"2 rigid bodies, 1 convex hull, articulated",downlight/tghdrr,Recessed ceiling fixture,scene_dressing
+behavior1k_downlight,downlight,tyfhjt,True,False,True,"2 rigid bodies, 1 convex hull, articulated",downlight/tyfhjt,Recessed ceiling fixture,scene_dressing
+behavior1k_downlight,downlight,vlplia,True,False,True,"2 rigid bodies, 10 convex hulls, articulated",downlight/vlplia,Recessed ceiling fixture,scene_dressing
+behavior1k_downlight,downlight,vqlqsa,True,False,True,"2 rigid bodies, 1 convex hull, articulated",downlight/vqlqsa,Recessed ceiling fixture,scene_dressing
+behavior1k_downlight,downlight,vtamah,True,False,True,"2 rigid bodies, 1 convex hull, articulated",downlight/vtamah,Recessed ceiling fixture,scene_dressing
+behavior1k_downlight,downlight,xfigfe,True,False,True,"2 rigid bodies, 1 convex hull, articulated",downlight/xfigfe,Recessed ceiling fixture,scene_dressing
+behavior1k_downlight,downlight,xhoqgk,True,False,True,"2 rigid bodies, 8 convex hulls, articulated",downlight/xhoqgk,Recessed ceiling fixture,scene_dressing
+behavior1k_downlight,downlight,ylheyu,True,False,True,"3 rigid bodies, 5 convex hulls, articulated",downlight/ylheyu,Recessed ceiling fixture,scene_dressing
+behavior1k_downlight,downlight,yrnfdt,True,False,True,"2 rigid bodies, 1 convex hull, articulated",downlight/yrnfdt,Recessed ceiling fixture,scene_dressing
+behavior1k_downlight,downlight,zojpvs,True,False,True,"2 rigid bodies, 1 convex hull, articulated",downlight/zojpvs,Recessed ceiling fixture,scene_dressing
+behavior1k_ladder,ladder,shfvtl,False,False,True,"1 rigid body, 23 convex hulls, single rigid body",ladder/shfvtl,Tall upright ladder bbox_z=1.67m; primary ladder for G1 to climb,task_asset
+behavior1k_ladder,ladder,vpmrlk,False,False,True,"1 rigid body, 32 convex hulls, single rigid body",ladder/vpmrlk,Ladder variant,task_asset
+behavior1k_ladder,ladder,axywzt,False,False,True,"1 rigid body, 8 convex hulls, single rigid body",ladder/axywzt,Ladder variant (possibly folded/flat bbox_z=0.045m),task_asset
+behavior1k_room_light,room_light,acksaa,True,False,True,"4 rigid bodies, 8 convex hulls, articulated",room_light/acksaa,Ceiling/pendant/wall fixture; up to 4 emitters,scene_dressing
+behavior1k_room_light,room_light,bgvpxl,True,False,True,"2 rigid bodies, 8 convex hulls, articulated",room_light/bgvpxl,Ceiling/pendant/wall fixture,scene_dressing
+behavior1k_room_light,room_light,bypxxd,True,False,True,"2 rigid bodies, 8 convex hulls, articulated",room_light/bypxxd,Ceiling/pendant/wall fixture,scene_dressing
+behavior1k_room_light,room_light,cucdgm,True,False,True,"2 rigid bodies, 4 convex hulls, articulated",room_light/cucdgm,Ceiling/pendant/wall fixture,scene_dressing
+behavior1k_room_light,room_light,ddvvuq,True,False,True,"2 rigid bodies, 8 convex hulls, articulated",room_light/ddvvuq,Ceiling/pendant/wall fixture,scene_dressing
+behavior1k_room_light,room_light,dthvxn,True,False,True,"2 rigid bodies, 8 convex hulls, articulated",room_light/dthvxn,Ceiling/pendant/wall fixture,scene_dressing
+behavior1k_room_light,room_light,eqbjaz,True,False,True,"2 rigid bodies, 8 convex hulls, articulated",room_light/eqbjaz,Ceiling/pendant/wall fixture,scene_dressing
+behavior1k_room_light,room_light,frjwas,True,False,True,"2 rigid bodies, 8 convex hulls, articulated",room_light/frjwas,Ceiling/pendant/wall fixture,scene_dressing
+behavior1k_room_light,room_light,fxtqtn,False,False,True,"1 rigid body, 18 convex hulls, single rigid body",room_light/fxtqtn,Room light without lights metadata,scene_dressing
+behavior1k_room_light,room_light,houchv,True,False,True,"2 rigid bodies, 8 convex hulls, articulated",room_light/houchv,Ceiling/pendant/wall fixture,scene_dressing
+behavior1k_room_light,room_light,hqxyvs,True,False,True,"2 rigid bodies, 32 convex hulls, articulated",room_light/hqxyvs,Ceiling/pendant/wall fixture,scene_dressing
+behavior1k_room_light,room_light,htznln,True,False,True,"2 rigid bodies, 8 convex hulls, articulated",room_light/htznln,Ceiling/pendant/wall fixture,scene_dressing
+behavior1k_room_light,room_light,ijvlre,True,False,True,"2 rigid bodies, 4 convex hulls, articulated",room_light/ijvlre,Ceiling/pendant/wall fixture,scene_dressing
+behavior1k_room_light,room_light,kiuayi,False,False,True,"1 rigid body, 8 convex hulls, single rigid body",room_light/kiuayi,Room light without lights metadata,scene_dressing
+behavior1k_room_light,room_light,ktlgie,True,False,True,"2 rigid bodies, 8 convex hulls, articulated",room_light/ktlgie,Ceiling/pendant/wall fixture,scene_dressing
+behavior1k_room_light,room_light,mhcbeg,True,False,True,"2 rigid bodies, 8 convex hulls, articulated",room_light/mhcbeg,Ceiling/pendant/wall fixture,scene_dressing
+behavior1k_room_light,room_light,mjfjhn,True,False,True,"2 rigid bodies, 32 convex hulls, articulated",room_light/mjfjhn,Ceiling/pendant/wall fixture,scene_dressing
+behavior1k_room_light,room_light,nimhbn,True,False,True,"2 rigid bodies, 1 convex hull, articulated",room_light/nimhbn,Ceiling/pendant/wall fixture,scene_dressing
+behavior1k_room_light,room_light,occcxo,True,False,True,"2 rigid bodies, 8 convex hulls, articulated",room_light/occcxo,Ceiling/pendant/wall fixture,scene_dressing
+behavior1k_room_light,room_light,paewfc,True,False,True,"2 rigid bodies, 4 convex hulls, articulated",room_light/paewfc,Ceiling/pendant/wall fixture,scene_dressing
+behavior1k_room_light,room_light,podyre,True,False,True,"2 rigid bodies, 7 convex hulls, articulated",room_light/podyre,Ceiling/pendant/wall fixture,scene_dressing
+behavior1k_room_light,room_light,qqihah,True,False,True,"2 rigid bodies, 8 convex hulls, articulated",room_light/qqihah,Ceiling/pendant/wall fixture,scene_dressing
+behavior1k_room_light,room_light,rueuqi,True,False,True,"2 rigid bodies, 8 convex hulls, articulated",room_light/rueuqi,Ceiling/pendant/wall fixture,scene_dressing
+behavior1k_room_light,room_light,uptmal,True,False,True,"5 rigid bodies, 4 convex hulls, articulated",room_light/uptmal,Ceiling/pendant/wall fixture,scene_dressing
+behavior1k_room_light,room_light,vbaigh,True,False,True,"2 rigid bodies, 4 convex hulls, articulated",room_light/vbaigh,Ceiling/pendant/wall fixture,scene_dressing
+behavior1k_room_light,room_light,widhrs,True,False,True,"2 rigid bodies, 8 convex hulls, articulated",room_light/widhrs,Ceiling/pendant/wall fixture,scene_dressing
+behavior1k_room_light,room_light,wvctnb,True,False,True,"2 rigid bodies, 8 convex hulls, articulated",room_light/wvctnb,Ceiling/pendant/wall fixture,scene_dressing
+behavior1k_room_light,room_light,xaezsw,True,False,True,"2 rigid bodies, 2 convex hulls, articulated",room_light/xaezsw,Ceiling/pendant/wall fixture,scene_dressing
+behavior1k_room_light,room_light,xiajyb,True,False,True,"8 rigid bodies, 14 convex hulls, articulated",room_light/xiajyb,Ceiling/pendant/wall fixture,scene_dressing
+behavior1k_room_light,room_light,xyvxhs,True,False,True,"2 rigid bodies, 8 convex hulls, articulated",room_light/xyvxhs,Ceiling/pendant/wall fixture,scene_dressing
+behavior1k_spotlight,spotlight,gbvzvy,True,False,True,"3 rigid bodies, 4 convex hulls, articulated",spotlight/gbvzvy,Directional ceiling/track-mount fixture,scene_dressing
+behavior1k_spotlight,spotlight,odrdjb,True,False,True,"3 rigid bodies, 2 convex hulls, articulated",spotlight/odrdjb,Directional ceiling/track-mount fixture,scene_dressing
+behavior1k_spotlight,spotlight,vojnfz,True,False,True,"3 rigid bodies, 4 convex hulls, articulated",spotlight/vojnfz,Directional ceiling/track-mount fixture,scene_dressing
+behavior1k_spotlight,spotlight,wtrjoa,True,False,True,"3 rigid bodies, 19 convex hulls, articulated",spotlight/wtrjoa,Directional ceiling/track-mount fixture,scene_dressing
+behavior1k_spotlight,spotlight,xwotqa,True,False,True,"3 rigid bodies, 1 convex hull, articulated",spotlight/xwotqa,Directional ceiling/track-mount fixture,scene_dressing
+behavior1k_square_light,square_light,bmrewz,True,False,True,"2 rigid bodies, 1 convex hull, articulated",square_light/bmrewz,Flat panel flush-ceiling fixture,scene_dressing
+behavior1k_square_light,square_light,eephxy,True,False,True,"2 rigid bodies, 1 convex hull, articulated",square_light/eephxy,Flat panel flush-ceiling fixture,scene_dressing
+behavior1k_square_light,square_light,gqjmyu,True,False,True,"2 rigid bodies, 4 convex hulls, articulated",square_light/gqjmyu,Flat panel flush-ceiling fixture,scene_dressing
+behavior1k_square_light,square_light,hwozjd,True,False,True,"2 rigid bodies, 1 convex hull, articulated",square_light/hwozjd,Flat panel flush-ceiling fixture,scene_dressing
+behavior1k_square_light,square_light,hylkmj,True,False,True,"2 rigid bodies, 4 convex hulls, articulated",square_light/hylkmj,Flat panel flush-ceiling fixture,scene_dressing
+behavior1k_square_light,square_light,odlphz,True,False,True,"2 rigid bodies, 1 convex hull, articulated",square_light/odlphz,Flat panel flush-ceiling fixture,scene_dressing
+behavior1k_square_light,square_light,ojaviq,True,False,True,"4 rigid bodies, 2 convex hulls, articulated",square_light/ojaviq,Flat panel flush-ceiling fixture,scene_dressing
+behavior1k_square_light,square_light,qebtel,True,False,True,"2 rigid bodies, 1 convex hull, articulated",square_light/qebtel,Flat panel flush-ceiling fixture,scene_dressing
+behavior1k_square_light,square_light,tgtowc,True,False,True,"2 rigid bodies, 1 convex hull, articulated",square_light/tgtowc,Flat panel flush-ceiling fixture,scene_dressing
+behavior1k_square_light,square_light,zljdtm,True,False,True,"2 rigid bodies, 6 convex hulls, articulated",square_light/zljdtm,Flat panel flush-ceiling fixture,scene_dressing
+behavior1k_rectangular_light,rectangular_light,jnnhzm,True,False,True,"2 rigid bodies, 2 convex hulls, articulated",rectangular_light/jnnhzm,Long overhead fluorescent panel bbox ~0.05x1.2x2.0m,scene_dressing
+behavior1k_rectangular_light,rectangular_light,lmicjz,True,False,True,"2 rigid bodies, 8 convex hulls, articulated",rectangular_light/lmicjz,Long overhead fluorescent panel,scene_dressing
+behavior1k_rectangular_light,rectangular_light,nsjice,True,False,True,"2 rigid bodies, 4 convex hulls, articulated",rectangular_light/nsjice,Long overhead fluorescent panel,scene_dressing
+behavior1k_track_light,track_light,gypkjo,True,False,True,"6 rigid bodies, 7 convex hulls, articulated",track_light/gypkjo,Track-mounted multi-bulb fixture,scene_dressing
+behavior1k_track_light,track_light,ltnnrc,True,False,True,"5 rigid bodies, 5 convex hulls, articulated",track_light/ltnnrc,Track-mounted multi-bulb fixture,scene_dressing
+behavior1k_wall_mounted_light,wall_mounted_light,bkaivt,True,False,True,"4 rigid bodies, 4 convex hulls, articulated",wall_mounted_light/bkaivt,Wall sconce at height,scene_dressing
+behavior1k_wall_mounted_light,wall_mounted_light,bxsyxf,True,False,True,"2 rigid bodies, 4 convex hulls, articulated",wall_mounted_light/bxsyxf,Wall sconce at height,scene_dressing
+behavior1k_wall_mounted_light,wall_mounted_light,etqbld,False,False,True,"1 rigid body, 3 convex hulls, single rigid body",wall_mounted_light/etqbld,Wall mount fixture without lights metadata,scene_dressing
+behavior1k_wall_mounted_light,wall_mounted_light,jhpygl,True,False,True,"4 rigid bodies, 4 convex hulls, articulated",wall_mounted_light/jhpygl,Wall sconce at height,scene_dressing
+behavior1k_wall_mounted_light,wall_mounted_light,kzpogm,True,False,True,"2 rigid bodies, 1 convex hull, articulated",wall_mounted_light/kzpogm,Wall sconce at height,scene_dressing
+behavior1k_wall_mounted_light,wall_mounted_light,mbhxbg,False,False,True,"1 rigid body, 3 convex hulls, single rigid body",wall_mounted_light/mbhxbg,Wall mount fixture without lights metadata,scene_dressing
+behavior1k_wall_mounted_light,wall_mounted_light,pqomwb,True,False,True,"2 rigid bodies, 1 convex hull, articulated",wall_mounted_light/pqomwb,Wall sconce at height,scene_dressing
+behavior1k_wall_mounted_light,wall_mounted_light,trxlgu,True,False,True,"3 rigid bodies, 4 convex hulls, articulated",wall_mounted_light/trxlgu,Wall sconce at height,scene_dressing
+behavior1k_wall_mounted_light,wall_mounted_light,urhftt,True,False,True,"4 rigid bodies, 4 convex hulls, articulated",wall_mounted_light/urhftt,Wall sconce at height,scene_dressing
+behavior1k_wall_mounted_light,wall_mounted_light,wcnxct,True,False,True,"2 rigid bodies, 8 convex hulls, articulated",wall_mounted_light/wcnxct,Wall sconce at height,scene_dressing
+behavior1k_wall_mounted_light,wall_mounted_light,yylrlu,True,False,True,"2 rigid bodies, 1 convex hull, articulated",wall_mounted_light/yylrlu,Wall sconce at height,scene_dressing
+behavior1k_chandelier,chandelier,nflhjl,True,False,True,"4 rigid bodies, 1 convex hull, articulated",chandelier/nflhjl,Ceiling-hanging multi-bulb fixture,scene_dressing
+behavior1k_chandelier,chandelier,qghfol,True,False,True,"3 rigid bodies, 2 convex hulls, articulated",chandelier/qghfol,Ceiling-hanging multi-bulb fixture,scene_dressing
+behavior1k_chandelier,chandelier,xtwiwi,True,False,True,"3 rigid bodies, 4 convex hulls, articulated",chandelier/xtwiwi,Ceiling-hanging multi-bulb fixture,scene_dressing
+behavior1k_chandelier,chandelier,zgwevt,True,False,True,"3 rigid bodies, 4 convex hulls, articulated",chandelier/zgwevt,Ceiling-hanging multi-bulb fixture,scene_dressing
+behavior1k_paper_lantern,paper_lantern,cvzqeb,True,False,True,"2 rigid bodies, 2 convex hulls, articulated",paper_lantern/cvzqeb,Hanging pendant lantern,scene_dressing
+behavior1k_paper_lantern,paper_lantern,hcieco,True,False,True,"2 rigid bodies, 1 convex hull, articulated",paper_lantern/hcieco,Hanging pendant lantern,scene_dressing
+behavior1k_paper_lantern,paper_lantern,hgmreo,True,True,True,"3 rigid bodies, 32 convex hulls, articulated",paper_lantern/hgmreo,Hanging pendant lantern with hangpoleM ceiling attachment,scene_dressing
+behavior1k_lampshade,lampshade,crzpcw,False,False,True,"1 rigid body, 32 convex hulls, single rigid body",lampshade/crzpcw,Shade housing component; pairs with bulb,scene_dressing
+behavior1k_lampshade,lampshade,dizlbd,False,False,True,"1 rigid body, 31 convex hulls, single rigid body",lampshade/dizlbd,Shade housing component,scene_dressing
+behavior1k_lampshade,lampshade,drlveg,False,False,True,"1 rigid body, 32 convex hulls, single rigid body",lampshade/drlveg,Shade housing component,scene_dressing
+behavior1k_lampshade,lampshade,zadmdc,False,False,True,"1 rigid body, 32 convex hulls, single rigid body",lampshade/zadmdc,Shade housing component,scene_dressing
+behavior1k_floor_lamp,floor_lamp,chjeoy,True,False,True,"3 rigid bodies, 26 convex hulls, articulated",floor_lamp/chjeoy,Standing lamp with lights metadata and togglebutton,scene_dressing
+behavior1k_floor_lamp,floor_lamp,cosjfl,True,False,True,"3 rigid bodies, 21 convex hulls, articulated",floor_lamp/cosjfl,Standing lamp with lights metadata and togglebutton,scene_dressing
+behavior1k_floor_lamp,floor_lamp,disyzd,True,False,True,"3 rigid bodies, 40 convex hulls, articulated",floor_lamp/disyzd,Standing lamp with lights metadata and togglebutton,scene_dressing
+behavior1k_floor_lamp,floor_lamp,hdfnqb,True,False,True,"3 rigid bodies, 3 convex hulls, articulated",floor_lamp/hdfnqb,Standing lamp with lights metadata and togglebutton,scene_dressing
+behavior1k_floor_lamp,floor_lamp,jbjckk,True,False,True,"3 rigid bodies, 15 convex hulls, articulated",floor_lamp/jbjckk,Standing lamp with lights metadata and togglebutton,scene_dressing
+behavior1k_floor_lamp,floor_lamp,lcmuvd,True,False,True,"3 rigid bodies, 32 convex hulls, articulated",floor_lamp/lcmuvd,Standing lamp with lights metadata and togglebutton,scene_dressing
+behavior1k_floor_lamp,floor_lamp,lnacuc,True,False,True,"3 rigid bodies, 14 convex hulls, articulated",floor_lamp/lnacuc,Standing lamp with lights metadata and togglebutton,scene_dressing
+behavior1k_floor_lamp,floor_lamp,mqfdjk,True,False,True,"3 rigid bodies, 10 convex hulls, articulated",floor_lamp/mqfdjk,Standing lamp with lights metadata and togglebutton,scene_dressing
+behavior1k_floor_lamp,floor_lamp,ogolip,True,False,True,"3 rigid bodies, 13 convex hulls, articulated",floor_lamp/ogolip,Standing lamp with lights metadata and togglebutton,scene_dressing
+behavior1k_floor_lamp,floor_lamp,ozknkr,True,False,True,"3 rigid bodies, 8 convex hulls, articulated",floor_lamp/ozknkr,Standing lamp with lights metadata and togglebutton,scene_dressing
+behavior1k_floor_lamp,floor_lamp,smfygn,True,False,True,"3 rigid bodies, 2 convex hulls, articulated",floor_lamp/smfygn,Standing lamp with lights metadata and togglebutton,scene_dressing
