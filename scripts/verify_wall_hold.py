@@ -34,13 +34,13 @@ Supports overriding the lateral/tilt gains (``--tilt_k``/``--tilt_d``/``--max_to
 .py``'s ``--hold_force``/``--bore_depth`` did: sweeping a candidate config's margin before it
 ships, not just confirming the shipped one.
 
-Run via ./pyrun (repo root), not a bare .venv/bin/python -- see verify_ceiling_hold.py's docstring
-for why.
+Run with `uv run python` from the repo root, not a bare .venv/bin/python -- see
+verify_ceiling_hold.py's docstring for why.
 
 Example
 -------
-    ./pyrun scripts/verify_wall_hold.py --headless
-    ./pyrun scripts/verify_wall_hold.py --headless --tilt_k 0.15 --max_torque 0.15
+    uv run python scripts/verify_wall_hold.py --headless
+    uv run python scripts/verify_wall_hold.py --headless --tilt_k 0.15 --max_torque 0.15
 """
 
 """Launch Isaac Sim Simulator first."""

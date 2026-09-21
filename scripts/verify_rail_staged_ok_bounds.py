@@ -5,7 +5,7 @@
 # SPDX-License-Identifier: BSD-3-Clause
 
 """Does _rail_staged_ok() in sonic_teleop.py bound dz on BOTH sides? (code-review finding, fix
-verification -- sonic_teleop.py ~L1371)
+verification -- sonic_teleop.py ~L1402)
 
 ``_rail_staged_ok`` is meant to catch a badly converged rail-hand approach before the base is
 released and the (fake) brace is trusted for support. The original bug: ``ok = f < 20.0 and dz <
@@ -23,7 +23,7 @@ regex fails loudly rather than silently testing stale logic).
 
 Example
 -------
-    ./pyrun scripts/verify_rail_staged_ok_bounds.py
+    uv run python scripts/verify_rail_staged_ok_bounds.py
     (no Isaac Sim / AppLauncher required; plain python3 also works)
 """
 

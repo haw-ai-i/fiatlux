@@ -37,16 +37,16 @@ Method (unchanged from the original):
   position onto the seat axis (lateral=0) each step: there is no twist left to preserve, so the
   hold is simpler than before, not a workaround.
 
-Run it via ``./pyrun`` (repo root), not a bare ``.venv/bin/python``: on a machine where
-``.venv`` is shared with a different checkout (this one's own dev setup), a bare invocation can
-silently resolve ``fiatlux_task``/``fiatlux_teleop`` to the WRONG checkout's source -- ``pyrun``
-fixes that by pointing ``PYTHONPATH`` at this repo's own ``source/`` first. (pytest gets this
-right on its own, via its rootdir sys.path insertion; only direct script invocation needs this.)
+Run it with ``uv run python`` from the repo root, not a bare ``.venv/bin/python``: on a machine
+where ``.venv`` is shared with a different checkout, a bare invocation can silently resolve
+``fiatlux_task``/``fiatlux_teleop`` to the WRONG checkout's source -- ``verify_common.assert_right_checkout``
+(called from ``build_cfg`` below) catches that case. (pytest gets this right on its own, via its
+rootdir sys.path insertion; only direct script invocation needs this.)
 
 Examples
 --------
-    ./pyrun scripts/diagnose_contact_axial.py                 # real scene, real contact (shipped default, issue #167)
-    DISABLE_COLLISION=1 ./pyrun scripts/diagnose_contact_axial.py   # isolate the projection (bulb's own collider off)
+    uv run python scripts/diagnose_contact_axial.py                     # real contact (shipped default)
+    DISABLE_COLLISION=1 uv run python scripts/diagnose_contact_axial.py  # isolate the projection
 """
 
 """Launch Isaac Sim Simulator first."""

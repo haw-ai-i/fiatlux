@@ -12,7 +12,7 @@ at-fixture manipulation tasks. Built as a standard ``ManagerBasedRLEnvCfg`` so i
 slots into the usual train / play / eval scripts.
 
 Design notes (mirrors ``g1_bulb_env_cfg`` where the tasks overlap):
-- **Actions** are whole-body joint-position targets (all ~53 DoF incl. fingers; the
+- **Actions** are whole-body joint-position targets (all 53 DoF incl. fingers; the
   per-phase action-space split is a family decision, see the unification spec).
 - **Observations**: the ``policy`` group holds IMU terms, proprioception, last
   action, the limb-on-ladder contact forces, a head-mounted RGB camera, and a
@@ -73,7 +73,7 @@ SUCCESS_XY_RADIUS = 0.6  # m; with the max-speed cap, rejects ballistic fly-thro
 SUCCESS_MAX_SPEED = 1.5  # m/s
 
 # Fall thresholds, shared by the terminations and the fall penalty (see mdp.fall_terminated).
-# Standing pelvis is 0.75 m, a deep mounting crouch stays > 0.45 m, a collapsed robot reads
+# Standing pelvis is 0.79 m, a deep mounting crouch stays > 0.45 m, a collapsed robot reads
 # < 0.30 m; beyond ~57 deg a position-controlled G1 cannot recover.
 FALL_MIN_HEIGHT = 0.35  # m, world frame (the floor is flat)
 FALL_TILT_LIMIT = 1.0  # rad

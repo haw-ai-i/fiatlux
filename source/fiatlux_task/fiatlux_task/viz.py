@@ -65,7 +65,7 @@ def orbit_pose(
 
 
 # Orbit geometry for the fixture view: low enough to be a genuine upward look at a mount at
-# 2.2 m (wall) or 3.0 m (ceiling), close enough that the fixture is more than a speck.
+# 2.2 m (wall) or 2.37 m (ceiling), close enough that the fixture is more than a speck.
 FIXTURE_VIEW_RADIUS = 2.2
 FIXTURE_VIEW_HEIGHT = 1.5
 FIXTURE_VIEW_MIN_RADIUS = 0.6  # closer than this and the fixture overflows the frame
@@ -142,12 +142,12 @@ def fixture_orbit(env_cfg) -> dict:
 def _draw_overlay(frame: np.ndarray, text: str) -> np.ndarray:
     """Burn a few lines of text into the top-left of a frame, over a dark panel.
 
-    Some state a recording needs to show has no visual signature at all. The bayonet unscrew is
-    the case in point: the bulb is a surface of revolution, so turning it about its own axis
-    changes almost nothing on screen -- measured at 5.7 percent of pixels between two
-    mid-rotation frames, and most of that is specular drift. The event is real, and the camera
-    cannot show it. Printing the state machine's own numbers is honest where implying visible
-    motion would not be.
+    Some state a recording needs to show has no visual signature at all. The bulb's retention
+    wrench is the case in point: a seated bulb is held by a continuously applied force
+    (``mdp.bulb_attachment``), not a visible mechanism, so a frame cannot tell a bulb held
+    under that force apart from one merely resting in the same pose. The event is real, and
+    the camera cannot show it. Printing the state machine's own numbers is honest where
+    implying visible motion would not be.
 
     Falls back to the unannotated frame if PIL is missing, because a recording without a caption
     is still worth having.

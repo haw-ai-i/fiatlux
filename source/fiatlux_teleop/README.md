@@ -30,7 +30,7 @@ Teleop runs as **two processes in two envs**, kept separate so the CloudXR deps 
 
 | Env | What's in it | Role |
 |---|---|---|
-| **sim env** (uv `.venv`, or your `SIM_PYTHON`) | Isaac Sim 5.1 / Isaac Lab 2.3.2; `fiatlux_task` + `fiatlux_teleop` on `PYTHONPATH`; `onnxruntime` via the `teleop` extra (SONIC legs) | renders + runs the sim, reads XR input |
+| **sim env** (uv `.venv`, or your `SIM_PYTHON`) | Isaac Sim 5.1 / Isaac Lab 2.3.2; `fiatlux_task` + `fiatlux_teleop` on `PYTHONPATH`; `onnxruntime` via the `teleop` extra (GEAR-SONIC legs) | renders + runs the sim, reads XR input |
 | **`vr_teleop`** | `pip install 'isaacteleop[cloudxr,retargeters]~=1.3.0'` (1.3.131 verified) | the CloudXR streaming runtime only |
 
 > **uv gotcha:** `uv sync` without the extra makes the env match the lockfile *exactly* — it
@@ -55,10 +55,12 @@ firewall ports, network topology, and every hard-won gotcha:
 
 The benchmark's twelve subtasks each have a teleop twin -- the subtask id with `-Teleop-v0` on
 the end, e.g. `FIATLUX-S07-ApproachNewBulb-Teleop-v0`. They are what demos are collected on and
-scored against; the launcher lists them all if `FIATLUX_TASK` is unset. Three earlier standalone
-envs also still run (`FIATLUX-Insert-Teleop-v0`, `FIATLUX-Carry-Teleop-v0`,
-`FIATLUX-LadderGallery-Teleop-v0`) and serve as templates below, but they are not part of the
-12-subtask benchmark and do not score against it.
+scored against; the launcher lists them all if `FIATLUX_TASK` is unset. Having a twin is not the
+same as clearing its gate: see [The 12 subtasks](../../docs/subtask_teleop.md#the-12-subtasks) for
+which ones a teleoperated take actually satisfies. Three earlier standalone envs also still run
+(`FIATLUX-Insert-Teleop-v0`, `FIATLUX-Carry-Teleop-v0`, `FIATLUX-LadderGallery-Teleop-v0`) and
+serve as templates below, but they are not part of the 12-subtask benchmark and do not score
+against it.
 
 ```bash
 # from the repo root. Walking + arm teleop (SONIC legs):

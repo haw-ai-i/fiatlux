@@ -3,9 +3,9 @@
 #
 # SPDX-License-Identifier: BSD-3-Clause
 
-"""``FIATLUX-Install-v0`` -- insert/screw in a new bulb (functional RL task).
+"""``FIATLUX-Install-v0`` -- seat a new bulb (functional RL task).
 
-The screw-in counterpart of ``FIATLUX-Insert-v0`` on the same bench world: the table
+The counterpart of ``FIATLUX-Insert-v0`` on the same bench world: the table
 lamp's socket starts EMPTY and the fresh bulb rests in a parts crate on the floor
 beside the bench (instead of Insert's bulb-at-hand-height tabletop start).
 
@@ -262,11 +262,11 @@ class InstallEnvCfg(ManagerBasedRLEnvCfg):
     def __post_init__(self) -> None:
         super().__post_init__()
         apply_install_preset(self.scene)
-        self.scene.fixture = None
         # Tabletop preset has no ladder; the top-level SceneEntityCfg would fail to resolve.
         self.events.randomize_ladder_scale = None
-        # TODO(task phase): start the bulb in the robot's hand (or nearby), reward seating it into
-        #   the socket and forming the attach joint at the seat pose.
+        # TODO(#76 Step 2): start the bulb in the robot's hand (or nearby) and wire
+        #   ``mdp.bulb_attachment`` so seating it latches (a wrench, not a joint -- see
+        #   ``mdp/attach.py``), rather than the bulb simply dropping into the socket.
 
         add_wrist_camera(self.scene)
         # GrootPolicy looks up ``scene["ego_camera"]`` unconditionally (same gap

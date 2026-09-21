@@ -12,10 +12,10 @@ and does not drop the bulb. Read the ``curl`` column in that mode -- it is the m
 angle, and a bulb that "stayed" with the fingers still curled proves nothing.
 
 
-``diagnose_stuck_bulb.py`` reports 181-223x the bulb's weight in a hand whose fingers are open. It
-also parks the bulb at the palm body's ORIGIN, and the bulb's radius is about 39 mm, so the bulb
-probably encloses the palm geometry: those forces may be the solver depenetrating an overlap the
-script created rather than anything about the hand.
+``diagnose_stuck_bulb.py`` reports contact force many times the bulb's weight in a hand whose
+fingers are open. It also parks the bulb at the palm body's ORIGIN, and the bulb's radius is about
+39 mm, so the bulb probably encloses the palm geometry: those forces may be the solver
+depenetrating an overlap the script created rather than anything about the hand.
 
 This decides it. Hold the bulb at a series of distances from the palm and read the hand-bulb
 contact force at each.

@@ -27,14 +27,14 @@ The bulb's real contact friction against the socket bore is a premise of the who
 to both bodies' colliders, and the ``zero_wrench`` trial measures what real contact alone does
 with no wrench at all.
 
-Run via ./pyrun (repo root), not a bare .venv/bin/python -- see verify_twist_damping.py's
-docstring for why.
+Run with `uv run python` from the repo root, not a bare .venv/bin/python: a .venv shared across
+checkouts can otherwise resolve fiatlux_task to the wrong one (see verify_common.py).
 
 Examples
 --------
-    ./pyrun scripts/ablate_attach_forces.py --headless --seed 3
-    ./pyrun scripts/ablate_attach_forces.py --headless --seed 3 --spin_rate 15
-    ./pyrun scripts/ablate_attach_forces.py --headless --seed 3 --only baseline,no_twist_friction
+    uv run python scripts/ablate_attach_forces.py --headless --seed 3
+    uv run python scripts/ablate_attach_forces.py --headless --seed 3 --spin_rate 15
+    uv run python scripts/ablate_attach_forces.py --headless --seed 3 --only baseline,no_axial_magnet
 """
 
 """Launch Isaac Sim Simulator first."""

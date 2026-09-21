@@ -3,30 +3,33 @@
 #
 # SPDX-License-Identifier: BSD-3-Clause
 
-"""Does the new twist damping actually arrest a real spin, under real contact? (issue #171)
+"""Does an injected spin decay under real bore-contact friction alone, with no scripted twist
+term? (issue #171)
 
-Directly reproduces the real-teleop finding that motivated it: a ceiling-seated bulb (seed 3,
-dex3, S03) was found spinning about the seat axis at 1-19 rad/s for a sustained ~2.9s -- present
-almost from the moment it seated, never decaying under the OLD tilt-damping term (which shared
-tilt's tiny max_torque budget with twist, so arresting even 10 rad/s needed several times more
-torque than that budget allowed) -- before abruptly destabilizing into a real ejection, no
-operator, no hand contact the entire time.
+Directly reproduces the real-teleop finding that started this investigation: a ceiling-seated
+bulb (seed 3, dex3, S03) was found spinning about the seat axis at 1-19 rad/s for a sustained
+~2.9s -- present almost from the moment it seated, never decaying under the OLD twist-friction
+term (a Coulomb-style law that turned out to BE the bug, see attach.py's module docstring) --
+before abruptly destabilizing into a real ejection, no operator, no hand contact the entire
+time. The fix was removing that term outright: rotation about the seat axis is now left
+entirely to the socket's real bore-contact friction, with no scripted twist torque of any kind.
 
 This spawns the old bulb already seated at a forced ceiling mount, then INJECTS an initial spin
 about the seat axis matching the reported range, and steps forward under zero action for several
 real seconds -- no hand, no disturbance, nothing overwriting pose/velocity after the initial
 kick -- reading the manager's own state (phase, axial, twist rate) straight off the real,
-contact-resolved simulation. Fixed: twist rate decays toward 0 and phase stays SEATED the whole
-run. Still broken: twist rate persists/stays large and/or the bulb eventually destabilizes
-(axial or tilt blowing up, phase flipping to FREE) the way the original bug did.
+contact-resolved simulation. Fixed: twist rate decays toward 0 under contact friction alone and
+phase stays SEATED the whole run. Still broken: twist rate persists/stays large and/or the bulb
+eventually destabilizes (axial or tilt blowing up, phase flipping to FREE) the way the original
+bug did.
 
-Run via ./pyrun (repo root), not a bare .venv/bin/python: on a machine where .venv is shared
-with a different checkout, a bare invocation can silently resolve fiatlux_task to the WRONG
-checkout's source -- pyrun fixes that by pointing PYTHONPATH at this repo's own source/ first.
+Run with `uv run python` from the repo root, not a bare .venv/bin/python: on a machine where
+.venv is shared with a different checkout, a bare invocation can silently resolve fiatlux_task
+to the WRONG checkout's source.
 
 Example
 -------
-    ./pyrun scripts/verify_twist_damping.py --headless --spin_rate 15.0
+    uv run python scripts/verify_twist_damping.py --headless --spin_rate 15.0
 """
 
 """Launch Isaac Sim Simulator first."""

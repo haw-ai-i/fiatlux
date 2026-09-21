@@ -28,11 +28,12 @@ This script checks the fix two ways:
    skipped -- so the left arm's ``default_joint_pos`` (and the post-settle ``_staged_arm`` slice
    that reads it) stays exactly as the task authored it.
 
-Run via ./pyrun (repo root), not a bare .venv/bin/python -- see verify_common.py's docstring.
+Run with `uv run python` from the repo root, not a bare .venv/bin/python -- see
+verify_common.py's docstring.
 
 Example
 -------
-    ./pyrun scripts/verify_arm_rest_leak.py --headless
+    uv run python scripts/verify_arm_rest_leak.py --headless
 """
 
 """Launch Isaac Sim Simulator first."""

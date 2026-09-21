@@ -202,10 +202,10 @@ class G1BulbInsertTeleopEnvCfg(G1BulbInsertEnvCfg):
         # swaps in the OMNI socket/bulb above at a different scale (0.007) and axis convention
         # (Y-up native, +90deg X to stand upright), so those constants do not describe this
         # asset's actual seat/plug points and have not been re-measured for it. Disabling
-        # retention here rather than applying it with unverified geometry -- a spring pulling
+        # retention here rather than applying it with unverified geometry -- a detent pulling
         # toward the wrong point would be worse for a live operator than no retention at all.
         # TODO(#167): measure this asset's real seat/plug offsets (same usd-core point-query
-        # approach as plans/bayonet-force-based-attachment.md used for the family asset) and
+        # approach used for the family asset -- see mdp/attach.py) and
         # re-enable.
         self.events.bulb_attachment = None
 

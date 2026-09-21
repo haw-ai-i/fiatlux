@@ -1,6 +1,6 @@
-"""Teleop variants of the 15 benchmark subtasks, from one recipe.
+"""Teleop variants of the 12 benchmark subtasks, from one recipe.
 
-Every subtask (``FIATLUX-S01..S15-*-v0``) derives from the same ``SubtaskEnvCfg`` and uses the
+Every subtask (``FIATLUX-S01..S12-*-v0``) derives from the same ``SubtaskEnvCfg`` and uses the
 same RL action space (``joint_pos``: whole-body joint targets). They differ only in scene
 staging, success gates and rewards -- so a teleop twin is the SAME three swaps every hand-written
 teleop cfg does, and is applied here generically rather than copied 15 times:
@@ -15,10 +15,10 @@ cfg and calls :func:`apply_subtask_teleop` -- mirroring how the benchmark writes
 (explicit file per task, shared behaviour in a common module). Put per-task teleop tweaks in
 those files; keep this recipe generic.
 
-Ids are the subtask id with ``-Teleop-v0``, e.g. ``FIATLUX-S05-ClimbLadder-Teleop-v0``, and they
+Ids are the subtask id with ``-Teleop-v0``, e.g. ``FIATLUX-S02-ClimbLadder-Teleop-v0``, and they
 run on the existing driver unchanged:
 
-    FIATLUX_TASK=FIATLUX-S05-ClimbLadder-Teleop-v0 bash scripts/teleop/restart_sonic_teleop.sh
+    FIATLUX_TASK=FIATLUX-S02-ClimbLadder-Teleop-v0 bash scripts/teleop/restart_sonic_teleop.sh
 """
 
 from __future__ import annotations

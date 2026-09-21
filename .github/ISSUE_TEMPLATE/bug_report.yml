@@ -14,8 +14,7 @@ body:
     attributes:
       label: Setup method
       options:
-        - Docker + Distrobox + Pixi (recommended)
-        - Source build
+        - uv sync (the documented setup, see docs/getting_started.md)
     validations:
       required: true
   - type: input

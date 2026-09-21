@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """Add an explicit box collider for a platform ladder's standing tread (no GPU).
 
-``omniverse_ladder_collision.py`` authors ``convexDecomposition`` over every mesh, which is
+``omniverse_ladder_collision.py`` authors a physics collider per mesh -- SDF by default,
+convexDecomposition as its fallback for an open mesh, which AlumStep_D's frame is -- which is
 right for the frame but loses the platform: on AlumStep_D the decomposed hulls leave open air
 where the rendered tread is, and a G1 teleported onto it falls straight through. A box is exact,
 cheap, and legal on a dynamic body (a triangle mesh is not), so the tread gets one of its own.

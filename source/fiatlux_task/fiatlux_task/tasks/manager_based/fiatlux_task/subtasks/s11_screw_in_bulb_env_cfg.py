@@ -8,7 +8,7 @@
 Starts from S10's end state: the robot balanced on the upper steps with the fresh bulb in hand
 (``BULB_IN_ROOT_ON_LADDER``), the fixture inverted and empty, the old bulb in the disposal crate.
 
-The axial retention spring (issue #167, ``mdp.bulb_attachment``, wired once for the tier in
+The axial detent (issue #167, ``mdp.bulb_attachment``, wired once for the tier in
 ``subtask_tiers.balance.BalanceEventCfg``) governs the fresh bulb from here: FREE at reset
 (``BULB_IN_ROOT_ON_LADDER`` puts it in the hand, not at the seat, so it starts unconstrained same
 as before), to SEATED once it reaches the seat aligned and the socket is unoccupied.
@@ -22,7 +22,7 @@ What makes the gate "installed" rather than "held in the socket" is that the han
 the bulb still seated a second later -- the conjunction is debounced as a whole, so every part of
 it has to survive the release.
 
-The retention spring governs bulb-vs-socket, not bulb-vs-hand -- that hold is real, not a
+The detent governs bulb-vs-socket, not bulb-vs-hand -- that hold is real, not a
 kinematic constraint: ``ARM_CRADLE`` (palm up) + ``HAND_CUP`` (uncurled, merged into
 ``robot.init_state.joint_pos``) rest the bulb directly on the open palm
 (``nav_terms.settle_carried_payload_live``), and ``grip_contact`` measures real, sustained

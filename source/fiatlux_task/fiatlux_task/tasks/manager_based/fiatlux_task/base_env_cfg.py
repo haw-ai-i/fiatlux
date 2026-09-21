@@ -13,9 +13,9 @@ task) use ``ManagerBasedRLEnvCfg`` directly on the same scene + presets.
 
 The event manager carries the reset term and *enabled* per-reset light randomization, plus a
 *disabled* randomization scaffold: every future randomization knob is written out, commented,
-wired to the right ``SceneEntityCfg`` and tagged ``TODO`` -- enabling it later is just
-uncommenting. (Per-env asset randomization -- the ceiling ``fixture`` -- happens at spawn time
-in the scene cfg, not here.)
+and wired to the right ``SceneEntityCfg`` -- enabling it later is just uncommenting. (Per-env
+asset randomization -- the ceiling ``fixture`` -- happens at spawn time in the scene cfg, not
+here.)
 """
 
 from isaaclab.envs import ManagerBasedEnvCfg
@@ -27,7 +27,6 @@ from isaaclab.utils import configclass
 
 from . import mdp
 from .scene_cfg import (
-    FIXTURE_USDS,
     ROOM_ENV_SPACING,
     G1ReplaceSceneCfg,
     add_ego_camera,
@@ -214,11 +213,10 @@ class FamilyBaseEnvCfg(ManagerBasedEnvCfg):
     documented knob the RL/task layer will consume once terminations are added."""
 
     enable_dressing_randomization: bool = True
-    """Per-env domain randomization: the random ceiling fixture, prestartup prop-scale DR,
-    and per-env material tinting. Heterogeneous per-env assets and prestartup USD writes
-    require ``replicate_physics=False``, which is fine at scaffold scale but wrong at
-    RL-training scale -- training cfgs set this False to get replicated physics back (which
-    also strips the scale terms and reduces tinting to the shared room)."""
+    """Per-env domain randomization: prestartup prop-scale DR and per-env material tinting.
+    Prestartup USD writes require ``replicate_physics=False``, which is fine at scaffold scale
+    but wrong at RL-training scale -- training cfgs set this False to get replicated physics
+    back (which also strips the scale terms and reduces tinting to the shared room)."""
 
     scene_preset: str = "workshop"
     """Which family-scene preset this task uses (verify_scene dispatches its presence
@@ -242,13 +240,6 @@ class FamilyBaseEnvCfg(ManagerBasedEnvCfg):
         apply_workshop_preset(self.scene)
         # GrootPolicy looks up ``scene["ego_camera"]`` unconditionally (same gap g1_bulb_env_cfg
         add_ego_camera(self.scene)
-        # Dressing randomization: drop the fixture when disabled, or when its (opt-in)
-        # assets are not downloaded (`download_assets.sh --scene-dressing`) so the env
-        # still loads from a clean clone.
-        if self.enable_dressing_randomization and not FIXTURE_USDS:
-            print("[fiatlux] no behavior1k_* ceiling-fixture assets found -- spawning without the 'fixture' entity.")
-        if not self.enable_dressing_randomization or not FIXTURE_USDS:
-            self.scene.fixture = None
         if not self.enable_dressing_randomization:
             # Homogeneous envs, so replicated physics is safe. Cloning stays in USD, not
             # fabric: the hand_contact sensor's PhysX contact-reporter API cannot attach to

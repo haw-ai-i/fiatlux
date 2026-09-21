@@ -461,7 +461,7 @@ def main() -> int:
         )
 
     # =========================== 4. COLLISION COVERAGE ===========================
-    # Imported USD assets (robot and BEHAVIOR-1K props alike) may split visual meshes from
+    # Imported USD assets (the robot and the vendor props alike) may split visual meshes from
     # dedicated collision meshes, so we require colliders to EXIST under each entity rather
     # than a 1:1 visual-geom:collider match.
     print("\n[verify] (4) Collision coverage (every tracked entity must have colliders)")

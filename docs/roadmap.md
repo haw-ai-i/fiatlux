@@ -1,11 +1,21 @@
 # Roadmap
 
-The scored benchmark is the **full replacement task** (`FIATLUX-Replace-v0`); the
-**insertion** (`FIATLUX-Insert-v0`), **climbing** (`FIATLUX-Climb-v0`), and
-**ladder-positioning** (`FIATLUX-Carry-v0`: walk to the ladder, grasp it, and carry it
-upright to a target — whole-body RL, `carry_env_cfg.py`) subtasks remain as functional
-development environments, not benchmark targets. Unfinished items below are listed so the
-extension seams are intentional.
+The scored benchmark has two framings of the same job: **`FIATLUX-Replace-v0`**, the full
+replacement as one flat episode, and the **twelve subtasks** (`FIATLUX-S01-MoveLadder-v0` …
+`FIATLUX-S12-ClimbDown-v0`), the same chain cut into legs with their own success gates and
+their own score model (`docs/scoring.md`). Each subtask also has a `-Training-v0` tier and a
+`-Teleop-v0` twin (`docs/subtask_teleop.md`).
+
+The older coarse envs — **insertion** (`FIATLUX-Insert-v0`), **climbing**
+(`FIATLUX-Climb-v0`), and **ladder-positioning** (`FIATLUX-Carry-v0`: walk to the ladder,
+grasp it, and carry it upright to a target — whole-body RL, `carry_env_cfg.py`) — remain as
+functional development environments, not benchmark targets. Unfinished items below are listed
+so the extension seams are intentional.
+
+**Subtask status.** Teleoperation reaches the success gate on eight of the twelve subtasks
+(S01, S03, S05–S09, S11). The four climbing subtasks (S02, S04, S10, S12) have no teleoperated
+take that satisfies their gate. None of the released baselines (zero, random, zero-shot
+GR00T N1.7) completes any subtask.
 
 ## 1. Climbing subtask — `FIATLUX-Climb-v0` — ✅ DONE (2026-07-06)
 
@@ -28,18 +38,18 @@ Phase 5).
 
 ## 2. Full task — `FIATLUX-Replace-v0` — ✅ PRIMARY BENCHMARK (2026-07-09)
 
-Promoted from scene-only scaffold to the scored full-task RL environment per
-`journal/specs/full-task-benchmark-plan.md` (this deliberately reverses the earlier
-"stays off the roadmap" call for the *task itself*; the policy-stitching part of that
-descoping still stands — it is one flat RL episode, chaining is solution structure).
+Promoted from scene-only scaffold to the scored full-task RL environment (this deliberately
+reverses the earlier "stays off the roadmap" call for the *task itself*; the policy-stitching
+part of that descoping still stands — it is one flat RL episode, chaining is solution
+structure).
 
 - ~~Build and verify the full combined-family scene: robot, ladder, table+bulb, and the
   elevated fixture together, each randomized into its own non-overlapping floor "safe
   zone" per scene build, fixture randomly ceiling- or wall-mounted.~~ DONE (2026-07-07):
   `scene_cfg.apply_replace_preset`.
 - ~~Reward/termination logic: normalized-progress scoring (spawn-distance fair), sparse
-  completions, fall/tip/drop penalties, full-success termination; `standard` (sensor) vs
-  `cheatcode` (privileged) observation modes; `basic_standard`/`basic_cheatcode`
+  completions, fall/tip/drop penalties, full-success termination; `standard` vs `privileged`
+  observation modes; `basic_standard`/`basic_cheatcode`
   smoke-test policies.~~ DONE (2026-07-09): `replace_env_cfg.py`, see
   `docs/task_spec.md` / `docs/scoring.md`.
 - Policy stitching / staged-curriculum chaining: not planned (solution structure).
@@ -79,55 +89,67 @@ descoping still stands — it is one flat RL episode, chaining is solution struc
     stiffness -- also reconsidered: a spring is weakest exactly at the seat and grows with
     distance, backwards from what this is meant to model (a magnetic/detent catch, strongest
     at contact, falling off with distance). Landed on a magnet-shaped axial law instead:
-    `F(axial) = -tanh(axial/deadband) * hold_force/(1 + |axial|/hold_range) - spring_d *
-    axial_rate` -- magnitude peaks at `hold_force` right at the seat, decays past
-    `hold_range`, with a small `tanh` deadband replacing a literal `sign()` to avoid a
-    direction-flip chatter risk exactly at rest. `hold_force`/`hold_range` are sized so the
-    local stiffness at the seat (their ratio) stays under the same semi-implicit stability
-    ceiling (~87 N/m) that bounded the spring, and so worst-case ceiling sag (~4.6mm) sits
-    well clear of `release_threshold` -- `hold_force` ends up modest in absolute terms (~1.5x
-    the bulb's weight) as a direct consequence: a magnet-shaped peak occurs exactly where its
-    stability-relevant stiffness is evaluated, unlike a spring's cap sitting far out along an
-    otherwise-gentle curve, so there's no way to get a strong peak, fast falloff, and the same
-    stability margin at once. Table/wall mounts still sag less than ceiling ones under their
+    magnitude peaks at `hold_force` right at the seat and falls off with withdrawal. That shape
+    has since been revised once more -- the law now falls off **linearly to zero at
+    `bore_depth`** (0.025 m, MEASURED by `scripts/measure_bore_geometry.py`: the withdrawal at
+    which the plug clears the socket throat, past which there is no bore to be inside of),
+    rather than decaying asymptotically past a `hold_range`, which left the ceiling case an
+    unstable gravity balance point. Current sizing, against the bulb's 0.035 kg / 0.343 N:
+    `hold_force` 1.5 N is 4.4x its weight at the bore bottom and still 1.75x at
+    `release_threshold`, putting the gravity crossing at 19.3 mm -- outside the threshold, so on
+    an inverted ceiling mount gravity alone cannot walk the bulb out. The steepest slope the law
+    reaches is `hold_force/bore_depth` = 60 N/m, under the semi-implicit stability bound
+    (mass/step_dt^2, ~88 N/m at 50 Hz) with 31% to spare. `release_threshold` has moved twice
+    since (20 -> 8 -> 15 mm); `mdp/attach.py`'s module docstring carries the reasoning for each.
+    Table/wall mounts still sag less than ceiling ones under their
     own weight, correctly. Needs a regression pass on S11 (screw-in, ceiling) to confirm the
     insert-then-hold failure reported alongside this is the same root cause, and real-teleop
     validation that the new force-vs-distance shape (firm at contact, easier once separated)
     actually feels different from the spring it replaced.
-  - **Twist friction (issue #171, third finding, 2026-09-08)**: real teleop found a
-    ceiling-seated bulb spinning about the seat axis at 1-19 rad/s for a sustained ~2.9s, no
-    operator or contact, before abruptly ejecting. Cause: the tilt torque's damping used the
-    FULL angular velocity but shared tilt's tiny `max_torque` (0.05 N*m) budget -- arresting
-    even 10 rad/s needed several times that, so it saturated uselessly every step. Split
-    twist (rotation about the seat axis, no target angle -- issue #90) from tilt
-    (misalignment, which does have a target) and gave twist its own budget. A first, viscous
-    version of that (`-twist_d * twist_rate`) settled into a stable but NONZERO equilibrium
-    spin under real contact, and raising its gain made the equilibrium worse at some tested
-    magnitudes -- evidence of the wrong force law, not just an under-sized one. Replaced with
-    Coulomb-like FRICTION (`twist_friction`, roughly constant magnitude, not
-    velocity-proportional) instead, matching how real contact friction actually behaves.
-    Verified (`scripts/verify_twist_damping.py`): both the viscous and friction versions
-    reliably stop the actual reported failure (self-ejection) across the full 1-19 rad/s
-    range, holding 5+ simulated seconds -- but NEITHER reliably drives the residual spin
-    itself to zero; it persists at some nonzero, sometimes noisy rate. That residual looks
-    like a real 3D contact effect (a loosely-toleranced plug precessing/rattling in the bore)
-    rather than something a single-axis torque law can fully resolve -- open follow-up, not
-    treated as solved, though the critical failure (detachment) is fixed.
+  - **Twist: no term at all, after two were tried and removed (issue #171, third finding)**: a
+    ceiling-seated bulb was found spinning about the seat axis at 1-19 rad/s for ~2.9s, no
+    operator or contact, before abruptly ejecting. A viscous term was tried first and settled
+    into a nonzero equilibrium spin that got WORSE as its gain rose; it was replaced with a
+    Coulomb-like constant-magnitude friction (`twist_friction = 0.5 N*m`). **Both were wrong,
+    and the Coulomb term WAS the bug.** A term-by-term ablation
+    (`scripts/ablate_attach_forces.py`, seed 3, forced ceiling mount, zero action, no injected
+    spin) found that zeroing `twist_friction` -- and no other term -- removes the spin: 95-97
+    rad/s with it, 0.7-3.0 rad/s without, holding 4/5 repeats instead of 0/5, while every other
+    single-term ablation still spun at ~95 rad/s. With nothing applied at all the bulb shows
+    ~1.2 rad/s, so the term was generating the spin, not failing to suppress it. The mechanism
+    is a unit-scale error: the plug's moment of inertia about the seat axis is 2.9e-05 kg*m^2,
+    so one control step of 0.5 N*m changes the twist rate by 344 rad/s, while the law reverses
+    sign whenever `|twist_rate|` crosses the 0.1 rad/s deadband -- overshooting zero by ~3400x
+    every step and re-accelerating the other way. A sign-flipping friction law is dissipative
+    only if its impulse cannot exceed the momentum it opposes (`tau <= I*|omega|/dt`); this one
+    exceeded it by ~350x. Coulomb chatter, not friction -- and the original teleop bag confirms
+    it directly: twist changes sign on 138 of 140 consecutive control steps at +/-16 rad/s, a
+    clean alternation at exactly the 50 Hz control rate. What the operator saw as a spin was
+    that alternation. **There is no twist term now, in any form**: rotation about the seat axis
+    is left to the socket's real contact friction, which the asset already supplies (verified,
+    not assumed -- static 1.2 / dynamic 1.0, resolving at runtime onto all 2 bulb and all 8
+    socket colliders), and issue #90's "rotation is free" stands as written. The angular-velocity
+    SPLIT into twist and tilt components was the one sound part of the first attempt and is
+    kept, so tilt damping spends its tiny budget only on the component it has a target for.
+    Should a twist term ever be wanted again it must bound its impulse by `I*|omega|/step_dt`.
+    (`scripts/verify_twist_damping.py` predates the ablation and tests the removed term.)
   Follow-up: put Remove/Install on the same mechanic; their
   bulbs are already dynamic but currently lift straight out of / drop straight into the
   socket (issue #76 Step 2).
 
 ## 3. Learned-policy support
 
-- Imitation pre-training (ACT / Diffusion) from teleop or scripted "cheat-code"
-  demos, using the `privileged` observation group.
+- Imitation pre-training (ACT / Diffusion) from teleop demos, or from a scripted policy
+  that reads the `privileged` observation group directly. **The teleop demos exist now**:
+  the subtask teleop twins record scored HDF5 bags per take (`docs/subtask_teleop.md`), so
+  this is a consumer-side gap, not a collection one.
 - The current PPO config (`agents/rsl_rl_ppo_cfg.py`) covers RL fine-tuning.
-- If demo recording is re-added, keep its dataset tooling (LeRobot/HDF5) optional
-  and out of the core install.
+- Demo recording lives in `source/fiatlux_teleop/` behind the `teleop` extra, keeping its
+  dataset tooling out of the core install.
 
-## 4. Sim-to-real (physical G1)
+## 4. Sim-to-real (physical G1) — future work, not started
 
-Added as a **separate optional deployment adapter**, never the old ROS/Zenoh
+Planned as a **separate optional deployment adapter**, never the old ROS/Zenoh
 harness:
 
 - **Action bridge:** policy joint-position targets → Unitree SDK joint commands.

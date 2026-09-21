@@ -3,13 +3,13 @@
 #
 # SPDX-License-Identifier: BSD-3-Clause
 
-"""Reset-time and prestartup events for the Fiatlux tasks.
+"""Reset-time, prestartup, and startup events for the Fiatlux tasks.
 
 Bulb and socket pose randomization use Isaac Lab's built-in
 ``reset_root_state_uniform``; the custom terms here cover what the built-ins
-cannot: shared global prims (lights, the room), multiplicative scale on assets
-with a baked spawn scale, and in-place material tinting that keeps the curated
-MDL bindings.
+cannot: shared global prims (lights, the room) on reset, multiplicative scale
+on assets with a baked spawn scale at prestartup, in-place material tinting on
+reset that keeps the curated MDL bindings, and hand grip friction at startup.
 """
 
 from __future__ import annotations
@@ -161,9 +161,9 @@ _TINT_INPUT_NAMES = ("diffuse_tint", "diffuse_color_constant", "diffuseColor")
 """Shader/material color inputs the tint term probes, most-specific first.
 
 ``diffuse_tint``/``diffuse_color_constant`` cover OmniPBR and the SimReady MDL families
-(ladder, packing table); ``diffuseColor`` covers ``UsdPreviewSurface``. B1K's
-``OmniGibsonVRayMtl`` authors none of these, so B1K assets are naturally skipped even if
-targeted (and they are deliberately not targeted -- the team keeps those materials original).
+(ladder, packing table); ``diffuseColor`` covers ``UsdPreviewSurface``. A material family
+that authors none of these is skipped rather than rebound, which is the point: the term
+tints what is already there and never replaces a curated material.
 """
 
 _BASE_COLOR_KEY = "fiatlux:base_color"
@@ -183,7 +183,7 @@ def randomize_material_tint(
     ``randomize_visual_color``/``randomize_visual_texture_material`` rebind an OmniPBR
     material over whatever is authored and require ``replicate_physics=False``, so they
     cannot touch the shared ``/World/Room`` under replicated-physics training cfgs and
-    would replace the curated SimReady/B1K materials. This term instead multiplies a
+    would replace the curated SimReady materials. This term instead multiplies a
     sampled HSV tint into the color inputs the materials already author
     (:data:`_TINT_INPUT_NAMES`, written at both Material and Shader level when both are
     authored -- Material-level inputs override shader params). ``diffuse_tint`` is created

@@ -22,12 +22,12 @@ surface the plug rides against. For the plug it is the MAXIMUM radius, its wides
 height. The bore is open where its min radius is near 20.2 mm and closed where the slice fills
 in toward the axis.
 
-Run via ./pyrun (repo root), not a bare .venv/bin/python -- see verify_twist_damping.py's
-docstring for why.
+Run with `uv run python` from the repo root, not a bare .venv/bin/python: a .venv shared across
+checkouts can otherwise resolve fiatlux_task to the wrong one (see verify_common.py).
 
 Example
 -------
-    ./pyrun scripts/measure_bore_geometry.py --headless
+    uv run python scripts/measure_bore_geometry.py --headless
 """
 
 """Launch Isaac Sim Simulator first."""
@@ -89,7 +89,7 @@ def all_meshes(stage, prefix: str) -> list[tuple[str, np.ndarray]]:
     """Every mesh under ``prefix``, as (path, world-space points).
 
     Enumerating rather than guessing one mesh name: the socket half of this asset is 8 separate
-    base/switch collider meshes (``assets/omneverse_bulb/CHANGES.md``), and which of them
+    base/switch collider meshes (``assets/omniverse_bulb/CHANGES.md``), and which of them
     carries the cylindrical bore is exactly what needs finding rather than assuming. Picking
     the first path that merely *ends with* a plausible name also silently crosses bulbs -- the
     fresh bulb parked across the room has the same mesh names as the seated old one.

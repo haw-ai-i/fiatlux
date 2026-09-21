@@ -1,8 +1,14 @@
 # Scoring & Evaluation Protocol
 
-The scored benchmark task is **`FIATLUX-Replace-v0`** (the full replacement; see
-`docs/task_spec.md`). The subtask envs remain evaluable with the same tooling as
-development aids. Evaluation is a single command, `scripts/eval.py`, run from a
+Two things are scored, on two different models. **`FIATLUX-Replace-v0`** (the full
+replacement; see `docs/task_spec.md`) is scored by the metrics below. The **twelve subtasks**
+are scored by `subtask_score` — see [Subtask score](#subtask-score--the-benchmark-headline)
+— and are also evaluable with the tooling below. The remaining family members (`Insert`,
+`Climb`, `Carry`, `Descend`, `Remove`, `Install`, `Base`) predate the twelve-subtask
+decomposition and run the same tooling as development aids, not benchmark targets — none
+of them is part of what the paper reports on.
+
+Evaluation is a single command, `scripts/eval.py`, run from a
 fixed seed for a fixed number of episodes. Same `--task`, `--seed`, `--policy`
 (and checkpoint) → same numbers.
 
@@ -39,7 +45,7 @@ by slamming the bulb in is not a good policy.
 
 ## Reporting convention
 
-- Default protocol: `--episodes 50 --seed 0`.
+- Default protocol: `--episodes 20 --seed 0` (`scripts/eval.py`'s own defaults).
 - Report all five metrics, the policy type, and the checkpoint.
 - For learned policies, also report seeds `0,1,2` and their mean ± std.
 
@@ -91,7 +97,7 @@ the same-seed-same-numbers contract covers the layout too.
   state). Its acceptance bar is valid episode execution + score artifact
   generation, not task success.
 - `basic_cheatcode` — the same, but additionally asserts and reads the
-  **cheatcode** (`privileged`) observation group every step.
+  **privileged** observation group (exact simulator state) every step.
 - `rsl_rl` — a trained PPO checkpoint (`scripts/rsl_rl/train.py`).
 - `wbc_stand` / `sonic_stand` — the decoupled GEAR whole-body controller holding
   zero commands, and the GEAR-SONIC controller holding its standing latent (no
@@ -102,11 +108,43 @@ the same-seed-same-numbers contract covers the layout too.
   (torso RGB + proprioception + a language instruction, set via
   `--instruction`; the default is the task's canonical sentence in
   `fiatlux_task/groot.py`). Requires the external PolicyServer:
-  `scripts/groot/serve.sh` (setup: `journal/specs/groot-sonic-baseline.md`).
+  `scripts/groot/serve.sh` (setup notes in its header).
   Fine-tuned GR00T submissions evaluate through the same spec — point the
   server at the fine-tuned checkpoint (`GROOT_MODEL=<path> GROOT_EMBODIMENT=<tag>
   scripts/groot/serve.sh`); a `UNITREE_G1_SONIC` finetune plugs into the
   ready `SonicDecoder` path.
+
+## Subtask score — the benchmark headline
+
+The twelve subtasks are scored on their own model, separate from the metrics above. Each one
+combines how often the success gate fired with how much of it was ever held at once
+(`fiatlux_task/subtask_score.py`):
+
+```
+subtask_score = SUCCESS_SHARE * success_rate + (1 - SUCCESS_SHARE) * gate_progress
+```
+
+with `SUCCESS_SHARE` = **0.5**, so an episode that touches every condition without ever holding
+them together caps at 0.5; only the gate firing reaches 1.0.
+
+- **`success_rate`** — fraction of episodes whose gate latched.
+- **`gate_progress`** — partial credit in [0, 1]: the most conjuncts ever true *simultaneously*,
+  normalized against how many were already true at reset, so conditions like `robot_standing`
+  that hold at t=0 everywhere hand out no free credit. `None` for a bag recorded before the
+  `gate_*` columns existed — reported as missing, never as zero.
+
+Both come from the bag's recorded `gate_*` conjunct columns, so the headline is reproducible from
+a recording rather than existing only inside a live reward manager. `scripts/score_subtasks.py`
+rolls bags up across subtasks, weighting each by its difficulty — the product of its factor
+multipliers (`FACTOR_MULTIPLIERS`: balance 2.0, release 1.8, grasp 1.4, carry/traverse/mate/span
+1.5), with a factorless subtask weighing 1.0. A subtask absent from the results is reported
+missing and excluded from the denominator: "did not run" and "ran and failed" are different
+claims.
+
+Subtask scores may not be compared across layout seeds, and must not be mixed with the
+development-aid tier (Insert / Climb / Carry / Descend / Remove / Install), which measures a
+different capability. `FIATLUX-Replace-v0`'s own score (above) is a third, separate number:
+the whole flat episode, not one subtask.
 
 ## Offline scoring (`scripts/score.py`)
 

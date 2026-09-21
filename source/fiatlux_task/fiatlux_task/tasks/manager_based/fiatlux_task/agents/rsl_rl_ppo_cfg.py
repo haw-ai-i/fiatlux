@@ -63,7 +63,7 @@ class ClimbPPORunnerCfg(PPORunnerCfg):
 @configclass
 class ReplacePPORunnerCfg(PPORunnerCfg):
     """PPO runner for the full replacement task (same explicit obs-group routing as Climb:
-    the standard/``policy`` group feeds the actor, the cheatcode/``privileged`` group is
+    the standard/``policy`` group feeds the actor, the privileged/``privileged`` group is
     critic-only). The budget is aspirational -- the flat full task is far past what PPO
     from scratch solves; this config exists so the train/play/eval tooling runs end-to-end.
     """

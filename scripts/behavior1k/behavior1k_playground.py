@@ -10,9 +10,9 @@ search path or everything renders red. Point at that folder with ``--mdl-path`` 
 OmniGibson mdls are bundled there). Requires a camera-capable Isaac build (env_isaaclab).
 
 Usage:
-  python scripts/behavior1k_playground.py                       # GUI window on $DISPLAY
-  python scripts/behavior1k_playground.py --render overview.png # headless overview capture
-  python scripts/behavior1k_playground.py --mdl-path <dir>      # folder holding the vray mdls
+  python scripts/behavior1k/behavior1k_playground.py                       # GUI window on $DISPLAY
+  python scripts/behavior1k/behavior1k_playground.py --render overview.png # headless overview capture
+  python scripts/behavior1k/behavior1k_playground.py --mdl-path <dir>      # folder holding the vray mdls
 """
 
 import argparse

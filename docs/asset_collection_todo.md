@@ -39,20 +39,40 @@ to the world (stationary manipulation only).
   (`assets/inspire_hand`) and Dex3 in Unitree's repos; converting/attaching those is a
   separate step and is **not** needed for the current benchmark.
 
-### 2. Light Bulbs & Lamps
-- **Source:** The `BEHAVIOR-1K` repository (`~/github/tmp/BEHAVIOR-1K`) contains high-quality light bulb and lamp assets.
-- **TODO:**
-  - [ ] Extract the relevant lamp and light bulb USDs or URDFs from the BEHAVIOR-1K dataset.
-  - [ ] Ensure the light bulbs are separated as graspable, rigid body objects with correct collision meshes.
-  - [ ] Verify the lamp sockets are properly defined for the light bulb insertion task.
-  - [ ] Upload the final assets to the dataset's `behavior1k_lamps/`.
+### 2. Light Bulbs & Lamps — DONE (different source than planned)
+- **Planned source:** the `BEHAVIOR-1K` dataset.
+- **Shipped source:** the graspable bulb and its socket are the **curated Omniverse LightBulb**,
+  split into `LightBulb_bulb_z_rigid.usda` + `LightBulb_socket_z_static_sleeve.usda` under
+  `assets/omniverse_bulb/` — the B1K lamp renders with flat texture paths, and the Omniverse pair
+  is authored assembled at identity, which is what makes "seated" a pose comparison. Paths and the
+  measured seat/plug offsets are in `source/fiatlux_task/fiatlux_task/assets.py`.
+- **No BEHAVIOR-1K asset is loaded by any task.** Its ceiling-mount categories were once an
+  opt-in random `fixture` dressing entity; that entity and its asset pool were removed, so no
+  scene entity, gate, reward or observation references them. The lighting categories are still
+  synced by `download_assets.sh --scene-dressing` (with the required `behavior1k_materials`
+  bundle) so they are available for scenes of your own — see `assets/README.md`.
+- **Done:**
+  - [x] Bulb and socket collected, wired, and graspable with authored collision.
+  - [x] Seat/retention is the `mdp.bulb_attachment` state machine plus the authored guide sleeve
+        (issue #171), not a raw collision fit — see `docs/task_spec.md`.
+  - [x] Uploaded and synced by `assets/download_assets.sh`.
 
-### 3. Ladders
-- **Source:** The Omniverse USD ecosystem contains ladder assets.
-- **TODO:**
-  - [ ] Locate a suitable ladder asset from the Omniverse ecosystem (or generate one).
-  - [ ] Verify the physics, collision meshes, and scale of the ladder in Isaac Lab (must support the robot climbing it).
-  - [ ] Upload the final assets to the dataset's `ladders/`.
+### 3. Ladders — DONE
+- **Source:** the Omniverse USD ecosystem (`assets/omniverse_ladder/`, a pack of step ladders
+  and work platforms). The BEHAVIOR-1K ladder was evaluated and dropped with the rest of that
+  dataset.
+- **Shipped:** `AlumStep_D` — `AluminumStepLadder_D01_PR_NVD_01_collision.usd`
+  (0.608 x 0.979 x 1.861 m, cm-authored, spawn scale 0.01), with a `_rigid` overlay for the
+  free-standing case. Mass is stamped in code (`LADDER_MASS_KG`), not read from the asset.
+- **Done:**
+  - [x] Selected the step ladder and verified scale and physics: all four treads hold a fitting
+        probe with no tunnelling.
+  - [x] Collision authored, not assumed — `download_assets.sh` runs
+        `scripts/omniverse/omniverse_ladder_collision.py` / `_rigid.py` / `_platform.py`, because
+        the stock convex decomposition omits the top tread and a robot placed there falls through.
+  - [x] Uploaded and synced by `assets/download_assets.sh`.
+- **Open:** the tread is 8.5 cm deep against a ~22 cm foot, which is the real obstacle to
+  climbing — an asset fact, not a missing asset.
 
 ## Asset Dataset
 - **Dataset:** `haw-ai-i/fiatlux-assets` on Hugging Face (private).
@@ -62,7 +82,9 @@ to the world (stationary manipulation only).
 - **Troubleshooting:** a 401/404 on download or upload means your account is not in the org yet --
   ask a `haw-ai-i` org admin to add you.
 
-## Next Steps
-Once the assets are uploaded to the dataset, run `./assets/download_assets.sh` to
-sync them into the git-ignored `assets/` directory (`assets/unitree_g1/`,
-`assets/bulb_socket/`, `assets/ladder/`). You do not need to check these assets into Git.
+## Status
+
+Every asset this document tracked is collected, uploaded and wired in; it is kept as the record
+of where each came from. Run `./assets/download_assets.sh` to sync them into the git-ignored
+`assets/` directory — `setup_sim_teleop.sh` does it for you on first run. You do not need to
+check these assets into Git.
