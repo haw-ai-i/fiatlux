@@ -25,18 +25,9 @@
 #   isaac_room/                room backdrop (walls/floor/windows)
 #   isaac_skies/              PolyHaven HDRI sky for the dome light
 #
-# Scene dressing (environment lighting, no bulb socket):
-#   behavior1k_downlight/     recessed ceiling fixtures
-#   behavior1k_room_light/    ceiling/pendant/wall fixtures
-#   behavior1k_spotlight/     directional ceiling/track fixtures
-#   behavior1k_square_light/  flat panel ceiling fixtures
-#   behavior1k_rectangular_light/  fluorescent overhead panels
-#   behavior1k_track_light/   track-mounted fixtures
-#   behavior1k_wall_mounted_light/ wall sconces
-#   behavior1k_chandelier/    ceiling-hanging multi-bulb fixtures
-#   behavior1k_paper_lantern/ hanging pendant lanterns
-#   behavior1k_lampshade/     shade housing components
-#   behavior1k_floor_lamp/    standing lamps
+# Scene dressing (opt-in via --scene-dressing; no benchmark preset spawns these):
+#   omniverse_climb/          Mezzanine/OfficeSet elevated-platform climb structures
+#   omniverse_lamp/           Omniverse residential lamps/fixtures
 #
 # Override the dataset repo with FIATLUX_ASSET_REPO env var.
 # USD/mesh files are git-ignored.
@@ -78,18 +69,6 @@ ROOM_ASSETS=(
 )
 
 SCENE_DRESSING_ASSETS=(
-    behavior1k_materials    # shared OmniGibson vray mdls -- prerequisite for every group below
-    behavior1k_downlight
-    behavior1k_room_light
-    behavior1k_spotlight
-    behavior1k_square_light
-    behavior1k_rectangular_light
-    behavior1k_track_light
-    behavior1k_wall_mounted_light
-    behavior1k_chandelier
-    behavior1k_paper_lantern
-    behavior1k_lampshade
-    behavior1k_floor_lamp
     omniverse_climb         # Mezzanine/OfficeSet elevated-platform climb structures
     omniverse_lamp          # Omniverse residential lamps/fixtures
 )
