@@ -114,3 +114,8 @@ isolated in a separate `privileged` group. See [docs/roadmap.md](docs/roadmap.md
 ## License
 
 Apache-2.0 (see `LICENSE`). Files derived from Isaac Lab are BSD-3 (`LICENSE.isaaclab`).
+
+The USD assets are not part of this repository. They are mirrored from third parties under their
+own terms -- Unitree (Apache-2.0), NVIDIA Omniverse asset packs and Isaac Sim sample content
+(NVIDIA terms), a Poly Haven HDRI (CC0) -- see the provenance table in
+[`assets/README.md`](assets/README.md#provenance-and-licences).
