@@ -24,10 +24,6 @@ Requires `uv` (assets are fetched via `uvx --from huggingface_hub hf`) and acces
 
 | HF path                                              | Category              | Models                          | Role           | Files |
 | ----------------------------------------------------- | --------------------- | ------------------------------- | -------------- | ----- |
-| `hf://datasets/haw-ai-i/fiatlux-assets/behavior1k_bulb/`                | `light_bulb`          | 3 (kfmkwd, sxkjea, ymomhw)     | task asset     | 57    |
-| `hf://datasets/haw-ai-i/fiatlux-assets/behavior1k_bulb_broken/`         | `broken_light_bulb`   | 1 (cugtye)                      | task asset     | 23    |
-| `hf://datasets/haw-ai-i/fiatlux-assets/behavior1k_lamp/`                | `table_lamp`          | 12 with lights metadata         | task asset     | 217   |
-| `hf://datasets/haw-ai-i/fiatlux-assets/behavior1k_ladder/`              | `ladder`              | 3 (shfvtl, vpmrlk, axywzt)     | task asset     | 52    |
 | `hf://datasets/haw-ai-i/fiatlux-assets/behavior1k_downlight/`           | `downlight`           | 28                              | scene dressing | 421   |
 | `hf://datasets/haw-ai-i/fiatlux-assets/behavior1k_room_light/`          | `room_light`          | 30                              | scene dressing | 532   |
 | `hf://datasets/haw-ai-i/fiatlux-assets/behavior1k_spotlight/`           | `spotlight`           | 5                               | scene dressing | 86    |
@@ -40,7 +36,7 @@ Requires `uv` (assets are fetched via `uvx --from huggingface_hub hf`) and acces
 | `hf://datasets/haw-ai-i/fiatlux-assets/behavior1k_lampshade/`           | `lampshade`           | 4                               | scene dressing | 69    |
 | `hf://datasets/haw-ai-i/fiatlux-assets/behavior1k_floor_lamp/`          | `floor_lamp`          | 11 with lights metadata         | scene dressing | 188   |
 
-**BEHAVIOR-1K total: 2,219 files across 15 paths.**
+**BEHAVIOR-1K total: 1,870 files across 11 paths** (all opt-in scene dressing).
 
 ### Omniverse asset packs (NVIDIA SimReady / ArchVis)
 

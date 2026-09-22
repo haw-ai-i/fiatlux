@@ -14,10 +14,8 @@
 #   unitreerobotics/unitree_sim_isaaclab_usds (Apache-2.0).
 #
 # Task assets (bulb/socket mechanic + ladder):
-#   behavior1k_bulb/          light_bulb models (bulblampM Male plug)
-#   behavior1k_bulb_broken/   broken_light_bulb models
-#   behavior1k_lamp/          table_lamp models with bulblampF Female socket
-#   behavior1k_ladder/        ladder models
+#   omniverse_bulb/           the graspable bulb + its guide-sleeve socket (BULB_USD/SOCKET_USD)
+#   omniverse_ladder/         step ladders; AlumStep_D is the one the benchmark climbs
 #
 # Room dressing (always synced -- defines the default look of every recorded
 # run): table, warehouse backdrop + clutter props, and an HDRI sky, mirrored
@@ -69,13 +67,8 @@ ROBOT_ASSETS=(
 )
 
 TASK_ASSETS=(
-    behavior1k_bulb
-    behavior1k_bulb_broken
-    behavior1k_lamp
-    behavior1k_ladder
-    behavior1k_materials    # shared OmniGibson vray mdls -- every behavior1k asset needs these to render
-    omniverse_ladder        # 98 climb-ready ladders/platforms (convex-decomp collision)
-    omniverse_bulb          # separable LightBulb (bulb-swap candidate)
+    omniverse_ladder        # climb-ready ladders/platforms (convex-decomp / SDF collision)
+    omniverse_bulb          # the separable LightBulb: BULB_USD + SOCKET_USD
 )
 
 ROOM_ASSETS=(
@@ -85,6 +78,7 @@ ROOM_ASSETS=(
 )
 
 SCENE_DRESSING_ASSETS=(
+    behavior1k_materials    # shared OmniGibson vray mdls -- prerequisite for every group below
     behavior1k_downlight
     behavior1k_room_light
     behavior1k_spotlight

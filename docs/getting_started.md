@@ -40,10 +40,10 @@ FIATLUX_ASSET_REPO=my-org/my-assets ./assets/download_assets.sh
 This produces:
 
 ```
-assets/unitree_g1/wholebody_inspire/g1_29dof_with_inspire_rev_1_0.usd
-assets/behavior1k_bulb/ymomhw/usd/ymomhw.usd
-assets/behavior1k_lamp/bbentu/usd/bbentu.usd
-assets/behavior1k_ladder/                # for the climbing subtask (roadmap)
+assets/unitree_g1/wholebody_inspire/...usd      # the robot (G1_USD); _dex3 variant alongside
+assets/omniverse_bulb/LightBulb_bulb_z_rigid.usda           # the graspable bulb
+assets/omniverse_bulb/LightBulb_socket_z_static_sleeve.usda # the socket it seats into
+assets/omniverse_ladder/AlumStep_D/...collision.usd         # the ladder the robot climbs
 assets/isaac_packing_table/, assets/isaac_room/, assets/isaac_skies/
 ```
 
