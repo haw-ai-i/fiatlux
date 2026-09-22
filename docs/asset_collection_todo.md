@@ -39,13 +39,13 @@ to the world (stationary manipulation only).
   (`assets/inspire_hand`) and Dex3 in Unitree's repos; converting/attaching those is a
   separate step and is **not** needed for the current benchmark.
 
-### 2. Light Bulbs & Lamps
-- **Source:** The `BEHAVIOR-1K` repository (`~/github/tmp/BEHAVIOR-1K`) contains high-quality light bulb and lamp assets.
-- **TODO:**
-  - [ ] Extract the relevant lamp and light bulb USDs or URDFs from the BEHAVIOR-1K dataset.
-  - [ ] Ensure the light bulbs are separated as graspable, rigid body objects with correct collision meshes.
-  - [ ] Verify the lamp sockets are properly defined for the light bulb insertion task.
-  - [ ] Upload the final assets to the dataset's `behavior1k_lamps/`.
+### 2. Light Bulbs & Lamps — DONE
+- **Source:** The Omniverse USD ecosystem — a graspable bulb and its guide-sleeve socket
+  (`BULB_USD`/`SOCKET_USD`).
+- **Done:**
+  - [x] The bulb is a graspable, rigid body object with correct collision meshes.
+  - [x] The lamp socket is defined for the light bulb insertion task.
+  - [x] Uploaded to the dataset's `omniverse_bulb/`.
 
 ### 3. Ladders
 - **Source:** The Omniverse USD ecosystem contains ladder assets.
