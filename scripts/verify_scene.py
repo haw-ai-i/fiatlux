@@ -10,8 +10,8 @@ assets present, preset initial state, robot sanity, gravity/settling, collision 
 contact/penetration.
 
 It covers the whole task family: the entity list is derived from the task's scene cfg, so
-presets that drop entities (tabletop has no ladder, workshop has no table) verify with the
-same tool. RL members work too -- their step returns are ignored and mid-run auto-resets do
+presets that drop entities (tabletop has no ladder, dressing cfgs may drop the fixture) verify
+with the same tool. RL members work too -- their step returns are ignored and mid-run auto-resets do
 not disturb the checks. EVERY task carries a camera sensor (each env cfg calls
 ``add_ego_camera``), so verifying any of them needs ``--enable_cameras``.
 

@@ -47,7 +47,7 @@ fiatlux/
 │   ├── .../fiatlux_task/scenes.py   # shared scene vocabulary (room dressing + B1K spawner)
 │   ├── .../fiatlux_task/viz.py      # shared video capture (orbit / rollout MP4s + posters)
 │   └── .../manager_based/fiatlux_task/
-│       ├── scene_cfg.py         # THE family scene + tabletop/workshop presets
+│       ├── scene_cfg.py         # THE family scene + tabletop/position/replace presets
 │       ├── replace_env_cfg.py   # FIATLUX-Replace-v0 MDP (the benchmark task)
 │       ├── subtask_env_cfg.py   # shared recipe for the twelve subtasks
 │       ├── subtasks/            # one thin cfg file per subtask
