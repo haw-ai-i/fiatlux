@@ -262,7 +262,9 @@ def _check_rl_randomization(env_cfg_cls, prefix: str, bulb_paths: list[str], see
     key_orients = {o[0] for o in orients}
     dome_orients = {o[1] for o in orients}
     record(
-        f"{prefix}:light_orient_changes", len(key_orients) > 1 and len(dome_orients) > 1, "key/dome orient vary across resets"
+        f"{prefix}:light_orient_changes",
+        len(key_orients) > 1 and len(dome_orients) > 1,
+        "key/dome orient vary across resets",
     )
     record(
         f"{prefix}:dome_yaw_only",
@@ -306,12 +308,12 @@ def child_scale_dr(seed: int, num_envs: int) -> None:
     varies across envs. Wires the exact EventTerms that comment recommends, since no currently
     registered task turns this opt-in on by default.
     """
+    from fiatlux_task.tasks.manager_based.fiatlux_task import mdp
+    from fiatlux_task.tasks.manager_based.fiatlux_task.replace_env_cfg import ReplaceEnvCfg
+
     from isaaclab.envs import ManagerBasedRLEnv
     from isaaclab.managers import EventTermCfg as EventTerm
     from isaaclab.managers import SceneEntityCfg
-
-    from fiatlux_task.tasks.manager_based.fiatlux_task import mdp
-    from fiatlux_task.tasks.manager_based.fiatlux_task.replace_env_cfg import ReplaceEnvCfg
 
     random.seed(seed)
     env_cfg = ReplaceEnvCfg()
