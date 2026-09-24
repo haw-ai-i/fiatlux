@@ -394,9 +394,11 @@ python ~/robotica_project/fiatlux/vr_teleop/vr_teleop.py --task FIATLUX-Insert-T
 
 ## ⛑️ Known problems & probable causes (issue #51 — teleoperate the fiatlux Insert task with the G1)
 
-**Goal:** drive the G1 right arm + grip to insert the bulb in `FIATLUX-Insert-Teleop-v0`, via the
-Pico 4 Ultra Enterprise over CloudXR, using Isaac Lab's native OpenXR teleop (`scripts/xr_teleop.py
---teleop_device controller_rel`). Env: Isaac Sim 5.1.0 / Isaac Lab 0.54.3, isaacteleop CloudXR 6.2.
+**Goal:** drive the G1 right arm + grip to insert the bulb in `FIATLUX-Insert-Teleop-v0` (retired;
+swap in a currently-registered `*-Teleop-v0` id), via the Pico 4 Ultra Enterprise over CloudXR,
+using Isaac Lab's native OpenXR teleop (`scripts/xr_teleop.py --teleop_device controller_rel`,
+since superseded by `scripts/teleop/sonic_teleop.py`). Env: Isaac Sim 5.1.0 / Isaac Lab 0.54.3,
+isaacteleop CloudXR 6.2.
 
 ### What works (proven live)
 - Remote VR **streaming** Pico → CloudXR → PC over Tailscale (the `NV_CXR_ENDPOINT_IP=<tailnet-ip>` +
