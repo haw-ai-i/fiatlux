@@ -286,10 +286,9 @@ def child_scale_dr(seed: int, num_envs: int) -> None:
 def main() -> int:
     if args_cli.scenario == "scale_dr":
         child_scale_dr(args_cli.seed, args_cli.num_envs)
-        print("ALL CHECKS PASSED" if not failures else "FAILED: " + ", ".join(failures))
-        return 1 if failures else 0
-    signature = child_rl(args_cli.seed, args_cli.num_envs)
-    print(f"[SIGNATURE] {json.dumps(signature, sort_keys=True)}")
+    else:
+        signature = child_rl(args_cli.seed, args_cli.num_envs)
+        print(f"[SIGNATURE] {json.dumps(signature, sort_keys=True)}")
     print("ALL CHECKS PASSED" if not failures else "FAILED: " + ", ".join(failures))
     return 1 if failures else 0
 
