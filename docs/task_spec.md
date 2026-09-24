@@ -5,8 +5,8 @@
 Defined in
 `source/fiatlux_task/fiatlux_task/tasks/manager_based/fiatlux_task/replace_env_cfg.py`.
 The full light-bulb replacement, scored as **one flat RL episode** (no policy stitching
-or stage chaining — that is solution structure, not benchmark structure). Design record:
-`journal/specs/full-task-benchmark-plan.md`.
+or stage chaining — that is solution structure, not benchmark structure). Design notes are
+in that file's module docstring.
 
 ## Scene (randomized per build)
 

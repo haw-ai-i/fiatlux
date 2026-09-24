@@ -13,7 +13,7 @@ remove the old bulb, and place it in the disposal crate. No policy stitching or
 staged-curriculum chaining -- that is solution structure, not benchmark structure (the
 issue-#20 descoping that still stands).
 
-Design notes (full-task benchmark plan, ``journal/specs/full-task-benchmark-plan.md``):
+Design notes:
 
 - **Scoring** uses *normalized* distance progress -- ``(d0 - d) / d0`` clamped to [0, 1],
   per episode, paid as best-progress increments -- so randomized spawn distances cannot

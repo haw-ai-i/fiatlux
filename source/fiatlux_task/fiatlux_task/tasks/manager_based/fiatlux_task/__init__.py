@@ -8,8 +8,8 @@
 One family, one scene (``scene_cfg.G1ReplaceSceneCfg``), preset layouts per task:
 
 - ``FIATLUX-Replace-v0`` : THE BENCHMARK -- the full light-bulb replacement (randomized
-  room layout, normalized-progress scoring, standard/cheatcode observation modes; see
-  ``journal/specs/full-task-benchmark-plan.md``). ``verify_scene.py``'s default target.
+  room layout, normalized-progress scoring, standard/cheatcode observation modes).
+  ``verify_scene.py``'s default target.
 - ``FIATLUX-S01..S12-*-v0`` : the twelve subtasks Replace decomposes into (issue #66), each
   starting from its predecessor's end state (``subtask_env_cfg.py`` + ``subtasks/``).
 - ``FIATLUX-S01..S12-*-Training-v0`` : the same subtasks plus reward shaping (issue #169,

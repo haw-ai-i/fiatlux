@@ -25,10 +25,10 @@ Phase 5).
 
 ## 2. Full task — `FIATLUX-Replace-v0` — ✅ PRIMARY BENCHMARK (2026-07-09)
 
-Promoted from scene-only scaffold to the scored full-task RL environment per
-`journal/specs/full-task-benchmark-plan.md` (this deliberately reverses the earlier
-"stays off the roadmap" call for the *task itself*; the policy-stitching part of that
-descoping still stands — it is one flat RL episode, chaining is solution structure).
+Promoted from scene-only scaffold to the scored full-task RL environment (this
+deliberately reverses the earlier "stays off the roadmap" call for the *task itself*;
+the policy-stitching part of that descoping still stands — it is one flat RL episode,
+chaining is solution structure).
 
 - ~~Build and verify the full combined-family scene: robot, ladder, table+bulb, and the
   elevated fixture together, each randomized into its own non-overlapping floor "safe
