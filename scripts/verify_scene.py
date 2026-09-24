@@ -17,17 +17,17 @@ not disturb the checks. EVERY task carries a camera sensor (each env cfg calls
 
 Examples
 --------
-    # headless verification (default base env)
+    # headless verification (default: FIATLUX-Replace-v0)
     uv run python scripts/verify_scene.py --headless --enable_cameras
 
     # record an orbiting MP4 of the scene to logs/verify/ (the reliable way to see it headless)
     uv run python scripts/verify_scene.py --record --hold_base --headless --num_envs 1
 
     # verify a specific task env
-    uv run python scripts/verify_scene.py --headless --task FIATLUX-Climb-v0
+    uv run python scripts/verify_scene.py --headless --task FIATLUX-S02-ClimbLadder-v0
 
     # every task needs camera rendering; without the flag Isaac Lab raises at startup
-    uv run python scripts/verify_scene.py --headless --enable_cameras --task FIATLUX-Insert-v0
+    uv run python scripts/verify_scene.py --headless --enable_cameras --task FIATLUX-Replace-v0
 """
 
 """Launch Isaac Sim Simulator first."""
@@ -42,7 +42,7 @@ parser = argparse.ArgumentParser(description="Verify the Fiatlux ladder scene lo
 parser.add_argument(
     "--task",
     type=str,
-    default="FIATLUX-Base-v0",
+    default="FIATLUX-Replace-v0",
     help="Gym id of the env/task to verify (any FIATLUX id). EVERY task needs --enable_cameras: "
     "each one calls add_ego_camera, and Isaac Lab raises at startup for a camera spawned without "
     "the flag. This used to name Insert alone, which sent seven of the eight presets into a "
