@@ -52,6 +52,9 @@ class ClimbPPORunnerCfg(PPORunnerCfg):
     otherwise silently never reach the critic (it falls back to the policy set).
     ``PPORunnerCfg`` above predates this finding and is left unchanged by review
     decision; revisit if a future subtask's privileged group needs to reach its critic.
+
+    Orphaned: no gym env is currently registered for the task this config was written
+    for, so it has nothing to train against (see :class:`CarryPPORunnerCfg` below).
     """
 
     max_iterations = 3000  # locomotion-scale training budget
