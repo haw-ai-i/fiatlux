@@ -28,4 +28,3 @@ Isaac Lab manager-based RL environment.
 - [task_spec.md](task_spec.md) — observation / action / reward / success spec.
 - [scoring.md](scoring.md) — the evaluation protocol and metrics.
 - [roadmap.md](roadmap.md) — climbing, combined task, and sim-to-real.
-- [asset_collection_todo.md](asset_collection_todo.md) — required USD assets.
