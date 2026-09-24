@@ -53,6 +53,14 @@ def _run_child(seed: int, extra: list[str], scenario: str = "rl") -> tuple[int, 
     return proc.returncode, signature
 
 
+def _report(failures: list[str], known_issues: list[str] | None = None) -> int:
+    status = "ALL CHECKS PASSED" if not failures else "FAILED: " + ", ".join(failures)
+    if known_issues:
+        status += f" (known issues, not gating: {', '.join(known_issues)})"
+    print(status)
+    return 1 if failures else 0
+
+
 def _parent_main(args) -> int:
     failures = []
     print(f"[verify_randomization] run 1 (seed {args.seed})")
@@ -77,8 +85,7 @@ def _parent_main(args) -> int:
     )
     record("determinism:different_seed_differs", bool(sig3) and sig1 != sig3, "seed+1 signature differs")
     record("scale_dr_run_passes", rc4 == 0, f"exit code {rc4}")
-    print("ALL CHECKS PASSED" if not failures else "FAILED: " + ", ".join(failures))
-    return 1 if failures else 0
+    return _report(failures)
 
 
 _args_cli, _ = parser.parse_known_args()
@@ -308,11 +315,7 @@ def main() -> int:
     else:
         signature = child_rl(args_cli.seed, args_cli.num_envs)
         print(f"[SIGNATURE] {json.dumps(signature, sort_keys=True)}")
-    status = "ALL CHECKS PASSED" if not failures else "FAILED: " + ", ".join(failures)
-    if known_issues:
-        status += f" (known issues, not gating: {', '.join(known_issues)})"
-    print(status)
-    return 1 if failures else 0
+    return _report(failures, known_issues)
 
 
 if __name__ == "__main__":
