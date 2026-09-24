@@ -63,9 +63,9 @@ def _find_policy_dir() -> str:
 _POLICY_DIR = _find_policy_dir()
 
 parser = argparse.ArgumentParser()
-# No default: the old one (FIATLUX-Insert-Teleop-v0) is stationary tabletop manipulation with
-# the pelvis bolted, which this driver then unbolts -- not one of the 12 subtasks, and not
-# scoreable against them. Falling back to it silently is worse than asking.
+# No default: this driver frees the base and expects a walking-scale task. An implicit fallback
+# risks silently applying that to a stationary, bolted-base scene, which isn't scoreable against
+# the 12 subtasks. Falling back silently is worse than asking.
 parser.add_argument("--task", required=True, help="env id, e.g. FIATLUX-S07-ApproachNewBulb-Teleop-v0")
 parser.add_argument(
     "--input",
@@ -487,27 +487,14 @@ def main():  # noqa: C901  (one long orchestration: env setup + settle/resettle 
             setattr(env_cfg.terminations, _t, None)
     # Take the robot's x,y from whatever env is loaded (task-specific placement); keep SONIC's
     # standing joint stance so the balance policy starts in-distribution, and raise the spawn a
-    # touch so the feet clear the floor. Generalizes across tasks (Insert, Carry, ...).
+    # touch so the feet clear the floor. Generalizes across every teleop task.
     _p = env_cfg.scene.robot.init_state.pos
     env_cfg.scene.robot.init_state.pos = (_p[0], _p[1], max(_p[2], 0.80))
-    # SONIC leg stance (both envs need it). The ARM spawn pose is env-dependent because the two envs'
-    # IK behaves differently: Insert's redundant IK RELAXES the arm to a natural low rest regardless of
-    # spawn (so a bent-elbow spawn settles to ~0.17), but Carry's IK HOLDS whatever it spawns in -- so
-    # Carry must spawn directly in the natural pose or it stays tucked at the spawn angle. Keep Insert's
-    # spawn exactly as it was so its settled pose is unchanged.
     _legs = {".*_hip_pitch_joint": -0.1, ".*_knee_joint": 0.3, ".*_ankle_pitch_joint": -0.2}
-    # Insert is the ONE env whose IK relaxes the 1.57 spawn on its own. Everything else -- Carry,
-    # LadderGallery, the S01..S12 subtask twins, and any env derived from them -- holds whatever
-    # it spawns in, so all of them take the natural low spawn. Matching the exception rather than
-    # listing the rule: a new env used to fall through to Insert's pose by default and come up
-    # with its arm tucked at the chest.
-    if "Insert" not in args.task:
-        # Drop the SHOULDER so the arm hangs low. The elbow drifts up to ~1.1 on its own (redundant IK),
-        # so we don't fight it -- a low/back shoulder points the upper arm down so the bent forearm sits
-        # low instead of up at the chest. (Per operator: change the joint above the 90-deg elbow.)
-        _arm_spawn = {".*_shoulder_pitch_joint": -0.35, ".*_elbow_joint": 0.35}
-    else:
-        _arm_spawn = {".*_elbow_joint": 1.57}  # Insert etc: IK relaxes this to ~0.17 (unchanged from before)
+    # Drop the SHOULDER so the arm hangs low. The elbow drifts up to ~1.1 on its own (redundant IK),
+    # so we don't fight it -- a low/back shoulder points the upper arm down so the bent forearm sits
+    # low instead of up at the chest. (Per operator: change the joint above the 90-deg elbow.)
+    _arm_spawn = {".*_shoulder_pitch_joint": -0.35, ".*_elbow_joint": 0.35}
 
     # MERGE, don't assign: subtasks stage joints that the task depends on -- the carry/hold ones
     # place the arms where they must be to hold the payload (e.g. S03's LADDER_CARRY_ARM_JOINT_POS,
@@ -1677,9 +1664,10 @@ def main():  # noqa: C901  (one long orchestration: env setup + settle/resettle 
             print(f"[sonic] hand effort limit capped at {_hand_eff} N.m ({len(_hand_ids)} joints)", flush=True)
 
     if args.input == "vr":
-        # Re-anchor the controller_rel arm retargeters to THIS scene's live robot. They default to the
-        # Insert *table* world coords, so on any other scene (e.g. the ladder Carry env) the arm reaches
-        # for a world point far from the robot and flails. Rebake root + EE-start + workspace to live.
+        # Re-anchor the controller_rel arm retargeters to THIS scene's live robot. Their default
+        # root_pos/orientation (xr_controller_retargeters.py) are tuned for one specific stationary
+        # scene, so on any other scene (e.g. a walking task) the arm reaches for a world point far
+        # from the robot and flails. Rebake root + EE-start + workspace to live.
         from scipy.spatial.transform import Rotation as _Rot  # noqa: E402
 
         _rpos = robot.data.root_pos_w[0].cpu().numpy()
@@ -1701,10 +1689,10 @@ def main():  # noqa: C901  (one long orchestration: env setup + settle/resettle 
             _rt._hi = _ee + np.array([0.45, 0.45, 0.45], dtype=np.float32)
             _rt._prev = None
             _rt._smooth = None
-            # Orientation too: the cfg's initial_orientation is the Insert-table rest quat, so the
-            # first clutch snapped the wrist there (e.g. off the carry staging's palm-up pose --
-            # keyboard, which holds the captured settle pose, never did this). Start the rotation
-            # ratchet from the LIVE wrist orientation instead, root frame like the command.
+            # Orientation too: the cfg's initial_orientation defaults to that same stationary scene's
+            # rest quat, so the first clutch snapped the wrist there (e.g. off the carry staging's
+            # palm-up pose -- keyboard, which holds the captured settle pose, never did this). Start
+            # the rotation ratchet from the LIVE wrist orientation instead, root frame like the command.
             _ee_q = robot.data.body_state_w[0, _eeb, 3:7].cpu().numpy()  # w, x, y, z
             _live_R = _R.inv() * _Rot.from_quat([_ee_q[1], _ee_q[2], _ee_q[3], _ee_q[0]])
             _rt._init_R = _live_R
