@@ -149,19 +149,20 @@ failures: list[str] = []
 known_issues: list[str] = []
 
 
-def record(name: str, ok: bool, detail: str) -> None:
-    print(f"[{'PASS' if ok else 'FAIL'}] {name}: {detail}")
-    if not ok:
-        failures.append(name)
-
-
-def record_known_issue(name: str, ok: bool, detail: str, issue: str) -> None:
-    """Like ``record``, but a FAIL here is a pre-existing, tracked bug (``issue``), not a
-    regression -- it must not fail the script's own exit code, or a real future regression
-    elsewhere would be masked by a check that's already known to fail."""
-    print(f"[{'PASS' if ok else f'FAIL (known, {issue})'}] {name}: {detail}")
-    if not ok:
+def record(name: str, ok: bool, detail: str, known_issue: str | None = None) -> None:
+    """Print PASS/FAIL and track the failure. ``known_issue`` marks a FAIL as a pre-existing,
+    tracked bug (e.g. ``"issue #236"``) rather than a regression -- it goes to ``known_issues``,
+    not ``failures``, so it doesn't gate the script's own exit code and mask a future regression
+    elsewhere behind a check that's already known to fail."""
+    if ok:
+        print(f"[PASS] {name}: {detail}")
+        return
+    if known_issue:
+        print(f"[FAIL (known, {known_issue})] {name}: {detail}")
         known_issues.append(name)
+    else:
+        print(f"[FAIL] {name}: {detail}")
+        failures.append(name)
 
 
 def get_scale(stage, path: str):
@@ -227,8 +228,7 @@ def child_rl(seed: int, num_envs: int) -> dict:
     # Known-failing since this check first actually ran (issue #236): either this hardcoded,
     # non-per-env path never matched anything under replicate_physics=True, or
     # mdp.randomize_material_tint's own room resolution doesn't either -- root cause undetermined.
-    # record_known_issue (not record) so this pre-existing bug doesn't mask a future regression.
-    record_known_issue("rl:room_tint_active", len(room_tinted) > 0, "shared room tinted", "issue #236")
+    record("rl:room_tint_active", len(room_tinted) > 0, "shared room tinted", known_issue="issue #236")
     record(
         "rl:per_env_ladder_untinted",
         len(tinted_attrs(stage, "/World/envs/env_0/Ladder")) == 0,
@@ -298,7 +298,7 @@ def child_replace(seed: int, num_envs: int) -> dict:
     env.reset()
     room_tinted = tinted_attrs(stage, "/World/Room")
     # Same known bug as rl:room_tint_active (issue #236) -- see that check's comment.
-    record_known_issue("replace:room_tint_active", len(room_tinted) > 0, "shared room tinted", "issue #236")
+    record("replace:room_tint_active", len(room_tinted) > 0, "shared room tinted", known_issue="issue #236")
     record(
         "replace:b1k_materials_untouched",
         len(tinted_attrs(stage, "/World/envs/env_0/Bulb")) == 0
