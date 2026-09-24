@@ -646,9 +646,9 @@ class G1ReplaceSceneCfg(DressedSceneCfg):
     # every preset builds what it owns with ``_make_bulb_cfg``, so no task inherits a bulb it
     # does not want. Replace is the only preset that builds both.
     #
-    # The class carries no bulb of its own. It used to, and ``apply_workshop_preset`` was an
-    # empty function because that default WAS the workshop layout -- which is exactly how Remove
-    # ended up calling its single seated bulb ``bulb`` and the scoring layer ``old_bulb``.
+    # The class carries no bulb of its own. It used to, back when the class-level default WAS a
+    # retired task's fixed layout -- which is exactly how that task ended up calling its single
+    # seated bulb ``bulb`` and the scoring layer ``old_bulb``.
     fresh_bulb: RigidObjectCfg | None = None
     # Seated in the socket. Retention is ``mdp.bulb_attachment``, which pins it at the seat until
     # it is rotated to the release angle and travels out of the channel.
