@@ -291,15 +291,10 @@ SUBTASK_IDS = [
     "FIATLUX-S12-ClimbDown-v0",
 ]
 
-# Convenience list for scripts/tests that iterate the ladder family. Every member except
-# Base is RL now; Base is the shared scene-only cfg (no task, deliberately non-RL).
+# Convenience list for scripts/tests that iterate the registered top-level task(s). The other
+# ladder-family members (Base/Carry/Climb/Descend/Remove/Install) were retired and are no
+# longer registered -- see SUBTASK_IDS above for the 12 subtasks that are.
 TASK_IDS = [
-    "FIATLUX-Base-v0",
-    "FIATLUX-Carry-v0",
-    "FIATLUX-Climb-v0",
-    "FIATLUX-Descend-v0",
-    "FIATLUX-Remove-v0",
-    "FIATLUX-Install-v0",
     "FIATLUX-Replace-v0",
 ]
 
