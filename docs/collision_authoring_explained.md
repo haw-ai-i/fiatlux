@@ -103,7 +103,7 @@ UsdShade.MaterialBindingAPI.Apply(over).Bind(mat, ..., "physics")   # grip
 > C-channel rail groove) open, which convexDecomposition cannot. convexDecomposition (tuned:
 > `maxConvexHulls`, `hullVertexLimit`, `voxelResolution`, `shrinkWrap`) is kept as the fallback for
 > designs whose mesh is wound inside-out (SDF would be inside-out there). It also authors a ~6 mm
-> contact offset. See [`issue-70-ladder-collision-fix.md`](../journal/specs/issue-70-ladder-collision-fix.md).
+> contact offset.
 
 ## When the actual collision geometry is created
 
