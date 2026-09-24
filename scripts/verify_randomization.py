@@ -323,24 +323,18 @@ def child_scale_dr(seed: int, num_envs: int) -> None:
     env_cfg.scene.num_envs = num_envs
     env_cfg.scene.replicate_physics = False
     env_cfg.seed = seed
-    env_cfg.events.randomize_ladder_scale = EventTerm(
-        func=mdp.randomize_prop_scale,
-        mode="prestartup",
-        params={
-            "asset_cfg": SceneEntityCfg("ladder"),
-            "scale_range": {"x": (0.95, 1.05), "y": (0.95, 1.05), "z": (0.95, 1.1)},
-        },
-    )
-    env_cfg.events.randomize_socket_scale = EventTerm(
-        func=mdp.randomize_rigid_body_scale,
-        mode="prestartup",
-        params={"asset_cfg": SceneEntityCfg("socket"), "scale_range": (0.9, 1.1)},
-    )
-    env_cfg.events.randomize_bulb_scale = EventTerm(
-        func=mdp.randomize_rigid_body_scale,
-        mode="prestartup",
-        params={"asset_cfg": SceneEntityCfg("fresh_bulb"), "scale_range": (0.9, 1.1)},
-    )
+    for name, func, entity, scale_range in (
+        ("ladder", mdp.randomize_prop_scale, "ladder", {"x": (0.95, 1.05), "y": (0.95, 1.05), "z": (0.95, 1.1)}),
+        ("socket", mdp.randomize_rigid_body_scale, "socket", (0.9, 1.1)),
+        ("bulb", mdp.randomize_rigid_body_scale, "fresh_bulb", (0.9, 1.1)),
+    ):
+        setattr(
+            env_cfg.events,
+            f"randomize_{name}_scale",
+            EventTerm(
+                func=func, mode="prestartup", params={"asset_cfg": SceneEntityCfg(entity), "scale_range": scale_range}
+            ),
+        )
     env = ManagerBasedRLEnv(cfg=env_cfg)
     stage = omni.usd.get_context().get_stage()
 
