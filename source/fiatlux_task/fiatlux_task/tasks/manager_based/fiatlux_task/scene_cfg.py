@@ -56,7 +56,6 @@ from fiatlux_task.assets import (
     BULB_STAND_Z_OFFSET,
     BULB_USD,
     CRATE_USD,
-    ELEVATED_SOCKET_USD,
     FIATLUX_ASSETS_DIR,
     G1_HORIZONTAL_REACH,
     G1_OVERHEAD_REACH,
@@ -116,24 +115,16 @@ TARGET_LADDER_POSITION = (0.55, -0.30, 0.0)  # directly beneath the ceiling fixt
 # Same SOCKET_USD / BULB_USD as Replace, ceiling-mounted above the target and
 # flipped bulb-down. See apply_position_preset.
 
-# -- at-height presets (climb / descend): elevated fixture over the ladder. --
-ELEVATED_SOCKET_POSITION = (1.9, 0.0, 2.80)  # cage bottom clears the at-top robot's head
-CLIMB_ROBOT_POSITION = (0.75, 0.0, _ROBOT_Z)  # at the step ladder's base, ready to ascend
 # Pelvis on the ladder's standing tread (descend). STEP_LADDER_TOP_OFFSET's local x,y are
 # both zero, so the stance sits over the ladder's root at any yaw.
 TOP_ROBOT_POSITION = (LADDER_POSITION[0], LADDER_POSITION[1], STEP_LADDER_TOP_OFFSET[2] + _ROBOT_Z)
-PARKED_BULB_POSITION = (0.5, -0.6, -BULB_STAND_Z_OFFSET)  # standing out of the way on the floor
 
-# -- bench manipulation extras (remove / install share Insert's tabletop world) --
-# Both halves are authored assembled at identity, so a seated bulb is the fixture's own pose:
-# no offset arithmetic, and zero interpenetration at reset by construction.
-TABLETOP_SEATED_BULB_POSITION = TABLETOP_SOCKET_POSITION
+# -- bench manipulation extras --
 BIN_POSITION = (0.15, -0.75, 0.0)  # parts crate on the floor beside the bench
 # The crate's inner floor is at 0.055 m, not the outer bbox's 0.17 rim top. Requires the
 # hollow-collider spawner: against the stock single convex collider a bulb placed here is
 # depenetrated straight out onto the floor.
 BIN_BULB_INTERIOR_Z = 0.055
-BIN_BULB_POSITION = (0.15, -0.75, BIN_BULB_INTERIOR_Z - BULB_STAND_Z_OFFSET)
 
 # -- replace preset: robot / table+bulb / ladder each randomized into their own
 # non-overlapping floor "safe zone", fixture ceiling- or wall-mounted. Inset from the room's own
@@ -730,9 +721,8 @@ def _sync_bulb_contact_filters(scene: G1ReplaceSceneCfg) -> None:
     """Rebuild ``hand_contact``'s filter list from whichever bulbs the preset actually built.
 
     Call this at the END of every preset. Rebuilding, rather than appending per preset, is what
-    makes preset chaining safe: ``apply_remove_preset`` runs the tabletop preset first, which
-    builds a ``fresh_bulb``, and then clears it. An appended filter would leave an expression
-    pointing at a prim that no longer exists.
+    would make a preset that runs another preset first and then clears one of its bulbs safe: an
+    appended filter would leave an expression pointing at a prim that no longer exists.
 
     This fails SILENTLY when it is wrong, which is why it is centralized: the sensor reports zero
     force for an unfiltered body, and zero force reads as "not touching".
@@ -811,24 +801,6 @@ def apply_position_preset(scene: G1ReplaceSceneCfg) -> None:
     # filter.
 
 
-def apply_at_height_preset(scene: G1ReplaceSceneCfg, robot_at: str = "base") -> None:
-    """Elevated-fixture layout shared by climb / descend.
-
-    The socket entity becomes a ceiling chandelier hung above the ladder; the floor lamp
-    is gone. ``robot_at="base"`` starts the robot at the ladder's feet (climb),
-    ``robot_at="top"`` starts it at the upper steps (descend). The random dressing
-    ``fixture`` is dropped -- the task chandelier owns the ceiling.
-    """
-    scene.socket.spawn.usd_path = ELEVATED_SOCKET_USD
-    scene.socket.init_state.pos = ELEVATED_SOCKET_POSITION
-    scene.fresh_bulb = _make_bulb_cfg("{ENV_REGEX_NS}/Bulb", PARKED_BULB_POSITION)
-    scene.old_bulb = None
-    scene.robot.init_state.pos = CLIMB_ROBOT_POSITION if robot_at == "base" else TOP_ROBOT_POSITION
-    scene.fixture = None
-    add_ceiling_pendant(scene, ELEVATED_SOCKET_POSITION[0], ELEVATED_SOCKET_POSITION[1], ELEVATED_SOCKET_POSITION[2])
-    _sync_bulb_contact_filters(scene)
-
-
 def face_robot_at(scene: G1ReplaceSceneCfg, target: Vec2) -> None:
     """Point the robot's spawn yaw at a floor target (x, y).
 
@@ -901,7 +873,7 @@ def frame_viewer_on(
     ladder/mate/balance tier, the fixture's wall or ceiling mount too -- a camera hardcoded at
     the room's origin only happens to frame the action when a draw lands nearby. ``target`` must
     be a position already resolved by the preset (the robot's or ladder's ``init_state.pos``),
-    so this has to run after ``apply_replace_preset``/``apply_at_height_preset``, not before.
+    so this has to run after ``apply_replace_preset``, not before.
 
     The eye sits ``distance`` out from ``target`` back towards the room's floor center, not at a
     fixed azimuth: a wall-mounted fixture can land within a couple of metres of the room's own
@@ -1045,35 +1017,6 @@ def _add_parts_bin(scene: G1ReplaceSceneCfg, position: Vec3 = BIN_POSITION) -> N
         ),
         init_state=RigidObjectCfg.InitialStateCfg(pos=position),
     )
-
-
-def apply_remove_preset(scene: G1ReplaceSceneCfg) -> None:
-    """Bulb-removal start: Insert's bench with the bulb SEATED in the table lamp.
-
-    Same world as the Insert/Install bench, with the empty parts crate beside it as the
-    bulb's destination. The bulb stays DYNAMIC and is held only by gravity and contact:
-    the fixture is upright here and its screw hole is an open triangle-mesh collider, so a
-    seated bulb nests and rests, and the robot can lift it straight out. That is what makes
-    this task solvable. It must stay dynamic: a kinematic bulb cannot be moved by any
-    action at all.
-    """
-    apply_tabletop_preset(scene)
-    _add_parts_bin(scene)
-    # The bench preset builds a fresh bulb at hand height. Remove's single bulb is SEATED, so it
-    # is the old bulb, and the inherited fresh one has to go -- two bulbs would make
-    # ``socket_empty`` read the wrong row.
-    scene.fresh_bulb = None
-    scene.old_bulb = _make_bulb_cfg("{ENV_REGEX_NS}/OldBulb", TABLETOP_SEATED_BULB_POSITION)
-    _sync_bulb_contact_filters(scene)
-
-
-def apply_install_preset(scene: G1ReplaceSceneCfg) -> None:
-    """Bulb-installation start: Insert's bench, empty lamp socket, fresh bulb in the crate."""
-    apply_tabletop_preset(scene)
-    _add_parts_bin(scene)
-    # Keeps the bench's fresh bulb; only its placement changes. The socket starts empty.
-    scene.fresh_bulb.init_state.pos = BIN_BULB_POSITION
-    _sync_bulb_contact_filters(scene)
 
 
 ##
@@ -1350,8 +1293,8 @@ def apply_replace_preset(
     declared seed; without one the layout is drawn from OS entropy.
 
     The fixture reuses ``SOCKET_USD`` (``ehjsdz``/``kfmkwd``, the validated bulblampF/M pair
-    already used by the tabletop Insert task) rather than the decorative ``ELEVATED_SOCKET_USD``
-    chandelier (used only by climb/descend, which never validated a socket metalink on it) --
+    already used by the tabletop Insert task) rather than the decorative chandelier used only
+    by the retired climb/descend tasks, which never validated a socket metalink on it --
     this scene needs a genuinely insertible bulb+socket at height.
 
     Unlike every other preset the ladder spawns *dynamic* (mass ``LADDER_MASS_KG``): a

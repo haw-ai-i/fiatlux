@@ -105,8 +105,6 @@ G1_HORIZONTAL_REACH = 0.5045
 G1_PALM_REACH = 0.419  # m
 G1_WORKING_SHOULDER_OFFSET = (0.001, -0.101, 0.291)  # m, robot frame
 
-ELEVATED_SOCKET_USD = SOCKET_USD
-
 # The ``_physics`` variant ships collision geometry.
 CRATE_USD = os.path.join(
     FIATLUX_ASSETS_DIR,

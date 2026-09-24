@@ -129,7 +129,7 @@ from isaaclab_tasks.utils import parse_env_cfg
 # global prims (shared across envs) and the per-env tracked entities we expect
 # Candidate scene entities; each is checked only when it exists (and is not None) on the
 # task's scene cfg, so this one verifier covers every family preset: the tabletop preset
-# has no ladder, the workshop presets have no table, dressing cfgs may drop the fixture.
+# has no ladder, dressing cfgs may drop the fixture.
 # ``room`` and ``pendant`` are per-env (each env owns a colliding room), so they belong to
 # the tracked list -- their prim paths carry {ENV_REGEX_NS} and only resolve under env_0.
 GLOBAL_CANDIDATES = ["ground", "dome_light", "key_light"]
@@ -143,12 +143,7 @@ TRACKED_CANDIDATES = ["robot", "ladder", "lamp", "socket", "fresh_bulb", "old_bu
 # preset from silently inheriting or dropping one -- the failure mode the rename exists to end.
 PRESET_PRESENCE = {
     "tabletop": ({"table", "fresh_bulb"}, {"ladder", "old_bulb"}),
-    "workshop": ({"ladder", "fresh_bulb"}, {"table", "old_bulb"}),
     "carry": ({"ladder", "old_bulb"}, {"table", "fresh_bulb"}),
-    "climb": ({"ladder", "fresh_bulb"}, {"table", "old_bulb"}),
-    "descend": ({"ladder", "fresh_bulb"}, {"table", "old_bulb"}),
-    "remove": ({"table", "bin", "old_bulb"}, {"ladder", "fresh_bulb"}),
-    "install": ({"table", "bin", "fresh_bulb"}, {"ladder", "old_bulb"}),
     "replace": ({"table", "ladder", "bin", "old_bulb", "fresh_bulb"}, set()),
 }
 

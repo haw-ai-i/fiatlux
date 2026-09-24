@@ -6,8 +6,8 @@
 """Shared scene vocabulary for the Fiatlux benchmark scenes.
 
 The tabletop preset (``scene_cfg.apply_tabletop_preset``) and the ladder-family presets
-(``apply_position_preset`` / ``apply_at_height_preset`` / ``apply_replace_preset``) are
-deliberately different *layouts* -- tabletop subtask vs
+(``apply_position_preset`` / ``apply_replace_preset``) are deliberately different *layouts* --
+tabletop subtask vs
 at-fixture task family -- but they describe the same world. This module holds the pieces
 that must stay literally identical across them:
 
