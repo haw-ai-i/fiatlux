@@ -69,7 +69,7 @@ from fiatlux_task.assets import (
 )
 from fiatlux_task.robots.g1 import G1_INSPIRE_CFG, G1_LADDER_CONTACT_BODIES
 from fiatlux_task.scenes import DressedSceneCfg
-from fiatlux_task.sensors import ego_camera_cfg, mid360_lidar_cfg, wrist_camera_cfg
+from fiatlux_task.sensors import ego_camera_cfg, mid360_lidar_cfg
 
 # -- default (workshop) placement (module constants, not scene fields; override via each
 #    entity's init_state). BEHAVIOR-1K USDs are authored with the origin near the bbox
@@ -958,11 +958,6 @@ def add_ladder_contact_sensor(scene: G1ReplaceSceneCfg, bodies: list[str] | None
         history_length=1,
         track_air_time=False,
     )
-
-
-def add_wrist_camera(scene: G1ReplaceSceneCfg) -> None:
-    """Attach the standard wrist-mounted RGB camera (manipulation subtasks)."""
-    scene.wrist_camera = wrist_camera_cfg()
 
 
 def add_ego_camera(scene: G1ReplaceSceneCfg) -> None:
