@@ -9,7 +9,9 @@ The ladder-handling / positioning subtask: a **dynamic, high-friction** ladder s
 front of the G1; the robot **walks to it**, grasps a rail (physics friction, no weld), and
 carries it upright to beneath the ceiling light fixture. **Whole-body** control (`joint_names=
 [".*"]`, like the full Replace task) so locomotion + manipulation are both available. Built as a
-standard ``ManagerBasedRLEnvCfg`` so it slots into train / play / eval.
+standard ``ManagerBasedRLEnvCfg``, but not itself gym-registered -- reached only via the
+``CarryTeleopEnvCfg``/``LadderGalleryTeleopEnvCfg`` teleop subclasses and
+``scripts/verify_randomization.py``'s direct instantiation.
 
 Scoring **reuses the full Replace task's ladder terms** (one shared source of truth):
 ``ladder_fixture_distance`` progress + the ``ladder_ready`` completion/success predicate
