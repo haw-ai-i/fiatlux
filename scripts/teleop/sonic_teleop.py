@@ -1,6 +1,7 @@
 """Whole-body loco-manipulation teleop for any FIATLUX-*-Teleop task.
 
-Runs a real teleop gym env (``--task`` -- Insert / Carry / LadderGallery / ...), FREES the base, and
+Runs a real teleop gym env (``--task`` -- LadderGallery / the S01..S12 subtask teleop twins /
+...), FREES the base, and
 drives legs+waist with the pre-trained NVIDIA SONIC policy so the operator can walk the robot around
 the scene and manipulate -- true whole-body teleop, on any task.
 
@@ -367,15 +368,11 @@ class WalkRetargeterCfg(RetargeterCfg):
 
 
 def main():  # noqa: C901  (one long orchestration: env setup + settle/resettle + the teleop loop)
-    # --- env: real Insert-Teleop scene, retimed for SONIC, base freed ---
+    # --- env: real teleop scene, retimed for SONIC, base freed ---
     # Subtask teleop envs read the hand from the environment (the swap has to happen inside the
-    # cfg's __post_init__, before its action terms are built). Insert/Carry keep their own
-    # post-parse patches below.
-    _is_subtask_task = re.search(r"-S\d\d-", args.task) is not None
+    # cfg's __post_init__, before its action terms are built).
     # Every env built on the subtask recipe reads its hand from this variable -- the S01..S12
-    # twins and any env derived from them. Only the legacy Insert/Carry patches below ignore
-    # it, and they are harmless with it set. It used to be set only for "-S<NN>-" ids, so a
-    # derived env silently came up with Inspire while the launcher reported dex3.
+    # twins and any env derived from them.
     os.environ["FIATLUX_TELEOP_HAND"] = args.hand.lower()
 
     # Room layout seed. Drawn here rather than left to the scene module's unseeded default so
@@ -446,19 +443,6 @@ def main():  # noqa: C901  (one long orchestration: env setup + settle/resettle 
     env_cfg = parse_env_cfg(args.task, device=args.device, num_envs=args.num_envs)
     if not isinstance(env_cfg, ManagerBasedRLEnvCfg):
         raise ValueError("expected a ManagerBasedRLEnv task")
-    # Carry-Teleop is Dex3-native; swap to Inspire on request. Its patch handles the robot +
-    # hand-action repoint.
-    #
-    # SUBTASKS ARE EXCLUDED. This is a substring match on the task id, and the subtask ids
-    # S05-CarryBulbToDisposal / S09-CarryBulbToLadder contain "Carry" -- so `--hand inspire`
-    # applied the legacy Carry patch to an already-Inspire-native subtask and swap_robot_variant
-    # raised "don't know how to remap joint_names=['R_index_proximal_joint', ...]". The subtask
-    # twins pick their own hand inside apply_subtask_teleop via FIATLUX_TELEOP_HAND, set above.
-    if not _is_subtask_task and args.hand.lower() == "inspire" and "Carry" in args.task:
-        from fiatlux_teleop.carry_teleop_env_cfg import apply_inspire_hands
-
-        apply_inspire_hands(env_cfg)
-
     env_cfg.sim.dt = 0.005  # 200 Hz (SONIC's rate)
     env_cfg.decimation = 4  # -> 50 Hz control
     env_cfg.sim.render_interval = 4
