@@ -74,7 +74,7 @@ alone no longer scores.
 
 ## Actions
 
-Whole-body joint-position targets (all DoF incl. fingers, like Climb): the task spans
+Whole-body joint-position targets (all DoF incl. fingers): the task spans
 locomotion, ladder work, and manipulation.
 
 ## Observations — `standard` vs `cheatcode` modes
@@ -84,7 +84,7 @@ modes **standard** and **cheatcode**):
 
 - **`policy` = standard mode** (sensor-realizable only): IMU (base angular velocity,
   projected gravity), estimated base height + linear velocity (the documented
-  estimator-realizable exception, as in Climb), joint pos/vel, hand contact forces,
+  estimator-realizable exception), joint pos/vel, hand contact forces,
   **head-mounted (`d435_link`) RGB camera features** and **head-mounted (`mid360_link`)
   lidar ranges** (camera needs `--enable_cameras`), last action. Corruption enabled.
 - **`privileged` = cheatcode mode** (exact simulator state): world poses of the robot,
