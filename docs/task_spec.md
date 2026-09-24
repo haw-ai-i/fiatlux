@@ -33,8 +33,7 @@ return to it (plus the reset jitter below).
   physics-driven axial pull past `release_threshold`. No twist/lock/rotation state: this
   asset has no physical lug or groove, so the old bayonet's clock-angle semantics were never
   modeling a real feature. `fresh_bulb_attached` and `success` read the attachment state, so
-  every score channel is achievable. Remove/Install do not yet use this mechanic: their bulbs
-  simply lift out of / drop into the socket.
+  every score channel is achievable.
   - **Lateral + tilt centering (issue #171)**: the original design left lateral position and
     orientation entirely to real contact. Teleop evidence found a seated bulb visibly
     tilts/swings -- the bore's 2.69mm radial clearance is real, necessary slop (tightening
