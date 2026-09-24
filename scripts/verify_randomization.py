@@ -6,11 +6,14 @@
 """Verify the domain-randomization axes (prop scale, material tint, light orientation).
 
 Headless, PhysX-only: every check is a USD-attribute read, so it runs where the RTX
-renderer is unavailable. Two scenarios:
+renderer is unavailable. Three scenarios:
 
 * ``rl`` (default) -- ``CarryEnvCfg`` (RL defaults, ``replicate_physics=True``): NO scale DR
   (ladder stays at its authored 0.01), but room tint (bounded, anti-compounding across resets)
   and light orientation (dome yaw-only, key light within its cone) active.
+* ``replace`` -- the same room-tint/light checks as ``rl``, but against ``ReplaceEnvCfg`` (the
+  actual shipped ``FIATLUX-Replace-v0`` task): both configs share the same
+  ``replicate_physics=True`` + reset-time ``mdp.randomize_material_tint`` setup.
 * ``scale_dr`` -- ``ReplaceEnvCfg`` with the documented opt-in from replace_env_cfg.py's own
   comment (``scene.replicate_physics = False`` + a prestartup ``mdp.randomize_prop_scale``/
   ``mdp.randomize_rigid_body_scale`` EventTerm on ladder/socket/fresh_bulb): per-env scale
@@ -30,7 +33,7 @@ import sys
 
 parser = argparse.ArgumentParser(description="Verify Fiatlux domain randomization.")
 parser.add_argument("--child", action="store_true", help=argparse.SUPPRESS)
-parser.add_argument("--scenario", choices=["rl", "scale_dr"], default="rl", help=argparse.SUPPRESS)
+parser.add_argument("--scenario", choices=["rl", "replace", "scale_dr"], default="rl", help=argparse.SUPPRESS)
 parser.add_argument("--seed", type=int, default=0)
 parser.add_argument("--num_envs", type=int, default=2)
 
@@ -69,8 +72,10 @@ def _parent_main(args) -> int:
     rc2, sig2 = _run_child(args.seed, ["--enable_cameras"])
     print(f"[verify_randomization] run 3 (seed {args.seed + 1})")
     rc3, sig3 = _run_child(args.seed + 1, ["--enable_cameras"])
+    print(f"[verify_randomization] replace run (seed {args.seed})")
+    rc4, _ = _run_child(args.seed, ["--enable_cameras"], scenario="replace")
     print(f"[verify_randomization] scale_dr run (seed {args.seed})")
-    rc4, _ = _run_child(args.seed, ["--enable_cameras"], scenario="scale_dr")
+    rc5, _ = _run_child(args.seed, ["--enable_cameras"], scenario="scale_dr")
 
     def record(name: str, ok: bool, detail: str) -> None:
         print(f"[{'PASS' if ok else 'FAIL'}] {name}: {detail}")
@@ -84,7 +89,8 @@ def _parent_main(args) -> int:
         f"signatures {'match' if sig1 == sig2 else 'DIFFER'} ({len(sig1)} chars)",
     )
     record("determinism:different_seed_differs", bool(sig3) and sig1 != sig3, "seed+1 signature differs")
-    record("scale_dr_run_passes", rc4 == 0, f"exit code {rc4}")
+    record("replace_run_passes", rc4 == 0, f"exit code {rc4}")
+    record("scale_dr_run_passes", rc5 == 0, f"exit code {rc5}")
     return _report(failures)
 
 
@@ -242,6 +248,73 @@ def child_rl(seed: int, num_envs: int) -> dict:
     }
 
 
+def child_replace(seed: int, num_envs: int) -> dict:
+    """The same room-tint/light checks as child_rl(), but against ``ReplaceEnvCfg`` -- the
+    actual shipped ``FIATLUX-Replace-v0`` task, not just ``CarryEnvCfg`` (a config no longer
+    gym-registered on its own). Both share the same at-risk setup (``replicate_physics=True``
+    + a reset-time ``mdp.randomize_material_tint`` EventTerm on ``room``), so issue #236 could
+    affect the primary benchmark task even if it turns out to be Carry-specific, or vice versa.
+    """
+    from fiatlux_task.tasks.manager_based.fiatlux_task.replace_env_cfg import ReplaceEnvCfg
+
+    from isaaclab.envs import ManagerBasedRLEnv
+
+    random.seed(seed)
+    env_cfg = ReplaceEnvCfg()
+    env_cfg.scene.num_envs = num_envs
+    env_cfg.seed = seed
+    env = ManagerBasedRLEnv(cfg=env_cfg)
+    stage = omni.usd.get_context().get_stage()
+
+    record(
+        "replace:replicate_physics_on",
+        env.scene.cfg.replicate_physics is True,
+        f"replicate_physics={env.scene.cfg.replicate_physics}",
+    )
+    env.reset()
+    room_tinted = tinted_attrs(stage, "/World/Room")
+    # Same known bug as rl:room_tint_active (issue #236) -- see that check's comment.
+    record_known_issue("replace:room_tint_active", len(room_tinted) > 0, "shared room tinted", "issue #236")
+    record(
+        "replace:b1k_materials_untouched",
+        len(tinted_attrs(stage, "/World/envs/env_0/Bulb")) == 0
+        and len(tinted_attrs(stage, "/World/envs/env_0/OldBulb")) == 0,
+        "no cache keys under either B1K bulb (Replace's fresh_bulb=Bulb, old_bulb=OldBulb)",
+    )
+
+    key_authored = tuple(env.scene.cfg.key_light.init_state.rot)
+    orients = []
+    tint_bound_ok = True
+    for _ in range(5):
+        env.reset()
+        orients.append((get_orient(stage, "/World/KeyLight"), get_orient(stage, "/World/DomeLight")))
+        for attr in room_tinted:
+            base = attr.GetCustomDataByKey(BASE_COLOR_KEY)
+            value = attr.Get()
+            if any(v > b * 1.2 + 1e-4 or v < 0.0 for v, b in zip(value, base)):
+                tint_bound_ok = False
+    record("replace:tint_never_compounds", tint_bound_ok, "5 resets stay within original*[0,1.2]")
+    key_orients = {o[0] for o in orients}
+    dome_orients = {o[1] for o in orients}
+    record(
+        "replace:light_orient_changes", len(key_orients) > 1 and len(dome_orients) > 1, "key/dome orient vary across resets"
+    )
+    record(
+        "replace:dome_yaw_only",
+        all(abs(o[1]) < 1e-5 and abs(o[2]) < 1e-5 for o in dome_orients if o is not None),
+        "dome quat has no x/y components",
+    )
+    record(
+        "replace:key_light_within_cone",
+        all(quat_delta_deg(o, key_authored) <= 46.0 for o in key_orients if o is not None),
+        f"max delta {max(quat_delta_deg(o, key_authored) for o in key_orients):.1f} deg <= 46",
+    )
+    return {
+        "orients": orients,
+        "room_tint": [tuple(round(float(v), 6) for v in a.Get()) for a in room_tinted[:3]],
+    }
+
+
 def in_range(values, lo: float, hi: float, tol: float = 1e-6) -> bool:
     return all(lo - tol <= v <= hi + tol for v in values)
 
@@ -312,6 +385,8 @@ def child_scale_dr(seed: int, num_envs: int) -> None:
 def main() -> int:
     if args_cli.scenario == "scale_dr":
         child_scale_dr(args_cli.seed, args_cli.num_envs)
+    elif args_cli.scenario == "replace":
+        child_replace(args_cli.seed, args_cli.num_envs)
     else:
         signature = child_rl(args_cli.seed, args_cli.num_envs)
         print(f"[SIGNATURE] {json.dumps(signature, sort_keys=True)}")
