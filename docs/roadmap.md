@@ -1,18 +1,14 @@
 # Roadmap
 
 The scored benchmark is the **full replacement task** (`FIATLUX-Replace-v0`), decomposed into
-twelve subtasks (`FIATLUX-S01-MoveLadder-v0` .. `FIATLUX-S12-ClimbDown-v0`). The legacy
-**insertion** (`g1_bulb_env_cfg.py`) and **climbing** (`climb_env_cfg.py`) environments that
-predated this decomposition are retired outright; **ladder-positioning** (`carry_env_cfg.py`)
-is no longer a standalone benchmark target, though its cfg lives on as the base for the
-`FIATLUX-LadderGallery-Teleop-v0` teleop bench. None of the three has a standalone `-v0` gym id
-anymore. Unfinished items below are listed so the extension seams are intentional.
+twelve subtasks (`FIATLUX-S01-MoveLadder-v0` .. `FIATLUX-S12-ClimbDown-v0`). Unfinished items
+below are listed so the extension seams are intentional.
 
 ## 1. Climbing subtask — ✅ DONE (2026-07-06), now `FIATLUX-S02-ClimbLadder-v0`
 
 G1 climbs the work-site step ladder (`fiatlux_task.assets.STEP_LADDER_USD`, the
-at-height preset) to the fixture height. All three deliverables landed in
-`climb_env_cfg.py`:
+at-height preset) to the fixture height. All three deliverables shipped as part of the
+climb subtask:
 
 - ~~Upgrade the scaffold to `ManagerBasedRLEnvCfg`; add a whole-body / locomotion
   action space (the G1 base is already free).~~ Whole-body joint-position targets
@@ -138,4 +134,4 @@ harness:
 
 The two design constraints that keep this cheap — hardware-realizable actions and a
 sensor-realizable default observation group — are already baked into
-`g1_bulb_env_cfg.py`.
+`subtask_env_cfg.py` (and `replace_env_cfg.py`).

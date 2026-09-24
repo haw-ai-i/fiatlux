@@ -17,9 +17,9 @@ This document tracks the required assets for the Fiatlux benchmark that need to 
   - [x] Verified joint/link names, actuator-group coverage (53 joints, disjoint, complete),
         and reference closure (self-contained, no stray external/local paths).
   - [x] Uploaded all baseline variants to the dataset's `unitree_g1/` (see layout below).
-  - [x] Wired the legged **wholebody Inspire** variant into `g1_bulb_env_cfg.py` as the env
-        default (`G1_USD`) — keeps the legs so the same robot can later locomote/climb —
-        with `G1_DEX3_USD` staged for an easy swap.
+  - [x] Wired the legged **wholebody Inspire** variant in as the env default (`G1_USD`,
+        `fiatlux_task/robots/g1.py`) — keeps the legs so the same robot can later
+        locomote/climb — with `G1_DEX3_USD` staged for an easy swap.
 
 **Dataset layout** (`unitree_g1/` in `haw-ai-i/fiatlux-assets`, pulled by `download_assets.sh`).
 `base`: `free` = floating/legged base (can stand, walk, climb); `fixed` = pelvis welded

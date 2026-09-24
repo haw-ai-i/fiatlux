@@ -115,7 +115,7 @@ Exits non-zero on FAIL.
 - **Env not found / empty list** — `uv sync` did not complete, or
   `import fiatlux_task.tasks` failed.
 - **USD not found** — run `./assets/download_assets.sh` or set `FIATLUX_ASSETS_DIR`.
-- **Joint/body name errors** — the constants in `g1_bulb_env_cfg.py`
+- **Joint/body name errors** — the constants in `fiatlux_task/robots/g1.py`
   (`G1_ARM_JOINTS`, `G1_EE_BODY`) must match the joints/links in your G1 USD.
 - **Hangs at `Do you accept the EULA? (Yes/No):`** — first launch of Isaac Sim's Kit
   runtime prompts interactively and there's no stdin in a non-interactive/background

@@ -150,6 +150,6 @@ Scene layout (zones, fixture mount, ladder yaw, robot yaw) per scene build; robo
 xy (±5 cm) / yaw (±0.1 rad), joints (±0.05 rad), light intensities, key-light direction
 (pitch ±15° / yaw ±30° about its authored 40° tilt), HDRI sky azimuth (0–360°), and a
 global room albedo tint (HSV multiplier on the bound materials' diffuse inputs) per
-reset. Prop-scale randomization is a scaffold-env default and an RL opt-in (prestartup
-USD writes require `replicate_physics=False`); see `base_env_cfg.py`'s EventCfg.
+reset. Prop-scale randomization is an RL opt-in (prestartup USD writes require
+`replicate_physics=False`); see `replace_env_cfg.py`'s `EventCfg`.
 
