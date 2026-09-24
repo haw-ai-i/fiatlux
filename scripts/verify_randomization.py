@@ -56,11 +56,11 @@ def _run_child(seed: int, extra: list[str], scenario: str = "rl") -> tuple[int, 
 def _parent_main(args) -> int:
     failures = []
     print(f"[verify_randomization] run 1 (seed {args.seed})")
-    rc1, sig1 = _run_child(args.seed, [])
+    rc1, sig1 = _run_child(args.seed, ["--enable_cameras"])
     print(f"[verify_randomization] run 2 (seed {args.seed})")
-    rc2, sig2 = _run_child(args.seed, [])
+    rc2, sig2 = _run_child(args.seed, ["--enable_cameras"])
     print(f"[verify_randomization] run 3 (seed {args.seed + 1})")
-    rc3, sig3 = _run_child(args.seed + 1, [])
+    rc3, sig3 = _run_child(args.seed + 1, ["--enable_cameras"])
     print(f"[verify_randomization] scale_dr run (seed {args.seed})")
     rc4, _ = _run_child(args.seed, ["--enable_cameras"], scenario="scale_dr")
 
@@ -177,11 +177,19 @@ def child_rl(seed: int, num_envs: int) -> dict:
     )
     env.reset()
     room_tinted = tinted_attrs(stage, "/World/Room")
+    # KNOWN FAILING as of this check first actually running (issue #236): either this hardcoded,
+    # non-per-env path never matched anything under replicate_physics=True, or
+    # mdp.randomize_material_tint's own room resolution doesn't either -- root cause undetermined.
     record("rl:room_tint_active", len(room_tinted) > 0, "shared room tinted")
     record(
         "rl:per_env_ladder_untinted",
         len(tinted_attrs(stage, "/World/envs/env_0/Ladder")) == 0,
         "per-env materials untouched under replicated physics",
+    )
+    record(
+        "rl:b1k_materials_untouched",
+        len(tinted_attrs(stage, "/World/envs/env_0/OldBulb")) == 0,
+        "no cache keys under the B1K bulb (CarryEnvCfg's live bulb is OldBulb)",
     )
 
     key_authored = tuple(env.scene.cfg.key_light.init_state.rot)
