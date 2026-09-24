@@ -104,7 +104,7 @@ uv run python scripts/eval.py --task FIATLUX-Replace-v0 --policy groot \
 ./scripts/teleop/setup_sim_teleop.sh            # one-command setup (keyboard tier; `vr` adds CloudXR)
 PYTHONPATH=source/fiatlux_task:source/fiatlux_teleop \
 uv run --extra teleop python scripts/teleop/sonic_teleop.py \
-    --task FIATLUX-Carry-Teleop-v0 --input keyboard
+    --task FIATLUX-S07-ApproachNewBulb-Teleop-v0 --input keyboard
 ```
 
 ## Sim-to-real
