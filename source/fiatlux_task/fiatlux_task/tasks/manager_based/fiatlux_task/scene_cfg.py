@@ -13,8 +13,6 @@ each is addressable via ``SceneEntityCfg`` for later randomization: ``ground``, 
 Every task in the family shares this scene; a *preset* selects the layout for the task's
 phase of the light-bulb-replacement story:
 
-- :func:`apply_workshop_preset` -- the default floor layout: climb ladder + socket-lamp and
-  bulb on the floor (Base / Carry / Climb / Descend / Remove / Install scaffolds).
 - :func:`apply_tabletop_preset` -- the manipulation bench: packing table, socket-lamp on the
   tabletop, bulb at hand height, no ladder (the Insert task).
 - :func:`apply_replace_preset` -- the full replacement task world (issue #20 scene, promoted
@@ -85,7 +83,6 @@ LADDER_POSITION = (1.6, 0.0, 0.0)
 LADDER_YAW_DEG = 90.0
 # The fixture's origin is its floor-contact plane (SOCKET_BASE_Z_OFFSET = 0).
 SOCKET_POSITION = (-0.8, 0.0, 0.0)  # socket-fixture standing on the floor
-BULB_POSITION = (-0.55, -0.20, -BULB_STAND_Z_OFFSET)  # standing on its cap on the floor
 
 # -- tabletop (manipulation bench) placement: the Insert layout. The robot works
 #    the bench from its +y long side, facing -y: the packing table's collision
@@ -353,10 +350,10 @@ CRATE_MASS_KG = 1.5  # 0.60 x 0.40 x 0.17 m plastic parts crate
 # -- per-env random ceiling fixture pool (visual dressing) --
 # Ceiling-mount BEHAVIOR-1K categories only. Opt-in via ``download_assets.sh --scene-dressing``;
 # when absent the pool is empty. ``FamilyBaseEnvCfg.__post_init__`` used to drop the ``fixture``
-# entity in that case; that class is gone (base_env_cfg.py removed), but every currently
-# registered task (Replace and all twelve subtasks) already calls ``apply_replace_preset``,
-# which unconditionally nulls ``scene.fixture`` regardless of pool emptiness -- so this class
-# default is only ever live under ``apply_workshop_preset``, which nothing currently calls.
+# entity in that case; that class is gone (base_env_cfg.py removed), and every currently
+# registered task (Replace and all twelve subtasks) calls ``apply_replace_preset``, which
+# unconditionally nulls ``scene.fixture`` regardless of pool emptiness -- so this class default
+# is never actually live (no surviving preset leaves ``scene.fixture`` set).
 # Category dirs mix ``<id>/<id>.usd`` and ``<id>/usd/<id>.usd``, hence two globs.
 _FIXTURE_CATEGORIES = (
     "behavior1k_chandelier",
@@ -745,17 +742,6 @@ def _sync_bulb_contact_filters(scene: G1ReplaceSceneCfg) -> None:
     # The left hand filters the same bulbs. Its sensor exists to record, not to score (#89).
     if scene.left_hand_contact is not None:
         scene.left_hand_contact.filter_prim_paths_expr = list(paths)
-
-
-def apply_workshop_preset(scene: G1ReplaceSceneCfg) -> None:
-    """The default floor layout: climb ladder + socket-lamp and bulb on the floor.
-
-    This was a documented no-op while the scene class carried a ``bulb`` field whose default
-    WAS this layout. The class no longer does (issue #76 Step 1), so the layout is built here.
-    """
-    scene.fresh_bulb = _make_bulb_cfg("{ENV_REGEX_NS}/Bulb", BULB_POSITION)
-    scene.old_bulb = None
-    _sync_bulb_contact_filters(scene)
 
 
 def apply_tabletop_preset(scene: G1ReplaceSceneCfg) -> None:
