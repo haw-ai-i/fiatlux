@@ -59,8 +59,8 @@ If your assets live elsewhere, point the env at them with
 uv run python scripts/list_envs.py                              # list registered tasks
 uv run python scripts/zero_agent.py --task FIATLUX-S08-GrabNewBulb-v0    # launch the scene
 uv run python scripts/eval.py --task FIATLUX-S08-GrabNewBulb-v0 --policy random --episodes 20
-uv run python scripts/rsl_rl/train.py --task FIATLUX-S08-GrabNewBulb-Training-v0  # train PPO
-uv run python scripts/rsl_rl/play.py  --task FIATLUX-S08-GrabNewBulb-Training-v0  # roll out a checkpoint
+uv run python scripts/rsl_rl/train.py --task FIATLUX-Replace-v0  # train PPO (the only id with a PPO config)
+uv run python scripts/rsl_rl/play.py  --task FIATLUX-Replace-v0  # roll out a checkpoint
 ```
 
 ## 4. Record and score a run
