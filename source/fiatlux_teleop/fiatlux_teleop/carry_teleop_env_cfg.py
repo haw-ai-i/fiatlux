@@ -26,14 +26,8 @@ from fiatlux_task.robots.g1 import (
     G1_DEX3_LEFT_HAND_OPEN,
     G1_DEX3_RIGHT_HAND_JOINTS,
     G1_EE_BODY,
-    G1_HAND_GRASP,
-    G1_HAND_JOINTS,
-    G1_HAND_OPEN,
     G1_LEFT_ARM_JOINTS,
     G1_LEFT_EE_BODY,
-    G1_LEFT_HAND_GRASP,
-    G1_LEFT_HAND_JOINTS,
-    G1_LEFT_HAND_OPEN,
     swap_robot_variant,
 )
 from fiatlux_task.tasks.manager_based.fiatlux_task.carry_env_cfg import CarryEnvCfg
@@ -170,21 +164,3 @@ class CarryTeleopEnvCfg(CarryEnvCfg):
                 ),
             }
         )
-
-
-def apply_inspire_hands(env_cfg) -> None:
-    """Switch a *parsed* Carry-Teleop env cfg from its native Dex3 hands to INSPIRE, in place.
-
-    Carry-Teleop is Dex3-native (see ``CarryTeleopEnvCfg.__post_init__``); this is the mirror of the
-    Insert env's ``apply_dex3_hands``. Call from the launcher when ``--hand inspire``. ``swap_robot_variant``
-    re-points the reward/termination/action joint-name references (Dex3 -> Inspire via ``_HAND_REMAPS``);
-    we additionally repoint the binary grips to the Inspire finger joints + Inspire open/grasp presets,
-    which the joint-name remap alone does not cover.
-    """
-    swap_robot_variant(env_cfg, "inspire")
-    env_cfg.actions.hand_action.joint_names = list(G1_HAND_JOINTS)
-    env_cfg.actions.hand_action.open_command_expr = dict(G1_HAND_OPEN)
-    env_cfg.actions.hand_action.close_command_expr = dict(G1_HAND_GRASP)
-    env_cfg.actions.left_hand_action.joint_names = list(G1_LEFT_HAND_JOINTS)
-    env_cfg.actions.left_hand_action.open_command_expr = dict(G1_LEFT_HAND_OPEN)
-    env_cfg.actions.left_hand_action.close_command_expr = dict(G1_LEFT_HAND_GRASP)
