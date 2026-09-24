@@ -51,7 +51,10 @@ class ClimbPPORunnerCfg(PPORunnerCfg):
     an env obs group literally named ``critic`` -- a group named ``privileged`` would
     otherwise silently never reach the critic (it falls back to the policy set).
     ``PPORunnerCfg`` above predates this finding and is left unchanged by review
-    decision; revisit when Insert's privileged group should feed its critic.
+    decision; revisit if a future subtask's privileged group needs to reach its critic.
+
+    Orphaned: no gym env is currently registered for the task this config was written
+    for, so it has nothing to train against (see :class:`CarryPPORunnerCfg` below).
     """
 
     max_iterations = 3000  # locomotion-scale training budget
@@ -73,11 +76,15 @@ class ReplacePPORunnerCfg(PPORunnerCfg):
     experiment_name = "fiatlux_replace"
 
 
+@configclass
 class CarryPPORunnerCfg(PPORunnerCfg):
-    """PPO runner for the ladder-handling / positioning task (FIATLUX-Carry-v0).
+    """PPO runner for the ladder-handling / positioning task.
 
     Explicit ``obs_groups`` so the privileged ladder-pose group reaches the critic (a group
     named ``privileged`` is otherwise silently dropped -- see :class:`ClimbPPORunnerCfg`).
+
+    Orphaned like ``ClimbPPORunnerCfg`` above: no gym env is currently registered for the task
+    this config was written for, so it has nothing to train against.
     """
 
     max_iterations = 2000

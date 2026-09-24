@@ -20,9 +20,9 @@ The policy is anything ``make_policy`` accepts (``zero`` / ``random`` / a TorchS
 policy-agnostic.
 
 Examples:
-    python scripts/record_run.py --task FIATLUX-Insert-v0 --policy random \
+    python scripts/record_run.py --task FIATLUX-S08-GrabNewBulb-v0 --policy random \
         --episodes 2 --record both --out logs/runs/random0
-    python scripts/record_run.py --task FIATLUX-Insert-v0 --policy logs/.../policy.pt \
+    python scripts/record_run.py --task FIATLUX-S08-GrabNewBulb-v0 --policy logs/.../policy.pt \
         --record bag --episodes 50 --seed 0 --out logs/runs/policyA
 """
 

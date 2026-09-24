@@ -14,7 +14,7 @@ import argparse
 from isaaclab.app import AppLauncher
 
 parser = argparse.ArgumentParser(description="Prove each hand's contact channel reports force.")
-parser.add_argument("--task", type=str, default="FIATLUX-Remove-v0")
+parser.add_argument("--task", type=str, default="FIATLUX-Replace-v0")
 AppLauncher.add_app_launcher_args(parser)
 args_cli = parser.parse_args()
 args_cli.headless = True

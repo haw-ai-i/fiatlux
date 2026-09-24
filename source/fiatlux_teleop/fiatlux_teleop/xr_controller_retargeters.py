@@ -17,8 +17,9 @@ They declare :attr:`RetargeterBase.Requirement.MOTION_CONTROLLER`, which makes
 array where **row 0** is the pose ``[x, y, z, w, x, y, z]`` and **row 1** is the inputs
 ``[thumbstick_x, thumbstick_y, trigger, squeeze, button_0, button_1, pad]``.
 
-Used by the ``controller`` / ``controller_rel`` teleop devices (see ``insert_teleop_env_cfg.py``);
-the whole-body driver ``scripts/teleop/sonic_teleop.py --input vr`` drives the ``controller_rel`` one.
+Used by the ``controller`` / ``controller_rel`` teleop devices (see ``carry_teleop_env_cfg.py`` /
+``subtask_teleop.py``); the whole-body driver ``scripts/teleop/sonic_teleop.py --input vr`` drives
+the ``controller_rel`` one.
 """
 
 from __future__ import annotations
@@ -184,7 +185,7 @@ class Se3RelControllerRetargeter(RetargeterBase):
         # THERE (deltas are rotated into the root frame too). The target then lives in the base frame, so
         # on a MOVING base (SONIC) the hand rides the body through translation AND rotation -- turning
         # carries the arm around instead of it hanging in world space. For a STATIC base this is exactly
-        # the old ``R^T (pos_w - t)`` output, so the bolted Insert env is unchanged.
+        # the plain ``R^T (pos_w - t)`` output, so a stationary, bolted-base scene is unaffected.
         self._init_pos = (self._root_R_T @ (self._init_pos - self._root_pos)).astype(np.float32)
         _c1 = self._root_R_T @ (self._lo - self._root_pos)
         _c2 = self._root_R_T @ (self._hi - self._root_pos)
@@ -310,7 +311,8 @@ class Se3RelControllerRetargeter(RetargeterBase):
 
 @dataclass
 class Se3RelControllerRetargeterCfg(RetargeterCfg):
-    """Configuration for :class:`Se3RelControllerRetargeter` (workspace defaults suit the Insert task)."""
+    """Configuration for :class:`Se3RelControllerRetargeter` (workspace defaults suit a stationary
+    tabletop bench scene; ``sonic_teleop.py`` rebakes them to the live robot for other scenes)."""
 
     bound_hand: DeviceBase.TrackingTarget = DeviceBase.TrackingTarget.HAND_RIGHT
     position_scale: float = 1.0  # controller pose is in metres; 1:1 maps hand motion to EE motion 1-for-1

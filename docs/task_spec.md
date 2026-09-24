@@ -5,8 +5,8 @@
 Defined in
 `source/fiatlux_task/fiatlux_task/tasks/manager_based/fiatlux_task/replace_env_cfg.py`.
 The full light-bulb replacement, scored as **one flat RL episode** (no policy stitching
-or stage chaining — that is solution structure, not benchmark structure). Design record:
-`journal/specs/full-task-benchmark-plan.md`.
+or stage chaining — that is solution structure, not benchmark structure). Design notes are
+in that file's module docstring.
 
 ## Scene (randomized per build)
 
@@ -33,8 +33,8 @@ return to it (plus the reset jitter below).
   physics-driven axial pull past `release_threshold`. No twist/lock/rotation state: this
   asset has no physical lug or groove, so the old bayonet's clock-angle semantics were never
   modeling a real feature. `fresh_bulb_attached` and `success` read the attachment state, so
-  every score channel is achievable. Remove/Install do not yet use this mechanic: their bulbs
-  simply lift out of / drop into the socket.
+  every score channel is achievable. No physics-in-the-loop regression test currently covers
+  this mechanic (issue #237).
   - **Lateral + tilt centering (issue #171)**: the original design left lateral position and
     orientation entirely to real contact. Teleop evidence found a seated bulb visibly
     tilts/swings -- the bore's 2.69mm radial clearance is real, necessary slop (tightening
@@ -74,7 +74,7 @@ alone no longer scores.
 
 ## Actions
 
-Whole-body joint-position targets (all DoF incl. fingers, like Climb): the task spans
+Whole-body joint-position targets (all DoF incl. fingers): the task spans
 locomotion, ladder work, and manipulation.
 
 ## Observations — `standard` vs `cheatcode` modes
@@ -84,7 +84,7 @@ modes **standard** and **cheatcode**):
 
 - **`policy` = standard mode** (sensor-realizable only): IMU (base angular velocity,
   projected gravity), estimated base height + linear velocity (the documented
-  estimator-realizable exception, as in Climb), joint pos/vel, hand contact forces,
+  estimator-realizable exception), joint pos/vel, hand contact forces,
   **head-mounted (`d435_link`) RGB camera features** and **head-mounted (`mid360_link`)
   lidar ranges** (camera needs `--enable_cameras`), last action. Corruption enabled.
 - **`privileged` = cheatcode mode** (exact simulator state): world poses of the robot,
@@ -125,7 +125,7 @@ at 1.0). Completion bonuses pay once per episode.
 | `old_bulb_removal` (+) | dense | old-bulb clearance from the seat vs an absolute 0.10 m threshold (its d0 ≈ 0, so toward-style normalization can't apply) |
 | `old_bulb_disposal_progress` (+) | dense | old bulb → disposal crate, normalized progress |
 | `ladder_ready` (+) | completion | upright ladder top horizontally within 0.9 m of the fixture |
-| `fresh_bulb_inserted` (+) | completion | fresh bulb screwed in (the attach gate; Insert's 1.5 cm / 0.2 rad seating tolerances are enforced at attach time) |
+| `fresh_bulb_inserted` (+) | completion | fresh bulb screwed in (the attach gate; `mdp.bulb_attachment`'s 1.5 cm / 0.2 rad seating tolerances are enforced at attach time) |
 | `old_bulb_removed` (+) | completion | old bulb unscrewed and cleared the seat by 0.10 m (a held bulb reads as seated) |
 | `old_bulb_disposed` (+) | completion | old bulb inside the disposal crate (containment, any orientation) |
 | `success_bonus` (+) | sparse | full replacement (fires on the terminating step) |
@@ -150,142 +150,6 @@ Scene layout (zones, fixture mount, ladder yaw, robot yaw) per scene build; robo
 xy (±5 cm) / yaw (±0.1 rad), joints (±0.05 rad), light intensities, key-light direction
 (pitch ±15° / yaw ±30° about its authored 40° tilt), HDRI sky azimuth (0–360°), and a
 global room albedo tint (HSV multiplier on the bound materials' diffuse inputs) per
-reset. Prop-scale randomization is a scaffold-env default and an RL opt-in (prestartup
-USD writes require `replicate_physics=False`); see `base_env_cfg.py`'s EventCfg.
+reset. Prop-scale randomization is an RL opt-in (prestartup USD writes require
+`replicate_physics=False`); see `replace_env_cfg.py`'s `EventCfg`.
 
-# `FIATLUX-Insert-v0`
-
-Defined in
-`source/fiatlux_task/fiatlux_task/tasks/manager_based/fiatlux_task/g1_bulb_env_cfg.py`.
-
-## Scene
-
-The **tabletop preset** of the shared family scene (`scene_cfg.py: G1ReplaceSceneCfg`):
-
-- **Robot:** Unitree G1 (`assets/unitree_g1/wholebody_inspire/g1_29dof_with_inspire_rev_1_0.usd`),
-  legged/free base, right arm + Inspire hand actuated.
-- **Bulb:** graspable dynamic rigid body, the Omniverse A19 bulb
-  (`assets/omniverse_bulb/LightBulb_bulb_z_rigid.usda`, 0.035 kg), standing on its screw
-  cap at hand height on the table.
-- **Socket:** kinematic fixture on the table, the matching Omniverse socket with a guide
-  sleeve inside its bore (`assets/omniverse_bulb/LightBulb_socket_z_static_sleeve.usda`,
-  authored over the stock socket by `scripts/omniverse/omniverse_socket_guide_sleeve.py`;
-  the stock mouth ring alone lets a seated bulb lean 22 deg and jam). Its screw hole is an exact
-  triangle-mesh collider, so a bulb genuinely enters and rests in it -- which also makes
-  the socket permanently ineligible to be dynamic (a PhysX rule). Both halves are authored
-  assembled at identity, so *seated* is exactly *bulb pose == socket pose*.
-- Packing table; ground plane; per-env Simple Room with real wall/ceiling colliders + HDRI
-  sky dome (randomized intensity); no ladder (that's the workshop preset's business).
-
-## Actions
-
-Joint-position targets on the G1 right arm (`G1_ARM_JOINTS`), scaled around the
-default pose. Hardware-realizable for sim-to-real.
-
-## Observations
-
-Two groups:
-
-- **`policy`** (sensor-realizable, the real-robot interface): arm joint pos/vel,
-  end-effector pose, wrist-camera RGB features, hand contact forces, last action.
-  Corruption (noise) enabled.
-- **`privileged`** (ground-truth, for the critic / scripted baselines only): bulb
-  world pose, socket world pose.
-
-## Rewards
-
-| Term | Purpose |
-| --- | --- |
-| `object_socket_distance` (−) | coarse L2 bulb→socket distance |
-| `object_socket_distance_tanh` (+) | dense reaching |
-| `object_socket_distance_exp` (+) | sharp seating reward close-in |
-| `object_socket_orientation_tanh` (+) | axis alignment |
-| `bulb_seated` (+) | sparse success bonus |
-| `hand_contact_force_l2` (−) | compliant insertion |
-| `action_rate`, `joint_vel`, `joint_acc`, `joint_pos_limits` (−) | smoothness / safety |
-
-## Success & termination
-
-- **Success** (`bulb_seated`): bulb within `pos_threshold` (1.5 cm) **and**
-  `ori_threshold` (0.2 rad) of the socket.
-- **Fall** (`fell_below` / `fell_over`): root below **0.35 m** (standing pelvis is
-  0.75 m; a collapsed robot reads < 0.30 m) or tilt beyond **1.0 rad**. This is the
-  family's fall-detection RL gate: solver-kick episodes against the kinematic table
-  end immediately (thresholds shared from `climb_env_cfg.py`).
-- **Timeout**: `episode_length_s = 15 s`.
-- **Bulb dropped**: bulb falls below `min_height`.
-
-## Randomization (on reset)
-
-Socket pose (±3–5 cm), bulb start pose (±2 cm), arm joints (±0.05 rad), dome-light
-intensity and sky azimuth (0–360°), key-light direction (pitch ±15° / yaw ±30°), and a
-global room albedo tint. Prop-scale randomization is an RL opt-in (see
-`base_env_cfg.py`'s EventCfg; requires `replicate_physics=False`).
-
-# `FIATLUX-Climb-v0`
-
-Defined in
-`source/fiatlux_task/fiatlux_task/tasks/manager_based/fiatlux_task/climb_env_cfg.py`.
-
-## Scene
-
-The **at-height preset** of the shared family scene: the G1 spawns at the base of the
-kinematic work-site step ladder (`assets.py: STEP_LADDER_USD`, 0.608 × 0.979 × 1.861 m at
-(1.6, 0, 0), steps facing the robot), an elevated BEHAVIOR-1K chandelier stands in for
-the fixture at (1.9, 0, 2.80) (visual dressing — success is geometric), and the bulb is
-parked on the floor. A dedicated contact sensor (`ladder_contact`) filters the feet +
-palms (`G1_FOOT_BODIES` + `G1_PALM_BODIES`) against the ladder body. Runs at the family
-control rate (50 Hz), `episode_length_s = SUBTASK_EPISODE_LENGTH_S` (120 s).
-
-## Actions
-
-Whole-body joint-position targets (all 53 DoF incl. fingers), scaled (0.5) around the
-default standing pose. The per-phase action-space split (whole-body here vs arm+hand in
-Insert) is a family design decision (unification spec).
-
-## Observations
-
-Two groups:
-
-- **`policy`**: IMU terms (base angular velocity, projected gravity), **estimated base
-  height and linear velocity** — a documented *estimator-realizable exception* to the
-  sensor-only contract: the real G1 publishes both from its kinematic-inertial state
-  estimator (the same argument Isaac Lab's velocity tasks make) — joint pos/vel, per-limb
-  ladder contact forces (feet + palms), a head-mounted (`d435_link`) RGB camera, a
-  head-mounted (`mid360_link`) lidar (ground + ladder ranges), last action. Corruption
-  enabled; camera needs `--enable_cameras`.
-- **`privileged`** (critic / scripted baselines only): robot root pose + linear velocity,
-  ladder pose. Routed to the critic via `ClimbPPORunnerCfg.obs_groups` (rsl_rl does not
-  auto-route a group named `privileged`).
-
-## Rewards
-
-| Term | Purpose |
-| --- | --- |
-| `climb_height_progress` (+) | progressive ascent: each centimetre of *new* best root height paid once |
-| `climbed_to_target` (+) | one-time success bonus |
-| `ladder_contact_fraction` (+) | small bootstrap for limb-on-ladder contact (filtered sensor) |
-| `com_sway_l2` (−) | whole-body CoM horizontal-velocity (sway) penalty |
-| `ang_vel_xy_l2` (−) | roll/pitch rate (wobble, not the static climbing lean) |
-| `fall_terminated` (−) | one-time fall penalty, fires exactly on the `fell_below` / `fell_over` step |
-| `action_rate`, `joint_acc`, ankle `joint_pos_limits`, waist/finger `joint_deviation_l1` (−) | smoothness / joint discipline |
-
-`flat_orientation_l2` is deliberately absent: climbing an A-frame requires a sustained
-forward lean.
-
-## Success & termination
-
-- **Success** (`climbed_to_target`): root above **1.82 m** (`LADDER_WORK_PELVIS_Z`, the
-  top stance minus `LADDER_TOP_STANCE_TOLERANCE`), horizontally within **0.6 m** of the
-  upper steps (1.6, 0), at
-  root speed < **1.5 m/s** (rejects ballistic fly-throughs).
-- **Fall** (`fell_below` / `fell_over`): root below **0.35 m** (standing pelvis is
-  0.75 m; a collapsed robot reads < 0.30 m) or tilt beyond **1.0 rad**. This is the
-  family's fall-detection RL gate: solver-kick episodes end immediately.
-- **Timeout**: `episode_length_s = SUBTASK_EPISODE_LENGTH_S` (120 s).
-
-## Randomization (on reset)
-
-Robot root xy (±5 cm) and yaw (±0.1 rad), joints (±0.05 rad), dome/key-light intensity,
-key-light direction (pitch ±15° / yaw ±30°), sky azimuth (0–360°), and a global room
-albedo tint. All within `verify_scene.py`'s 0.10 m init-drift tolerance.

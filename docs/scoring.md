@@ -9,7 +9,7 @@ fixed seed for a fixed number of episodes. Same `--task`, `--seed`, `--policy`
 ```bash
 python scripts/eval.py --task FIATLUX-Replace-v0 --policy basic_standard \
     --episodes 20 --seed 0 --enable_cameras
-python scripts/eval.py --task FIATLUX-Insert-v0 --policy rsl_rl --checkpoint <model.pt> \
+python scripts/eval.py --task FIATLUX-Replace-v0 --policy rsl_rl --checkpoint <model.pt> \
     --episodes 50 --seed 0 --output results.json
 ```
 
@@ -102,7 +102,7 @@ the same-seed-same-numbers contract covers the layout too.
   (torso RGB + proprioception + a language instruction, set via
   `--instruction`; the default is the task's canonical sentence in
   `fiatlux_task/groot.py`). Requires the external PolicyServer:
-  `scripts/groot/serve.sh` (setup: `journal/specs/groot-sonic-baseline.md`).
+  `scripts/groot/serve.sh`.
   Fine-tuned GR00T submissions evaluate through the same spec — point the
   server at the fine-tuned checkpoint (`GROOT_MODEL=<path> GROOT_EMBODIMENT=<tag>
   scripts/groot/serve.sh`); a `UNITREE_G1_SONIC` finetune plugs into the
@@ -115,7 +115,7 @@ scoring instead, record a run once and score the bag as many times as needed
 under different rules:
 
 ```bash
-python scripts/record_run.py --task FIATLUX-Insert-v0 --policy random \
+python scripts/record_run.py --task FIATLUX-S08-GrabNewBulb-v0 --policy random \
     --episodes 20 --record bag --headless --enable_cameras --out logs/runs/random0
 python scripts/score.py logs/runs/random0
 python scripts/score.py logs/runs/random0 --fragility-threshold 30 --output score.json

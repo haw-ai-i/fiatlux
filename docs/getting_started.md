@@ -57,10 +57,10 @@ If your assets live elsewhere, point the env at them with
 
 ```bash
 uv run python scripts/list_envs.py                              # list registered tasks
-uv run python scripts/zero_agent.py --task FIATLUX-Insert-v0    # launch the scene
-uv run python scripts/eval.py --task FIATLUX-Insert-v0 --policy random --episodes 20
-uv run python scripts/rsl_rl/train.py --task FIATLUX-Insert-v0  # train PPO
-uv run python scripts/rsl_rl/play.py  --task FIATLUX-Insert-v0  # roll out a checkpoint
+uv run python scripts/zero_agent.py --task FIATLUX-S08-GrabNewBulb-v0    # launch the scene
+uv run python scripts/eval.py --task FIATLUX-S08-GrabNewBulb-v0 --policy random --episodes 20
+uv run python scripts/rsl_rl/train.py --task FIATLUX-Replace-v0  # train PPO (the only id with a PPO config)
+uv run python scripts/rsl_rl/play.py  --task FIATLUX-Replace-v0  # roll out a checkpoint
 ```
 
 ## 4. Record and score a run
@@ -68,11 +68,11 @@ uv run python scripts/rsl_rl/play.py  --task FIATLUX-Insert-v0  # roll out a che
 A single rollout can be recorded to a trajectory "bag" and scored offline, without
 re-running the simulator:
 
-`--enable_cameras` is required because the env carries a wrist-camera sensor;
+`--enable_cameras` is required because the env carries an ego-camera sensor;
 scoring reads the recorded bag and needs no simulator.
 
 ```bash
-uv run python scripts/record_run.py --task FIATLUX-Insert-v0 --policy random \
+uv run python scripts/record_run.py --task FIATLUX-S08-GrabNewBulb-v0 --policy random \
     --episodes 2 --record bag --headless --enable_cameras --out logs/runs/random0
 uv run python scripts/score.py logs/runs/random0
 ```
@@ -81,7 +81,7 @@ Pass `--record video` (or `--record both` to get the bag too) to also render an 
 of the rollout to `<out>/video/`:
 
 ```bash
-uv run python scripts/record_run.py --task FIATLUX-Insert-v0 --policy random \
+uv run python scripts/record_run.py --task FIATLUX-S08-GrabNewBulb-v0 --policy random \
     --episodes 2 --record both --headless --enable_cameras --out logs/runs/random0
 ```
 
@@ -99,33 +99,23 @@ locally.
 
 ## 5. Verify the physics
 
-Two verifiers guard the benchmark's physical modeling. Run them after asset or env
-changes and as a pre-flight before scoring runs — they are deliberately **not** wired
-into per-commit CI (a full Isaac Sim launch per check is too costly there):
+`verify_scene.py` guards the benchmark's physical modeling: assets present, colliders
+exist, nothing explodes or sinks. Run it after asset or env changes and as a pre-flight
+before scoring runs — it is deliberately **not** wired into per-commit CI (a full Isaac
+Sim launch per check is too costly there):
 
 ```bash
-# the scene is solid: assets present, colliders exist, nothing explodes or sinks
-uv run python scripts/verify_scene.py --headless --task FIATLUX-Base-v0
-
-# the graded interactions are modeled correctly: seated bulb rests stably, the
-# success pose is attainable, a hand press stays gentle and doesn't launch the
-# bulb, break/drop detection fires exactly when it should, the robot can lean
-# on the ladder -- all policy-free, driven by calibrated poses (fiatlux_task.poses)
-uv run python scripts/verify_interactions.py --headless --scenario all
+uv run python scripts/verify_scene.py --headless --enable_cameras --task FIATLUX-Replace-v0
 ```
 
-Both exit non-zero on FAIL. `verify_interactions.py --scenario <name> --probe`
-prints poses, contact forces and asset bboxes for recalibrating
-`fiatlux_task/poses.py`; `--video out.mp4` renders the scenario for visual
-inspection; `--record-bag <dir>` writes the fragility episodes as standard
-trajectory bags (scoreable with `scripts/score.py`).
+Exits non-zero on FAIL.
 
 ## Troubleshooting
 
 - **Env not found / empty list** — `uv sync` did not complete, or
   `import fiatlux_task.tasks` failed.
 - **USD not found** — run `./assets/download_assets.sh` or set `FIATLUX_ASSETS_DIR`.
-- **Joint/body name errors** — the constants in `g1_bulb_env_cfg.py`
+- **Joint/body name errors** — the constants in `fiatlux_task/robots/g1.py`
   (`G1_ARM_JOINTS`, `G1_EE_BODY`) must match the joints/links in your G1 USD.
 - **Hangs at `Do you accept the EULA? (Yes/No):`** — first launch of Isaac Sim's Kit
   runtime prompts interactively and there's no stdin in a non-interactive/background

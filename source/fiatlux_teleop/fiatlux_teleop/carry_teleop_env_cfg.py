@@ -3,13 +3,13 @@
 #
 # SPDX-License-Identifier: BSD-3-Clause
 
-"""``FIATLUX-Carry-Teleop-v0`` -- whole-body teleop of the ladder Carry task.
+"""``CarryTeleopEnvCfg`` -- whole-body teleop base for the ladder Carry task.
 
-Same treatment as :mod:`insert_teleop_env_cfg`, on the Carry ladder scene: the RL whole-body joint
-action is replaced by an **arm-IK + binary-grip** interface (bimanual) and a ``controller_rel``
-teleop device, so ``scripts/teleop/sonic_teleop.py`` drives it (SONIC balances + walks the legs; you
-teleop the arms). **Dex3** hand by default. The Carry base is already free (it's a walking task),
-so no un-bolting is needed -- unlike Insert.
+On the Carry ladder scene, the RL whole-body joint action is replaced by an **arm-IK +
+binary-grip** interface (bimanual) and a ``controller_rel`` teleop device, so
+``scripts/teleop/sonic_teleop.py`` drives it (SONIC balances + walks the legs; you teleop the
+arms). **Dex3** hand by default. The Carry base is already free (it's a walking task), so no
+un-bolting is needed.
 
 Caveat: the ``controller_rel`` retargeter accumulates the EE target in the WORLD frame (baked to a
 fixed base pose), so the arm teleop is accurate when the robot is standing at the ladder; walking
@@ -26,10 +26,8 @@ from fiatlux_task.robots.g1 import (
     G1_DEX3_LEFT_HAND_OPEN,
     G1_DEX3_RIGHT_HAND_JOINTS,
     G1_EE_BODY,
-    G1_HAND_GRASP,
-    G1_HAND_JOINTS,
-    G1_HAND_OPEN,
-    G1_LEFT_HAND_JOINTS,
+    G1_LEFT_ARM_JOINTS,
+    G1_LEFT_EE_BODY,
     swap_robot_variant,
 )
 from fiatlux_task.tasks.manager_based.fiatlux_task.carry_env_cfg import CarryEnvCfg
@@ -44,7 +42,6 @@ from isaaclab.envs.mdp.actions.actions_cfg import (
 )
 from isaaclab.utils import configclass
 
-from .insert_teleop_env_cfg import G1_LEFT_ARM_JOINTS, G1_LEFT_EE_BODY, G1_LEFT_HAND_GRASP, G1_LEFT_HAND_OPEN
 from .xr_controller_retargeters import (
     ControllerGripperRetargeterCfg,
     Se3RelControllerRetargeterCfg,
@@ -62,7 +59,7 @@ class CarryTeleopActionsCfg:
         body_name=G1_EE_BODY,
         controller=DifferentialIKControllerCfg(
             command_type="pose", use_relative_mode=False, ik_method="dls",
-            # Match Insert-Teleop: heavier DLS damping so the arm relaxes to a natural rest instead of
+            # Heavier DLS damping so the arm relaxes to a natural rest instead of
             # holding the elbow tucked up at 90 deg (default lambda 0.01 is near-undamped).
             ik_params={"lambda_val": 0.05},
         ),
@@ -80,7 +77,7 @@ class CarryTeleopActionsCfg:
         body_name=G1_LEFT_EE_BODY,
         controller=DifferentialIKControllerCfg(
             command_type="pose", use_relative_mode=False, ik_method="dls",
-            # Match Insert-Teleop: heavier DLS damping so the arm relaxes to a natural rest instead of
+            # Heavier DLS damping so the arm relaxes to a natural rest instead of
             # holding the elbow tucked up at 90 deg (default lambda 0.01 is near-undamped).
             ik_params={"lambda_val": 0.05},
         ),
@@ -96,7 +93,7 @@ class CarryTeleopActionsCfg:
 
 @configclass
 class CarryTeleopEnvCfg(CarryEnvCfg):
-    """``FIATLUX-Carry-v0`` with a teleop action interface (bimanual arm IK-rel + Dex3 grip)."""
+    """``CarryEnvCfg`` with a teleop action interface (bimanual arm IK-rel + Dex3 grip)."""
 
     def __post_init__(self) -> None:
         super().__post_init__()
@@ -112,7 +109,7 @@ class CarryTeleopEnvCfg(CarryEnvCfg):
 
         # (Ladder collision -- SDF exact surface + a ~6 mm contact offset -- is authored into the
         # asset by scripts/omniverse/omniverse_ladder_collision.py, so no code-side override is
-        # needed here; see journal/specs/issue-70-ladder-collision-fix.md.)
+        # needed here.)
 
         # teleop action interface (arms + hands); legs+waist are SONIC's, driven in sonic_teleop.py.
         self.actions = CarryTeleopActionsCfg()
@@ -138,9 +135,8 @@ class CarryTeleopEnvCfg(CarryEnvCfg):
             anchor_rotation_mode=XrAnchorRotationMode.FOLLOW_PRIM_SMOOTHED,
         )
 
-        # controller_rel teleop device: bimanual relative-IK arm + binary grip (the recommended
-        # Insert device). Root pose baked to the Carry robot spawn so the world<->root transform
-        # is right where the robot stands.
+        # controller_rel teleop device: bimanual relative-IK arm + binary grip. Root pose baked
+        # to the Carry robot spawn so the world<->root transform is right where the robot stands.
         self.teleop_devices = DevicesCfg(
             devices={
                 "controller_rel": OpenXRDeviceCfg(
@@ -167,21 +163,3 @@ class CarryTeleopEnvCfg(CarryEnvCfg):
                 ),
             }
         )
-
-
-def apply_inspire_hands(env_cfg) -> None:
-    """Switch a *parsed* Carry-Teleop env cfg from its native Dex3 hands to INSPIRE, in place.
-
-    Carry-Teleop is Dex3-native (see ``CarryTeleopEnvCfg.__post_init__``); this is the mirror of the
-    Insert env's ``apply_dex3_hands``. Call from the launcher when ``--hand inspire``. ``swap_robot_variant``
-    re-points the reward/termination/action joint-name references (Dex3 -> Inspire via ``_HAND_REMAPS``);
-    we additionally repoint the binary grips to the Inspire finger joints + Inspire open/grasp presets,
-    which the joint-name remap alone does not cover.
-    """
-    swap_robot_variant(env_cfg, "inspire")
-    env_cfg.actions.hand_action.joint_names = list(G1_HAND_JOINTS)
-    env_cfg.actions.hand_action.open_command_expr = dict(G1_HAND_OPEN)
-    env_cfg.actions.hand_action.close_command_expr = dict(G1_HAND_GRASP)
-    env_cfg.actions.left_hand_action.joint_names = list(G1_LEFT_HAND_JOINTS)
-    env_cfg.actions.left_hand_action.open_command_expr = dict(G1_LEFT_HAND_OPEN)
-    env_cfg.actions.left_hand_action.close_command_expr = dict(G1_LEFT_HAND_GRASP)

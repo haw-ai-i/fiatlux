@@ -1,17 +1,14 @@
 # Roadmap
 
-The scored benchmark is the **full replacement task** (`FIATLUX-Replace-v0`); the
-**insertion** (`FIATLUX-Insert-v0`), **climbing** (`FIATLUX-Climb-v0`), and
-**ladder-positioning** (`FIATLUX-Carry-v0`: walk to the ladder, grasp it, and carry it
-upright to a target — whole-body RL, `carry_env_cfg.py`) subtasks remain as functional
-development environments, not benchmark targets. Unfinished items below are listed so the
-extension seams are intentional.
+The scored benchmark is the **full replacement task** (`FIATLUX-Replace-v0`), decomposed into
+twelve subtasks (`FIATLUX-S01-MoveLadder-v0` .. `FIATLUX-S12-ClimbDown-v0`). Unfinished items
+below are listed so the extension seams are intentional.
 
-## 1. Climbing subtask — `FIATLUX-Climb-v0` — ✅ DONE (2026-07-06)
+## 1. Climbing subtask — ✅ DONE (2026-07-06), now `FIATLUX-S02-ClimbLadder-v0`
 
 G1 climbs the work-site step ladder (`fiatlux_task.assets.STEP_LADDER_USD`, the
-at-height preset) to the fixture height. All three deliverables landed in
-`climb_env_cfg.py`:
+at-height preset) to the fixture height. All three deliverables shipped as part of the
+climb subtask:
 
 - ~~Upgrade the scaffold to `ManagerBasedRLEnvCfg`; add a whole-body / locomotion
   action space (the G1 base is already free).~~ Whole-body joint-position targets
@@ -28,10 +25,10 @@ Phase 5).
 
 ## 2. Full task — `FIATLUX-Replace-v0` — ✅ PRIMARY BENCHMARK (2026-07-09)
 
-Promoted from scene-only scaffold to the scored full-task RL environment per
-`journal/specs/full-task-benchmark-plan.md` (this deliberately reverses the earlier
-"stays off the roadmap" call for the *task itself*; the policy-stitching part of that
-descoping still stands — it is one flat RL episode, chaining is solution structure).
+Promoted from scene-only scaffold to the scored full-task RL environment (this
+deliberately reverses the earlier "stays off the roadmap" call for the *task itself*;
+the policy-stitching part of that descoping still stands — it is one flat RL episode,
+chaining is solution structure).
 
 - ~~Build and verify the full combined-family scene: robot, ladder, table+bulb, and the
   elevated fixture together, each randomized into its own non-overlapping floor "safe
@@ -50,11 +47,8 @@ descoping still stands — it is one flat RL episode, chaining is solution struc
   orientation on its own, so the only thing left to script is retention: a continuous
   spring-damper WRENCH while seated, release on a real physics-driven axial pull past
   `release_threshold`. No twist/lock semantics (this asset has no physical lug/groove; the
-  bayonet never modeled a real feature). Wired for Replace, the S01/S03/S11 subtask-teleop
-  tasks, and `FIATLUX-Insert-v0` (RL). **Not yet wired for `FIATLUX-Insert-Teleop-v0`**: that
-  task swaps in a differently-scaled OMNI socket/bulb asset whose seat/plug geometry hasn't
-  been measured against the family asset's calibrated offsets, so retention there needs its
-  own calibration pass first (see the TODO in `insert_teleop_env_cfg.py`).
+  bayonet never modeled a real feature). Wired for Replace and the S01/S03/S11 subtask-teleop
+  tasks.
   - **Lateral + tilt centering (issue #171, 2026-09-08)**: real teleop evidence found a
     seated bulb visibly tilts/swings -- the axial-only design left lateral position and
     orientation entirely to real contact, and the bore's necessary radial clearance (2.69mm)
@@ -113,9 +107,6 @@ descoping still stands — it is one flat RL episode, chaining is solution struc
     like a real 3D contact effect (a loosely-toleranced plug precessing/rattling in the bore)
     rather than something a single-axis torque law can fully resolve -- open follow-up, not
     treated as solved, though the critical failure (detachment) is fixed.
-  Follow-up: put Remove/Install on the same mechanic; their
-  bulbs are already dynamic but currently lift straight out of / drop straight into the
-  socket (issue #76 Step 2).
 
 ## 3. Learned-policy support
 
@@ -140,4 +131,4 @@ harness:
 
 The two design constraints that keep this cheap — hardware-realizable actions and a
 sensor-realizable default observation group — are already baked into
-`g1_bulb_env_cfg.py`.
+`subtask_env_cfg.py` (and `replace_env_cfg.py`).

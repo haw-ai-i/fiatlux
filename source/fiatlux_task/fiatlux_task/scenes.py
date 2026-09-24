@@ -5,8 +5,9 @@
 
 """Shared scene vocabulary for the Fiatlux benchmark scenes.
 
-The Insert task scene (``g1_bulb_env_cfg``) and the ladder-family scene
-(``ladder_scene_cfg``) are deliberately different *layouts* -- tabletop subtask vs
+The tabletop preset (``scene_cfg.apply_tabletop_preset``) and the ladder-family presets
+(``apply_position_preset`` / ``apply_replace_preset``) are deliberately different *layouts* --
+tabletop subtask vs
 at-fixture task family -- but they describe the same world. This module holds the pieces
 that must stay literally identical across them:
 
