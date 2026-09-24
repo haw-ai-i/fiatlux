@@ -253,6 +253,9 @@ def _check_rl_randomization(env_cfg_cls, prefix: str, bulb_paths: list[str], see
     for _ in range(5):
         env.reset()
         orients.append((get_orient(stage, "/World/KeyLight"), get_orient(stage, "/World/DomeLight")))
+        # While issue #236 stands, room_tinted is always empty, so this loop never iterates and
+        # tint_bound_ok stays vacuously True -- this check regains real teeth only once #236 is
+        # fixed and room_tinted actually has attrs to bound-check.
         for attr in room_tinted:
             base = attr.GetCustomDataByKey(BASE_COLOR_KEY)
             value = attr.Get()
