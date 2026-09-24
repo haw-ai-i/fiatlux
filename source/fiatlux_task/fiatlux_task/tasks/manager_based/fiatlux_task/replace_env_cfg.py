@@ -98,10 +98,10 @@ def bulb_attachment_event() -> EventTerm:
     """The axial retention spring event term, with this task's parameters.
 
     A factory, not a shared instance, so each caller gets its own ``EventTermCfg`` to attach to
-    its own config class -- ``EventCfg`` here, ``BulbAttachmentEventCfg``
-    (``subtask_tiers/balance.py``, also used standalone by S01), and ``g1_bulb_env_cfg.py``'s
-    ``EventCfg`` all wire in the identical term; before this they each hand-duplicated the same
-    ``EventTerm(...)`` block, with nothing enforcing the three stayed in sync on a future change.
+    its own config class -- ``EventCfg`` here and ``BulbAttachmentEventCfg``
+    (``subtask_tiers/balance.py``, also used standalone by S01) both wire in the identical term;
+    before this they each hand-duplicated the same ``EventTerm(...)`` block, with nothing
+    enforcing the two stayed in sync on a future change.
     """
     return EventTerm(
         func=mdp.bulb_attachment,

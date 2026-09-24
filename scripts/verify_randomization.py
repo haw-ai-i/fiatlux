@@ -6,7 +6,7 @@
 """Verify the domain-randomization axes (prop scale, material tint, light orientation).
 
 Headless, PhysX-only: every check is a USD-attribute read, so it runs where the RTX
-renderer is unavailable. Checks FIATLUX-Carry-v0 (RL defaults, ``replicate_physics=True``):
+renderer is unavailable. Checks ``CarryEnvCfg`` (RL defaults, ``replicate_physics=True``):
 NO scale DR (ladder stays at its authored 0.01), but room tint + light orientation active.
 
 Run directly (no flags needed): the parent process fans out three subprocesses (one Kit

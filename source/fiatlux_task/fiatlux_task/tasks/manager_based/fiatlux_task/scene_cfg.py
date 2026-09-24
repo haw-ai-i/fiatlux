@@ -107,7 +107,7 @@ TABLETOP_SOCKET_POSITION = (0.45, 0.10, TABLETOP_SURFACE_Z)
 # root frame), so resting on a surface puts the root under it.
 TABLETOP_BULB_POSITION = (0.30, 0.18, TABLETOP_SURFACE_Z - BULB_STAND_Z_OFFSET)
 
-# -- position (ladder-handling) subtask: FIATLUX-Carry-v0. The ladder is dynamic,
+# -- position (ladder-handling) preset, used by CarryEnvCfg. The ladder is dynamic,
 #    high-friction and graspable, starts upright but off-target, and is carried to the fixed
 #    upright target under the light. Base authored at z=0, so start/target z=0. --
 POSITION_ROBOT_POSITION = (-0.20, -0.20, 0.75)
@@ -116,7 +116,7 @@ POSITION_ROBOT_POSITION = (-0.20, -0.20, 0.75)
 POSITION_LADDER_START_POS = (1.50, 0.85, 0.0)
 POSITION_LADDER_START_YAW = 30.0
 TARGET_LADDER_POSITION = (0.55, -0.30, 0.0)  # directly beneath the ceiling fixture
-# Same SOCKET_USD / BULB_USD as the Insert/Replace tasks, ceiling-mounted above the target and
+# Same SOCKET_USD / BULB_USD as Replace, ceiling-mounted above the target and
 # flipped bulb-down. See apply_position_preset.
 
 # -- at-height presets (climb / descend): elevated fixture over the ladder. --
@@ -505,7 +505,7 @@ def _spawn_collidable_bench(prim_path, cfg, translation=None, orientation=None):
 def _spawn_usd_as_rigid_body_frictional(prim_path, cfg, translation=None, orientation=None):
     """Tune rigid/mass props on a *preconfigured* rigid asset + bind a high-friction grip material.
 
-    For the graspable ladder in ``FIATLUX-Carry-v0``, whose ``_collision_rigid`` USD already
+    For the graspable ladder in ``CarryEnvCfg``, whose ``_collision_rigid`` USD already
     carries a single dynamic ``RigidBodyAPI`` + ``MassAPI``: this only *modifies* the existing
     body (solver/sleep props, mass override) and creates + binds a high-friction material
     (``UsdFileCfg`` has no ``physics_material`` field) so it can be held by hand friction -- no
@@ -755,7 +755,7 @@ def apply_workshop_preset(scene: G1ReplaceSceneCfg) -> None:
 
 
 def apply_tabletop_preset(scene: G1ReplaceSceneCfg) -> None:
-    """The manipulation bench (Insert layout): table, socket on top, bulb at hand height.
+    """The manipulation bench (bench-height layout): table, socket on top, bulb at hand height.
 
     Drops the ladder; the robot stands at the bench's +y side (clear of the
     table's collision footprint) and never locomotes.
@@ -778,7 +778,7 @@ def apply_tabletop_preset(scene: G1ReplaceSceneCfg) -> None:
 
 
 def apply_position_preset(scene: G1ReplaceSceneCfg) -> None:
-    """Ladder-positioning start (FIATLUX-Carry-v0): a DYNAMIC, high-friction, graspable ladder
+    """Ladder-positioning start (used by CarryEnvCfg): a DYNAMIC, high-friction, graspable ladder
     standing upright out in front of the robot; the robot grasps a rail and carries it to
     TARGET_LADDER_POSITION, directly beneath the ceiling light fixture. Scored by reusing the
     Replace task's ladder terms (see carry_env_cfg).

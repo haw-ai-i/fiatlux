@@ -3,7 +3,7 @@
 #
 # SPDX-License-Identifier: BSD-3-Clause
 
-"""``FIATLUX-Carry-v0`` -- the G1 grasps a ladder and positions it upright at a target.
+"""``CarryEnvCfg`` -- the G1 grasps a ladder and positions it upright at a target.
 
 The ladder-handling / positioning subtask: a **dynamic, high-friction** ladder starts out in
 front of the G1; the robot **walks to it**, grasps a rail (physics friction, no weld), and

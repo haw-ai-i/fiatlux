@@ -3,7 +3,7 @@
 #
 # SPDX-License-Identifier: BSD-3-Clause
 
-"""``FIATLUX-Carry-Teleop-v0`` -- whole-body teleop of the ladder Carry task.
+"""``CarryTeleopEnvCfg`` -- whole-body teleop base for the ladder Carry task.
 
 On the Carry ladder scene, the RL whole-body joint action is replaced by an **arm-IK +
 binary-grip** interface (bimanual) and a ``controller_rel`` teleop device, so
@@ -65,7 +65,7 @@ class CarryTeleopActionsCfg:
         body_name=G1_EE_BODY,
         controller=DifferentialIKControllerCfg(
             command_type="pose", use_relative_mode=False, ik_method="dls",
-            # Match Insert-Teleop: heavier DLS damping so the arm relaxes to a natural rest instead of
+            # Heavier DLS damping so the arm relaxes to a natural rest instead of
             # holding the elbow tucked up at 90 deg (default lambda 0.01 is near-undamped).
             ik_params={"lambda_val": 0.05},
         ),
@@ -83,7 +83,7 @@ class CarryTeleopActionsCfg:
         body_name=G1_LEFT_EE_BODY,
         controller=DifferentialIKControllerCfg(
             command_type="pose", use_relative_mode=False, ik_method="dls",
-            # Match Insert-Teleop: heavier DLS damping so the arm relaxes to a natural rest instead of
+            # Heavier DLS damping so the arm relaxes to a natural rest instead of
             # holding the elbow tucked up at 90 deg (default lambda 0.01 is near-undamped).
             ik_params={"lambda_val": 0.05},
         ),
@@ -99,7 +99,7 @@ class CarryTeleopActionsCfg:
 
 @configclass
 class CarryTeleopEnvCfg(CarryEnvCfg):
-    """``FIATLUX-Carry-v0`` with a teleop action interface (bimanual arm IK-rel + Dex3 grip)."""
+    """``CarryEnvCfg`` with a teleop action interface (bimanual arm IK-rel + Dex3 grip)."""
 
     def __post_init__(self) -> None:
         super().__post_init__()
