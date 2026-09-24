@@ -696,7 +696,8 @@ class G1ReplaceSceneCfg(DressedSceneCfg):
     # ------------------------------------------------------------------ randomized dressing
     # Each cloned env spawns one randomly chosen fixture from FIXTURE_USDS. AssetBaseCfg keeps
     # it out of physics entirely and collisions are disabled. Heterogeneous per-env assets
-    # require ``replicate_physics=False`` (see ``enable_dressing_randomization``).
+    # require ``replicate_physics=False`` -- moot on every currently registered task, which
+    # nulls this field via ``apply_replace_preset`` regardless (see FIXTURE_USDS above).
     fixture: AssetBaseCfg | None = AssetBaseCfg(
         prim_path="{ENV_REGEX_NS}/Fixture",
         spawn=sim_utils.MultiUsdFileCfg(

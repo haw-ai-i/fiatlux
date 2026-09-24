@@ -135,9 +135,8 @@ class CarryTeleopEnvCfg(CarryEnvCfg):
             anchor_rotation_mode=XrAnchorRotationMode.FOLLOW_PRIM_SMOOTHED,
         )
 
-        # controller_rel teleop device: bimanual relative-IK arm + binary grip (the recommended
-        # Insert device). Root pose baked to the Carry robot spawn so the world<->root transform
-        # is right where the robot stands.
+        # controller_rel teleop device: bimanual relative-IK arm + binary grip. Root pose baked
+        # to the Carry robot spawn so the world<->root transform is right where the robot stands.
         self.teleop_devices = DevicesCfg(
             devices={
                 "controller_rel": OpenXRDeviceCfg(
