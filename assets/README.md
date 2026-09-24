@@ -79,9 +79,8 @@ Every task-critical asset is physics-verified **once at intake** (collider audit
 drop test), with the result recorded in the manifests (`collision_verified`,
 `has_physics`, `physics_notes` columns); the binary USD is immutable afterward.
 Ongoing verification targets the *composition*, not the assets: run
-`scripts/verify_scene.py` (scene solidity) and `scripts/verify_interactions.py`
-(graded interactions) after env changes and as a pre-flight before scoring runs —
-never in per-commit CI.
+`scripts/verify_scene.py` (scene solidity) after env changes and as a pre-flight
+before scoring runs — never in per-commit CI.
 
 ## Isaac Sim Nucleus mirror (room dressing)
 

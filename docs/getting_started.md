@@ -99,26 +99,16 @@ locally.
 
 ## 5. Verify the physics
 
-Two verifiers guard the benchmark's physical modeling. Run them after asset or env
-changes and as a pre-flight before scoring runs — they are deliberately **not** wired
-into per-commit CI (a full Isaac Sim launch per check is too costly there):
+`verify_scene.py` guards the benchmark's physical modeling: assets present, colliders
+exist, nothing explodes or sinks. Run it after asset or env changes and as a pre-flight
+before scoring runs — it is deliberately **not** wired into per-commit CI (a full Isaac
+Sim launch per check is too costly there):
 
 ```bash
-# the scene is solid: assets present, colliders exist, nothing explodes or sinks
 uv run python scripts/verify_scene.py --headless --task FIATLUX-Replace-v0
-
-# the graded interactions are modeled correctly: seated bulb rests stably, the
-# success pose is attainable, a hand press stays gentle and doesn't launch the
-# bulb, break/drop detection fires exactly when it should, the robot can lean
-# on the ladder -- all policy-free, driven by calibrated poses (fiatlux_task.poses)
-uv run python scripts/verify_interactions.py --headless --scenario all
 ```
 
-Both exit non-zero on FAIL. `verify_interactions.py --scenario <name> --probe`
-prints poses, contact forces and asset bboxes for recalibrating
-`fiatlux_task/poses.py`; `--video out.mp4` renders the scenario for visual
-inspection; `--record-bag <dir>` writes the fragility episodes as standard
-trajectory bags (scoreable with `scripts/score.py`).
+Exits non-zero on FAIL.
 
 ## Troubleshooting
 
