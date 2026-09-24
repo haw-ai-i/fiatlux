@@ -47,14 +47,12 @@ fiatlux/
 │   ├── .../fiatlux_task/viz.py      # shared video capture (orbit / rollout MP4s + posters)
 │   └── .../manager_based/fiatlux_task/
 │       ├── scene_cfg.py         # THE family scene + tabletop/workshop presets
-│       ├── base_env_cfg.py      # shared non-RL base env (managers only)
-│       ├── g1_bulb_env_cfg.py   # Insert task MDP (RL, tabletop preset)
-│       ├── climb_env_cfg.py     # Climb task MDP (RL, at-height preset)
-│       ├── carry_env_cfg.py     # Carry task MDP (RL, ladder-positioning preset)
-│       ├── *_env_cfg.py         # descend / remove / install scaffolds
+│       ├── replace_env_cfg.py   # FIATLUX-Replace-v0 MDP (the benchmark task)
+│       ├── subtask_env_cfg.py   # shared recipe for the twelve subtasks
+│       ├── subtasks/            # one thin cfg file per subtask
 │       ├── mdp/                 # rewards, events, observations
 │       ├── agents/              # rsl_rl PPO config
-│       └── __init__.py          # gym.register(...) x7
+│       └── __init__.py          # gym.register() for Replace-v0 + the twelve subtasks
 ├── scripts/                  # zero / random / teleop / list_envs / rsl_rl / eval / verify_scene
 ├── assets/                   # download_assets.sh (pulls USDs from the HF dataset; git-ignored)
 └── docs/                     # overview, getting_started, task_spec, scoring, roadmap
@@ -77,7 +75,7 @@ uv sync
 ./assets/download_assets.sh
 
 # 3. Sanity-check registration and launch a baseline:
-uv run python scripts/list_envs.py                                        # all 7 FIATLUX ids
+uv run python scripts/list_envs.py                                        # every registered FIATLUX id
 uv run python scripts/verify_scene.py --headless --task FIATLUX-Replace-v0   # scene checks
 uv run python scripts/verify_scene.py --headless --task FIATLUX-S02-ClimbLadder-v0  # any member
 
