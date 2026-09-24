@@ -447,7 +447,7 @@ def main():  # noqa: C901  (one long orchestration: env setup + settle/resettle 
     env_cfg.decimation = 4  # -> 50 Hz control
     env_cfg.sim.render_interval = 4
     env_cfg.terminations.time_out = None
-    # FREE the base so SONIC can balance + walk (the teleop env bolts it down for stationary insert)
+    # FREE the base so SONIC can balance + walk, regardless of what the task's own cfg defaults to.
     env_cfg.scene.robot.spawn.articulation_props.fix_root_link = False
     # Harden the spawn against the intermittent PhysX launch: cap depenetration velocity (a bad
     # contact can't fling the free base metres up) and drop the random joint-offset reset (it
