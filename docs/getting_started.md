@@ -105,7 +105,7 @@ before scoring runs — it is deliberately **not** wired into per-commit CI (a f
 Sim launch per check is too costly there):
 
 ```bash
-uv run python scripts/verify_scene.py --headless --task FIATLUX-Replace-v0
+uv run python scripts/verify_scene.py --headless --enable_cameras --task FIATLUX-Replace-v0
 ```
 
 Exits non-zero on FAIL.
