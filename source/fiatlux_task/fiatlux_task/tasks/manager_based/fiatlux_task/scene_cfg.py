@@ -115,6 +115,10 @@ TARGET_LADDER_POSITION = (0.55, -0.30, 0.0)  # directly beneath the ceiling fixt
 # Same SOCKET_USD / BULB_USD as Replace, ceiling-mounted above the target and
 # flipped bulb-down. See apply_position_preset.
 
+# Reference ladder-base stance, at the step ladder's foot -- feeds mdp.nav_terms /
+# subtask_tiers.balance's mount-standoff and floor-stance-height constants (live gates read the
+# ladder's actual root pose, not this fixed point; it is where the base of that math is anchored).
+CLIMB_ROBOT_POSITION = (0.75, 0.0, _ROBOT_Z)
 # Pelvis on the ladder's standing tread (descend). STEP_LADDER_TOP_OFFSET's local x,y are
 # both zero, so the stance sits over the ladder's root at any yaw.
 TOP_ROBOT_POSITION = (LADDER_POSITION[0], LADDER_POSITION[1], STEP_LADDER_TOP_OFFSET[2] + _ROBOT_Z)
