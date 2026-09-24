@@ -73,11 +73,16 @@ class ReplacePPORunnerCfg(PPORunnerCfg):
     experiment_name = "fiatlux_replace"
 
 
+@configclass
 class CarryPPORunnerCfg(PPORunnerCfg):
     """PPO runner for the ladder-handling / positioning task (FIATLUX-Carry-v0).
 
     Explicit ``obs_groups`` so the privileged ladder-pose group reaches the critic (a group
     named ``privileged`` is otherwise silently dropped -- see :class:`ClimbPPORunnerCfg`).
+
+    Orphaned like ``ClimbPPORunnerCfg`` above: ``FIATLUX-Carry-v0`` is no longer registered
+    (this cleanup removed it along with ``carry_env_cfg.py``'s standalone RL registration), so
+    this config currently has no env to train against.
     """
 
     max_iterations = 2000
