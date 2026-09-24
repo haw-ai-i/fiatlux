@@ -49,11 +49,8 @@ descoping still stands — it is one flat RL episode, chaining is solution struc
   orientation on its own, so the only thing left to script is retention: a continuous
   spring-damper WRENCH while seated, release on a real physics-driven axial pull past
   `release_threshold`. No twist/lock semantics (this asset has no physical lug/groove; the
-  bayonet never modeled a real feature). Wired for Replace, the S01/S03/S11 subtask-teleop
-  tasks. **Not yet wired for every teleop id**: that
-  task swaps in a differently-scaled OMNI socket/bulb asset whose seat/plug geometry hasn't
-  been measured against the family asset's calibrated offsets, so retention there needs its
-  own calibration pass first (see the TODO in `insert_teleop_env_cfg.py`).
+  bayonet never modeled a real feature). Wired for Replace and the S01/S03/S11 subtask-teleop
+  tasks.
   - **Lateral + tilt centering (issue #171, 2026-09-08)**: real teleop evidence found a
     seated bulb visibly tilts/swings -- the axial-only design left lateral position and
     orientation entirely to real contact, and the bore's necessary radial clearance (2.69mm)
