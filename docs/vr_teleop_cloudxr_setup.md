@@ -157,6 +157,8 @@ cd ~/robotica_project/fiatlux/fiatlux
 export PYTHONPATH=$PWD/source/fiatlux_task
 export DISPLAY=:1001                        # NX display (GUI needed for the AR panel)
 python scripts/teleop/sonic_teleop.py --task FIATLUX-Insert-Teleop-v0 --input vr   # (was scripts/xr_teleop.py)
+# ^ FIATLUX-Insert-Teleop-v0 is retired; swap in a currently-registered *-Teleop-v0 id
+# (see source/fiatlux_teleop/README.md) -- the network/CloudXR steps below are unchanged.
 ```
 **Connect the Pico (the exact steps that work — ✅ confirmed 2026-07-26):**
 1. In the Isaac Sim UI: **AR panel** → Output Plugin **OpenXR**, Runtime **System OpenXR Runtime** →
