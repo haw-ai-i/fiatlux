@@ -88,9 +88,8 @@ uv run python scripts/record_run.py --task FIATLUX-S08-GrabNewBulb-v0 --policy r
     --episodes 2 --record bag --headless --enable_cameras --out logs/runs/random0
 uv run python scripts/score.py logs/runs/random0
 
-# 6. Train a policy:
-uv run python scripts/rsl_rl/train.py --task FIATLUX-S08-GrabNewBulb-Training-v0
-uv run python scripts/rsl_rl/train.py --task FIATLUX-S02-ClimbLadder-Training-v0
+# 6. Train a policy (only FIATLUX-Replace-v0 ships an rsl_rl PPO config so far):
+uv run python scripts/rsl_rl/train.py --task FIATLUX-Replace-v0
 
 # 7. Run the GR00T N1.7 model baseline on the benchmark (needs the external
 #    PolicyServer -- setup in journal/specs/groot-sonic-baseline.md):
