@@ -353,11 +353,11 @@ CRATE_MASS_KG = 1.5  # 0.60 x 0.40 x 0.17 m plastic parts crate
 # -- per-env random ceiling fixture pool (visual dressing) --
 # Ceiling-mount BEHAVIOR-1K categories only. Opt-in via ``download_assets.sh --scene-dressing``;
 # when absent the pool is empty. ``FamilyBaseEnvCfg.__post_init__`` used to drop the ``fixture``
-# entity in that case; that class is gone (base_env_cfg.py removed) and nothing currently
-# replaces the guard for the subtasks, which don't otherwise touch ``scene.fixture`` -- confirm
-# behavior with an empty pool before relying on the default asset download (no
-# ``--scene-dressing``). Category dirs mix ``<id>/<id>.usd`` and ``<id>/usd/<id>.usd``, hence
-# two globs.
+# entity in that case; that class is gone (base_env_cfg.py removed), but every currently
+# registered task (Replace and all twelve subtasks) already calls ``apply_replace_preset``,
+# which unconditionally nulls ``scene.fixture`` regardless of pool emptiness -- so this class
+# default is only ever live under ``apply_workshop_preset``, which nothing currently calls.
+# Category dirs mix ``<id>/<id>.usd`` and ``<id>/usd/<id>.usd``, hence two globs.
 _FIXTURE_CATEGORIES = (
     "behavior1k_chandelier",
     "behavior1k_downlight",
