@@ -46,7 +46,9 @@ from .scene_cfg import (
 # Ladder-positioning tolerances -- reused from the full Replace task's ladder scoring so the
 # subtask and the full task judge the ladder identically (mdp.ladder_ready / ladder_tipped).
 LADDER_TILT_LIMIT = 0.6  # rad; the upright ladder stands at ~0
-FALL_MIN_HEIGHT = 0.4  # m; robot-fall gate (shared by the penalty + termination)
+FALL_MIN_HEIGHT = 0.4  # m; robot-fall gate (shared by the penalty + termination). Pre-dates
+# subtask_env_cfg.py's own FALL_MIN_HEIGHT = 0.35 (used by Replace + all twelve subtasks) and
+# has never been unified with it -- not this file's own tuning, so left alone here.
 FALL_TILT_LIMIT = 1.0  # rad
 
 
