@@ -9,7 +9,7 @@ fixed seed for a fixed number of episodes. Same `--task`, `--seed`, `--policy`
 ```bash
 python scripts/eval.py --task FIATLUX-Replace-v0 --policy basic_standard \
     --episodes 20 --seed 0 --enable_cameras
-python scripts/eval.py --task FIATLUX-S08-GrabNewBulb-v0 --policy rsl_rl --checkpoint <model.pt> \
+python scripts/eval.py --task FIATLUX-Replace-v0 --policy rsl_rl --checkpoint <model.pt> \
     --episodes 50 --seed 0 --output results.json
 ```
 
