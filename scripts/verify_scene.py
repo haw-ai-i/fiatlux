@@ -140,6 +140,12 @@ TRACKED_CANDIDATES = ["robot", "ladder", "lamp", "socket", "fresh_bulb", "old_bu
 # Every preset states its bulb role. A bulb seated in the socket is ``old_bulb``, one anywhere
 # else is ``fresh_bulb`` (issue #76 Step 1), and the pair of expectations below is what stops a
 # preset from silently inheriting or dropping one -- the failure mode the rename exists to end.
+#
+# Hand-maintained against ``scene_preset`` values actually assigned in source/ -- nothing
+# asserts these stay in sync. Before editing, ``grep -rn 'scene_preset:' source/`` to check
+# this dict's keys still match every live class-level ``scene_preset`` default (this file's own
+# history has drifted both ways: a dead key left in after its preset's last user was deleted,
+# and a live key deleted too eagerly because its only remaining user was easy to miss).
 PRESET_PRESENCE = {
     "carry": ({"ladder", "old_bulb"}, {"table", "fresh_bulb"}),
     "replace": ({"table", "ladder", "bin", "old_bulb", "fresh_bulb"}, set()),
