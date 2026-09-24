@@ -6,14 +6,20 @@
 """Verify the domain-randomization axes (prop scale, material tint, light orientation).
 
 Headless, PhysX-only: every check is a USD-attribute read, so it runs where the RTX
-renderer is unavailable. Checks ``CarryEnvCfg`` (RL defaults, ``replicate_physics=True``):
-NO scale DR (ladder stays at its authored 0.01), but room tint (bounded, anti-compounding
-across resets) and light orientation (dome yaw-only, key light within its cone) active.
+renderer is unavailable. Two scenarios:
 
-Run directly (no flags needed): the parent process fans out three subprocesses (one Kit
-per process: a second ManagerBasedEnv in one process hangs at scene creation) and asserts
-same-seed determinism: two runs with the same seed must emit byte-identical
-``[SIGNATURE]`` lines, and a different seed must not.
+* ``rl`` (default) -- ``CarryEnvCfg`` (RL defaults, ``replicate_physics=True``): NO scale DR
+  (ladder stays at its authored 0.01), but room tint (bounded, anti-compounding across resets)
+  and light orientation (dome yaw-only, key light within its cone) active.
+* ``scale_dr`` -- ``ReplaceEnvCfg`` with the documented opt-in from replace_env_cfg.py's own
+  comment (``scene.replicate_physics = False`` + a prestartup ``mdp.randomize_prop_scale``/
+  ``mdp.randomize_rigid_body_scale`` EventTerm on ladder/socket/fresh_bulb): per-env scale
+  lands in range and varies across envs.
+
+Run directly (no flags needed): the parent process fans out subprocesses (one Kit per
+process: a second ManagerBasedEnv in one process hangs at scene creation). The ``rl``
+scenario additionally asserts same-seed determinism: two runs with the same seed must emit
+byte-identical ``[SIGNATURE]`` lines, and a different seed must not.
 
 Exit code is non-zero on FAIL (``os._exit`` before Kit shutdown, which would otherwise
 force 0 and swallow unflushed stdout).
@@ -24,6 +30,7 @@ import sys
 
 parser = argparse.ArgumentParser(description="Verify Fiatlux domain randomization.")
 parser.add_argument("--child", action="store_true", help=argparse.SUPPRESS)
+parser.add_argument("--scenario", choices=["rl", "scale_dr"], default="rl", help=argparse.SUPPRESS)
 parser.add_argument("--seed", type=int, default=0)
 parser.add_argument("--num_envs", type=int, default=2)
 
@@ -32,10 +39,10 @@ parser.add_argument("--num_envs", type=int, default=2)
 # ---------------------------------------------------------------------------
 
 
-def _run_child(seed: int, extra: list[str]) -> tuple[int, str]:
+def _run_child(seed: int, extra: list[str], scenario: str = "rl") -> tuple[int, str]:
     import subprocess
 
-    cmd = [sys.executable, __file__, "--child", "--seed", str(seed), "--headless", *extra]
+    cmd = [sys.executable, __file__, "--child", "--scenario", scenario, "--seed", str(seed), "--headless", *extra]
     proc = subprocess.run(cmd, capture_output=True, text=True)
     sys.stdout.write(proc.stdout)
     sys.stderr.write(proc.stderr[-2000:] if proc.returncode else "")
@@ -54,6 +61,8 @@ def _parent_main(args) -> int:
     rc2, sig2 = _run_child(args.seed, [])
     print(f"[verify_randomization] run 3 (seed {args.seed + 1})")
     rc3, sig3 = _run_child(args.seed + 1, [])
+    print(f"[verify_randomization] scale_dr run (seed {args.seed})")
+    rc4, _ = _run_child(args.seed, ["--enable_cameras"], scenario="scale_dr")
 
     def record(name: str, ok: bool, detail: str) -> None:
         print(f"[{'PASS' if ok else 'FAIL'}] {name}: {detail}")
@@ -67,6 +76,7 @@ def _parent_main(args) -> int:
         f"signatures {'match' if sig1 == sig2 else 'DIFFER'} ({len(sig1)} chars)",
     )
     record("determinism:different_seed_differs", bool(sig3) and sig1 != sig3, "seed+1 signature differs")
+    record("scale_dr_run_passes", rc4 == 0, f"exit code {rc4}")
     print("ALL CHECKS PASSED" if not failures else "FAILED: " + ", ".join(failures))
     return 1 if failures else 0
 
@@ -206,7 +216,78 @@ def child_rl(seed: int, num_envs: int) -> dict:
     }
 
 
+def in_range(values, lo: float, hi: float, tol: float = 1e-6) -> bool:
+    return all(lo - tol <= v <= hi + tol for v in values)
+
+
+def child_scale_dr(seed: int, num_envs: int) -> None:
+    """Replace's documented ``replicate_physics=False`` + ``mdp.randomize_prop_scale`` opt-in
+    (see replace_env_cfg.py's EventCfg comment): per-env prestartup scale lands in range and
+    varies across envs. Wires the exact EventTerms that comment recommends, since no currently
+    registered task turns this opt-in on by default.
+    """
+    from isaaclab.envs import ManagerBasedRLEnv
+    from isaaclab.managers import EventTermCfg as EventTerm
+    from isaaclab.managers import SceneEntityCfg
+
+    from fiatlux_task.tasks.manager_based.fiatlux_task import mdp
+    from fiatlux_task.tasks.manager_based.fiatlux_task.replace_env_cfg import ReplaceEnvCfg
+
+    random.seed(seed)
+    env_cfg = ReplaceEnvCfg()
+    env_cfg.scene.num_envs = num_envs
+    env_cfg.scene.replicate_physics = False
+    env_cfg.seed = seed
+    env_cfg.events.randomize_ladder_scale = EventTerm(
+        func=mdp.randomize_prop_scale,
+        mode="prestartup",
+        params={
+            "asset_cfg": SceneEntityCfg("ladder"),
+            "scale_range": {"x": (0.95, 1.05), "y": (0.95, 1.05), "z": (0.95, 1.1)},
+        },
+    )
+    env_cfg.events.randomize_socket_scale = EventTerm(
+        func=mdp.randomize_rigid_body_scale,
+        mode="prestartup",
+        params={"asset_cfg": SceneEntityCfg("socket"), "scale_range": (0.9, 1.1)},
+    )
+    env_cfg.events.randomize_bulb_scale = EventTerm(
+        func=mdp.randomize_rigid_body_scale,
+        mode="prestartup",
+        params={"asset_cfg": SceneEntityCfg("fresh_bulb"), "scale_range": (0.9, 1.1)},
+    )
+    env = ManagerBasedRLEnv(cfg=env_cfg)
+    stage = omni.usd.get_context().get_stage()
+
+    record(
+        "scale_dr:replicate_physics_off",
+        env.scene.cfg.replicate_physics is False,
+        f"replicate_physics={env.scene.cfg.replicate_physics} (scale DR legal)",
+    )
+    ladder = [get_scale(stage, f"/World/envs/env_{i}/Ladder") for i in range(num_envs)]
+    record(
+        "scale_dr:ladder_scale_in_range",
+        all(
+            s is not None and in_range(s[:2], 0.01 * 0.95, 0.01 * 1.05) and in_range(s[2:], 0.01 * 0.95, 0.01 * 1.1)
+            for s in ladder
+        ),
+        f"env scales {ladder} (multiplicative on the baked 0.01)",
+    )
+    record("scale_dr:ladder_scale_varies", len(set(ladder)) > 1, f"{len(set(ladder))} distinct of {num_envs}")
+    for name in ("Socket", "Bulb"):
+        scales = [get_scale(stage, f"/World/envs/env_{i}/{name}") for i in range(num_envs)]
+        record(
+            f"scale_dr:{name.lower()}_scale_in_range",
+            all(s is not None and in_range(s, 0.9, 1.1) and len(set(s)) == 1 for s in scales),
+            f"isotropic env scales {scales}",
+        )
+
+
 def main() -> int:
+    if args_cli.scenario == "scale_dr":
+        child_scale_dr(args_cli.seed, args_cli.num_envs)
+        print("ALL CHECKS PASSED" if not failures else "FAILED: " + ", ".join(failures))
+        return 1 if failures else 0
     signature = child_rl(args_cli.seed, args_cli.num_envs)
     print(f"[SIGNATURE] {json.dumps(signature, sort_keys=True)}")
     print("ALL CHECKS PASSED" if not failures else "FAILED: " + ", ".join(failures))
