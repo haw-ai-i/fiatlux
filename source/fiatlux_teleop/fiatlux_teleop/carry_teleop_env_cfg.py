@@ -5,11 +5,11 @@
 
 """``FIATLUX-Carry-Teleop-v0`` -- whole-body teleop of the ladder Carry task.
 
-Same treatment as :mod:`insert_teleop_env_cfg`, on the Carry ladder scene: the RL whole-body joint
-action is replaced by an **arm-IK + binary-grip** interface (bimanual) and a ``controller_rel``
-teleop device, so ``scripts/teleop/sonic_teleop.py`` drives it (SONIC balances + walks the legs; you
-teleop the arms). **Dex3** hand by default. The Carry base is already free (it's a walking task),
-so no un-bolting is needed -- unlike Insert.
+On the Carry ladder scene, the RL whole-body joint action is replaced by an **arm-IK +
+binary-grip** interface (bimanual) and a ``controller_rel`` teleop device, so
+``scripts/teleop/sonic_teleop.py`` drives it (SONIC balances + walks the legs; you teleop the
+arms). **Dex3** hand by default. The Carry base is already free (it's a walking task), so no
+un-bolting is needed.
 
 Caveat: the ``controller_rel`` retargeter accumulates the EE target in the WORLD frame (baked to a
 fixed base pose), so the arm teleop is accurate when the robot is standing at the ladder; walking
@@ -29,7 +29,11 @@ from fiatlux_task.robots.g1 import (
     G1_HAND_GRASP,
     G1_HAND_JOINTS,
     G1_HAND_OPEN,
+    G1_LEFT_ARM_JOINTS,
+    G1_LEFT_EE_BODY,
+    G1_LEFT_HAND_GRASP,
     G1_LEFT_HAND_JOINTS,
+    G1_LEFT_HAND_OPEN,
     swap_robot_variant,
 )
 from fiatlux_task.tasks.manager_based.fiatlux_task.carry_env_cfg import CarryEnvCfg
@@ -44,7 +48,6 @@ from isaaclab.envs.mdp.actions.actions_cfg import (
 )
 from isaaclab.utils import configclass
 
-from .insert_teleop_env_cfg import G1_LEFT_ARM_JOINTS, G1_LEFT_EE_BODY, G1_LEFT_HAND_GRASP, G1_LEFT_HAND_OPEN
 from .xr_controller_retargeters import (
     ControllerGripperRetargeterCfg,
     Se3RelControllerRetargeterCfg,

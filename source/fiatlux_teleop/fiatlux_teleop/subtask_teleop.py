@@ -37,7 +37,11 @@ from fiatlux_task.robots.g1 import (
     G1_HAND_GRASP,
     G1_HAND_JOINTS,
     G1_HAND_OPEN,
+    G1_LEFT_ARM_JOINTS,
+    G1_LEFT_EE_BODY,
+    G1_LEFT_HAND_GRASP,
     G1_LEFT_HAND_JOINTS,
+    G1_LEFT_HAND_OPEN,
     swap_robot_variant,
 )
 from fiatlux_task.tasks.manager_based.fiatlux_task.scene_cfg import add_ego_camera
@@ -52,13 +56,6 @@ from isaaclab.envs.mdp.actions.actions_cfg import (
 )
 from isaaclab.utils import configclass
 
-# left-arm joint/EE names live in the Insert teleop module (same source Carry uses)
-from .insert_teleop_env_cfg import (
-    G1_LEFT_ARM_JOINTS,
-    G1_LEFT_EE_BODY,
-    G1_LEFT_HAND_GRASP,
-    G1_LEFT_HAND_OPEN,
-)
 from .xr_controller_retargeters import (
     ControllerGripperRetargeterCfg,
     Se3RelControllerRetargeterCfg,

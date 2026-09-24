@@ -34,7 +34,11 @@ from fiatlux_task.robots.g1 import (
     G1_HAND_GRASP,
     G1_HAND_JOINTS,
     G1_HAND_OPEN,
+    G1_LEFT_ARM_JOINTS,
+    G1_LEFT_EE_BODY,
+    G1_LEFT_HAND_GRASP,
     G1_LEFT_HAND_JOINTS,
+    G1_LEFT_HAND_OPEN,
 )
 from fiatlux_task.tasks.manager_based.fiatlux_task.replace_env_cfg import ReplaceEnvCfg
 
@@ -48,7 +52,6 @@ from isaaclab.envs.mdp.actions.actions_cfg import (
 )
 from isaaclab.utils import configclass
 
-from .insert_teleop_env_cfg import G1_LEFT_ARM_JOINTS, G1_LEFT_EE_BODY, G1_LEFT_HAND_GRASP, G1_LEFT_HAND_OPEN
 from .xr_controller_retargeters import (
     ControllerGripperRetargeterCfg,
     Se3RelControllerRetargeterCfg,

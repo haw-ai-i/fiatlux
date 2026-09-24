@@ -17,8 +17,9 @@ They declare :attr:`RetargeterBase.Requirement.MOTION_CONTROLLER`, which makes
 array where **row 0** is the pose ``[x, y, z, w, x, y, z]`` and **row 1** is the inputs
 ``[thumbstick_x, thumbstick_y, trigger, squeeze, button_0, button_1, pad]``.
 
-Used by the ``controller`` / ``controller_rel`` teleop devices (see ``insert_teleop_env_cfg.py``);
-the whole-body driver ``scripts/teleop/sonic_teleop.py --input vr`` drives the ``controller_rel`` one.
+Used by the ``controller`` / ``controller_rel`` teleop devices (see ``carry_teleop_env_cfg.py`` /
+``subtask_teleop.py``); the whole-body driver ``scripts/teleop/sonic_teleop.py --input vr`` drives
+the ``controller_rel`` one.
 """
 
 from __future__ import annotations

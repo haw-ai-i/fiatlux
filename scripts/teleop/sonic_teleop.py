@@ -446,23 +446,18 @@ def main():  # noqa: C901  (one long orchestration: env setup + settle/resettle 
     env_cfg = parse_env_cfg(args.task, device=args.device, num_envs=args.num_envs)
     if not isinstance(env_cfg, ManagerBasedRLEnvCfg):
         raise ValueError("expected a ManagerBasedRLEnv task")
-    # Insert-Teleop defaults to Inspire (swap to Dex3 on request); Carry-Teleop is Dex3-native
-    # (swap to Inspire on request). Each env's patch handles the robot + hand-action repoint.
+    # Carry-Teleop is Dex3-native; swap to Inspire on request. Its patch handles the robot +
+    # hand-action repoint.
     #
-    # SUBTASKS ARE EXCLUDED. These are substring matches on the task id, and the subtask ids
+    # SUBTASKS ARE EXCLUDED. This is a substring match on the task id, and the subtask ids
     # S05-CarryBulbToDisposal / S09-CarryBulbToLadder contain "Carry" -- so `--hand inspire`
     # applied the legacy Carry patch to an already-Inspire-native subtask and swap_robot_variant
     # raised "don't know how to remap joint_names=['R_index_proximal_joint', ...]". The subtask
     # twins pick their own hand inside apply_subtask_teleop via FIATLUX_TELEOP_HAND, set above.
-    if not _is_subtask_task:
-        if args.hand.lower() == "dex3" and "Insert" in args.task:
-            from fiatlux_teleop.insert_teleop_env_cfg import apply_dex3_hands
+    if not _is_subtask_task and args.hand.lower() == "inspire" and "Carry" in args.task:
+        from fiatlux_teleop.carry_teleop_env_cfg import apply_inspire_hands
 
-            apply_dex3_hands(env_cfg)
-        elif args.hand.lower() == "inspire" and "Carry" in args.task:
-            from fiatlux_teleop.carry_teleop_env_cfg import apply_inspire_hands
-
-            apply_inspire_hands(env_cfg)
+        apply_inspire_hands(env_cfg)
 
     env_cfg.sim.dt = 0.005  # 200 Hz (SONIC's rate)
     env_cfg.decimation = 4  # -> 50 Hz control
