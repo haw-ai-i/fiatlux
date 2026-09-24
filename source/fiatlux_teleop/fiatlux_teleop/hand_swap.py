@@ -47,22 +47,3 @@ def apply_dex3_hands(env_cfg) -> None:
     _repoint_grips(env_cfg,
                    G1_DEX3_LEFT_HAND_JOINTS, G1_DEX3_LEFT_HAND_OPEN, G1_DEX3_LEFT_HAND_GRASP,
                    G1_DEX3_RIGHT_HAND_JOINTS, G1_DEX3_HAND_OPEN, G1_DEX3_HAND_GRASP)
-
-
-def apply_inspire_hands(env_cfg) -> None:
-    """Switch a *parsed*, Dex3-native teleop cfg to INSPIRE hands, in place (mirror of above)."""
-    from fiatlux_task.robots.g1 import (
-        G1_HAND_GRASP,
-        G1_HAND_JOINTS,
-        G1_HAND_OPEN,
-        G1_LEFT_HAND_GRASP,
-        G1_LEFT_HAND_JOINTS,
-        G1_LEFT_HAND_OPEN,
-        swap_robot_variant,
-    )
-
-    swap_robot_variant(env_cfg, "inspire")
-    # See the matching comment in apply_dex3_hands above: self-collisions stay as authored.
-    _repoint_grips(env_cfg,
-                   G1_LEFT_HAND_JOINTS, G1_LEFT_HAND_OPEN, G1_LEFT_HAND_GRASP,
-                   G1_HAND_JOINTS, G1_HAND_OPEN, G1_HAND_GRASP)
