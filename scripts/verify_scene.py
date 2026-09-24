@@ -24,7 +24,7 @@ Examples
     uv run python scripts/verify_scene.py --record --hold_base --headless --num_envs 1
 
     # verify a specific task env
-    uv run python scripts/verify_scene.py --headless --task FIATLUX-S02-ClimbLadder-v0
+    uv run python scripts/verify_scene.py --headless --enable_cameras --task FIATLUX-S02-ClimbLadder-v0
 
     # every task needs camera rendering; without the flag Isaac Lab raises at startup
     uv run python scripts/verify_scene.py --headless --enable_cameras --task FIATLUX-Replace-v0
