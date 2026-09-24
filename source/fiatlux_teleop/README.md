@@ -47,7 +47,7 @@ Also needed:
 
 The launcher activates both envs for you — you never switch them by hand. Full first-time install,
 firewall ports, network topology, and every hard-won gotcha:
-**[journal/specs/vr-teleop-cloudxr-setup.md](../../journal/specs/vr-teleop-cloudxr-setup.md)**.
+**[docs/vr_teleop_cloudxr_setup.md](../../docs/vr_teleop_cloudxr_setup.md)**.
 
 ---
 
@@ -292,4 +292,4 @@ scripts/teleop/
 ## Scope note
 This is a *bespoke* harness (G1 arm-IK + SONIC legs + CloudXR), tuned for these scenes — not a generic
 "point at any env and teleop." Adding a new teleop task is the ~30-line cfg above, following the
-templates. For the CloudXR headset setup itself, see `journal/specs/vr-teleop-cloudxr-setup.md`.
+templates. For the CloudXR headset setup itself, see `docs/vr_teleop_cloudxr_setup.md`.
