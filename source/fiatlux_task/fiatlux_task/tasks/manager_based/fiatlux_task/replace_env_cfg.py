@@ -39,8 +39,7 @@ Design notes:
   no scripted lock or twist requirement, since this asset has no physical lug/groove for one
   to model. The state machine reads bulb motion, never wrist pose.
   ``fresh_bulb_inserted`` and ``success`` read the attachment state, not raw seating
-  geometry, so every score channel is genuinely achievable. Remove/Install do not gate on
-  attachment at all: their bulbs are dynamic and simply lift out of / drop into the socket.
+  geometry, so every score channel is genuinely achievable.
 """
 
 from isaaclab.envs import ManagerBasedRLEnvCfg
@@ -76,7 +75,7 @@ from .subtask_env_cfg import FALL_MIN_HEIGHT, FALL_TILT_LIMIT
 
 LADDER_TILT_LIMIT = 0.6  # rad; the ladder stands at 0, real climbing wobble stays well under
 REMOVAL_CLEARANCE = 0.10  # m; old-bulb plug this far from the seat counts as removed
-SEAT_POS_THRESHOLD = 0.015  # m; fresh-bulb seating tolerance (Insert's validated values)
+SEAT_POS_THRESHOLD = 0.015  # m; fresh-bulb seating tolerance (mdp.bulb_attachment's own default)
 SEAT_ORI_THRESHOLD = 0.2  # rad
 FRESH_BULB_DROP_HEIGHT = 0.4  # m; the fresh bulb's working heights are table (~1.0) and up
 OLD_BULB_DROP_HEIGHT = 0.15  # m; must clear a bulb resting *inside* the floor crate (~0.1)
