@@ -29,8 +29,8 @@ Examples:
         --episodes 2 --enable_cameras
     python scripts/eval.py --task FIATLUX-Replace-v0 --policy basic_cheatcode \
         --episodes 2 --enable_cameras
-    python scripts/eval.py --task FIATLUX-S08-GrabNewBulb-v0 --policy rsl_rl \
-        --checkpoint logs/rsl_rl/fiatlux_task/<run>/model_*.pt
+    python scripts/eval.py --task FIATLUX-Replace-v0 --policy rsl_rl \
+        --checkpoint logs/rsl_rl/fiatlux_replace/<run>/model_*.pt
 """
 
 """Launch Isaac Sim Simulator first."""
