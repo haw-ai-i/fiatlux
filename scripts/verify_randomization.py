@@ -7,7 +7,8 @@
 
 Headless, PhysX-only: every check is a USD-attribute read, so it runs where the RTX
 renderer is unavailable. Checks ``CarryEnvCfg`` (RL defaults, ``replicate_physics=True``):
-NO scale DR (ladder stays at its authored 0.01), but room tint + light orientation active.
+NO scale DR (ladder stays at its authored 0.01), but room tint (bounded, anti-compounding
+across resets) and light orientation (dome yaw-only, key light within its cone) active.
 
 Run directly (no flags needed): the parent process fans out three subprocesses (one Kit
 per process: a second ManagerBasedEnv in one process hangs at scene creation) and asserts
@@ -88,6 +89,7 @@ app_launcher = AppLauncher(args_cli)
 simulation_app = app_launcher.app
 
 import json
+import math
 import os
 import random
 
@@ -118,6 +120,11 @@ def get_orient(stage, path: str):
         return None
     imag = quat.GetImaginary()
     return tuple(round(float(v), 6) for v in (quat.GetReal(), imag[0], imag[1], imag[2]))
+
+
+def quat_delta_deg(q1, q2) -> float:
+    dot = abs(sum(a * b for a, b in zip(q1, q2)))
+    return math.degrees(2.0 * math.acos(min(1.0, dot)))
 
 
 def tinted_attrs(stage, root_path: str):
@@ -166,13 +173,35 @@ def child_rl(seed: int, num_envs: int) -> dict:
         len(tinted_attrs(stage, "/World/envs/env_0/Ladder")) == 0,
         "per-env materials untouched under replicated physics",
     )
-    before = (get_orient(stage, "/World/KeyLight"), get_orient(stage, "/World/DomeLight"))
-    env.reset()
-    after = (get_orient(stage, "/World/KeyLight"), get_orient(stage, "/World/DomeLight"))
-    record("rl:light_orient_changes", before != after, "key/dome orient vary across resets")
+
+    key_authored = tuple(env.scene.cfg.key_light.init_state.rot)
+    orients = []
+    tint_bound_ok = True
+    for _ in range(5):
+        env.reset()
+        orients.append((get_orient(stage, "/World/KeyLight"), get_orient(stage, "/World/DomeLight")))
+        for attr in room_tinted:
+            base = attr.GetCustomDataByKey(BASE_COLOR_KEY)
+            value = attr.Get()
+            if any(v > b * 1.2 + 1e-4 or v < 0.0 for v, b in zip(value, base)):
+                tint_bound_ok = False
+    record("rl:tint_never_compounds", tint_bound_ok, "5 resets stay within original*[0,1.2]")
+    key_orients = {o[0] for o in orients}
+    dome_orients = {o[1] for o in orients}
+    record("rl:light_orient_changes", len(key_orients) > 1 and len(dome_orients) > 1, "key/dome orient vary across resets")
+    record(
+        "rl:dome_yaw_only",
+        all(abs(o[1]) < 1e-5 and abs(o[2]) < 1e-5 for o in dome_orients if o is not None),
+        "dome quat has no x/y components",
+    )
+    record(
+        "rl:key_light_within_cone",
+        all(quat_delta_deg(o, key_authored) <= 46.0 for o in key_orients if o is not None),
+        f"max delta {max(quat_delta_deg(o, key_authored) for o in key_orients):.1f} deg <= 46",
+    )
 
     return {
-        "orients": [before, after],
+        "orients": orients,
         "room_tint": [tuple(round(float(v), 6) for v in a.Get()) for a in room_tinted[:3]],
     }
 
