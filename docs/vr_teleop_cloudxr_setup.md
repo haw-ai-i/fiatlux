@@ -131,7 +131,8 @@ tracking** (pinch), which sidesteps the controller-trigger gap entirely.
   retargets it to the G1. **No `isaacteleop` import here** → the two-env dep conflict is avoided.
 
 ### Code changes (in the fiatlux repo)
-- `source/fiatlux_task/.../insert_teleop_env_cfg.py`: added a **`handtracking`** entry to
+- `source/fiatlux_task/.../insert_teleop_env_cfg.py` (since deleted; retired along with
+  `FIATLUX-Insert-Teleop-v0`): added a **`handtracking`** entry to
   `teleop_devices` (an `OpenXRDeviceCfg` with `Se3AbsRetargeterCfg` [right-wrist pose → EE target,
   `use_wrist_position=True`, `zero_out_xy_rotation=True`] + `GripperRetargeterCfg` [thumb-index pinch
   → open/close]), plus `self.xr = XrCfg(anchor_pos=(0.5, 0.7, 0.0), ...)` for scene placement.
