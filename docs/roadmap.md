@@ -107,9 +107,6 @@ chaining is solution structure).
     like a real 3D contact effect (a loosely-toleranced plug precessing/rattling in the bore)
     rather than something a single-axis torque law can fully resolve -- open follow-up, not
     treated as solved, though the critical failure (detachment) is fixed.
-  Follow-up: put Remove/Install on the same mechanic; their
-  bulbs are already dynamic but currently lift straight out of / drop straight into the
-  socket (issue #76 Step 2).
 
 ## 3. Learned-policy support
 
