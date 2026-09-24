@@ -36,7 +36,7 @@ import argparse
 from isaaclab.app import AppLauncher
 
 parser = argparse.ArgumentParser(description="Sweep hand-bulb contact force against distance (issue #92).")
-parser.add_argument("--task", type=str, default="FIATLUX-Remove-v0")
+parser.add_argument("--task", type=str, default="FIATLUX-Replace-v0")
 parser.add_argument("--variant", type=str, default="dex3", choices=["dex3", "inspire"])
 parser.add_argument("--hand", type=str, default="right", choices=["left", "right"])
 parser.add_argument(

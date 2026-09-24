@@ -33,7 +33,7 @@ import argparse
 from isaaclab.app import AppLauncher
 
 parser = argparse.ArgumentParser(description="Reproduce the stuck-bulb release (issue #92).")
-parser.add_argument("--task", type=str, default="FIATLUX-Remove-v0")
+parser.add_argument("--task", type=str, default="FIATLUX-Replace-v0")
 parser.add_argument("--variant", type=str, default="dex3", choices=["dex3", "inspire"])
 parser.add_argument("--hand", type=str, default="left", choices=["left", "right"])
 parser.add_argument("--settle-steps", type=int, default=60, help="Steps to hold the closed grasp.")
