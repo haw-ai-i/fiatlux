@@ -1,6 +1,6 @@
 # Omniverse Ladder Material Fixes
 
-Detailed record for **issue 18** (`journal/specs/issue-18-red-assets-rendering.md`):
+Detailed record for **issue 18**:
 the material/texture errors seen when loading `assets/omniverse_ladder` in Isaac Sim
 (via the playground) and how each was fixed. The ladders always *rendered*
 correctly; these were mostly log errors from redundant/broken references. After the
