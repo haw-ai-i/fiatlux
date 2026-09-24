@@ -36,7 +36,8 @@ policy can be trained and scored on any leg independently; `FIATLUX-Replace-v0` 
 chain. Each subtask also has a `-Training-v0` variant (replicated physics, shaping rewards) and
 a `-Teleop-v0` variant for operator recording.
 
-The train / eval / record scripts apply to every id; `scripts/verify_scene.py` covers them all.
+The eval / record scripts and `scripts/verify_scene.py` apply to every id; `scripts/rsl_rl/`
+train / play need a PPO config, which only `FIATLUX-Replace-v0` has so far.
 
 ## Repository layout
 
