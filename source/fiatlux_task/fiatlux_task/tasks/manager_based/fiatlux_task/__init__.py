@@ -5,40 +5,18 @@
 
 """Fiatlux benchmark task registrations.
 
-Task hierarchy (see docs/roadmap.md):
-
 One family, one scene (``scene_cfg.G1ReplaceSceneCfg``), preset layouts per task:
 
 - ``FIATLUX-Replace-v0`` : THE BENCHMARK -- the full light-bulb replacement (randomized
   room layout, normalized-progress scoring, standard/cheatcode observation modes; see
-  ``journal/specs/full-task-benchmark-plan.md``). FUNCTIONAL, RL.
-- ``FIATLUX-Insert-v0``  : G1 seats a bulb into a socket (manipulation, *tabletop* preset).
-  FUNCTIONAL, RL.
-- ``FIATLUX-Climb-v0``   : G1 climbs the step ladder to the fixture height (*at-height*
-  preset, whole-body RL). FUNCTIONAL, RL.
-- ``FIATLUX-Carry-v0``   : G1 grasps a ladder and positions it upright at a target (ladder-
-  handling, *carry* preset, arm+hand manipulation RL). FUNCTIONAL, RL.
-- ``FIATLUX-Descend-v0`` : bipedal ladder descent -- the mirror image of Climb's ascent
-  reward/termination scheme (``descend_env_cfg.py``). FUNCTIONAL, RL.
-- ``FIATLUX-Install-v0`` : seat a new bulb from a floor parts crate into the same bench
-  lamp socket ``FIATLUX-Insert-v0`` uses (``install_env_cfg.py``, Insert's own reward/
-  termination set unchanged -- same entities, larger starting gap). FUNCTIONAL, RL.
-- ``FIATLUX-Remove-v0``  : unscrew / remove the seated bulb (``remove_env_cfg.py``,
-  Replace's own removal/disposal reward channels, parametrized onto this scene's
-  standalone ``bulb`` entity). RL and achievable -- the bulb is dynamic and lifts out of
-  the socket's open hole -- but nothing gates unscrewing here, so it scores "pick it up
-  and bin it". Replace gates removal on ``mdp.bulb_attachment`` (issue #54); porting that
-  term here is what would make this a genuine unscrew task.
-- ``FIATLUX-Base-v0``    : the shared scene-only cfg, deliberately **non-RL**
-  (:class:`base_env_cfg.FamilyBaseEnvCfg` -- observation/action/event managers only, no
-  task to reward). Not a task; ``verify_scene.py``'s default target.
+  ``journal/specs/full-task-benchmark-plan.md``). ``verify_scene.py``'s default target.
+- ``FIATLUX-S01..S12-*-v0`` : the twelve subtasks Replace decomposes into (issue #66), each
+  starting from its predecessor's end state (``subtask_env_cfg.py`` + ``subtasks/``).
+- ``FIATLUX-S01..S12-*-Training-v0`` : the same subtasks plus reward shaping (issue #169,
+  ``subtasks/training_env_cfg.py``).
 
-``FIATLUX-Base-v0`` registers the non-RL ``isaaclab.envs:ManagerBasedEnv`` entry point,
-so ``gym.make`` (record_run.py, eval.py, zero_agent.py) cannot construct it --
-``ManagerBasedEnv.__init__`` has no ``**kwargs`` catch-all for the registration's own
-``env_cfg_entry_point``, unlike ``ManagerBasedRLEnv``. ``scripts/verify_scene.py``
-bypasses ``gym.make`` for exactly this reason and covers every family member directly
-(Insert and Replace need ``--enable_cameras`` for their camera sensors).
+Every task spawns an ego camera, so ``verify_scene.py`` / ``record_run.py`` need
+``--enable_cameras``.
 
 Registration is deliberately lazy (string entry points only, no eager cfg imports):
 ``fiatlux_task.tasks`` swallows import errors during its auto-import walk, so an eagerly
@@ -53,22 +31,15 @@ from . import agents
 # Register Gym environments.
 ##
 
-# NOTE: the teleop task variants (FIATLUX-{Insert,Carry,LadderGallery}-Teleop-v0) live in the separate
-# `fiatlux_teleop` extension package (source/fiatlux_teleop) and are registered by importing it -- kept
-# out of the benchmark so this package imports/runs without teleop's OpenXR/CloudXR/SONIC deps.
+# NOTE: the teleop task variants (FIATLUX-S<NN>-*-Teleop-v0, FIATLUX-LadderGallery-Teleop-v0, ...) live
+# in the separate `fiatlux_teleop` extension package (source/fiatlux_teleop) and are registered by
+# importing it -- kept out of the benchmark so this package imports/runs without teleop's
+# OpenXR/CloudXR/SONIC deps.
 
-##
-# The shared scene-only scaffold (non-RL; not a task -- see module docstring).
-##
-
-##
-# Remaining family RL members.
-##
-
-# NOTE: Descend/Remove/Install intentionally carry no rsl_rl_cfg_entry_point yet -- no
-# PPORunnerCfg (network sizes, obs_groups routing) has been designed/tuned for them. They
-# work fully with record_run.py / eval.py / any non-rsl_rl policy (including groot); only
-# scripts/rsl_rl/{train,play}.py would need one added first.
+# NOTE: only Replace carries an rsl_rl_cfg_entry_point. The subtask ids (benchmark and -Training)
+# intentionally have none yet -- no PPORunnerCfg (network sizes, obs_groups routing) has been
+# designed/tuned for them. They work fully with record_run.py / eval.py / any non-rsl_rl policy
+# (including groot); only scripts/rsl_rl/{train,play}.py would need one added first.
 
 ##
 # The full-task benchmark (RL).
