@@ -84,7 +84,7 @@ uv run python scripts/verify_scene.py --headless --enable_cameras --task FIATLUX
 uv run python scripts/eval.py --task FIATLUX-S08-GrabNewBulb-v0 --policy random --episodes 20 --seed 0
 
 # 5. Record a run, then score it offline (no simulator needed for scoring).
-#    --enable_cameras is required: the env carries a wrist-camera sensor.
+#    --enable_cameras is required: the env carries an ego-camera sensor.
 uv run python scripts/record_run.py --task FIATLUX-S08-GrabNewBulb-v0 --policy random \
     --episodes 2 --record bag --headless --enable_cameras --out logs/runs/random0
 uv run python scripts/score.py logs/runs/random0
