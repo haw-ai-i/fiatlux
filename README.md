@@ -77,8 +77,8 @@ uv sync
 
 # 3. Sanity-check registration and launch a baseline:
 uv run python scripts/list_envs.py                                        # every registered FIATLUX id
-uv run python scripts/verify_scene.py --headless --task FIATLUX-Replace-v0   # scene checks
-uv run python scripts/verify_scene.py --headless --task FIATLUX-S02-ClimbLadder-v0  # any member
+uv run python scripts/verify_scene.py --headless --enable_cameras --task FIATLUX-Replace-v0   # scene checks
+uv run python scripts/verify_scene.py --headless --enable_cameras --task FIATLUX-S02-ClimbLadder-v0  # any member
 
 # 4. Evaluate (standardized, reproducible):
 uv run python scripts/eval.py --task FIATLUX-S08-GrabNewBulb-v0 --policy random --episodes 20 --seed 0
