@@ -55,16 +55,14 @@ def apply_inspire_hands(env_cfg) -> None:
         G1_HAND_GRASP,
         G1_HAND_JOINTS,
         G1_HAND_OPEN,
+        G1_LEFT_HAND_GRASP,
         G1_LEFT_HAND_JOINTS,
+        G1_LEFT_HAND_OPEN,
         swap_robot_variant,
     )
 
-    # left-hand open/grasp are the right-hand presets mirrored (same derivation as
-    # robots/g1.py's G1_LEFT_HAND_OPEN/G1_LEFT_HAND_GRASP)
-    _left_open = dict.fromkeys(G1_LEFT_HAND_JOINTS, 0.0)
-    _left_grasp = {k.replace("R_", "L_", 1): v for k, v in G1_HAND_GRASP.items()}
     swap_robot_variant(env_cfg, "inspire")
     # See the matching comment in apply_dex3_hands above: self-collisions stay as authored.
     _repoint_grips(env_cfg,
-                   G1_LEFT_HAND_JOINTS, _left_open, _left_grasp,
+                   G1_LEFT_HAND_JOINTS, G1_LEFT_HAND_OPEN, G1_LEFT_HAND_GRASP,
                    G1_HAND_JOINTS, G1_HAND_OPEN, G1_HAND_GRASP)
