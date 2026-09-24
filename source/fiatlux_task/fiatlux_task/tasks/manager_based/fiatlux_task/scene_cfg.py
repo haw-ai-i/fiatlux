@@ -346,9 +346,10 @@ CRATE_MASS_KG = 1.5  # 0.60 x 0.40 x 0.17 m plastic parts crate
 # Ceiling-mount BEHAVIOR-1K categories only. Opt-in via ``download_assets.sh --scene-dressing``;
 # when absent the pool is empty. ``FamilyBaseEnvCfg.__post_init__`` used to drop the ``fixture``
 # entity in that case; that class is gone (base_env_cfg.py removed), and every currently
-# registered task (Replace and all twelve subtasks) calls ``apply_replace_preset``, which
-# unconditionally nulls ``scene.fixture`` regardless of pool emptiness -- so this class default
-# is never actually live (no surviving preset leaves ``scene.fixture`` set).
+# registered task calls either ``apply_replace_preset`` (Replace and all twelve subtasks) or
+# ``apply_position_preset`` (Carry and its teleop derivatives), both of which unconditionally
+# null ``scene.fixture`` -- so this class default is never actually live (no surviving preset
+# leaves ``scene.fixture`` set).
 # Category dirs mix ``<id>/<id>.usd`` and ``<id>/usd/<id>.usd``, hence two globs.
 _FIXTURE_CATEGORIES = (
     "behavior1k_chandelier",
@@ -701,7 +702,8 @@ class G1ReplaceSceneCfg(DressedSceneCfg):
     # Each cloned env spawns one randomly chosen fixture from FIXTURE_USDS. AssetBaseCfg keeps
     # it out of physics entirely and collisions are disabled. Heterogeneous per-env assets
     # require ``replicate_physics=False`` -- moot on every currently registered task, which
-    # nulls this field via ``apply_replace_preset`` regardless (see FIXTURE_USDS above).
+    # nulls this field via ``apply_replace_preset`` or ``apply_position_preset`` regardless
+    # (see FIXTURE_USDS above).
     fixture: AssetBaseCfg | None = AssetBaseCfg(
         prim_path="{ENV_REGEX_NS}/Fixture",
         spawn=sim_utils.MultiUsdFileCfg(
