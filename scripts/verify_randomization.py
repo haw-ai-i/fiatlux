@@ -5,8 +5,10 @@
 
 """Verify the domain-randomization axes (prop scale, material tint, light orientation).
 
-Headless, PhysX-only: every check is a USD-attribute read, so it runs where the RTX
-renderer is unavailable. Three scenarios:
+Headless: every check is a USD-attribute read, not a render. ``--enable_cameras`` is required
+regardless (every scenario's env cfg calls ``add_ego_camera``, which raises at startup without
+it), so despite being headless this still needs a rendering-capable GPU, not just PhysX. Three
+scenarios:
 
 * ``rl`` (default) -- ``CarryEnvCfg`` (RL defaults, ``replicate_physics=True``): NO scale DR
   (ladder stays at its authored 0.01), but room tint (bounded, anti-compounding across resets)
@@ -35,7 +37,7 @@ parser = argparse.ArgumentParser(description="Verify Fiatlux domain randomizatio
 parser.add_argument("--child", action="store_true", help=argparse.SUPPRESS)
 parser.add_argument("--scenario", choices=["rl", "replace", "scale_dr"], default="rl", help=argparse.SUPPRESS)
 parser.add_argument("--seed", type=int, default=0)
-parser.add_argument("--num_envs", type=int, default=2)
+parser.add_argument("--num_envs", type=int, default=None, help="Defaults: 4 (scale_dr) / 2 (rl, replace).")
 
 # ---------------------------------------------------------------------------
 # Parent mode: fan out subprocesses BEFORE booting Kit (unless --child).
@@ -76,18 +78,28 @@ def _report(failures: list[str], known_issues: list[str] | None = None) -> int:
     return 1 if failures else 0
 
 
+def _num_envs_for(requested: int | None, scenario: str) -> int:
+    """``--num_envs`` default, scenario-aware: scale_dr wants more draws for its
+    per-env-varies check's statistical power than the tint/light checks need."""
+    if requested is not None:
+        return requested
+    return 4 if scenario == "scale_dr" else 2
+
+
 def _parent_main(args) -> int:
     failures = []
     print(f"[verify_randomization] run 1 (seed {args.seed})")
-    rc1, sig1 = _run_child(args.seed, args.num_envs, ["--enable_cameras"])
+    rc1, sig1 = _run_child(args.seed, _num_envs_for(args.num_envs, "rl"), ["--enable_cameras"])
     print(f"[verify_randomization] run 2 (seed {args.seed})")
-    rc2, sig2 = _run_child(args.seed, args.num_envs, ["--enable_cameras"])
+    rc2, sig2 = _run_child(args.seed, _num_envs_for(args.num_envs, "rl"), ["--enable_cameras"])
     print(f"[verify_randomization] run 3 (seed {args.seed + 1})")
-    rc3, sig3 = _run_child(args.seed + 1, args.num_envs, ["--enable_cameras"])
+    rc3, sig3 = _run_child(args.seed + 1, _num_envs_for(args.num_envs, "rl"), ["--enable_cameras"])
     print(f"[verify_randomization] replace run (seed {args.seed})")
-    rc4, _ = _run_child(args.seed, args.num_envs, ["--enable_cameras"], scenario="replace")
+    rc4, _ = _run_child(args.seed, _num_envs_for(args.num_envs, "replace"), ["--enable_cameras"], scenario="replace")
     print(f"[verify_randomization] scale_dr run (seed {args.seed})")
-    rc5, _ = _run_child(args.seed, args.num_envs, ["--enable_cameras"], scenario="scale_dr")
+    rc5, _ = _run_child(
+        args.seed, _num_envs_for(args.num_envs, "scale_dr"), ["--enable_cameras"], scenario="scale_dr"
+    )
 
     def record(name: str, ok: bool, detail: str) -> None:
         print(f"[{'PASS' if ok else 'FAIL'}] {name}: {detail}")
@@ -395,12 +407,13 @@ def child_scale_dr(seed: int, num_envs: int) -> None:
 
 
 def main() -> int:
+    num_envs = _num_envs_for(args_cli.num_envs, args_cli.scenario)
     if args_cli.scenario == "scale_dr":
-        child_scale_dr(args_cli.seed, args_cli.num_envs)
+        child_scale_dr(args_cli.seed, num_envs)
     elif args_cli.scenario == "replace":
-        child_replace(args_cli.seed, args_cli.num_envs)
+        child_replace(args_cli.seed, num_envs)
     else:
-        signature = child_rl(args_cli.seed, args_cli.num_envs)
+        signature = child_rl(args_cli.seed, num_envs)
         print(f"[SIGNATURE] {json.dumps(signature, sort_keys=True)}")
     return _report(failures, known_issues)
 
