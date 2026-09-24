@@ -200,26 +200,33 @@ def tinted_attrs(stage, root_path: str):
     return found
 
 
-def child_rl(seed: int, num_envs: int) -> dict:
-    from fiatlux_task.tasks.manager_based.fiatlux_task.carry_env_cfg import CarryEnvCfg
+def _check_rl_randomization(env_cfg_cls, prefix: str, bulb_paths: list[str], seed: int, num_envs: int) -> dict:
+    """Tint/light-orientation checks shared by every ``replicate_physics=True`` RL env cfg
+    class this benchmark ships -- ``child_rl`` (``CarryEnvCfg``) and ``child_replace``
+    (``ReplaceEnvCfg``) both call this, since both share the same at-risk setup (a reset-time
+    ``mdp.randomize_material_tint`` EventTerm on ``room``): issue #236 could affect the primary
+    benchmark task even if it turns out to be Carry-specific, or vice versa.
 
+    ``bulb_paths`` are the env's live B1K bulb prim names under ``env_0`` (Carry has only
+    ``OldBulb``; Replace has both ``Bulb`` and ``OldBulb``).
+    """
     from isaaclab.envs import ManagerBasedRLEnv
 
     random.seed(seed)
-    env_cfg = CarryEnvCfg()
+    env_cfg = env_cfg_cls()
     env_cfg.scene.num_envs = num_envs
     env_cfg.seed = seed
     env = ManagerBasedRLEnv(cfg=env_cfg)
     stage = omni.usd.get_context().get_stage()
 
     record(
-        "rl:replicate_physics_on",
+        f"{prefix}:replicate_physics_on",
         env.scene.cfg.replicate_physics is True,
         f"replicate_physics={env.scene.cfg.replicate_physics}",
     )
     ladder = [get_scale(stage, f"/World/envs/env_{i}/Ladder") for i in range(num_envs)]
     record(
-        "rl:no_scale_dr_by_default",
+        f"{prefix}:no_scale_dr_by_default",
         all(s == (0.01, 0.01, 0.01) for s in ladder),
         f"ladder scales {ladder} (authored 0.01, unrandomized)",
     )
@@ -228,16 +235,16 @@ def child_rl(seed: int, num_envs: int) -> dict:
     # Known-failing since this check first actually ran (issue #236): either this hardcoded,
     # non-per-env path never matched anything under replicate_physics=True, or
     # mdp.randomize_material_tint's own room resolution doesn't either -- root cause undetermined.
-    record("rl:room_tint_active", len(room_tinted) > 0, "shared room tinted", known_issue="issue #236")
+    record(f"{prefix}:room_tint_active", len(room_tinted) > 0, "shared room tinted", known_issue="issue #236")
     record(
-        "rl:per_env_ladder_untinted",
+        f"{prefix}:per_env_ladder_untinted",
         len(tinted_attrs(stage, "/World/envs/env_0/Ladder")) == 0,
         "per-env materials untouched under replicated physics",
     )
     record(
-        "rl:b1k_materials_untouched",
-        len(tinted_attrs(stage, "/World/envs/env_0/OldBulb")) == 0,
-        "no cache keys under the B1K bulb (CarryEnvCfg's live bulb is OldBulb)",
+        f"{prefix}:b1k_materials_untouched",
+        all(len(tinted_attrs(stage, f"/World/envs/env_0/{p}")) == 0 for p in bulb_paths),
+        f"no cache keys under {'/'.join(bulb_paths)}",
     )
 
     key_authored = tuple(env.scene.cfg.key_light.init_state.rot)
@@ -251,17 +258,19 @@ def child_rl(seed: int, num_envs: int) -> dict:
             value = attr.Get()
             if any(v > b * 1.2 + 1e-4 or v < 0.0 for v, b in zip(value, base)):
                 tint_bound_ok = False
-    record("rl:tint_never_compounds", tint_bound_ok, "5 resets stay within original*[0,1.2]")
+    record(f"{prefix}:tint_never_compounds", tint_bound_ok, "5 resets stay within original*[0,1.2]")
     key_orients = {o[0] for o in orients}
     dome_orients = {o[1] for o in orients}
-    record("rl:light_orient_changes", len(key_orients) > 1 and len(dome_orients) > 1, "key/dome orient vary across resets")
     record(
-        "rl:dome_yaw_only",
+        f"{prefix}:light_orient_changes", len(key_orients) > 1 and len(dome_orients) > 1, "key/dome orient vary across resets"
+    )
+    record(
+        f"{prefix}:dome_yaw_only",
         all(abs(o[1]) < 1e-5 and abs(o[2]) < 1e-5 for o in dome_orients if o is not None),
         "dome quat has no x/y components",
     )
     record(
-        "rl:key_light_within_cone",
+        f"{prefix}:key_light_within_cone",
         all(quat_delta_deg(o, key_authored) <= 46.0 for o in key_orients if o is not None),
         f"max delta {max(quat_delta_deg(o, key_authored) for o in key_orients):.1f} deg <= 46",
     )
@@ -270,73 +279,21 @@ def child_rl(seed: int, num_envs: int) -> dict:
         "orients": orients,
         "room_tint": [tuple(round(float(v), 6) for v in a.Get()) for a in room_tinted[:3]],
     }
+
+
+def child_rl(seed: int, num_envs: int) -> dict:
+    from fiatlux_task.tasks.manager_based.fiatlux_task.carry_env_cfg import CarryEnvCfg
+
+    return _check_rl_randomization(CarryEnvCfg, "rl", ["OldBulb"], seed, num_envs)
 
 
 def child_replace(seed: int, num_envs: int) -> dict:
-    """The same room-tint/light checks as child_rl(), but against ``ReplaceEnvCfg`` -- the
-    actual shipped ``FIATLUX-Replace-v0`` task, not just ``CarryEnvCfg`` (a config no longer
-    gym-registered on its own). Both share the same at-risk setup (``replicate_physics=True``
-    + a reset-time ``mdp.randomize_material_tint`` EventTerm on ``room``), so issue #236 could
-    affect the primary benchmark task even if it turns out to be Carry-specific, or vice versa.
-    """
+    """The same checks as ``child_rl``, but against ``ReplaceEnvCfg`` -- the actual shipped
+    ``FIATLUX-Replace-v0`` task, not just ``CarryEnvCfg`` (a config no longer gym-registered
+    on its own)."""
     from fiatlux_task.tasks.manager_based.fiatlux_task.replace_env_cfg import ReplaceEnvCfg
 
-    from isaaclab.envs import ManagerBasedRLEnv
-
-    random.seed(seed)
-    env_cfg = ReplaceEnvCfg()
-    env_cfg.scene.num_envs = num_envs
-    env_cfg.seed = seed
-    env = ManagerBasedRLEnv(cfg=env_cfg)
-    stage = omni.usd.get_context().get_stage()
-
-    record(
-        "replace:replicate_physics_on",
-        env.scene.cfg.replicate_physics is True,
-        f"replicate_physics={env.scene.cfg.replicate_physics}",
-    )
-    env.reset()
-    room_tinted = tinted_attrs(stage, "/World/Room")
-    # Same known bug as rl:room_tint_active (issue #236) -- see that check's comment.
-    record("replace:room_tint_active", len(room_tinted) > 0, "shared room tinted", known_issue="issue #236")
-    record(
-        "replace:b1k_materials_untouched",
-        len(tinted_attrs(stage, "/World/envs/env_0/Bulb")) == 0
-        and len(tinted_attrs(stage, "/World/envs/env_0/OldBulb")) == 0,
-        "no cache keys under either B1K bulb (Replace's fresh_bulb=Bulb, old_bulb=OldBulb)",
-    )
-
-    key_authored = tuple(env.scene.cfg.key_light.init_state.rot)
-    orients = []
-    tint_bound_ok = True
-    for _ in range(5):
-        env.reset()
-        orients.append((get_orient(stage, "/World/KeyLight"), get_orient(stage, "/World/DomeLight")))
-        for attr in room_tinted:
-            base = attr.GetCustomDataByKey(BASE_COLOR_KEY)
-            value = attr.Get()
-            if any(v > b * 1.2 + 1e-4 or v < 0.0 for v, b in zip(value, base)):
-                tint_bound_ok = False
-    record("replace:tint_never_compounds", tint_bound_ok, "5 resets stay within original*[0,1.2]")
-    key_orients = {o[0] for o in orients}
-    dome_orients = {o[1] for o in orients}
-    record(
-        "replace:light_orient_changes", len(key_orients) > 1 and len(dome_orients) > 1, "key/dome orient vary across resets"
-    )
-    record(
-        "replace:dome_yaw_only",
-        all(abs(o[1]) < 1e-5 and abs(o[2]) < 1e-5 for o in dome_orients if o is not None),
-        "dome quat has no x/y components",
-    )
-    record(
-        "replace:key_light_within_cone",
-        all(quat_delta_deg(o, key_authored) <= 46.0 for o in key_orients if o is not None),
-        f"max delta {max(quat_delta_deg(o, key_authored) for o in key_orients):.1f} deg <= 46",
-    )
-    return {
-        "orients": orients,
-        "room_tint": [tuple(round(float(v), 6) for v in a.Get()) for a in room_tinted[:3]],
-    }
+    return _check_rl_randomization(ReplaceEnvCfg, "replace", ["Bulb", "OldBulb"], seed, num_envs)
 
 
 def in_range(values, lo: float, hi: float, tol: float = 1e-6) -> bool:
