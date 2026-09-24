@@ -231,8 +231,8 @@ class EventCfg:
     )
     # Replicate-safe visual DR (this cfg keeps replicate_physics=True): light intensity +
     # direction, and a global albedo tint on the shared room. Prestartup prop-SCALE DR is
-    # the documented opt-in instead: set `scene.replicate_physics = False` and add the
-    # prestartup terms from FamilyBaseEnvCfg.EventCfg (randomize_*_scale) -- the event
+    # the documented opt-in instead: set `scene.replicate_physics = False` and add a
+    # prestartup EventTerm wiring `mdp.randomize_prop_scale` (mdp/events.py) -- the event
     # manager raises if the terms are present under replicated physics.
     randomize_sky_intensity = EventTerm(
         func=mdp.randomize_light_properties,
@@ -472,7 +472,7 @@ class ReplaceEnvCfg(ManagerBasedRLEnvCfg):
         self.sim.physx.solver_type = 1
         self.sim.physx.min_position_iteration_count = 8
         self.sim.physx.min_velocity_iteration_count = 1  # floor, not a target:
-        # per-body counts above it are kept; see FamilyBaseEnvCfg.solver_velocity_iterations
+        # per-body counts above it are kept; see the ladder/bulb rigid_props in scene_cfg.py
         self.sim.physx.bounce_threshold_velocity = 0.2
         self.sim.physx.enable_stabilization = True
 

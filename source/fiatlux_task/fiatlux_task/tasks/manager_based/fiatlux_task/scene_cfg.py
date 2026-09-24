@@ -352,8 +352,12 @@ CRATE_MASS_KG = 1.5  # 0.60 x 0.40 x 0.17 m plastic parts crate
 
 # -- per-env random ceiling fixture pool (visual dressing) --
 # Ceiling-mount BEHAVIOR-1K categories only. Opt-in via ``download_assets.sh --scene-dressing``;
-# when absent the pool is empty and ``FamilyBaseEnvCfg.__post_init__`` drops the ``fixture``
-# entity. Category dirs mix ``<id>/<id>.usd`` and ``<id>/usd/<id>.usd``, hence two globs.
+# when absent the pool is empty. ``FamilyBaseEnvCfg.__post_init__`` used to drop the ``fixture``
+# entity in that case; that class is gone (base_env_cfg.py removed) and nothing currently
+# replaces the guard for the subtasks, which don't otherwise touch ``scene.fixture`` -- confirm
+# behavior with an empty pool before relying on the default asset download (no
+# ``--scene-dressing``). Category dirs mix ``<id>/<id>.usd`` and ``<id>/usd/<id>.usd``, hence
+# two globs.
 _FIXTURE_CATEGORIES = (
     "behavior1k_chandelier",
     "behavior1k_downlight",
@@ -974,9 +978,9 @@ def add_ladder_contact_sensor(scene: G1ReplaceSceneCfg, bodies: list[str] | None
 
     Not a class field: presets without a ``Ladder`` prim (tabletop) could not resolve
     the filter expression. One multi-body sensor suffices — per-body ``force_matrix_w``
-    against a *single* filter body works in this stack (proven by
-    ``verify_interactions.py``'s whole-robot ``limb_ladder_contact`` sensor), so the
-    per-link-sensor workaround from the upstream ContactSensor docstring is not needed.
+    against a *single* filter body works in this stack (verified empirically on the
+    whole-robot sensor below), so the per-link-sensor workaround from the upstream
+    ContactSensor docstring is not needed.
 
     Bodies come from ``G1_LADDER_CONTACT_BODIES``, not a regex: the two hands disagree on the palm
     body's name, so any pattern spelling one variant's resolves to feet only on the other.
