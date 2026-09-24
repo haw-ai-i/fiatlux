@@ -42,10 +42,22 @@ parser.add_argument("--num_envs", type=int, default=2)
 # ---------------------------------------------------------------------------
 
 
-def _run_child(seed: int, extra: list[str], scenario: str = "rl") -> tuple[int, str]:
+def _run_child(seed: int, num_envs: int, extra: list[str], scenario: str = "rl") -> tuple[int, str]:
     import subprocess
 
-    cmd = [sys.executable, __file__, "--child", "--scenario", scenario, "--seed", str(seed), "--headless", *extra]
+    cmd = [
+        sys.executable,
+        __file__,
+        "--child",
+        "--scenario",
+        scenario,
+        "--seed",
+        str(seed),
+        "--num_envs",
+        str(num_envs),
+        "--headless",
+        *extra,
+    ]
     proc = subprocess.run(cmd, capture_output=True, text=True)
     sys.stdout.write(proc.stdout)
     sys.stderr.write(proc.stderr[-2000:] if proc.returncode else "")
@@ -67,15 +79,15 @@ def _report(failures: list[str], known_issues: list[str] | None = None) -> int:
 def _parent_main(args) -> int:
     failures = []
     print(f"[verify_randomization] run 1 (seed {args.seed})")
-    rc1, sig1 = _run_child(args.seed, ["--enable_cameras"])
+    rc1, sig1 = _run_child(args.seed, args.num_envs, ["--enable_cameras"])
     print(f"[verify_randomization] run 2 (seed {args.seed})")
-    rc2, sig2 = _run_child(args.seed, ["--enable_cameras"])
+    rc2, sig2 = _run_child(args.seed, args.num_envs, ["--enable_cameras"])
     print(f"[verify_randomization] run 3 (seed {args.seed + 1})")
-    rc3, sig3 = _run_child(args.seed + 1, ["--enable_cameras"])
+    rc3, sig3 = _run_child(args.seed + 1, args.num_envs, ["--enable_cameras"])
     print(f"[verify_randomization] replace run (seed {args.seed})")
-    rc4, _ = _run_child(args.seed, ["--enable_cameras"], scenario="replace")
+    rc4, _ = _run_child(args.seed, args.num_envs, ["--enable_cameras"], scenario="replace")
     print(f"[verify_randomization] scale_dr run (seed {args.seed})")
-    rc5, _ = _run_child(args.seed, ["--enable_cameras"], scenario="scale_dr")
+    rc5, _ = _run_child(args.seed, args.num_envs, ["--enable_cameras"], scenario="scale_dr")
 
     def record(name: str, ok: bool, detail: str) -> None:
         print(f"[{'PASS' if ok else 'FAIL'}] {name}: {detail}")
