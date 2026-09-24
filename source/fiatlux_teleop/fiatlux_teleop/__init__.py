@@ -18,12 +18,8 @@ teleop scripts import both ``fiatlux_task`` (benchmark tasks) and ``fiatlux_tele
 
 import gymnasium as gym
 
-# Teleop variant of Insert (arm differential-IK + binary grip); drive with scripts/teleop/sonic_teleop.py
-# (whole-body: SONIC legs + arm teleop, --input vr|keyboard).
-# Teleop variant of Carry (ladder-positioning): bimanual arm IK + Dex3 grip, SONIC legs
-# (scripts/teleop/sonic_teleop.py).
-# Walk-through gallery of every ladder design (open floor, all designs in a grid), same teleop
-# machinery as Carry-Teleop.
+# Walk-through gallery of every ladder design (open floor, all designs in a grid): bimanual
+# arm IK + Dex3 grip, SONIC legs, driven by scripts/teleop/sonic_teleop.py.
 gym.register(
     id="FIATLUX-LadderGallery-Teleop-v0",
     entry_point="isaaclab.envs:ManagerBasedRLEnv",
