@@ -102,7 +102,7 @@ the same-seed-same-numbers contract covers the layout too.
   (torso RGB + proprioception + a language instruction, set via
   `--instruction`; the default is the task's canonical sentence in
   `fiatlux_task/groot.py`). Requires the external PolicyServer:
-  `scripts/groot/serve.sh` (setup: `journal/specs/groot-sonic-baseline.md`).
+  `scripts/groot/serve.sh`.
   Fine-tuned GR00T submissions evaluate through the same spec — point the
   server at the fine-tuned checkpoint (`GROOT_MODEL=<path> GROOT_EMBODIMENT=<tag>
   scripts/groot/serve.sh`); a `UNITREE_G1_SONIC` finetune plugs into the

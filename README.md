@@ -93,7 +93,7 @@ uv run python scripts/score.py logs/runs/random0
 uv run python scripts/rsl_rl/train.py --task FIATLUX-Replace-v0
 
 # 7. Run the GR00T N1.7 model baseline on the benchmark (needs the external
-#    PolicyServer -- setup in journal/specs/groot-sonic-baseline.md):
+#    PolicyServer):
 uv sync --extra groot
 scripts/groot/serve.sh &   # terminal 1: the VLA server (own venv, HF token required)
 uv run python scripts/eval.py --task FIATLUX-Replace-v0 --policy groot \
