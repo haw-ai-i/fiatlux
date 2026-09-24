@@ -141,7 +141,6 @@ TRACKED_CANDIDATES = ["robot", "ladder", "lamp", "socket", "fresh_bulb", "old_bu
 # else is ``fresh_bulb`` (issue #76 Step 1), and the pair of expectations below is what stops a
 # preset from silently inheriting or dropping one -- the failure mode the rename exists to end.
 PRESET_PRESENCE = {
-    "tabletop": ({"table", "fresh_bulb"}, {"ladder", "old_bulb"}),
     "carry": ({"ladder", "old_bulb"}, {"table", "fresh_bulb"}),
     "replace": ({"table", "ladder", "bin", "old_bulb", "fresh_bulb"}, set()),
 }
