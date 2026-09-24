@@ -43,7 +43,6 @@ Two framings of the same work, both standard Isaac Lab manager-based RL environm
   package itself: one-time setup, the headset flow, and how to make a new task teleop-able.
 - [scoring.md](scoring.md) — the evaluation protocol, the metrics, and the baseline policies.
 - [roadmap.md](roadmap.md) — climbing, combined task, and sim-to-real.
-- [asset_collection_todo.md](asset_collection_todo.md) — where each USD asset came from.
 
 Asset provenance — how the ladder colliders were authored, the Omniverse pack scan, the
 material fixes — lives in [collision_authoring_explained.md](collision_authoring_explained.md)
