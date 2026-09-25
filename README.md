@@ -70,7 +70,7 @@ fiatlux/
 │       ├── mdp/                 # rewards, events, observations
 │       ├── agents/              # rsl_rl PPO config
 │       └── __init__.py          # gym.register() for Replace-v0 + the twelve subtasks
-├── source/fiatlux_teleop/    # teleop twins (gym.register(...) x16) + recording, behind the
+├── source/fiatlux_teleop/    # teleop twins (gym.register(...) x14) + recording, behind the
 │                             #   `teleop` extra -- not a core benchmark dependency
 ├── scripts/                  # zero / random / eval / record_run / score / score_subtasks /
 │                             #   list_envs / rsl_rl / verify_* / teleop / omniverse

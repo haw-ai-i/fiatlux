@@ -28,7 +28,8 @@ to both bodies' colliders, and the ``zero_wrench`` trial measures what real cont
 with no wrench at all.
 
 Run with `uv run python` from the repo root, not a bare .venv/bin/python: a .venv shared across
-checkouts can otherwise resolve fiatlux_task to the wrong one (see verify_common.py).
+checkouts can otherwise resolve fiatlux_task to the wrong one (unlike its sibling scripts, this
+one has no ``verify_common.assert_right_checkout`` guard against that yet -- issue #238).
 
 Examples
 --------

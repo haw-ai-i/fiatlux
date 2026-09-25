@@ -1246,8 +1246,8 @@ def apply_replace_preset(
     run, and varying it is a between-runs affair. ``rng`` defaults to :func:`set_layout_seed`'s
     declared seed; without one the layout is drawn from OS entropy.
 
-    The fixture reuses ``SOCKET_USD`` (``ehjsdz``/``kfmkwd``, the validated bulblampF/M pair
-    already used by the tabletop Insert task) rather than the decorative chandelier used only
+    The fixture reuses ``SOCKET_USD`` (the same validated bulb/socket pair
+    :func:`apply_tabletop_preset` uses) rather than the decorative chandelier used only
     by the retired climb/descend tasks, which never validated a socket metalink on it --
     this scene needs a genuinely insertible bulb+socket at height.
 
