@@ -55,8 +55,9 @@ If your assets live elsewhere, point the env at them with
 
 ## 3. Run
 
-Every FIATLUX task carries a camera sensor (wrist and/or head-mounted), so `--enable_cameras`
-is required to build any of them, even without `--headless` or video recording:
+Every FIATLUX task carries a camera sensor (wrist and/or head-mounted). `verify_scene.py` and
+`record_run.py` set `--enable_cameras` on themselves; pass it yourself for any other script whose
+policy or output actually needs camera data (see each script's own `--help`):
 
 ```bash
 uv run python scripts/list_envs.py                              # list registered tasks
