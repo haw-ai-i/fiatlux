@@ -2,7 +2,7 @@
 pretty_name: Fiatlux benchmark assets
 license: other
 license_name: mixed-third-party
-license_link: https://github.com/haw-ai-i/fiatlux/blob/main/assets/README.md#provenance-and-licences
+license_link: LICENSE
 tags:
   - robotics
   - simulation
