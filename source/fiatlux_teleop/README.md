@@ -30,7 +30,7 @@ Teleop runs as **two processes in two envs**, kept separate so the CloudXR deps 
 
 | Env | What's in it | Role |
 |---|---|---|
-| **sim env** (uv `.venv`, or your `SIM_PYTHON`) | Isaac Sim 5.1 / Isaac Lab 2.3.2; `fiatlux_task` + `fiatlux_teleop` on `PYTHONPATH`; `onnxruntime` via the `teleop` extra (SONIC legs) | renders + runs the sim, reads XR input |
+| **sim env** (uv `.venv`, or your `SIM_PYTHON`) | Isaac Sim 5.1 / Isaac Lab 2.3.2; `fiatlux_task` + `fiatlux_teleop` on `PYTHONPATH`; `onnxruntime` via the `teleop` extra (GEAR-SONIC legs) | renders + runs the sim, reads XR input |
 | **`vr_teleop`** | `pip install 'isaacteleop[cloudxr,retargeters]~=1.3.0'` (1.3.131 verified) | the CloudXR streaming runtime only |
 
 > **uv gotcha:** `uv sync` without the extra makes the env match the lockfile *exactly* — it
@@ -47,7 +47,7 @@ Also needed:
 
 The launcher activates both envs for you — you never switch them by hand. Full first-time install,
 firewall ports, network topology, and every hard-won gotcha:
-**[journal/specs/vr-teleop-cloudxr-setup.md](../../journal/specs/vr-teleop-cloudxr-setup.md)**.
+**[docs/vr_teleop_cloudxr_setup.md](../../docs/vr_teleop_cloudxr_setup.md)**.
 
 ---
 
@@ -55,10 +55,9 @@ firewall ports, network topology, and every hard-won gotcha:
 
 The benchmark's twelve subtasks each have a teleop twin -- the subtask id with `-Teleop-v0` on
 the end, e.g. `FIATLUX-S07-ApproachNewBulb-Teleop-v0`. They are what demos are collected on and
-scored against; the launcher lists them all if `FIATLUX_TASK` is unset. Three earlier standalone
-envs also still run (`FIATLUX-Insert-Teleop-v0`, `FIATLUX-Carry-Teleop-v0`,
-`FIATLUX-LadderGallery-Teleop-v0`) and serve as templates below, but they are not part of the
-12-subtask benchmark and do not score against it.
+scored against; the launcher lists them all if `FIATLUX_TASK` is unset. One earlier standalone
+env also still runs (`FIATLUX-LadderGallery-Teleop-v0`) and serves as a template below, but it
+is not part of the 12-subtask benchmark and does not score against it.
 
 ```bash
 # from the repo root. Walking + arm teleop (SONIC legs):
@@ -208,10 +207,11 @@ You've made a benchmark task, say `FIATLUX-MyTask-v0` (a `mytask_env_cfg.py` in 
 gym registration). To make it teleop-able:
 
 ### 1. Write a teleop cfg (copy the closest template)
-Create `source/fiatlux_teleop/fiatlux_teleop/mytask_teleop_env_cfg.py`. Start from the closest
-existing one and tweak:
-- robot **walks around** the scene → copy `carry_teleop_env_cfg.py` (free base, SONIC drives legs),
-- **stationary** manipulation (arms only) → copy `insert_teleop_env_cfg.py` (base bolted).
+Create `source/fiatlux_teleop/fiatlux_teleop/mytask_teleop_env_cfg.py`. Every current template is
+a **walking** task (free base, SONIC drives the legs) -- start from `carry_teleop_env_cfg.py` and
+tweak. A **stationary** (bolted-base, arms-only) template doesn't currently exist in the repo;
+write one from scratch if you need it (bolt the base, drop the SONIC leg wiring, keep the arm-IK
++ grip action swap below).
 
 A teleop cfg subclasses your benchmark env and swaps **three** things:
 
@@ -252,21 +252,16 @@ gym.register(
 )
 ```
 
-### 3. (walking tasks only) let the driver recognize it
-`scripts/teleop/sonic_teleop.py` branches on the **task name** for two things — the **hand swap**
-(`"Insert"`/`"Carry"` in the task id) and the **arm spawn pose** (`"Carry"`/`"Gallery"`). So a new
-walking task either **names to match** an existing pattern (e.g. a ladder task with `Carry` in the id
-inherits the Carry arm pose) **or** you add one small branch there. This is the only place a new task
-might touch the *driver* — there's only one, the whole-body `sonic_teleop.py`.
-
-### 4. Run it
+### 3. Run it
 ```bash
 NV_CXR_ENDPOINT_IP=<ip> FIATLUX_TASK=FIATLUX-MyTask-Teleop-v0 FIATLUX_HAND=dex3 \
   bash scripts/teleop/restart_sonic_teleop.sh
 ```
 
-**Effort per new task:** the cfg (copy + tweak, ~30–50 lines) + one `gym.register` + maybe a 1-line
-driver branch. You never wire teleop from scratch — you plug a new scene into the existing harness.
+**Effort per new task:** the cfg (copy + tweak, ~30–50 lines) + one `gym.register`. The driver
+(`scripts/teleop/sonic_teleop.py`) needs no changes -- hand and arm-spawn pose are uniform across
+every walking task. You never wire teleop from scratch — you plug a new scene into the existing
+harness.
 
 ---
 
@@ -276,8 +271,7 @@ driver branch. You never wire teleop from scratch — you plug a new scene into 
 source/fiatlux_teleop/fiatlux_teleop/
   __init__.py                       # registers the FIATLUX-*-Teleop gym ids (import this to register)
   carry_teleop_env_cfg.py           # walking template (free base + SONIC), bimanual Dex3, ladder scene
-  insert_teleop_env_cfg.py          # stationary template (bolted base), bulb-insert scene
-  ladder_gallery_teleop_env_cfg.py  # all ladder designs on an open floor (a Carry-Teleop subclass)
+  ladder_gallery_teleop_env_cfg.py  # all ladder designs on an open floor (a CarryTeleopEnvCfg subclass)
   xr_controller_retargeters.py      # controller pose -> arm target, controller trigger -> grip
   teleop_recording.py               # demo recording: TeleopTrajectoryRecorder (task-agnostic robomimic
                                     #   bags + operator episode boundaries + score-in-meta),
@@ -298,4 +292,4 @@ scripts/teleop/
 ## Scope note
 This is a *bespoke* harness (G1 arm-IK + SONIC legs + CloudXR), tuned for these scenes — not a generic
 "point at any env and teleop." Adding a new teleop task is the ~30-line cfg above, following the
-templates. For the CloudXR headset setup itself, see `journal/specs/vr-teleop-cloudxr-setup.md`.
+templates. For the CloudXR headset setup itself, see `docs/vr_teleop_cloudxr_setup.md`.

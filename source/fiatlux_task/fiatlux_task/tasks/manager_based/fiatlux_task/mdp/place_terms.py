@@ -3,7 +3,9 @@
 #
 # SPDX-License-Identifier: BSD-3-Clause
 
-"""Predicates for the place mode (S01 move-the-ladder, S06 dispose-of-the-bulb).
+"""Predicates for the place mode (S01 move-the-ladder, S06 dispose-of-the-bulb), plus
+general-purpose conjuncts -- ``robot_standing`` chief among them -- that most other subtasks
+reuse rather than duplicate.
 
 Leaving the object behind is the goal in both, so the gate has to distinguish *placed* from
 *passing through*: the object is where it belongs and it is at rest, plus -- where letting go is

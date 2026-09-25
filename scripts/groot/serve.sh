@@ -3,7 +3,9 @@
 #
 # The 3B VLA runs in the Isaac-GR00T repo's own uv venv (CUDA 12.8 / py3.12), separate
 # from the fiatlux Isaac Lab venv; the benchmark side talks to it over ZMQ
-# (fiatlux_task/groot.py). Setup: journal/specs/groot-sonic-baseline.md.
+# (fiatlux_task/groot.py). Setup: clone NVIDIA's Isaac-GR00T repo and `uv sync` it (bump
+# UV_HTTP_TIMEOUT, the sync is large), then accept the gated nvidia/Cosmos-Reason2-2B HF
+# license and `hf auth login` before the first start.
 #
 #   GROOT_REPO=~/tools/Isaac-GR00T GROOT_PORT=5555 scripts/groot/serve.sh
 set -euo pipefail

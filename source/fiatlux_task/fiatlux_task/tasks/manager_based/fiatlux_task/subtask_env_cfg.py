@@ -252,7 +252,7 @@ class SubtaskTerminationsCfg:
 
 @configclass
 class SubtaskEnvCfg(ManagerBasedRLEnvCfg):
-    """Everything the fifteen subtasks share. Subclass per mode, then per subtask."""
+    """Everything the twelve subtasks share. Subclass per mode, then per subtask."""
 
     # -- leaf contract; __post_init__ raises if a leaf leaves one unset --
     success_predicate: Callable | None = None

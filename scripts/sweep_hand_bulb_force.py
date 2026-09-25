@@ -12,10 +12,10 @@ and does not drop the bulb. Read the ``curl`` column in that mode -- it is the m
 angle, and a bulb that "stayed" with the fingers still curled proves nothing.
 
 
-``diagnose_stuck_bulb.py`` reports 181-223x the bulb's weight in a hand whose fingers are open. It
-also parks the bulb at the palm body's ORIGIN, and the bulb's radius is about 39 mm, so the bulb
-probably encloses the palm geometry: those forces may be the solver depenetrating an overlap the
-script created rather than anything about the hand.
+``diagnose_stuck_bulb.py`` reports contact force many times the bulb's weight in a hand whose
+fingers are open. It also parks the bulb at the palm body's ORIGIN, and the bulb's radius is about
+39 mm, so the bulb probably encloses the palm geometry: those forces may be the solver
+depenetrating an overlap the script created rather than anything about the hand.
 
 This decides it. Hold the bulb at a series of distances from the palm and read the hand-bulb
 contact force at each.
@@ -36,7 +36,7 @@ import argparse
 from isaaclab.app import AppLauncher
 
 parser = argparse.ArgumentParser(description="Sweep hand-bulb contact force against distance (issue #92).")
-parser.add_argument("--task", type=str, default="FIATLUX-Remove-v0")
+parser.add_argument("--task", type=str, default="FIATLUX-Replace-v0")
 parser.add_argument("--variant", type=str, default="dex3", choices=["dex3", "inspire"])
 parser.add_argument("--hand", type=str, default="right", choices=["left", "right"])
 parser.add_argument(
@@ -105,11 +105,13 @@ simulation_app = app_launcher.app
 import fiatlux_task.tasks  # noqa: F401, E402  -- registers the FIATLUX Gym environments
 import gymnasium as gym  # noqa: E402
 import torch  # noqa: E402
+import verify_common  # noqa: E402
 from fiatlux_task.robots.g1 import (  # noqa: E402
     G1_DEX3_HAND_GRASP,
     G1_DEX3_LEFT_HAND_GRASP,
     G1_DEX3_PALM_BODIES,
     G1_HAND_GRASP,
+    G1_LEFT_HAND_GRASP,
     G1_PALM_BODIES,
     G1_PALM_LOCAL_AXES,
     swap_robot_variant,
@@ -137,7 +139,7 @@ def grasp_targets(variant: str, hand: str) -> dict[str, float]:
     if variant == "dex3":
         return dict(G1_DEX3_LEFT_HAND_GRASP if hand == "left" else G1_DEX3_HAND_GRASP)
     if hand == "left":
-        return {j.replace("R_", "L_", 1): v for j, v in G1_HAND_GRASP.items()}
+        return dict(G1_LEFT_HAND_GRASP)
     return dict(G1_HAND_GRASP)
 
 
@@ -456,19 +458,4 @@ def main() -> int:
 
 
 if __name__ == "__main__":
-    import os
-    import sys
-
-    exit_code = 1
-    try:
-        exit_code = main()
-    except BaseException:
-        import traceback
-
-        traceback.print_exc()
-    finally:
-        sys.stdout.flush()
-        sys.stderr.flush()
-        if exit_code:
-            os._exit(exit_code)
-        simulation_app.close()
+    verify_common.run_verify_main(main, simulation_app)

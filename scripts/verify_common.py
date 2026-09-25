@@ -20,20 +20,32 @@ script rather than forcing a false shared shape onto real differences.
 from __future__ import annotations
 
 import sys
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    import numpy as np
 
 
 def assert_right_checkout(cfg, required_attr: str) -> None:
     """Fail loudly if ``fiatlux_task`` resolved to the wrong checkout.
 
     On a machine where ``.venv`` is shared with a different checkout, a bare invocation can
-    silently resolve ``fiatlux_task`` to the WRONG checkout's source -- run via ``./pyrun`` (repo
-    root), which points ``PYTHONPATH`` at this repo's own ``source/`` first, to avoid it. This is
-    the fallback check for when that still goes wrong.
+    silently resolve ``fiatlux_task`` to the WRONG checkout's source. Run scripts with
+    ``uv run python`` from this repo's root to avoid that; this is the fallback check for when
+    it still goes wrong.
     """
     assert hasattr(cfg.scene, required_attr), (
         f"cfg.scene ({type(cfg.scene)} from {sys.modules[type(cfg.scene).__module__].__file__}) has no "
-        f"{required_attr} -- fiatlux_task likely resolved to the wrong checkout again; check sys.path/pyrun"
+        f"{required_attr} -- fiatlux_task likely resolved to the wrong checkout again; check sys.path "
+        "(run with `uv run python` from this repo's root)"
     )
+
+
+def _clear_field(obj, name: str) -> None:
+    """``obj.<name> = None``, but only if it's currently set -- a config field already left at
+    its default of ``None`` isn't something these scripts need to touch."""
+    if getattr(obj, name, None) is not None:
+        setattr(obj, name, None)
 
 
 def strip_visual_obs(cfg) -> None:
@@ -44,13 +56,60 @@ def strip_visual_obs(cfg) -> None:
     the layout a seed produced.
     """
     for camera in ("ego_camera", "torso_camera", "wrist_camera"):
-        if getattr(cfg.scene, camera, None) is not None:
-            setattr(cfg.scene, camera, None)
+        _clear_field(cfg.scene, camera)
     for group_name in ("policy", "privileged"):
         group = getattr(cfg.observations, group_name, None)
-        for term in ("ego_rgb", "torso_rgb", "wrist_rgb"):
-            if group is not None and getattr(group, term, None) is not None:
-                setattr(group, term, None)
+        if group is not None:
+            for term in ("ego_rgb", "torso_rgb", "wrist_rgb"):
+                _clear_field(group, term)
+
+
+def strip_drop_terminations(cfg) -> None:
+    """Drop the success/dropped-bulb terminations that would end the episode early.
+
+    These scripts step a forced scenario for a fixed duration to observe one specific mechanism;
+    letting the benchmark's own success or drop terminations fire would cut that observation
+    short before the diagnostic has run its course.
+    """
+    for term in ("success", "old_bulb_dropped", "fresh_bulb_dropped"):
+        _clear_field(cfg.terminations, term)
+
+
+def strip_all_but_timeout(cfg) -> None:
+    """Drop every termination except ``time_out``.
+
+    These scripts watch a scripted or replayed episode for its whole configured length; any
+    other termination (success, a drop, a fall) firing partway through would cut the window
+    short and hide whatever happens after it.
+    """
+    for term in vars(cfg.terminations):
+        if not term.startswith("_") and term != "time_out":
+            _clear_field(cfg.terminations, term)
+
+
+def all_meshes(stage, prefix: str) -> list[tuple[str, np.ndarray]]:
+    """Every mesh under ``prefix``, as ``(path, world-space points)``.
+
+    Enumerating rather than guessing one mesh name: an asset's collider meshes are often split
+    across several prims, and which one carries the feature a script needs to measure is exactly
+    what needs finding rather than assuming. Picking the first path that merely *ends with* a
+    plausible name can also silently cross similarly-named prims elsewhere in the scene.
+    """
+    import numpy as np
+
+    from pxr import Gf, UsdGeom
+
+    out = []
+    for prim in stage.Traverse():
+        path = str(prim.GetPath())
+        if not (path.startswith(prefix) and prim.IsA(UsdGeom.Mesh)):
+            continue
+        points = UsdGeom.Mesh(prim).GetPointsAttr().Get()
+        if not points:
+            continue
+        xform = UsdGeom.Xformable(prim).ComputeLocalToWorldTransform(0.0)
+        out.append((path, np.array([xform.Transform(Gf.Vec3d(*p)) for p in points], dtype=np.float64)))
+    return out
 
 
 def run_verify_main(main, simulation_app) -> None:

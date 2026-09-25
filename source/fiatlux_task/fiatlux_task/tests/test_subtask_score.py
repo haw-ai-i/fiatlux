@@ -127,7 +127,7 @@ def test_unknown_task_ids_are_rejected():
     with pytest.raises(KeyError):
         aggregate({"FIATLUX-Replace-v0": {"success_rate": 1.0, "gate_progress": 1.0}})
     with pytest.raises(KeyError):
-        subtask_weight("FIATLUX-Climb-v0")
+        subtask_weight("FIATLUX-NotASubtask-v0")
 
 
 def test_score_subtasks_script_print_weights(capsys):

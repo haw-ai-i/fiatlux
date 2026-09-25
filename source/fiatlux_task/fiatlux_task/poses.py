@@ -5,9 +5,9 @@
 
 """Named joint poses for scripted interaction scenarios.
 
-Each entry is a static joint-position dict (exact joint names, radians) used by
-``scripts/verify_interactions.py`` with the root fixed (``fix_root_link``), so no balance
-controller is needed.
+Each entry is a static joint-position dict (exact joint names, radians), staged directly by
+subtask cfgs to hold a hand/arm pose (e.g. ``ARM_CRADLE``/``HAND_CUP`` in S04/S09, to hold a
+payload) as well as by diagnostic scripts.
 
 Joint name sources: ``robots/g1.py`` (``G1_ARM_JOINTS``, ``G1_HAND_JOINTS``).
 """
@@ -59,7 +59,7 @@ HAND_CRADLE: dict[str, float] = {
 # The most open palm that still retains the bulb. Below this it drops: at 0.44 the grip peaks
 # at 210 N and the bulb is 29 cm gone within 3 s, at 0.35 it never registers contact at all.
 # Higher curl only costs grip force (0.65 -> 179 N, 0.80 -> 269 N against the cap's 300 N bound).
-# CALIBRATED 2026-08-23 via ``verify_interactions.py --scenario hand --probe --curl``.
+# CALIBRATED 2026-08-23 via a hand-probe/curl sweep.
 HAND_CUP: dict[str, float] = {
     **dict.fromkeys(G1_FINGER_JOINTS, 0.50),
     **dict.fromkeys(G1_THUMB_JOINTS, 0.333),
@@ -101,7 +101,7 @@ HAND_FLAT_BY_VARIANT: dict[str, dict[str, float]] = {"inspire": HAND_FLAT, "dex3
 HAND_CRADLE_BY_VARIANT: dict[str, dict[str, float]] = {"inspire": HAND_CRADLE, "dex3": HAND_CRADLE_DEX3}
 HAND_CUP_BY_VARIANT: dict[str, dict[str, float]] = {"inspire": HAND_CUP, "dex3": HAND_CUP_DEX3}
 
-# (w, x, y, z). The ymomhw bulb is an elongated ~25 cm body; upright it topples.
+# (w, x, y, z). The bulb is an elongated ~25 cm body; upright it topples.
 BULB_LYING_QUAT: tuple[float, float, float, float] = (0.7071068, 0.7071068, 0.0, 0.0)
 BULB_UPRIGHT_QUAT: tuple[float, float, float, float] = (1.0, 0.0, 0.0, 0.0)
 

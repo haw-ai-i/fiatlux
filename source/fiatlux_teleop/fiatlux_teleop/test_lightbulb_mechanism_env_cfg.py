@@ -3,7 +3,7 @@
 #
 # SPDX-License-Identifier: BSD-3-Clause
 
-"""``FIATLUX-TestLightbulbMechanism-Teleop-v0`` -- teleop bench for the bayonet bulb mechanism.
+"""``FIATLUX-TestLightbulbMechanism-Teleop-v0`` -- teleop bench for the bulb attach/retention mechanism.
 
 Purpose: drive the Replace task's **bulb attach/lock mechanism** (``mdp.bulb_attachment``,
 issue #77) by hand and record what it does, so its behaviour can be debugged from bags instead
@@ -12,15 +12,15 @@ pelvis-follow XR camera), on :class:`ReplaceEnvCfg`'s room scene, with two debug
 
 * ``disable_randomization()`` -- deterministic canonical spawns, so a session is repeatable and
   two bags differ by operator input, not by reset noise;
-* the INSERT task's tabletop bench replaces the ceiling mount (``apply_tabletop_preset``):
+* the tabletop bench preset replaces the ceiling mount (``apply_tabletop_preset``):
   table + socket fixture on it + fresh bulb at hand height, robot standing at the bench --
-  the exact bulb/socket placement proven in the Insert teleop sessions. (The preset drops
+  the exact bulb/socket placement already proven in real teleop sessions. (The preset drops
   the ladder; sessions test the MECHANISM, not ladder logistics.)
 
 Hands stay the Replace scene's native **Inspire** (trigger = grasp). Record with
-``--record bag``: the teleop recorder mirrors ``recording.py``'s bayonet lock telemetry
-(per-bulb phase/theta + the per-env sampled lock parameters) into the bag whenever the task
-wires ``mdp.bulb_attachment`` -- which this one does.
+``--record bag``: the teleop recorder mirrors ``recording.py``'s bulb attachment telemetry
+(per-bulb FREE/SEATED phase) into the bag whenever the task wires ``mdp.bulb_attachment`` --
+which this one does.
 
 Run:
     PYTHONPATH=source/fiatlux_task:source/fiatlux_teleop \\
@@ -34,7 +34,11 @@ from fiatlux_task.robots.g1 import (
     G1_HAND_GRASP,
     G1_HAND_JOINTS,
     G1_HAND_OPEN,
+    G1_LEFT_ARM_JOINTS,
+    G1_LEFT_EE_BODY,
+    G1_LEFT_HAND_GRASP,
     G1_LEFT_HAND_JOINTS,
+    G1_LEFT_HAND_OPEN,
 )
 from fiatlux_task.tasks.manager_based.fiatlux_task.replace_env_cfg import ReplaceEnvCfg
 
@@ -48,7 +52,6 @@ from isaaclab.envs.mdp.actions.actions_cfg import (
 )
 from isaaclab.utils import configclass
 
-from .insert_teleop_env_cfg import G1_LEFT_ARM_JOINTS, G1_LEFT_EE_BODY, G1_LEFT_HAND_GRASP, G1_LEFT_HAND_OPEN
 from .xr_controller_retargeters import (
     ControllerGripperRetargeterCfg,
     Se3RelControllerRetargeterCfg,
@@ -66,7 +69,7 @@ class TestLightbulbMechanismActionsCfg:
         body_name=G1_EE_BODY,
         controller=DifferentialIKControllerCfg(
             command_type="pose", use_relative_mode=False, ik_method="dls",
-            ik_params={"lambda_val": 0.05},   # match Insert/Carry-Teleop: relaxed rest pose
+            ik_params={"lambda_val": 0.05},   # match Carry-Teleop: relaxed rest pose
         ),
         scale=1.0,
     )
@@ -96,7 +99,7 @@ class TestLightbulbMechanismActionsCfg:
 
 @configclass
 class TestLightbulbMechanismEnvCfg(ReplaceEnvCfg):
-    """``FIATLUX-Replace-v0`` with a teleop action interface, benched for bayonet debugging."""
+    """``FIATLUX-Replace-v0`` with a teleop action interface, benched for attach-mechanism debugging."""
 
     # Debug bench: reachable ladder relative to the fixture (ReplaceEnvCfg's own aid).
     couple_ladder_to_fixture: bool = True
@@ -107,20 +110,20 @@ class TestLightbulbMechanismEnvCfg(ReplaceEnvCfg):
         # Deterministic canonical spawns: a debugging session must be repeatable.
         self.disable_randomization()
 
-        # REACHABLE BENCH = the INSERT task's own tabletop layout, verbatim. The Replace preset
+        # REACHABLE BENCH = the tabletop preset's own layout, verbatim. The Replace preset
         # mounts the fixture at ceiling height (z ~= 3 m, unreachable; SONIC cannot climb), so we
-        # re-apply Insert's proven manipulation bench instead: packing table, socket fixture
+        # re-apply the proven manipulation bench instead: packing table, socket fixture
         # standing ON it, fresh bulb at hand height beside it, robot at the bench's +y side.
         from fiatlux_task.tasks.manager_based.fiatlux_task.scene_cfg import apply_tabletop_preset
-        _ladder = self.scene.ladder   # the Insert preset drops the ladder, but Replace's obs/reward
-        _old_bulb = self.scene.old_bulb  # ...and (on current main) the old bulb: Insert has none,
-        apply_tabletop_preset(self.scene)  # so the preset nulls it -- restore both after.
+        _ladder = self.scene.ladder   # the tabletop preset drops the ladder, but Replace's obs/reward
+        _old_bulb = self.scene.old_bulb  # ...and (on current main) the old bulb: the preset has none,
+        apply_tabletop_preset(self.scene)  # so it nulls it -- restore both after.
         self.scene.old_bulb = _old_bulb
         self.scene.ladder = _ladder   # terms reference it -- keep it, but PARK it: its preset spot
         # (near the old ceiling fixture) is exactly where the table now stands.
         _lp = self.scene.ladder.init_state.pos
         self.scene.ladder.init_state.pos = (-2.6, 2.6, _lp[2])
-        # Two Replace-context fixups the Insert preset does not know about:
+        # Two Replace-context fixups the tabletop preset does not know about:
         #  - the Replace preset ceiling-mounted the socket UPSIDE-DOWN; the bench is upright;
         self.scene.socket.init_state.rot = (1.0, 0.0, 0.0, 0.0)
         #  - the old bulb must spawn SEATED in the (now upright, relocated) socket. Seat and plug
@@ -135,7 +138,7 @@ class TestLightbulbMechanismEnvCfg(ReplaceEnvCfg):
         self.scene.old_bulb.init_state.rot = (1.0, 0.0, 0.0, 0.0)
 
         # Re-sync the hand-contact filters now that old_bulb is back. apply_tabletop_preset ran its
-        # own _sync_bulb_contact_filters while old_bulb was still nulled (Insert has none), so BOTH
+        # own _sync_bulb_contact_filters while old_bulb was still nulled (the preset has none), so BOTH
         # hand sensors ended up filtered to the fresh bulb ALONE -- and the operator removes the OLD
         # bulb. The sensor reports zero force for an unfiltered body, so without this every take
         # reads 0 N on both hands even while the bulb is being crushed (the 2026-09-01 bench bags:
@@ -144,13 +147,14 @@ class TestLightbulbMechanismEnvCfg(ReplaceEnvCfg):
 
         _sync_bulb_contact_filters(self.scene)
 
-        # SINK THE BENCH to SONIC working height. Insert BOLTS the robot at full standing height,
-        # but here SONIC balances it at its own stance (pelvis ~0.74 m, knees bent) -- the robot
-        # stands a head shorter, so Insert's 0.99 m tabletop lands at CHEST height and the hands
-        # can't work the surface (operator screenshot, 2026-08-21). Lower the whole assembly --
-        # table, socket, both bulbs -- by one delta so the surface sits at ~0.66 m (waist height,
-        # hands comfortably above it, matching the Insert-session ergonomics). The table legs clip
-        # ~28 cm into the floor: cosmetic, and irrelevant to a mechanism bench.
+        # SINK THE BENCH to SONIC working height. The tabletop preset assumed a robot BOLTED at
+        # full standing height, but here SONIC balances it at its own stance (pelvis ~0.74 m, knees
+        # bent) -- the robot stands a head shorter, so the preset's 0.99 m tabletop lands at CHEST
+        # height and the hands can't work the surface (operator screenshot, 2026-08-21). Lower the
+        # whole assembly -- table, socket, both bulbs -- by one delta so the surface sits at
+        # ~0.66 m (waist height, hands comfortably above it, matching the bench's original
+        # ergonomics). The table legs clip ~28 cm into the floor: cosmetic, and irrelevant to a
+        # mechanism bench.
         _SINK = 0.33
         for _e in (self.scene.table, self.scene.socket, self.scene.fresh_bulb, self.scene.old_bulb):
             _p = _e.init_state.pos
