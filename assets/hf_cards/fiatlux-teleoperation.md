@@ -21,15 +21,40 @@ SONIC whole-body controller handled locomotion.
 
 ## Layout
 
+Everything sits under one top-level `2026-09-13-dex3-teleop-takes/` folder, in two trees.
+
+The eight non-climb subtasks (S01, S03, S05–S09, S11) are split by the scorer's verdict:
+
 ```
-FIATLUX-S<nn>-<Subtask>-Teleop-v0/dex3/hdf5/vr/<YYYY-MM-DD>/<HHMMSS>/
-  ep<nn>_score<x.xx>/
+FIATLUX-S<nn>-<Subtask>-Teleop-v0/dex3/hdf5/vr/{success,fail}/
+  <YYYY-MM-DD>_<HHMMSS>_ep<nn>_score<x.xx>/
     run.h5              # observations, actions, contacts, gate signals per step
     meta.json           # task id, benchmark version, commit, seed, joint order, thresholds
-    ego.mp4             # head-camera video of the episode
-    ego_poster.png      # first frame
     score_report.txt    # the scorer's verdict and gate timeline
+    ego.mp4             # head-camera video of the episode
+    ego_poster.png      # its first frame
+    video.mp4           # third-person video of the episode
+    video_poster.png    # its first frame
 ```
+
+`success/` holds 80 takes, all scored 1.00; `fail/` holds 27, all 0.00.
+
+The four climb subtasks (S02, S04, S10, S12) are grouped by ladder tread instead, with no
+success/fail split -- the score in the folder name is the verdict:
+
+```
+climb-task/S<nn>-<Subtask>/tread<N>/
+  run.log                         # the driver's console log for the take
+  ep00_score<x.xx>/               # same seven files as above
+  failed-attempt<k>/              # an earlier, abandoned try at the same tread, when kept
+    run.log
+    ep00_score<x.xx>/
+climb-task/_grids/*.mp4           # side-by-side montages of the tread takes
+```
+
+That is 18 climb takes. The `<task>/dex3/hdf5/vr/` prefix matches the recorder's own capture tree
+(`docs/subtask_teleop.md` in the benchmark repository); the date/time folders the recorder writes
+were folded into each take's folder name when the takes were published.
 
 125 episodes; 3.7 GB. The `run.h5` field list and the action joint order are in each `meta.json`.
 The `commit` field names the benchmark revision that produced the take; the benchmark repository's
