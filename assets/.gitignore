@@ -7,3 +7,4 @@
 !isaac_mirror_manifest.csv
 !hf_cards/
 !hf_cards/*.md
+!hf_cards/*.LICENSE
