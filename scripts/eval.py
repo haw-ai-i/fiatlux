@@ -42,25 +42,14 @@ from isaaclab.app import AppLauncher
 # NOT fiatlux_task.policy: importing anything under the fiatlux_task package runs
 # fiatlux_task/__init__.py's `from .tasks import *`, which -- even no-oping pre-Kit -- still
 # leaves torch imported and cached along the way. See policy_cli_help.py's own docstring.
-from policy_cli_help import CHECKPOINT_HELP, POLICY_SPEC_HELP
+from policy_cli_help import CHECKPOINT_HELP, INSTRUCTION_HELP, POLICY_SPEC_HELP, ROBOT_CHOICES, ROBOT_HELP
 
 parser = argparse.ArgumentParser(description="Fiatlux benchmark evaluation.")
 parser.add_argument("--task", type=str, required=True, help="Task / env id.")
 parser.add_argument("--policy", type=str, default="zero", help=POLICY_SPEC_HELP)
 parser.add_argument("--checkpoint", type=str, default=None, help=CHECKPOINT_HELP)
-parser.add_argument(
-    "--instruction",
-    type=str,
-    default=None,
-    help="Language instruction for VLA policies (groot); default: the task's canonical sentence.",
-)
-parser.add_argument(
-    "--robot",
-    type=str,
-    default="inspire",
-    choices=["inspire", "dex3"],
-    help="G1 hand variant. dex3 matches GR00T's REAL_G1 embodiment.",
-)
+parser.add_argument("--instruction", type=str, default=None, help=INSTRUCTION_HELP)
+parser.add_argument("--robot", type=str, default="inspire", choices=ROBOT_CHOICES, help=ROBOT_HELP)
 parser.add_argument(
     "--no_randomize",
     action="store_true",

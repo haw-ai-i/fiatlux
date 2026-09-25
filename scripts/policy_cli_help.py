@@ -3,9 +3,9 @@
 #
 # SPDX-License-Identifier: BSD-3-Clause
 
-"""``--policy``/``--checkpoint`` argparse help text, shared by ``eval.py`` and ``record_run.py``.
+"""Argparse metadata shared between ``eval.py`` and ``record_run.py``'s CLIs.
 
-Deliberately its own module outside the ``fiatlux_task`` package, not just a constant in
+Deliberately its own module outside the ``fiatlux_task`` package, not just constants in
 ``fiatlux_task/policy.py``: importing anything under ``fiatlux_task`` runs
 ``fiatlux_task/__init__.py``'s ``from .tasks import *``, which -- even though it silently
 no-ops pre-Kit (``tasks/__init__.py`` swallows the failure) -- still leaves ``torch`` fully
@@ -22,3 +22,6 @@ POLICY_SPEC_HELP = (
     "See fiatlux_task/policy.py."
 )
 CHECKPOINT_HELP = "Checkpoint path for rsl_rl policies."
+INSTRUCTION_HELP = "Language instruction for VLA policies (groot); default: the task's canonical sentence."
+ROBOT_CHOICES = ("inspire", "dex3")
+ROBOT_HELP = "G1 hand variant. dex3 matches GR00T's REAL_G1 embodiment."

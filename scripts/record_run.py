@@ -34,7 +34,7 @@ import argparse
 from isaaclab.app import AppLauncher
 
 # See policy_cli_help.py's own docstring for why this isn't fiatlux_task.policy.
-from policy_cli_help import CHECKPOINT_HELP, POLICY_SPEC_HELP
+from policy_cli_help import CHECKPOINT_HELP, INSTRUCTION_HELP, POLICY_SPEC_HELP, ROBOT_CHOICES, ROBOT_HELP
 
 parser = argparse.ArgumentParser(description="Record a Fiatlux run (video and/or bag).")
 parser.add_argument("--task", type=str, required=True, help="Task / env id.")
@@ -68,19 +68,8 @@ parser.add_argument(
 )
 parser.add_argument("--video_length", type=int, default=600, help="Video length (env steps).")
 parser.add_argument("--disable_fabric", action="store_true", default=False, help="Use USD I/O.")
-parser.add_argument(
-    "--instruction",
-    type=str,
-    default=None,
-    help="Language instruction for VLA policies (groot); default: the task's canonical sentence.",
-)
-parser.add_argument(
-    "--robot",
-    type=str,
-    default="inspire",
-    choices=["inspire", "dex3"],
-    help="G1 hand variant. dex3 matches GR00T's REAL_G1 embodiment.",
-)
+parser.add_argument("--instruction", type=str, default=None, help=INSTRUCTION_HELP)
+parser.add_argument("--robot", type=str, default="inspire", choices=ROBOT_CHOICES, help=ROBOT_HELP)
 # Benchmark telemetry flags (--wandb, --wandb_project, ...); mirrors fiatlux_task.telemetry.
 parser.add_argument("--wandb", action="store_true", default=False, help="Stream the score breakdown to wandb.")
 parser.add_argument("--wandb_project", type=str, default="fiatlux", help="wandb project name.")
