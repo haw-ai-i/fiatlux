@@ -78,6 +78,30 @@ def strip_all_but_timeout(cfg) -> None:
             setattr(cfg.terminations, term, None)
 
 
+def all_meshes(stage, prefix: str) -> list[tuple[str, "np.ndarray"]]:
+    """Every mesh under ``prefix``, as ``(path, world-space points)``.
+
+    Enumerating rather than guessing one mesh name: an asset's collider meshes are often split
+    across several prims, and which one carries the feature a script needs to measure is exactly
+    what needs finding rather than assuming. Picking the first path that merely *ends with* a
+    plausible name can also silently cross similarly-named prims elsewhere in the scene.
+    """
+    import numpy as np
+    from pxr import Gf, UsdGeom
+
+    out = []
+    for prim in stage.Traverse():
+        path = str(prim.GetPath())
+        if not (path.startswith(prefix) and prim.IsA(UsdGeom.Mesh)):
+            continue
+        points = UsdGeom.Mesh(prim).GetPointsAttr().Get()
+        if not points:
+            continue
+        xform = UsdGeom.Xformable(prim).ComputeLocalToWorldTransform(0.0)
+        out.append((path, np.array([xform.Transform(Gf.Vec3d(*p)) for p in points], dtype=np.float64)))
+    return out
+
+
 def run_verify_main(main, simulation_app) -> None:
     """Standard entrypoint for a verify_*/diagnose_*.py ``if __name__ == "__main__":`` block.
 

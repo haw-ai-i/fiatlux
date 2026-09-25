@@ -73,30 +73,6 @@ def build_cfg():
     return cfg
 
 
-def all_meshes(stage, prefix: str) -> list[tuple[str, np.ndarray]]:
-    """Every mesh under ``prefix``, as (path, world-space points).
-
-    Enumerating rather than guessing one mesh name: the socket half of this asset is 8 separate
-    base/switch collider meshes (``assets/omniverse_bulb/CHANGES.md``), and which of them
-    carries the cylindrical bore is exactly what needs finding rather than assuming. Picking
-    the first path that merely *ends with* a plausible name also silently crosses bulbs -- the
-    fresh bulb parked across the room has the same mesh names as the seated old one.
-    """
-    from pxr import Gf, UsdGeom
-
-    out = []
-    for prim in stage.Traverse():
-        path = str(prim.GetPath())
-        if not (path.startswith(prefix) and prim.IsA(UsdGeom.Mesh)):
-            continue
-        points = UsdGeom.Mesh(prim).GetPointsAttr().Get()
-        if not points:
-            continue
-        xform = UsdGeom.Xformable(prim).ComputeLocalToWorldTransform(0.0)
-        out.append((path, np.array([xform.Transform(Gf.Vec3d(*p)) for p in points], dtype=np.float64)))
-    return out
-
-
 def profile(label: str, pts_seat: np.ndarray, slice_m: float, statistic: str) -> None:
     """Print a per-axial-slice radius profile: min radius for a bore, max for a plug."""
     axial, radial = pts_seat[:, 0], pts_seat[:, 1]
@@ -160,7 +136,10 @@ def main() -> int:
     print(f"  under {socket_path_prefix}", flush=True)
     bore_pts = None
     bore_name = None
-    for path, pts in all_meshes(stage, socket_path_prefix):
+    # Enumerating rather than guessing one mesh name: the socket half of this asset is 8
+    # separate base/switch collider meshes (assets/omniverse_bulb/CHANGES.md), and which of
+    # them carries the cylindrical bore is exactly what needs finding rather than assuming.
+    for path, pts in verify_common.all_meshes(stage, socket_path_prefix):
         seat_pts = to_seat_frame(pts)
         inner = seat_pts[seat_pts[:, 1] < near_bore]
         # The bore is simply whichever mesh has the most surface near the seat axis. Testing the
@@ -215,7 +194,9 @@ def main() -> int:
     bore_pts = bore_pts[(axial >= bore_lo_m) & (axial <= bore_hi_m)]
 
     print("\n=== PLUG PROFILE (max radius per slice, placed fully home) ===", flush=True)
-    plug_meshes = [(p, pts) for p, pts in all_meshes(stage, bulb_path_prefix) if p.endswith("BulbGrp/Base")]
+    plug_meshes = [
+        (p, pts) for p, pts in verify_common.all_meshes(stage, bulb_path_prefix) if p.endswith("BulbGrp/Base")
+    ]
     if not plug_meshes:
         print(f"  FATAL no BulbGrp/Base mesh under {bulb_path_prefix}", flush=True)
         return 1

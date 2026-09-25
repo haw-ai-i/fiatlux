@@ -60,23 +60,6 @@ def build_cfg():
     return cfg
 
 
-def all_meshes(stage, prefix: str) -> list[tuple[str, np.ndarray]]:
-    """Every mesh under ``prefix``, as (path, world-space points)."""
-    from pxr import Gf, UsdGeom
-
-    out = []
-    for prim in stage.Traverse():
-        path = str(prim.GetPath())
-        if not (path.startswith(prefix) and prim.IsA(UsdGeom.Mesh)):
-            continue
-        points = UsdGeom.Mesh(prim).GetPointsAttr().Get()
-        if not points:
-            continue
-        xform = UsdGeom.Xformable(prim).ComputeLocalToWorldTransform(0.0)
-        out.append((path, np.array([xform.Transform(Gf.Vec3d(*p)) for p in points], dtype=np.float64)))
-    return out
-
-
 def interior_profile(pts: np.ndarray, origin: np.ndarray, slice_m: float) -> list[tuple[float, float, float]]:
     """(height above origin, interior half-extent x, half-extent y) per slice.
 
@@ -118,7 +101,7 @@ def main() -> int:
 
     crate = env.scene["bin"]
     crate_origin = crate.data.root_pos_w[0].cpu().numpy()
-    meshes = all_meshes(stage, "/World/envs/env_0/Bin")
+    meshes = verify_common.all_meshes(stage, "/World/envs/env_0/Bin")
     if not meshes:
         print("[measure] no crate meshes found under /World/envs/env_0/Bin")
         return 1
@@ -133,7 +116,7 @@ def main() -> int:
         print(f"[measure] widest interior:    x {max(r[1] for r in rows):.4f}  y {max(r[2] for r in rows):.4f}")
         print("[measure] CRATE_INTERIOR_HALF_EXTENT currently assumes one value for all heights")
 
-    table_meshes = all_meshes(stage, "/World/envs/env_0/Table")
+    table_meshes = verify_common.all_meshes(stage, "/World/envs/env_0/Table")
     if table_meshes:
         tp = np.concatenate([p for _, p in table_meshes])
         print(f"\n[measure] bench: {len(table_meshes)} meshes, {len(tp)} points")

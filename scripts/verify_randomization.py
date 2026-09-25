@@ -387,5 +387,6 @@ if __name__ == "__main__":
         traceback.print_exc()
         code = 1
     sys.stdout.flush()
-    # Kit's own shutdown otherwise forces exit code 0 and can swallow unflushed stdout.
+    sys.stderr.flush()
+    # Kit's own shutdown otherwise forces exit code 0 and can swallow unflushed output.
     os._exit(code)
