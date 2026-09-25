@@ -35,7 +35,9 @@ numbers can be re-scored offline without a simulator.
   t4.md, t4.tex                      # the per-subtask table (success, gate, score, terminations)
 ```
 
-292 files; 0.9 GB. Twelve subtasks, four seeds per policy. Re-score any `run.h5` with the
+292 files; 0.9 GB. Twelve subtasks; the zero and random baselines have four seeds each, while
+n17-zeroshot-dex3 has one recorded run per subtask (re-scored across all four seeds under
+`scores/`). Re-score any `run.h5` with the
 benchmark's `scripts/score_subtasks.py`. The `commit` field in `meta.json` names the benchmark
 revision that produced the run; the repository's history was flattened on 2026-09-21, so those
 SHAs no longer resolve there.
