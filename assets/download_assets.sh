@@ -14,8 +14,7 @@
 #   unitreerobotics/unitree_sim_isaaclab_usds (Apache-2.0).
 #
 # Task assets (bulb/socket mechanic + ladder):
-#   omniverse_bulb/           the graspable bulb + stock socket (BULB_USD/SOCKET_USD); this script
-#                             authors the additive guide-sleeve layer locally, see below
+#   omniverse_bulb/           the graspable bulb + its guide-sleeve socket (BULB_USD/SOCKET_USD)
 #   omniverse_ladder/         step ladders; AlumStep_D is the one the benchmark climbs
 #
 # Room dressing (always synced -- defines the default look of every recorded
@@ -80,15 +79,9 @@ sync_group() {
     echo "  $group"
     if ! "${HF_DOWNLOAD[@]}" "${group}/"; then
         echo "error: could not fetch '${group}' from ${ASSET_REPO}." >&2
-        if [[ -z "${FIATLUX_ASSET_REPO:-}" ]]; then
-            echo "  If that was an auth failure: the default dataset is public and needs no login," >&2
-            echo "  so this is likely a transient network/rate-limit issue -- retry, or check" >&2
-            echo "  https://huggingface.co/datasets/${ASSET_REPO} directly." >&2
-        else
-            echo "  If that was an auth failure: FIATLUX_ASSET_REPO points at '${ASSET_REPO}', which" >&2
-            echo "  may be private. Run 'uvx --from huggingface_hub hf auth login', or set HF_TOKEN" >&2
-            echo "  to a token scoped to that repo, then retry." >&2
-        fi
+        echo "  If that was an auth failure: the dataset is private to the haw-ai-i org -- run" >&2
+        echo "  'uvx --from huggingface_hub hf auth login', or set HF_TOKEN to a token scoped to" >&2
+        echo "  that org, then retry." >&2
         exit 1
     fi
     # A pattern that matches nothing is a no-op for snapshot_download, NOT an error: without this

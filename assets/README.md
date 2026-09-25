@@ -17,10 +17,8 @@ HF dataset and synced locally via `download_assets.sh`. Binary USD files are git
 Room dressing (`isaac_*` paths below) is always synced -- it's what every recorded
 run looks like by default -- unlike the opt-in scene dressing.
 
-Requires `uv` (assets are fetched via `uvx --from huggingface_hub hf`). The dataset is public; no
-Hugging Face login is needed. If you hit an auth error anyway, run
-`uvx --from huggingface_hub hf auth login` or set `HF_TOKEN` to a token scoped to the
-`haw-ai-i` org. Override the source dataset repo with the `FIATLUX_ASSET_REPO` env var.
+Requires `uv` (assets are fetched via `uvx --from huggingface_hub hf`) and access to the
+`haw-ai-i` HF org. Override the source dataset repo with the `FIATLUX_ASSET_REPO` env var.
 
 ## HF Paths
 
@@ -91,20 +89,12 @@ caches (`.thumbs/`) under the Nucleus source trees were excluded from the mirror
 Isaac Sim's asset-root URL is version-pinned (`.../Assets/Isaac/5.1/...`) -- re-verify
 these paths after any Isaac Sim upgrade.
 
-## Provenance and licences
+## Source
 
-Every group in the dataset is either our own work or mirrored from a third party. This table is
-the record of where each group came from and the terms it carries. The licence audit for the
-public release is tracked in [#231](https://github.com/haw-ai-i/fiatlux/issues/231); the *Status*
-column records the decision taken on 2026-09-22.
+**Omniverse** assets are from the NVIDIA [Omniverse downloadable USD packs](https://docs.omniverse.nvidia.com/usd/latest/usd_content_samples/downloadable_packs.html#d-openusd-asset-packs)
+(Warehouse, SimReady Warehouse 01, Residential, Sample Scenes). Used under non-commercial
+academic terms. See `docs/omniverse_pack_scan_log.md` for the full 14-pack scan and
+`docs/collision_authoring_explained.md` for collision authoring.
 
-| Group(s) | Source | Terms | Status |
-|---|---|---|---|
-| `unitree_g1/` | Unitree's pre-assembled G1 USDs, mirrored from [`unitreerobotics/unitree_sim_isaaclab_usds`](https://huggingface.co/datasets/unitreerobotics/unitree_sim_isaaclab_usds) | Apache-2.0 | keep; add the licence file to the group |
-| `omniverse_ladder/`, `omniverse_bulb/`, `omniverse_climb/`, `omniverse_lamp/` | NVIDIA [OpenUSD asset packs](https://docs.omniverse.nvidia.com/usd/latest/usd_content_samples/downloadable_packs.html): Warehouse (88 models), Residential (28), SimReady Warehouse 01 (11), Sample Scenes (1). The collision overlays (`*_collision.usd`, `*_collision_rigid.usd`) and the `_platform` variants are authored here (see [`docs/collision_authoring_explained.md`](../docs/collision_authoring_explained.md), which covers the ladder colliders only); the bulb/socket split is also authored here, separately. Per-asset detail in [`omniverse_uploaded_manifest.csv`](omniverse_uploaded_manifest.csv); the full 14-pack scan behind the selection is in [`docs/omniverse_pack_scan_log.md`](../docs/omniverse_pack_scan_log.md); some ladder USDs were also fixed in place at intake, see [`docs/omniverse_material_fixes.md`](../docs/omniverse_material_fixes.md) | NVIDIA [Product-Specific Terms for NVIDIA AI Products](https://www.nvidia.com/en-us/agreements/enterprise-software/product-specific-terms-for-ai-products/) (Omniverse is covered there since May 2026). They permit distributing the software and derivative samples "as part of a Customer Product"; they do not address re-hosting pack content on its own | **kept on HF**: mirrored as part of the benchmark under those terms; NVIDIA's notice and a pointer to the source pack are being added to each group; the authors accept that reading |
-| `isaac_packing_table/`, `isaac_room/` | Isaac Sim 5.1 Nucleus content (`Isaac/Props/PackingTable/`, `Isaac/Environments/Simple_Room/`), see [`isaac_mirror_manifest.csv`](isaac_mirror_manifest.csv) | [NVIDIA Isaac Sim Additional Software and Materials License](https://docs.isaacsim.omniverse.nvidia.com/latest/common/license-isaac-sim-additional.html); §2.2 restricts distribution of "any portion of the Software" | **kept on HF**: same reading; NVIDIA's notice and a pointer to the source pack are being added to this group too; 0.27 GB of the sample content Isaac Sim itself fetches at runtime |
-| `isaac_skies/` | `kloofendal_43d_clear_puresky_4k.hdr` from [Poly Haven](https://polyhaven.com/a/kloofendal_43d_clear_puresky), via the Isaac Sim mirror | CC0 | keep |
-| `behavior1k_*/` (every group, without exception: the four former task-asset groups, the eleven lighting-fixture categories, and `behavior1k_materials`) | [BEHAVIOR-1K](https://behavior.stanford.edu/) (Stanford OmniGibson dataset), decrypted from `.encrypted.usd` | The BEHAVIOR-1K models come from ShapeNet and TurboSquid and are distributed encrypted so that they can only be used inside OmniGibson | **removed**: redistribution is not permitted, and no benchmark preset loaded them. `download_assets.sh` no longer syncs any of them (#232), and the groups have been deleted from the HF dataset |
-
-The benchmark code itself is Apache-2.0 (`../LICENSE`); files derived from Isaac Lab are BSD-3
-(`../LICENSE.isaaclab`).
+**Room-dressing** assets (table, room, sky) are NVIDIA's own Isaac Sim sample content
+(Props/Environments) plus a CC0 PolyHaven HDRI, mirrored per the table above.

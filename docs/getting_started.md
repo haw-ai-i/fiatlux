@@ -4,9 +4,8 @@
 
 - [uv](https://docs.astral.sh/uv/) (the only thing you install by hand).
 - An NVIDIA GPU with a driver new enough for CUDA 12.8 (the pinned torch build).
-- The assets in step 2 are public; no Hugging Face login is needed. If you hit an auth error
-  anyway, run `uvx --from huggingface_hub hf auth login` or set `HF_TOKEN` to a token scoped to
-  the `haw-ai-i` org.
+- Access to the `haw-ai-i` HF org (`uvx --from huggingface_hub hf auth login`, or an `HF_TOKEN`
+  scoped to it), for the assets in step 2.
 
 ## 1. Build the environment
 
