@@ -25,7 +25,7 @@ carries its own terms** (table below).
 
 Do not download this dataset by hand. The benchmark's `assets/download_assets.sh` pulls the groups a
 task needs into the git-ignored `assets/` folder and applies the collision authoring the ladders
-require:
+and the socket's guide-sleeve require:
 
 ```bash
 git clone https://github.com/haw-ai-i/fiatlux && cd fiatlux
