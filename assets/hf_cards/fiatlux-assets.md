@@ -30,7 +30,8 @@ require:
 ```bash
 git clone https://github.com/haw-ai-i/fiatlux && cd fiatlux
 ./assets/download_assets.sh                   # robot + task assets + room dressing (~4.5 GB)
-./assets/download_assets.sh --scene-dressing  # ... plus the opt-in dressing groups
+# -- or, to also get the opt-in dressing groups (run only one of these two): --
+./assets/download_assets.sh --scene-dressing
 ```
 
 ## Groups
