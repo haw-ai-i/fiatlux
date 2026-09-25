@@ -5,7 +5,7 @@
 # SPDX-License-Identifier: BSD-3-Clause
 
 """Does _rail_staged_ok() in sonic_teleop.py bound dz on BOTH sides? (code-review finding, fix
-verification -- sonic_teleop.py ~L1402)
+verification -- sonic_teleop.py ~L1374)
 
 ``_rail_staged_ok`` is meant to catch a badly converged rail-hand approach before the base is
 released and the (fake) brace is trusted for support. The original bug: ``ok = f < 20.0 and dz <
