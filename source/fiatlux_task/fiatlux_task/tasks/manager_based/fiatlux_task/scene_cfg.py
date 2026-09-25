@@ -785,8 +785,11 @@ def stand_robot_near(scene: G1ReplaceSceneCfg, target: Vec2, standoff: float, mi
 
     ``min_standoff`` pushes a draw that lands too CLOSE back out along the same bearing. Without
     it there is no floor at all, which is how two recorded S07 takes spawned with the base inside
-    the disposal crate's footprint (#205). Moving outward is the safe direction: it walks the
-    robot back toward its own sampled zone, never further into another occupant's.
+    the disposal crate's footprint (#205). Moving outward is the safe direction with respect to
+    other occupant zones: it walks the robot back toward its own sampled zone, never further into
+    another occupant's. It is NOT checked against the room's true walls the way the ladder
+    anchor's ``_bearing_into_room``/``_clamp_to_floor`` are -- pushing out on a bearing that
+    happens to point at a wall can leave only a thin, unverified margin (#247).
     """
     assert min_standoff <= standoff, f"min_standoff ({min_standoff}) exceeds standoff ({standoff})"
     rx, ry, rz = scene.robot.init_state.pos
