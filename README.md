@@ -95,7 +95,8 @@ uv run python scripts/rsl_rl/train.py --task FIATLUX-Climb-v0
 uv sync --extra groot
 scripts/groot/serve.sh &   # terminal 1: the VLA server (own venv, HF token required)
 uv run python scripts/record_run.py --task FIATLUX-Replace-v0 --policy groot --record bag \
-    --episodes 20 --seed 0 --enable_cameras
+    --episodes 20 --seed 0 --enable_cameras --out logs/runs/groot0
+python scripts/score.py logs/runs/groot0
 
 # 8. Teleoperate the tasks (whole-body: SONIC walking + bimanual arms; keyboard or
 #    Pico VR) and record scored demo sessions -- guide: source/fiatlux_teleop/README.md
