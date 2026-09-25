@@ -56,11 +56,10 @@ from __future__ import annotations
 
 from collections.abc import Callable
 
-import torch
-
 # Shared with scripts/eval.py and scripts/record_run.py's --policy argparse help, so the two
 # CLIs can't drift apart on what make_policy() actually accepts. Safe to import before
-# AppLauncher runs: this module has no Isaac-Sim-dependent top-level imports.
+# AppLauncher runs: this module has no top-level Isaac-Sim-dependent (or even torch) imports --
+# torch is lazy, like every other heavy dep make_policy() only sometimes needs.
 POLICY_SPEC_HELP = (
     "Policy spec: zero | random | basic_standard | basic_cheatcode | wbc_stand | "
     "sonic_stand | groot[:<host:port>] | rsl_rl[:<ckpt>] | <path>.pt (or jit:<path>). "
@@ -97,6 +96,8 @@ def make_policy(
         instruction: Language prompt for ``"groot"`` (the task description the VLA
             conditions on); ignored by every other spec.
     """
+    import torch
+
     device = device or env.device
     action_shape = (env.num_envs, env.action_space.shape[-1])
 
