@@ -4,10 +4,9 @@
 
 - [uv](https://docs.astral.sh/uv/) (the only thing you install by hand).
 - An NVIDIA GPU with a driver new enough for CUDA 12.8 (the pinned torch build).
-- The assets in step 2 are meant to be public and to need no Hugging Face login; until the
-  post-merge publish step lands (see [#231](https://github.com/haw-ai-i/fiatlux/issues/231)), or
-  if you hit an auth error, run `uvx --from huggingface_hub hf auth login` or set `HF_TOKEN` to a
-  token scoped to the `haw-ai-i` org.
+- The assets in step 2 are public; no Hugging Face login is needed. If you hit an auth error
+  anyway, run `uvx --from huggingface_hub hf auth login` or set `HF_TOKEN` to a token scoped to
+  the `haw-ai-i` org.
 
 ## 1. Build the environment
 
