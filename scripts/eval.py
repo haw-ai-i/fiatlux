@@ -39,6 +39,15 @@ import argparse
 
 from isaaclab.app import AppLauncher
 
+# Looks like it violates "launch Kit first" -- fiatlux_task/__init__.py does `from .tasks
+# import *`, and tasks/__init__.py's import_packages() walk needs isaaclab.sim, which isn't
+# resolvable yet. It isn't a bug: that walk is wrapped in `except: print("running in Isaac
+# Sim"); pass`, and CPython evicts a submodule from sys.modules when its import fails
+# partway, so nothing is left mis-cached for the real, post-launch `import fiatlux_task.tasks`
+# below to short-circuit past. Only fiatlux_task.policy itself (torch, no Isaac Sim deps) gets
+# imported here. GPU-verified end-to-end (not just --help) on iolani-3, not just reasoned
+# through: `eval.py --task FIATLUX-S08-GrabNewBulb-v0 --policy zero --episodes 1` completes
+# and prints the correct task-specific score breakdown.
 from fiatlux_task.policy import CHECKPOINT_HELP, POLICY_SPEC_HELP
 
 parser = argparse.ArgumentParser(description="Fiatlux benchmark evaluation.")

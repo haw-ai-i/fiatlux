@@ -375,7 +375,17 @@ def main() -> int:
 
 
 if __name__ == "__main__":
-    code = main()
+    # See verify_common.run_verify_main's docstring: an unhandled exception left to unwind
+    # through Isaac Sim's own teardown machinery can lose its traceback entirely, so print it
+    # explicitly before the hard exit rather than relying on Python's default handler.
+    import traceback
+
+    code = 1
+    try:
+        code = main()
+    except BaseException:
+        traceback.print_exc()
+        code = 1
     sys.stdout.flush()
     # Kit's own shutdown otherwise forces exit code 0 and can swallow unflushed stdout.
     os._exit(code)
