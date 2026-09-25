@@ -22,9 +22,8 @@ surface the plug rides against. For the plug it is the MAXIMUM radius, its wides
 height. The bore is open where its min radius is near 20.2 mm and closed where the slice fills
 in toward the axis.
 
-Run with `uv run python` from the repo root, not a bare .venv/bin/python: a .venv shared across
-checkouts can otherwise resolve fiatlux_task to the wrong one (unlike its sibling scripts, this
-one has no ``verify_common.assert_right_checkout`` guard against that yet -- issue #238).
+Run with `uv run python` from the repo root, not a bare .venv/bin/python -- see
+verify_common.py's docstring for why.
 
 Example
 -------
@@ -57,6 +56,7 @@ import fiatlux_task.tasks  # noqa: F401  -- registers the FIATLUX Gym environmen
 import gymnasium as gym
 import numpy as np
 import torch
+import verify_common
 from fiatlux_task.assets import BULB_PLUG_OFFSET, SOCKET_SEAT_AXIS, SOCKET_SEAT_OFFSET
 from fiatlux_task.tasks.manager_based.fiatlux_task.scene_cfg import set_layout_seed
 
@@ -68,10 +68,7 @@ from isaaclab_tasks.utils import parse_env_cfg
 def build_cfg():
     set_layout_seed(args_cli.seed)
     cfg = parse_env_cfg("FIATLUX-Replace-v0", device=args_cli.device, num_envs=1)
-    assert hasattr(cfg.scene, "old_bulb"), (
-        f"cfg.scene ({type(cfg.scene)} from {sys.modules[type(cfg.scene).__module__].__file__}) has no "
-        "old_bulb -- fiatlux_task likely resolved to the wrong checkout again; check sys.path/pyrun"
-    )
+    verify_common.assert_right_checkout(cfg, "old_bulb")
     cfg.seed = args_cli.seed
     # Drop the cameras AND the observation terms that read them -- an orphaned obs term fails
     # cfg parsing with "scene entity 'ego_camera' does not exist".

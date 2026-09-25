@@ -27,9 +27,8 @@ The bulb's real contact friction against the socket bore is a premise of the who
 to both bodies' colliders, and the ``zero_wrench`` trial measures what real contact alone does
 with no wrench at all.
 
-Run with `uv run python` from the repo root, not a bare .venv/bin/python: a .venv shared across
-checkouts can otherwise resolve fiatlux_task to the wrong one (unlike its sibling scripts, this
-one has no ``verify_common.assert_right_checkout`` guard against that yet -- issue #238).
+Run with `uv run python` from the repo root, not a bare .venv/bin/python -- see
+verify_common.py's docstring for why.
 
 Examples
 --------
@@ -100,6 +99,7 @@ import sys
 import fiatlux_task.tasks  # noqa: F401  -- registers the FIATLUX Gym environments
 import gymnasium as gym
 import torch
+import verify_common
 from fiatlux_task.assets import BULB_PLUG_OFFSET, SOCKET_SEAT_AXIS, SOCKET_SEAT_OFFSET
 from fiatlux_task.tasks.manager_based.fiatlux_task.mdp import attach as task_attach
 from fiatlux_task.tasks.manager_based.fiatlux_task.scene_cfg import CEILING_FIXTURE_Z, _quat_y_deg, set_layout_seed
@@ -374,10 +374,7 @@ def build_cfg():
     """Same forced-ceiling-mount FIATLUX-Replace-v0 setup as verify_twist_damping.py."""
     set_layout_seed(args_cli.seed)
     cfg = parse_env_cfg("FIATLUX-Replace-v0", device=args_cli.device, num_envs=1)
-    assert hasattr(cfg.scene, "fresh_bulb"), (
-        f"cfg.scene ({type(cfg.scene)} from {sys.modules[type(cfg.scene).__module__].__file__}) has no "
-        "fresh_bulb -- fiatlux_task likely resolved to the wrong checkout again; check sys.path/pyrun"
-    )
+    verify_common.assert_right_checkout(cfg, "fresh_bulb")
     cfg.seed = args_cli.seed
     for camera in ("ego_camera", "torso_camera", "wrist_camera"):
         if getattr(cfg.scene, camera, None) is not None:

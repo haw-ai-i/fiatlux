@@ -9,14 +9,6 @@ body:
       description: What happened and what did you expect instead?
     validations:
       required: true
-  - type: dropdown
-    id: setup-method
-    attributes:
-      label: Setup method
-      options:
-        - uv sync (the documented setup, see docs/getting_started.md)
-    validations:
-      required: true
   - type: input
     id: os
     attributes:

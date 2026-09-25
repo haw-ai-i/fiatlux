@@ -32,7 +32,8 @@ def assert_right_checkout(cfg, required_attr: str) -> None:
     """
     assert hasattr(cfg.scene, required_attr), (
         f"cfg.scene ({type(cfg.scene)} from {sys.modules[type(cfg.scene).__module__].__file__}) has no "
-        f"{required_attr} -- fiatlux_task likely resolved to the wrong checkout again; check sys.path/pyrun"
+        f"{required_attr} -- fiatlux_task likely resolved to the wrong checkout again; check sys.path "
+        "(run with `uv run python` from this repo's root)"
     )
 
 
