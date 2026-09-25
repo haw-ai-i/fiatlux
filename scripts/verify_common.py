@@ -20,6 +20,10 @@ script rather than forcing a false shared shape onto real differences.
 from __future__ import annotations
 
 import sys
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    import numpy as np
 
 
 def assert_right_checkout(cfg, required_attr: str) -> None:
@@ -37,6 +41,13 @@ def assert_right_checkout(cfg, required_attr: str) -> None:
     )
 
 
+def _clear_field(obj, name: str) -> None:
+    """``obj.<name> = None``, but only if it's currently set -- a config field already left at
+    its default of ``None`` isn't something these scripts need to touch."""
+    if getattr(obj, name, None) is not None:
+        setattr(obj, name, None)
+
+
 def strip_visual_obs(cfg) -> None:
     """Drop every camera and its image observation term.
 
@@ -45,13 +56,12 @@ def strip_visual_obs(cfg) -> None:
     the layout a seed produced.
     """
     for camera in ("ego_camera", "torso_camera", "wrist_camera"):
-        if getattr(cfg.scene, camera, None) is not None:
-            setattr(cfg.scene, camera, None)
+        _clear_field(cfg.scene, camera)
     for group_name in ("policy", "privileged"):
         group = getattr(cfg.observations, group_name, None)
-        for term in ("ego_rgb", "torso_rgb", "wrist_rgb"):
-            if group is not None and getattr(group, term, None) is not None:
-                setattr(group, term, None)
+        if group is not None:
+            for term in ("ego_rgb", "torso_rgb", "wrist_rgb"):
+                _clear_field(group, term)
 
 
 def strip_drop_terminations(cfg) -> None:
@@ -62,8 +72,7 @@ def strip_drop_terminations(cfg) -> None:
     short before the diagnostic has run its course.
     """
     for term in ("success", "old_bulb_dropped", "fresh_bulb_dropped"):
-        if getattr(cfg.terminations, term, None) is not None:
-            setattr(cfg.terminations, term, None)
+        _clear_field(cfg.terminations, term)
 
 
 def strip_all_but_timeout(cfg) -> None:
@@ -73,12 +82,12 @@ def strip_all_but_timeout(cfg) -> None:
     other termination (success, a drop, a fall) firing partway through would cut the window
     short and hide whatever happens after it.
     """
-    for term in [t for t in vars(cfg.terminations) if not t.startswith("_")]:
-        if term != "time_out" and getattr(cfg.terminations, term, None) is not None:
-            setattr(cfg.terminations, term, None)
+    for term in vars(cfg.terminations):
+        if not term.startswith("_") and term != "time_out":
+            _clear_field(cfg.terminations, term)
 
 
-def all_meshes(stage, prefix: str) -> list[tuple[str, "np.ndarray"]]:
+def all_meshes(stage, prefix: str) -> list[tuple[str, np.ndarray]]:
     """Every mesh under ``prefix``, as ``(path, world-space points)``.
 
     Enumerating rather than guessing one mesh name: an asset's collider meshes are often split
