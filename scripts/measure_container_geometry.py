@@ -21,7 +21,8 @@ crate the statistic per slice is the INNER FACE of each wall -- measured on the 
 belongs to, which is the surface a bulb can rest against. For the bench it is the top surface height and the full
 footprint.
 
-Run with `uv run python` from the repo root, not a bare .venv/bin/python.
+Run with `uv run python` from the repo root, not a bare .venv/bin/python -- see
+verify_common.py's docstring for why.
 
 Example
 -------
@@ -45,6 +46,7 @@ simulation_app = AppLauncher(args_cli).app
 
 import fiatlux_task.tasks  # noqa: E402, F401
 import gymnasium as gym  # noqa: E402
+import verify_common  # noqa: E402
 from fiatlux_task.tasks.manager_based.fiatlux_task.scene_cfg import set_layout_seed  # noqa: E402
 
 from isaaclab_tasks.utils import parse_env_cfg  # noqa: E402
@@ -53,15 +55,9 @@ from isaaclab_tasks.utils import parse_env_cfg  # noqa: E402
 def build_cfg():
     set_layout_seed(args_cli.seed)
     cfg = parse_env_cfg("FIATLUX-Replace-v0", device=args_cli.device, num_envs=1)
+    verify_common.assert_right_checkout(cfg, "bin")
     cfg.seed = args_cli.seed
-    for camera in ("ego_camera", "torso_camera", "wrist_camera"):
-        if getattr(cfg.scene, camera, None) is not None:
-            setattr(cfg.scene, camera, None)
-    for group_name in ("policy", "privileged"):
-        group = getattr(cfg.observations, group_name, None)
-        for term in ("ego_rgb", "torso_rgb", "wrist_rgb"):
-            if group is not None and getattr(group, term, None) is not None:
-                setattr(group, term, None)
+    verify_common.strip_visual_obs(cfg)
     return cfg
 
 

@@ -50,7 +50,6 @@ simulation_app = app_launcher.app
 """Everything else follows."""
 
 import importlib
-import sys
 
 import fiatlux_task.tasks  # noqa: F401  -- registers the FIATLUX Gym environments
 import gymnasium as gym
@@ -256,18 +255,4 @@ def main() -> int:
 
 
 if __name__ == "__main__":
-    import os
-    import traceback
-
-    exit_code = 1
-    try:
-        exit_code = main()
-    except BaseException:
-        traceback.print_exc()
-        exit_code = 1
-    finally:
-        sys.stdout.flush()
-        sys.stderr.flush()
-        if exit_code:
-            os._exit(exit_code)
-        simulation_app.close()
+    verify_common.run_verify_main(main, simulation_app)
