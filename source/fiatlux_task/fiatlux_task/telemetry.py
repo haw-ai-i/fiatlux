@@ -249,8 +249,10 @@ class ScoreLogger:
 
         NOT the benchmark headline. This is the *live* term's value -- it captures its
         ``at_reset`` baseline before the first step, which reads too early on several subtasks
-        (see ``scripts/score.py``'s ``episode_gate_progress`` and issue #239) and has been
-        measured up to 0.50 off per subtask from the offline, bag-scored number. It streams here
+        (mechanism: ``scripts/score.py``'s ``episode_gate_progress`` docstring). Issue #239 has
+        the measured GR00T-baseline comparison this was caught from: up to 0.50 off per subtask
+        against the offline, bag-scored number (a different 0.50 than score.py's illustrative
+        worked example, which is a hypothetical, not a measurement). This channel streams here
         only as a rough during-the-run signal (e.g. for a live wandb dashboard); the scored
         result is ``scripts/score.py`` run on the recorded bag, nothing computed live.
         """

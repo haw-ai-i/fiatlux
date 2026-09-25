@@ -64,9 +64,10 @@ aggregate results land in the run summary.
 **The run summary's `gate_progress` is a live diagnostic, not the benchmark
 score.** It is computed the same way as the deleted live scorer was
 (`ScoreLogger.gate_progress`, unchanged by this consolidation) and inherits the
-same `at_reset`-before-step-0 bias described above and in issue #239 -- treat
-it as a rough during-the-run signal only. The scored number is always
-`scripts/score.py` run on the bag.
+same `at_reset`-before-step-0 bias documented in `scripts/score.py`'s
+`episode_gate_progress` docstring and issue #239 -- treat it as a rough
+during-the-run signal only. The scored number is always `scripts/score.py`
+run on the bag.
 
 ```bash
 python scripts/record_run.py --task FIATLUX-Replace-v0 --policy basic_standard \
