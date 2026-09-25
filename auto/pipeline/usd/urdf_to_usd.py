@@ -9,7 +9,8 @@ A100 has no RT cores.  So the stage is authored by hand.
 
 Conventions follow the ones the surrounding fiatlux benchmark already uses --
 see ``scripts/omniverse/omniverse_ladder_collision.py`` (every mesh gets a
-convex-decomposition collider bound to a high-friction physics material) and
+physics collider -- SDF by default, convex decomposition as its fallback --
+bound to a high-friction physics material) and
 ``scripts/omniverse/omniverse_bulb_rigid.py`` (Z-up, metres, verified extents).
 
 Three things here are subtle enough to be worth stating up front.

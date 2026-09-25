@@ -18,13 +18,13 @@ straight off the real, contact-resolved simulation. Real hold: phase stays SEATE
 stays bounded the whole run. Real drop (the original bug): phase flips to FREE partway through
 and axial runs away.
 
-Run via ./pyrun (repo root), not a bare .venv/bin/python: on a machine where .venv is shared
-with a different checkout, a bare invocation can silently resolve fiatlux_task to the WRONG
-checkout's source -- pyrun fixes that by pointing PYTHONPATH at this repo's own source/ first.
+Run with `uv run python` from the repo root, not a bare .venv/bin/python: on a machine where
+.venv is shared with a different checkout, a bare invocation can silently resolve fiatlux_task
+to the WRONG checkout's source.
 
 Example
 -------
-    ./pyrun scripts/verify_ceiling_hold.py --headless
+    uv run python scripts/verify_ceiling_hold.py --headless
 """
 
 """Launch Isaac Sim Simulator first."""
@@ -68,9 +68,7 @@ def build_cfg():
     verify_common.assert_right_checkout(cfg, "fresh_bulb")
     cfg.seed = args_cli.seed
     verify_common.strip_visual_obs(cfg)
-    for term in ("success", "old_bulb_dropped", "fresh_bulb_dropped"):
-        if getattr(cfg.terminations, term, None) is not None:
-            setattr(cfg.terminations, term, None)
+    verify_common.strip_drop_terminations(cfg)
     cfg.scene.robot.spawn.articulation_props.fix_root_link = True
 
     # Force a CEILING mount regardless of what this seed's random draw gave: 180 deg about Y

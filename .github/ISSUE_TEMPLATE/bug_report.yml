@@ -9,15 +9,6 @@ body:
       description: What happened and what did you expect instead?
     validations:
       required: true
-  - type: dropdown
-    id: setup-method
-    attributes:
-      label: Setup method
-      options:
-        - Docker + Distrobox + Pixi (recommended)
-        - Source build
-    validations:
-      required: true
   - type: input
     id: os
     attributes:

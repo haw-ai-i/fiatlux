@@ -271,7 +271,7 @@ class TrajectoryRecorder:
         # raised KeyError for them. The serialized keys stay ``bulb_*`` so old bags still parse.
         #
         # KNOWN LIMIT, carried over from the `scene["bulb"]` lookup this replaces: presence
-        # cannot disambiguate a two-bulb scene. S06-S09 run the Replace scene and manipulate the
+        # cannot disambiguate a two-bulb scene. S03-S06 run the Replace scene and manipulate the
         # OLD bulb, and this picks the fresh one for them, so their bags record a parked bulb.
         # The behaviour is unchanged by the rename -- the old lookup resolved to the same fresh
         # bulb -- but fixing it needs the task to DECLARE its manipuland, which is #76 Step 3.
@@ -285,7 +285,7 @@ class TrajectoryRecorder:
         self._extra_contacts = _extra_contact_names(env)
 
         # EVERY rigid object, not one guessed bulb. The `_bulb_entity` heuristic above cannot
-        # disambiguate a two-bulb scene, so S06-S09's bags recorded a parked bulb while the task
+        # disambiguate a two-bulb scene, so S03-S06's bags recorded a parked bulb while the task
         # was about the other one; and the crate every disposal gate reads was absent entirely.
         # An env cfg may curate the list with a `record_objects` tuple.
         self._tracked_objects = _tracked_object_names(env)

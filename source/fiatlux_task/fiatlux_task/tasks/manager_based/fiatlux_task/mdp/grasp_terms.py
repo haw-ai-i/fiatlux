@@ -3,7 +3,11 @@
 #
 # SPDX-License-Identifier: BSD-3-Clause
 
-"""Predicates and distance fns for the grasp mode (S08 grab-the-bulb).
+"""Predicates and distance fns for the grasp mode: mainly S08 (grab the fresh bulb), plus the
+ladder-standing conjunct (``ladder_near_vertical``) every other on-ladder leaf (S02-S04, S10-S12)
+reuses from it rather than duplicate. S03 also reuses the old-bulb reach distance
+(``hand_old_bulb_distance``) here; the crush-force check is S08-only -- S11's is a separate,
+analogous check (``mate_terms.grip_force_exceeded``), not a reuse of this module's.
 
 The subtask ends in the hand taking an object's weight, so the gate has to distinguish *holding*
 from merely *touching*: filtered contact force past a threshold, plus whatever geometric fact
