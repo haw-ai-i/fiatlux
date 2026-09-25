@@ -34,7 +34,6 @@ Examples
 
 import argparse
 import os
-import sys
 
 from isaaclab.app import AppLauncher
 
@@ -113,6 +112,7 @@ import math
 import fiatlux_task.tasks  # noqa: F401  -- registers the FIATLUX Gym environments
 import gymnasium as gym
 import torch
+import verify_common
 from fiatlux_task.assets import BULB_STAND_Z_OFFSET
 from fiatlux_task.tasks.manager_based.fiatlux_task.scene_cfg import CEILING_FIXTURE_Z, set_layout_seed
 from fiatlux_task.viz import fixture_orbit, make_video_camera_cfg, record_orbit
@@ -530,19 +530,7 @@ def main() -> int:
 
 
 if __name__ == "__main__":
-    code = 1
-    try:
-        code = main()
-    except Exception:  # noqa: BLE001 -- print the traceback before the process exits
-        import traceback
-
-        traceback.print_exc()
-    finally:
-        # SimulationApp.close() ends in a native framework shutdown that terminates the
-        # process with exit code 0, so nothing placed after it (sys.exit included) ever
-        # runs. main() already closed the env; flush and exit with the real verification
-        # result ourselves. os._exit skips Kit's graceful shutdown on purpose -- process
-        # teardown releases the GPU, and CI must see a non-zero code on FAIL.
-        sys.stdout.flush()
-        sys.stderr.flush()
-        os._exit(code)
+    # See verify_common.run_verify_main's docstring for why this shape (print-then-hard-exit
+    # on failure, simulation_app.close() only on real success) is what actually gets the FAIL
+    # case a non-zero exit code for CI instead of close()'s own always-0 process teardown.
+    verify_common.run_verify_main(main, simulation_app)
