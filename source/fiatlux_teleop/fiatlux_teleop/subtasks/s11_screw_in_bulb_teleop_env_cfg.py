@@ -1,4 +1,4 @@
-"""``FIATLUX-S11-ScrewInBulb-Teleop-v0`` -- seat and screw in the fresh bulb, teleoperated.
+"""``FIATLUX-S11-ScrewInBulb-Teleop-v0`` -- seat the fresh bulb in the fixture, teleoperated.
 
 S11ScrewInBulbEnvCfg with the shared teleop interface applied (arm-IK + binary grip in place of the RL
 whole-body joint action, the pelvis-anchored XR follow camera and ``controller_rel`` device,

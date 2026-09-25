@@ -45,13 +45,13 @@ cause.
 The ``--hold_force``/``--bore_depth`` overrides are kept for exactly the job they did above --
 separating "does it spin" from "does it stay in" when one of the two is broken.
 
-Run via ./pyrun (repo root), not a bare .venv/bin/python -- see verify_twist_damping.py's
-docstring for why.
+Run with `uv run python` from the repo root, not a bare .venv/bin/python -- see
+verify_common.py's docstring for why.
 
 Example
 -------
-    ./pyrun scripts/verify_no_twist_spin.py --headless
-    ./pyrun scripts/verify_no_twist_spin.py --headless --seconds 15
+    uv run python scripts/verify_no_twist_spin.py --headless
+    uv run python scripts/verify_no_twist_spin.py --headless --seconds 15
 """
 
 """Launch Isaac Sim Simulator first."""
@@ -176,9 +176,7 @@ def build_cfg():
     # Watch the whole window even if a termination would have cut it: the point is what happens
     # to the seated bulb, and a truncated episode would hide a late ejection.
     cfg.episode_length_s = max(args_cli.seconds * 2.0, cfg.episode_length_s)
-    for term in [t for t in vars(cfg.terminations) if not t.startswith("_")]:
-        if term != "time_out" and getattr(cfg.terminations, term, None) is not None:
-            setattr(cfg.terminations, term, None)
+    verify_common.strip_all_but_timeout(cfg)
     return cfg
 
 

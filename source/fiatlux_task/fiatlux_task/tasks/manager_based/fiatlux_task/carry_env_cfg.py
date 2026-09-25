@@ -113,7 +113,7 @@ class ObservationsCfg:
 
     @configclass
     class PrivilegedCfg(ObsGroup):
-        """Ground-truth ("cheat") observations for the critic: exact robot / ladder / fixture poses."""
+        """Ground-truth (privileged) observations for the critic: exact robot / ladder / fixture poses."""
 
         robot_pose = ObsTerm(func=mdp.root_pose_w, params={"asset_cfg": SceneEntityCfg("robot")})
         ladder_pose = ObsTerm(func=mdp.root_pose_w, params={"asset_cfg": SceneEntityCfg("ladder")})

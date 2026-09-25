@@ -101,7 +101,7 @@ HAND_FLAT_BY_VARIANT: dict[str, dict[str, float]] = {"inspire": HAND_FLAT, "dex3
 HAND_CRADLE_BY_VARIANT: dict[str, dict[str, float]] = {"inspire": HAND_CRADLE, "dex3": HAND_CRADLE_DEX3}
 HAND_CUP_BY_VARIANT: dict[str, dict[str, float]] = {"inspire": HAND_CUP, "dex3": HAND_CUP_DEX3}
 
-# (w, x, y, z). The ymomhw bulb is an elongated ~25 cm body; upright it topples.
+# (w, x, y, z). The bulb is an elongated ~25 cm body; upright it topples.
 BULB_LYING_QUAT: tuple[float, float, float, float] = (0.7071068, 0.7071068, 0.0, 0.0)
 BULB_UPRIGHT_QUAT: tuple[float, float, float, float] = (1.0, 0.0, 0.0, 0.0)
 

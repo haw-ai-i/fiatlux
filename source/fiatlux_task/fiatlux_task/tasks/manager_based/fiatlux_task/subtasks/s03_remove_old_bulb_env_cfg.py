@@ -6,11 +6,11 @@
 """``FIATLUX-S03-RemoveOldBulb-v0`` -- free the old bulb from the fixture while on the ladder.
 
 Starts from S02's end state: the robot balanced on the upper steps with hands free, the old bulb
-seated in the fixture (``mdp.bulb_attachment``'s axial retention spring, issue #167, wired once
+seated in the fixture (``mdp.bulb_attachment``'s axial detent, issue #167, wired once
 for the tier in ``subtask_tiers.mate.MateEventCfg``).
 
 **The held conjunct is the entire subtask.** A gate that only checked geometric clearance from the
-fixture could be satisfied by the bulb sitting anywhere the retention spring allows without ever
+fixture could be satisfied by the bulb sitting anywhere the detent allows without ever
 being taken -- ``old_bulb_removed_after_release`` requires the retention state to have actually
 released (``_phase != _SEATED``), which only happens from a real, sustained pull past the release
 threshold. A zero-action rollout scores 0.
@@ -64,7 +64,7 @@ class S03RewardsCfg(MateRewardsCfg):
         weight=500.0,
         params={"distance_fn": mdp.old_bulb_release_clearance, "away_threshold": REMOVAL_CLEARANCE},
     )
-    # Not attach-aware: the retention spring holds the bulb near fixture height the entire
+    # Not attach-aware: the detent holds the bulb near fixture height the entire
     # time it is SEATED, well above OLD_BULB_DROP_HEIGHT, so there is no transient mid-step
     # value near this threshold for the retention term to correct.
     bulb_dropped = RewTerm(

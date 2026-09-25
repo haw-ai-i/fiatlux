@@ -34,7 +34,9 @@ Examples
 
 import argparse
 import os
-import sys
+
+# See policy_cli_help.py's own docstring for why this isn't fiatlux_task.policy.
+from policy_cli_help import ROBOT_CHOICES
 
 from isaaclab.app import AppLauncher
 
@@ -52,7 +54,7 @@ parser.add_argument(
     "--robot",
     type=str,
     default="inspire",
-    choices=["inspire", "dex3"],
+    choices=ROBOT_CHOICES,
     help="G1 hand variant. dex3 is the variant the VLA baselines score.",
 )
 parser.add_argument(
@@ -113,6 +115,7 @@ import math
 import fiatlux_task.tasks  # noqa: F401  -- registers the FIATLUX Gym environments
 import gymnasium as gym
 import torch
+import verify_common
 from fiatlux_task.assets import BULB_STAND_Z_OFFSET
 from fiatlux_task.tasks.manager_based.fiatlux_task.scene_cfg import CEILING_FIXTURE_Z, set_layout_seed
 from fiatlux_task.viz import fixture_orbit, make_video_camera_cfg, record_orbit
@@ -460,7 +463,7 @@ def main() -> int:
         )
 
     # =========================== 4. COLLISION COVERAGE ===========================
-    # Imported USD assets (robot and BEHAVIOR-1K props alike) may split visual meshes from
+    # Imported USD assets (the robot and the vendor props alike) may split visual meshes from
     # dedicated collision meshes, so we require colliders to EXIST under each entity rather
     # than a 1:1 visual-geom:collider match.
     print("\n[verify] (4) Collision coverage (every tracked entity must have colliders)")
@@ -530,19 +533,7 @@ def main() -> int:
 
 
 if __name__ == "__main__":
-    code = 1
-    try:
-        code = main()
-    except Exception:  # noqa: BLE001 -- print the traceback before the process exits
-        import traceback
-
-        traceback.print_exc()
-    finally:
-        # SimulationApp.close() ends in a native framework shutdown that terminates the
-        # process with exit code 0, so nothing placed after it (sys.exit included) ever
-        # runs. main() already closed the env; flush and exit with the real verification
-        # result ourselves. os._exit skips Kit's graceful shutdown on purpose -- process
-        # teardown releases the GPU, and CI must see a non-zero code on FAIL.
-        sys.stdout.flush()
-        sys.stderr.flush()
-        os._exit(code)
+    # See verify_common.run_verify_main's docstring for why this shape (print-then-hard-exit
+    # on failure, simulation_app.close() only on real success) is what actually gets the FAIL
+    # case a non-zero exit code for CI instead of close()'s own always-0 process teardown.
+    verify_common.run_verify_main(main, simulation_app)

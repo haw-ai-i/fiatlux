@@ -10,37 +10,34 @@ HF dataset and synced locally via `download_assets.sh`. Binary USD files are git
 # Robot + task assets + room dressing (table, warehouse backdrop, HDRI sky)
 ./assets/download_assets.sh
 
-# ... + BEHAVIOR-1K lighting-fixture scene dressing
+# ... + the optional extras (omniverse_climb, omniverse_lamp)
 ./assets/download_assets.sh --scene-dressing
 ```
 
 Room dressing (`isaac_*` paths below) is always synced -- it's what every recorded
-run looks like by default -- unlike the opt-in BEHAVIOR-1K lighting fixtures.
+run looks like by default. The `--scene-dressing` extras are opt-in and nothing in the task
+scene loads them.
 
 Requires `uv` (assets are fetched via `uvx --from huggingface_hub hf`) and access to the
 `haw-ai-i` HF org. Override the source dataset repo with the `FIATLUX_ASSET_REPO` env var.
 
 ## HF Paths
 
-| HF path                                              | Category              | Models                          | Role           | Files |
-| ----------------------------------------------------- | --------------------- | ------------------------------- | -------------- | ----- |
-| `hf://datasets/haw-ai-i/fiatlux-assets/behavior1k_bulb/`                | `light_bulb`          | 3 (kfmkwd, sxkjea, ymomhw)     | task asset     | 57    |
-| `hf://datasets/haw-ai-i/fiatlux-assets/behavior1k_bulb_broken/`         | `broken_light_bulb`   | 1 (cugtye)                      | task asset     | 23    |
-| `hf://datasets/haw-ai-i/fiatlux-assets/behavior1k_lamp/`                | `table_lamp`          | 12 with lights metadata         | task asset     | 217   |
-| `hf://datasets/haw-ai-i/fiatlux-assets/behavior1k_ladder/`              | `ladder`              | 3 (shfvtl, vpmrlk, axywzt)     | task asset     | 52    |
-| `hf://datasets/haw-ai-i/fiatlux-assets/behavior1k_downlight/`           | `downlight`           | 28                              | scene dressing | 421   |
-| `hf://datasets/haw-ai-i/fiatlux-assets/behavior1k_room_light/`          | `room_light`          | 30                              | scene dressing | 532   |
-| `hf://datasets/haw-ai-i/fiatlux-assets/behavior1k_spotlight/`           | `spotlight`           | 5                               | scene dressing | 86    |
-| `hf://datasets/haw-ai-i/fiatlux-assets/behavior1k_square_light/`        | `square_light`        | 10                              | scene dressing | 178   |
-| `hf://datasets/haw-ai-i/fiatlux-assets/behavior1k_rectangular_light/`   | `rectangular_light`   | 3                               | scene dressing | 52    |
-| `hf://datasets/haw-ai-i/fiatlux-assets/behavior1k_track_light/`         | `track_light`         | 2                               | scene dressing | 35    |
-| `hf://datasets/haw-ai-i/fiatlux-assets/behavior1k_wall_mounted_light/`  | `wall_mounted_light`  | 11                              | scene dressing | 188   |
-| `hf://datasets/haw-ai-i/fiatlux-assets/behavior1k_chandelier/`          | `chandelier`          | 4                               | scene dressing | 69    |
-| `hf://datasets/haw-ai-i/fiatlux-assets/behavior1k_paper_lantern/`       | `paper_lantern`       | 3                               | scene dressing | 52    |
-| `hf://datasets/haw-ai-i/fiatlux-assets/behavior1k_lampshade/`           | `lampshade`           | 4                               | scene dressing | 69    |
-| `hf://datasets/haw-ai-i/fiatlux-assets/behavior1k_floor_lamp/`          | `floor_lamp`          | 11 with lights metadata         | scene dressing | 188   |
+### BEHAVIOR-1K -- scene dressing only
 
-**BEHAVIOR-1K total: 2,219 files across 15 paths.**
+**No benchmark task loads these.** The bulb and socket are the Omniverse pair
+(`BULB_USD` / `SOCKET_USD`) and the ladder is `omniverse_ladder/AlumStep_D`; no scene entity
+references a `behavior1k_*` asset.
+
+The eleven lighting-fixture categories are still synced by `./download_assets.sh
+--scene-dressing`, so they are on hand if you want to dress a scene of your own or add a
+fixture to an existing one. `behavior1k_materials/` syncs with them and is **required** --
+every B1K asset binds OmniGibson's shared `OmniGibsonVRayMtl` by relative path into that
+bundle, and without it they render red rather than failing loudly (issue 18).
+
+The task-asset groups (`behavior1k_bulb`, `_bulb_broken`, `_lamp`, `_ladder`) are **not**
+synced: they were the original bulb/lamp/ladder choice and nothing uses them now. They remain
+in the dataset; clearing them is a dataset-cleanup decision, not a code one.
 
 ### Omniverse asset packs (NVIDIA SimReady / ArchVis)
 
@@ -111,8 +108,9 @@ these paths after any Isaac Sim upgrade.
 
 ## Source
 
-**BEHAVIOR-1K** assets are from [BEHAVIOR-1K](https://behavior.stanford.edu/) (Stanford OmniGibson dataset),
-decrypted from `.encrypted.usd` using the `omnigibson.key`. The key and decrypted binaries are not committed to git.
+**BEHAVIOR-1K** (scene dressing, above) is from [BEHAVIOR-1K](https://behavior.stanford.edu/) (Stanford
+OmniGibson dataset), decrypted from `.encrypted.usd` using the `omnigibson.key`. The key and
+decrypted binaries were never committed to git. The intake scripts are `scripts/behavior1k/`.
 
 **Omniverse** assets are from the NVIDIA [Omniverse downloadable USD packs](https://docs.omniverse.nvidia.com/usd/latest/usd_content_samples/downloadable_packs.html#d-openusd-asset-packs)
 (Warehouse, SimReady Warehouse 01, Residential, Sample Scenes). Used under non-commercial

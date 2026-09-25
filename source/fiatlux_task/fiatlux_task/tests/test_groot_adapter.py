@@ -16,17 +16,17 @@ source this session, not reconstructed from memory:
 - REAL_G1 state dims: the downloaded checkpoint's own
   ``processor_config.json:processor_kwargs.modality_configs["real_g1_relative_eef_relative_joints"]``.
 
-Marked ``isaacsim_ci``: importing ``fiatlux_task.robots.g1`` pulls in ``isaaclab.sim``
-at module level, which bootstraps the Kit runtime as an import side effect --
-these aren't Isaac-Sim-*using* tests, but they aren't import-light either.
+Most of these are pure-Python contract checks and run anywhere. The two that reach into
+``fiatlux_task.robots.g1`` / ``.sensors`` pull in ``isaaclab.sim``, which only resolves once the
+Kit runtime has bootstrapped -- those two carry ``@pytest.mark.isaacsim_ci`` individually and
+``importorskip`` out (as SKIPPED, not failed) when Kit is absent. The mark is per-test on
+purpose: marking the whole module hid six tests that pass in a plain shell.
 """
 
 import math
 
 import pytest
 import torch
-
-pytestmark = pytest.mark.isaacsim_ci
 
 
 def test_retarget_reduces_to_q_des_when_gains_match():
@@ -114,9 +114,11 @@ def test_body_joint_order_matches_gear_wbc_mjcf():
     assert golden == _BODY_JOINT_NAMES
 
 
+@pytest.mark.isaacsim_ci
 def test_dex3_hand_joint_order_matches_supplemental_info():
     """Dex3 hand-channel order golden-sourced from g1_supplemental_info.py's
     joint_groups["left_hand"]/["right_hand"] (index_0/1, middle_0/1, thumb_0/1/2)."""
+    pytest.importorskip("isaaclab.sim", reason="needs a bootstrapped Kit runtime")
     from fiatlux_task.robots.g1 import G1_DEX3_LEFT_HAND_JOINTS, G1_DEX3_RIGHT_HAND_JOINTS
 
     order = ["index_0", "index_1", "middle_0", "middle_1", "thumb_0", "thumb_1", "thumb_2"]
@@ -140,9 +142,11 @@ def test_state_key_dims_match_checkpoint_processor_config():
     }
 
 
+@pytest.mark.isaacsim_ci
 def test_ego_camera_fov_matches_d435_spec():
     """Real Intel RealSense D435 RGB sensor: ~69.4 deg horizontal FOV. A narrower
     sim FOV understates how much of the scene is visible around an occluding hand."""
+    pytest.importorskip("isaaclab.sim", reason="needs a bootstrapped Kit runtime")
     from fiatlux_task.sensors import ego_camera_cfg
 
     spawn = ego_camera_cfg().spawn

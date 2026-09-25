@@ -30,7 +30,7 @@ Teleop runs as **two processes in two envs**, kept separate so the CloudXR deps 
 
 | Env | What's in it | Role |
 |---|---|---|
-| **sim env** (uv `.venv`, or your `SIM_PYTHON`) | Isaac Sim 5.1 / Isaac Lab 2.3.2; `fiatlux_task` + `fiatlux_teleop` on `PYTHONPATH`; `onnxruntime` via the `teleop` extra (SONIC legs) | renders + runs the sim, reads XR input |
+| **sim env** (uv `.venv`, or your `SIM_PYTHON`) | Isaac Sim 5.1 / Isaac Lab 2.3.2; `fiatlux_task` + `fiatlux_teleop` on `PYTHONPATH`; `onnxruntime` via the `teleop` extra (GEAR-SONIC legs) | renders + runs the sim, reads XR input |
 | **`vr_teleop`** | `pip install 'isaacteleop[cloudxr,retargeters]~=1.3.0'` (1.3.131 verified) | the CloudXR streaming runtime only |
 
 > **uv gotcha:** `uv sync` without the extra makes the env match the lockfile *exactly* — it

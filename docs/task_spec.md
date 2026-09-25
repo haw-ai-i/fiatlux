@@ -12,12 +12,12 @@ in that file's module docstring.
 
 The **replace preset** of the shared family scene (`scene_cfg.apply_replace_preset`):
 robot, ladder, table (with the **fresh bulb** on it), and the **disposal crate** are each
-randomized into their own non-overlapping floor "safe zone"; the **fixture** (the
-validated BEHAVIOR-1K socket-lamp) mounts randomly on the ceiling or a wall with the
+randomized into their own non-overlapping floor "safe zone"; the **fixture** (the same
+Omniverse socket asset, `SOCKET_USD`) mounts randomly on the ceiling or a wall with the
 **old bulb** seated in it. The layout is sampled once per scene build; per-episode resets
 return to it (plus the reset jitter below).
 
-- The **ladder is dynamic** (12 kg) — only in this preset — so knocking it over is a real,
+- The **ladder is dynamic** (**10.9 kg**, `LADDER_MASS_KG` -- stamped in code, not read from the asset) — only in this preset — so knocking it over is a real,
   penalized, episode-ending event. Ladder placement is *independent* of the fixture by
   default; `ReplaceEnvCfg.couple_ladder_to_fixture = True` is an explicit debug/curriculum
   opt-in that spawns it reachably near the fixture.
@@ -45,31 +45,42 @@ return to it (plus the reset jitter below).
   - **Axial retention is a magnet, not a spring (issue #171)**: a linear spring is weakest
     exactly at the seat and grows with distance -- backwards from a magnetic/detent catch,
     which is strongest at contact and falls off with distance. The axial term's shape now
-    matches the latter: peak force (`hold_force`) right at the seat, decaying past
-    `hold_range`. This also fixed a real ceiling-mount failure along the way: a ceiling
+    matches the latter: peak force (`hold_force`, 1.5 N) right at the seat, falling off linearly
+    to zero at `bore_depth` (0.025 m -- measured, the withdrawal at which the plug clears the
+    socket throat), so there is no bore left for the magnet to act across. This also fixed a real ceiling-mount failure along the way: a ceiling
     fixture is inverted (seat axis points down), so gravity pulls a seated bulb OUTWARD
     along it, and the original linear spring's steady-state sag under that load left almost
     no margin before `release_threshold` -- a ceiling-seated bulb fell out unassisted within
-    under a second. `hold_force`/`hold_range` are sized (not a gravity feedforward -- a
+    under a second. `hold_force`/`bore_depth` are sized (not a gravity feedforward -- a
     passive mechanism doesn't cancel gravity outright, and a ceiling-hung bulb should sag
     more than a resting one, same as any real spring/friction/magnet) so worst-case sag sits
     comfortably clear of `release_threshold`. Table/wall mounts sag less than ceiling ones
     under their own weight, correctly.
-  - **Twist friction (issue #171)**: a ceiling-seated bulb was found spinning about the seat
-    axis at 1-19 rad/s for ~2.9s, no operator or contact, before ejecting -- the tilt torque's
-    damping shared tilt's tiny torque budget, which couldn't arrest a real spin. Twist
-    (rotation about the seat axis, no target angle) now gets its own, Coulomb-like friction
-    term (`twist_friction`, roughly constant magnitude, not velocity-proportional -- a
-    viscous version tried first settled into a stable but nonzero spin under real contact and
-    got worse, not better, as its gain was raised). Reliably stops the self-ejection across
-    the full reported range, but does not reliably drive the residual spin itself to zero --
-    that looks like a real 3D contact effect, open follow-up.
+  - **No twist term -- one was tried twice and removed (issue #171)**: a ceiling-seated bulb
+    was found spinning about the seat axis at 1-19 rad/s for ~2.9 s, no operator or contact,
+    before ejecting. Two fixes were tried on the theory that twist was under-damped: a viscous
+    term, then a Coulomb-like constant-magnitude friction (`twist_friction = 0.5 N*m`). **Both
+    were wrong, and the second one WAS the bug.** A term-by-term ablation
+    (`scripts/ablate_attach_forces.py`) found that zeroing `twist_friction` -- and no other term
+    -- removes the spin: 95-97 rad/s with it, 0.7-3.0 rad/s without, holding 4/5 repeats instead
+    of 0/5; with nothing applied at all the bulb shows only ~1.2 rad/s. The plug's moment of
+    inertia about the seat axis is 2.9e-05 kg*m^2, so one step of 0.5 N*m changes the twist rate
+    by 344 rad/s while the law reverses sign at a 0.1 rad/s deadband -- it overshoots zero by
+    ~3400x every step and re-accelerates the other way. Coulomb chatter, not friction; the
+    original teleop bag shows twist flipping sign on 138 of 140 consecutive control steps at
+    +/-16 rad/s, a clean alternation at exactly the 50 Hz control rate. **There is no twist term
+    now, in any form.** Rotation about the seat axis is left to the socket's real contact
+    friction, which the asset supplies (static 1.2 / dynamic 1.0, resolving onto all 2 bulb and
+    8 socket colliders) -- and issue #90's "rotation is free" stands. The one sound part of the
+    first attempt was kept: angular velocity is still split into twist and tilt components so
+    tilt damping uses only the latter. Any future twist term must bound its impulse by
+    `I*|omega|/step_dt`.
 
 ## Goal
 
 Insert the fresh bulb into the fixture, remove the old bulb from the fixture, and place
 the old bulb in the disposal crate. Full success = fresh bulb **attached** (seated and held
-by the retention spring, per `mdp.bulb_attachment`) **and** old bulb in the crate. Seating
+by the axial detent, per `mdp.bulb_attachment` -- a magnet, not a spring; see below) **and** old bulb in the crate. Seating
 alone no longer scores.
 
 ## Actions
@@ -77,20 +88,21 @@ alone no longer scores.
 Whole-body joint-position targets (all DoF incl. fingers): the task spans
 locomotion, ladder work, and manipulation.
 
-## Observations — `standard` vs `cheatcode` modes
+## Observations — `standard` vs `privileged` modes
 
-Two groups (named `policy`/`privileged` for rsl_rl's routing; the benchmark calls the
-modes **standard** and **cheatcode**):
+Two groups (named `policy`/`privileged` for rsl_rl's routing; the paper calls the modes
+**standard** and **privileged** — "cheatcode" is retired naming that survives only in the
+`basic_cheatcode` baseline's identifier below):
 
 - **`policy` = standard mode** (sensor-realizable only): IMU (base angular velocity,
   projected gravity), estimated base height + linear velocity (the documented
   estimator-realizable exception), joint pos/vel, hand contact forces,
   **head-mounted (`d435_link`) RGB camera features** and **head-mounted (`mid360_link`)
   lidar ranges** (camera needs `--enable_cameras`), last action. Corruption enabled.
-- **`privileged` = cheatcode mode** (exact simulator state): world poses of the robot,
+- **`privileged` mode** (exact simulator state): world poses of the robot,
   ladder, fixture, fresh bulb, old bulb, and disposal crate, plus the four score-relevant
   distances (`replace_score_distances`). Critic-only during RL
-  (`ReplacePPORunnerCfg.obs_groups`); a cheatcode policy may consume it directly.
+  (`ReplacePPORunnerCfg.obs_groups`); a privileged-mode policy may consume it directly.
 
 Smoke-test policies (`fiatlux_task/policy.py`): `basic_standard` consumes only the
 standard group and holds posture; `basic_cheatcode` additionally asserts and reads the
@@ -124,9 +136,9 @@ at 1.0). Completion bonuses pay once per episode.
 | `fresh_bulb_progress` (+) | dense | fresh-bulb plug → fixture seat, normalized progress |
 | `old_bulb_removal` (+) | dense | old-bulb clearance from the seat vs an absolute 0.10 m threshold (its d0 ≈ 0, so toward-style normalization can't apply) |
 | `old_bulb_disposal_progress` (+) | dense | old bulb → disposal crate, normalized progress |
-| `ladder_ready` (+) | completion | upright ladder top horizontally within 0.9 m of the fixture |
-| `fresh_bulb_inserted` (+) | completion | fresh bulb screwed in (the attach gate; `mdp.bulb_attachment`'s 1.5 cm / 0.2 rad seating tolerances are enforced at attach time) |
-| `old_bulb_removed` (+) | completion | old bulb unscrewed and cleared the seat by 0.10 m (a held bulb reads as seated) |
+| `ladder_ready` (+) | completion | ladder upright and placed so the top-tread stance's shoulder is within 0.419 m of the seated bulb and facing it (`LADDER_READY_REACH`) |
+| `fresh_bulb_inserted` (+) | completion | fresh bulb seated (the attach gate; `mdp.bulb_attachment`'s 1.5 cm / 0.2 rad seating tolerances are enforced at attach time) |
+| `old_bulb_removed` (+) | completion | old bulb released and cleared the seat by 0.10 m (a held bulb reads as seated) |
 | `old_bulb_disposed` (+) | completion | old bulb inside the disposal crate (containment, any orientation) |
 | `success_bonus` (+) | sparse | full replacement (fires on the terminating step) |
 | `robot_fall`, `ladder_tipped`, `fresh_bulb_dropped`, `old_bulb_dropped` (−) | penalty | each fires once — the same predicate also terminates |
@@ -135,7 +147,7 @@ at 1.0). Completion bonuses pay once per episode.
 
 ## Success & termination
 
-- **Success** (`attached_replacement_success`): fresh bulb screwed in (attachment state,
+- **Success** (`attached_replacement_success`): fresh bulb seated (attachment state,
   not raw seating geometry) **and** old bulb inside the disposal crate (containment, any orientation).
 - **Robot fall**: root below 0.35 m or tilt beyond 1.0 rad (family thresholds).
 - **Ladder tipped**: ladder up-axis beyond 0.6 rad from vertical.

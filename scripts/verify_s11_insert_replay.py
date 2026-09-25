@@ -24,8 +24,8 @@ dropped; new gains, given the identical action sequence, are what's under test.
 
 Usage
 -----
-    ./pyrun scripts/verify_s11_insert_replay.py --headless --episode ep00_replay.pt
-    ./pyrun scripts/verify_s11_insert_replay.py --headless --episode ep00_replay.pt --old_gains
+    uv run python scripts/verify_s11_insert_replay.py --headless --episode ep00_replay.pt
+    uv run python scripts/verify_s11_insert_replay.py --headless --episode ep00_replay.pt --old_gains
 
 ``--episode`` points at a ``.pt`` file produced by extracting a bag's own ``run.h5`` (fields:
 actions, gate_fresh_bulb_attached, fresh_bulb_pos/quat, socket_pos/quat, contact_force(_left),
@@ -109,9 +109,7 @@ def build_cfg():
     ep = torch.load(args_cli.episode, weights_only=False)
     n_steps = ep["actions"].shape[0] if args_cli.max_steps is None else min(args_cli.max_steps, ep["actions"].shape[0])
     cfg.episode_length_s = max(n_steps * cfg.sim.dt * cfg.decimation * 1.5, cfg.episode_length_s)
-    for term in [t for t in vars(cfg.terminations) if not t.startswith("_")]:
-        if term != "time_out" and getattr(cfg.terminations, term, None) is not None:
-            setattr(cfg.terminations, term, None)
+    verify_common.strip_all_but_timeout(cfg)
     return cfg, ep, n_steps
 
 

@@ -9,7 +9,8 @@ An earlier version of this file tested a three-phase bayonet state machine (FREE
 ROTATING, twist tracking, PR #128's contact-rate clamps) that a per-step pose/velocity
 overwrite enforced. That mechanism is gone: two independent diagnostics found real bulb-socket
 contact geometry blocked both the release-twist and the axial-insertion motions it assumed
-were unobstructed (see ``plans/bayonet-force-based-attachment.md``), and fixing that geometry
+were unobstructed (issue #167; ``mdp/attach.py``'s module docstring carries the record),
+and fixing that geometry
 made the whole apparatus unnecessary -- with real collision enabled, the socket confines the
 bulb laterally and angularly on its own. What replaced it is a continuous axial MAGNET force
 pulling the plug to the bottom of the bore, applied alongside (never instead of) real contact,
@@ -170,7 +171,7 @@ class _FakeBody:
         self.force_calls = 0
 
     def set_external_force_and_torque(self, forces, torques, is_global=False):
-        assert is_global, "the retention spring must be applied in the world frame"
+        assert is_global, "the detent must be applied in the world frame"
         self.last_force = forces.clone()
         self.last_torque = torques.clone()
         self.force_calls += 1
@@ -184,6 +185,15 @@ class _FakeBody:
         self.data.root_quat_w = _quat_mul(q, self.data.root_quat_w)
 
 
+class _FakeScene(dict):
+    """Entity lookup by name like the real ``InteractiveScene``, plus the ``rigid_objects``
+    membership map ``bulb_attachment`` probes to decide whether this scene has an old bulb."""
+
+    @property
+    def rigid_objects(self):
+        return self
+
+
 def _make_env():
     """Socket at origin; the old bulb seated on it (both halves author assembled at identity);
     the fresh bulb far away and FREE."""
@@ -191,11 +201,13 @@ def _make_env():
         num_envs=1,
         device="cpu",
         step_dt=0.02,
-        scene={
-            "socket": _FakeBody([0.0, 0.0, 0.0]),
-            "old_bulb": _FakeBody([0.0, 0.0, 0.0]),
-            "fresh_bulb": _FakeBody([1.0, 0.0, 0.0]),
-        },
+        scene=_FakeScene(
+            {
+                "socket": _FakeBody([0.0, 0.0, 0.0]),
+                "old_bulb": _FakeBody([0.0, 0.0, 0.0]),
+                "fresh_bulb": _FakeBody([1.0, 0.0, 0.0]),
+            }
+        ),
     )
     cfg = SimpleNamespace(params={})
     return env, attach.bulb_attachment(cfg, env)
@@ -231,10 +243,12 @@ def test_insert_only_scene_without_old_bulb_seats_fresh_bulb():
         num_envs=1,
         device="cpu",
         step_dt=0.02,
-        scene={
-            "socket": _FakeBody([0.0, 0.0, 0.0]),
-            "fresh_bulb": _FakeBody([1.0, 0.0, 0.0]),
-        },
+        scene=_FakeScene(
+            {
+                "socket": _FakeBody([0.0, 0.0, 0.0]),
+                "fresh_bulb": _FakeBody([1.0, 0.0, 0.0]),
+            }
+        ),
     )
     cfg = SimpleNamespace(params={})
     mgr = attach.bulb_attachment(cfg, env)

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Isaac Sim playground for the BEHAVIOR-1K lighting assets.
 
-Lays out every behavior1k light / lamp / bulb in a grid so you can eyeball their materials
+Lays out every behavior1k lighting fixture group in a grid so you can eyeball their materials
 (useful for spotting the red-fallback / missing-texture problems tracked in issue 18).
 
 The assets bind OmniGibson's ``OmniGibsonVRayMtl`` material, so its mdls must be on the MDL
@@ -10,9 +10,9 @@ search path or everything renders red. Point at that folder with ``--mdl-path`` 
 OmniGibson mdls are bundled there). Requires a camera-capable Isaac build (env_isaaclab).
 
 Usage:
-  python scripts/behavior1k_playground.py                       # GUI window on $DISPLAY
-  python scripts/behavior1k_playground.py --render overview.png # headless overview capture
-  python scripts/behavior1k_playground.py --mdl-path <dir>      # folder holding the vray mdls
+  python scripts/behavior1k/behavior1k_playground.py                       # GUI window on $DISPLAY
+  python scripts/behavior1k/behavior1k_playground.py --render overview.png # headless overview capture
+  python scripts/behavior1k/behavior1k_playground.py --mdl-path <dir>      # folder holding the vray mdls
 """
 
 import argparse
@@ -22,9 +22,6 @@ import os
 REPO = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 ASSETS = os.path.join(REPO, "assets")
 GROUPS = [
-    "behavior1k_bulb",
-    "behavior1k_bulb_broken",
-    "behavior1k_lamp",
     "behavior1k_floor_lamp",
     "behavior1k_chandelier",
     "behavior1k_lampshade",

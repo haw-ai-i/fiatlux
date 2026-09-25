@@ -21,8 +21,8 @@ Three things this deliberately does differently from ``omniverse_ladder_rigid.py
 3. It deactivates the asset's live runtime extras -- an OmniGraph that ticks every frame,
    a Camera, and the bulb's own SphereLight -- which would otherwise be duplicated per env.
 
-Needs only ``pxr`` (no Isaac Sim). The project venv does not ship USD standalone; run with a
-python that has it, e.g. ``/home/esports/miniconda3/bin/python3``.
+Needs only ``pxr`` (no Isaac Sim). The project venv does not ship USD standalone; run with
+any python that has it installed, e.g. one with the ``usd-core`` package.
 
 Usage: python scripts/omniverse/omniverse_bulb_rigid.py [<omniverse_bulb dir>]
 """

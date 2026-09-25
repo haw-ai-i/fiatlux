@@ -207,7 +207,7 @@ def _check_rl_randomization(env_cfg_cls, prefix: str, bulb_paths: list[str], see
     ``mdp.randomize_material_tint`` EventTerm on ``room``): issue #236 could affect the primary
     benchmark task even if it turns out to be Carry-specific, or vice versa.
 
-    ``bulb_paths`` are the env's live B1K bulb prim names under ``env_0`` (Carry has only
+    ``bulb_paths`` are the env's live bulb prim names under ``env_0`` (Carry has only
     ``OldBulb``; Replace has both ``Bulb`` and ``OldBulb``).
     """
     from isaaclab.envs import ManagerBasedRLEnv
@@ -242,7 +242,7 @@ def _check_rl_randomization(env_cfg_cls, prefix: str, bulb_paths: list[str], see
         "per-env materials untouched under replicated physics",
     )
     record(
-        f"{prefix}:b1k_materials_untouched",
+        f"{prefix}:bulb_materials_untouched",
         all(len(tinted_attrs(stage, f"/World/envs/env_0/{p}")) == 0 for p in bulb_paths),
         f"no cache keys under {'/'.join(bulb_paths)}",
     )
@@ -375,7 +375,18 @@ def main() -> int:
 
 
 if __name__ == "__main__":
-    code = main()
+    # See verify_common.run_verify_main's docstring: an unhandled exception left to unwind
+    # through Isaac Sim's own teardown machinery can lose its traceback entirely, so print it
+    # explicitly before the hard exit rather than relying on Python's default handler.
+    import traceback
+
+    code = 1
+    try:
+        code = main()
+    except BaseException:
+        traceback.print_exc()
+        code = 1
     sys.stdout.flush()
-    # Kit's own shutdown otherwise forces exit code 0 and can swallow unflushed stdout.
+    sys.stderr.flush()
+    # Kit's own shutdown otherwise forces exit code 0 and can swallow unflushed output.
     os._exit(code)
