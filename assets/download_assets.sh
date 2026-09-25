@@ -80,7 +80,7 @@ sync_group() {
     echo "  $group"
     if ! "${HF_DOWNLOAD[@]}" "${group}/"; then
         echo "error: could not fetch '${group}' from ${ASSET_REPO}." >&2
-        if [[ "$ASSET_REPO" == "haw-ai-i/fiatlux-assets" ]]; then
+        if [[ -z "${FIATLUX_ASSET_REPO:-}" ]]; then
             echo "  If that was an auth failure: the default dataset is public and needs no login," >&2
             echo "  so this is likely a transient network/rate-limit issue -- retry, or check" >&2
             echo "  https://huggingface.co/datasets/${ASSET_REPO} directly." >&2
