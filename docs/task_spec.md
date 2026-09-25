@@ -104,7 +104,7 @@ the `groot` VLA baseline consumes the same sensors (`fiatlux_task/groot.py`).
 ## Language instruction
 
 VLA-style policies receive the task as a natural-language instruction
-(`--instruction` on `eval.py` / `record_run.py`). The canonical sentence
+(`--instruction` on `record_run.py`). The canonical sentence
 (`fiatlux_task.groot.DEFAULT_INSTRUCTION`):
 
 > Replace the light bulb: take the fresh bulb from the table, insert it into the light

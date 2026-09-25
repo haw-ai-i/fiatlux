@@ -58,10 +58,13 @@ If your assets live elsewhere, point the env at them with
 ```bash
 uv run python scripts/list_envs.py                              # list registered tasks
 uv run python scripts/zero_agent.py --task FIATLUX-Insert-v0    # launch the scene
-uv run python scripts/eval.py --task FIATLUX-Insert-v0 --policy random --episodes 20
 uv run python scripts/rsl_rl/train.py --task FIATLUX-Insert-v0  # train PPO
 uv run python scripts/rsl_rl/play.py  --task FIATLUX-Insert-v0  # roll out a checkpoint
 ```
+
+To run a policy for a fixed number of episodes and get a score, see "4. Record
+and score a run" below -- there is no standalone "just run it" evaluation
+command; recording (at least a bag) and scoring are the same step.
 
 ## 4. Record and score a run
 
