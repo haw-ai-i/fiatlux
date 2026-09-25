@@ -138,9 +138,8 @@ multipliers (`FACTOR_MULTIPLIERS`: balance 2.0, release 1.8, grasp 1.4, carry/tr
 missing and excluded from the denominator: "did not run" and "ran and failed" are different
 claims.
 
-Subtask scores may not be compared across layout seeds, and must not be mixed with the
-development-aid tier (Insert / Climb / Carry / Descend / Remove / Install), which measures a
-different capability. `FIATLUX-Replace-v0`'s own score (above) is a third, separate number:
+Subtask scores may not be compared across layout seeds.
+`FIATLUX-Replace-v0`'s own score (above) is a separate number:
 the whole flat episode, not one subtask.
 
 ## Offline scoring (`scripts/score.py`)

@@ -13,7 +13,7 @@ in that file's module docstring.
 The **replace preset** of the shared family scene (`scene_cfg.apply_replace_preset`):
 robot, ladder, table (with the **fresh bulb** on it), and the **disposal crate** are each
 randomized into their own non-overlapping floor "safe zone"; the **fixture** (the same
-Omniverse socket the Insert task uses, `SOCKET_USD`) mounts randomly on the ceiling or a wall with the
+Omniverse socket asset, `SOCKET_USD`) mounts randomly on the ceiling or a wall with the
 **old bulb** seated in it. The layout is sampled once per scene build; per-episode resets
 return to it (plus the reset jitter below).
 
