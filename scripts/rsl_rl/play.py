@@ -3,7 +3,7 @@
 #
 # SPDX-License-Identifier: BSD-3-Clause
 
-"""Script to play a checkpoint if an RL agent from RSL-RL."""
+"""Script to play a checkpoint of an RL agent from RSL-RL."""
 
 """Launch Isaac Sim Simulator first."""
 

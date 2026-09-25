@@ -27,14 +27,14 @@ The bulb's real contact friction against the socket bore is a premise of the who
 to both bodies' colliders, and the ``zero_wrench`` trial measures what real contact alone does
 with no wrench at all.
 
-Run via ./pyrun (repo root), not a bare .venv/bin/python -- see verify_twist_damping.py's
-docstring for why.
+Run with `uv run python` from the repo root, not a bare .venv/bin/python -- see
+verify_common.py's docstring for why.
 
 Examples
 --------
-    ./pyrun scripts/ablate_attach_forces.py --headless --seed 3
-    ./pyrun scripts/ablate_attach_forces.py --headless --seed 3 --spin_rate 15
-    ./pyrun scripts/ablate_attach_forces.py --headless --seed 3 --only baseline,no_twist_friction
+    uv run python scripts/ablate_attach_forces.py --headless --seed 3
+    uv run python scripts/ablate_attach_forces.py --headless --seed 3 --spin_rate 15
+    uv run python scripts/ablate_attach_forces.py --headless --seed 3 --only baseline,no_axial_magnet
 """
 
 """Launch Isaac Sim Simulator first."""
@@ -73,7 +73,7 @@ parser.add_argument(
     type=str,
     default="",
     help="Instead of the on/off ablations, sweep ONE gain's magnitude: '<gain>=v1,v2,...' "
-    "(e.g. twist_friction=0.5,0.05,0.005,0). Distinguishes a mis-SIZED term from a wrong one.",
+    "(e.g. hold_force=1.5,0.75,0.375,0). Distinguishes a mis-SIZED term from a wrong one.",
 )
 parser.add_argument(
     "--report_friction",
@@ -94,11 +94,11 @@ simulation_app = app_launcher.app
 
 import importlib
 import inspect
-import sys
 
 import fiatlux_task.tasks  # noqa: F401  -- registers the FIATLUX Gym environments
 import gymnasium as gym
 import torch
+import verify_common
 from fiatlux_task.assets import BULB_PLUG_OFFSET, SOCKET_SEAT_AXIS, SOCKET_SEAT_OFFSET
 from fiatlux_task.tasks.manager_based.fiatlux_task.mdp import attach as task_attach
 from fiatlux_task.tasks.manager_based.fiatlux_task.scene_cfg import CEILING_FIXTURE_Z, _quat_y_deg, set_layout_seed
@@ -373,22 +373,10 @@ def build_cfg():
     """Same forced-ceiling-mount FIATLUX-Replace-v0 setup as verify_twist_damping.py."""
     set_layout_seed(args_cli.seed)
     cfg = parse_env_cfg("FIATLUX-Replace-v0", device=args_cli.device, num_envs=1)
-    assert hasattr(cfg.scene, "fresh_bulb"), (
-        f"cfg.scene ({type(cfg.scene)} from {sys.modules[type(cfg.scene).__module__].__file__}) has no "
-        "fresh_bulb -- fiatlux_task likely resolved to the wrong checkout again; check sys.path/pyrun"
-    )
+    verify_common.assert_right_checkout(cfg, "fresh_bulb")
     cfg.seed = args_cli.seed
-    for camera in ("ego_camera", "torso_camera", "wrist_camera"):
-        if getattr(cfg.scene, camera, None) is not None:
-            setattr(cfg.scene, camera, None)
-    for group_name in ("policy", "privileged"):
-        group = getattr(cfg.observations, group_name, None)
-        for term in ("ego_rgb", "torso_rgb", "wrist_rgb"):
-            if group is not None and getattr(group, term, None) is not None:
-                setattr(group, term, None)
-    for term in ("success", "old_bulb_dropped", "fresh_bulb_dropped"):
-        if getattr(cfg.terminations, term, None) is not None:
-            setattr(cfg.terminations, term, None)
+    verify_common.strip_visual_obs(cfg)
+    verify_common.strip_drop_terminations(cfg)
     cfg.scene.robot.spawn.articulation_props.fix_root_link = True
 
     # Force a CEILING mount, matching the reported failure (seed 3, S03, ceiling preset).
@@ -586,18 +574,4 @@ def main() -> int:
 
 
 if __name__ == "__main__":
-    import os
-    import traceback
-
-    exit_code = 1
-    try:
-        exit_code = main()
-    except BaseException:
-        traceback.print_exc()
-        exit_code = 1
-    finally:
-        sys.stdout.flush()
-        sys.stderr.flush()
-        if exit_code:
-            os._exit(exit_code)
-        simulation_app.close()
+    verify_common.run_verify_main(main, simulation_app)

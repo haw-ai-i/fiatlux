@@ -1,10 +1,8 @@
 """Generic Inspire -> DEX3 hand swap for free-base (walking) teleop cfgs.
 
 Any teleop task authored with Inspire hands can be driven with ``--hand dex3`` through this
-one helper -- it is task-agnostic. The two cases it deliberately does NOT cover:
+one helper -- it is task-agnostic. The one case it deliberately does NOT cover:
 
-* Insert-Teleop: bolts the robot to the floor, so it needs the FIXED-base dex3 variant --
-  it keeps its own ``insert_teleop_env_cfg.apply_dex3_hands``.
 * Tasks already dex3-native (Carry/Gallery): nothing to swap -- the driver detects this
   from the robot USD path and skips the call.
 
@@ -44,29 +42,8 @@ def apply_dex3_hands(env_cfg) -> None:
     # Self-collisions are left as the cfg authors them. This helper is task-agnostic (see the
     # module docstring) and free-base grasp subtasks need them ON -- with them off, the fingers
     # close through the thumb (subtask_teleop.py's apply_subtask_teleop documents the same
-    # finding). A fixed-base task that wants the Insert-Teleop-style finger-jitter calming should
-    # set enabled_self_collisions itself, as insert_teleop_env_cfg.apply_dex3_hands already does.
+    # finding). A fixed-base task that wants finger-jitter calming should set
+    # enabled_self_collisions itself.
     _repoint_grips(env_cfg,
                    G1_DEX3_LEFT_HAND_JOINTS, G1_DEX3_LEFT_HAND_OPEN, G1_DEX3_LEFT_HAND_GRASP,
                    G1_DEX3_RIGHT_HAND_JOINTS, G1_DEX3_HAND_OPEN, G1_DEX3_HAND_GRASP)
-
-
-def apply_inspire_hands(env_cfg) -> None:
-    """Switch a *parsed*, Dex3-native teleop cfg to INSPIRE hands, in place (mirror of above)."""
-    from fiatlux_task.robots.g1 import (
-        G1_HAND_GRASP,
-        G1_HAND_JOINTS,
-        G1_HAND_OPEN,
-        G1_LEFT_HAND_JOINTS,
-        swap_robot_variant,
-    )
-
-    # left-hand open/grasp are the right-hand presets mirrored (same derivation as
-    # insert_teleop_env_cfg's module constants; g1.py only ships the right-hand dicts)
-    _left_open = dict.fromkeys(G1_LEFT_HAND_JOINTS, 0.0)
-    _left_grasp = {k.replace("R_", "L_", 1): v for k, v in G1_HAND_GRASP.items()}
-    swap_robot_variant(env_cfg, "inspire")
-    # See the matching comment in apply_dex3_hands above: self-collisions stay as authored.
-    _repoint_grips(env_cfg,
-                   G1_LEFT_HAND_JOINTS, _left_open, _left_grasp,
-                   G1_HAND_JOINTS, G1_HAND_OPEN, G1_HAND_GRASP)

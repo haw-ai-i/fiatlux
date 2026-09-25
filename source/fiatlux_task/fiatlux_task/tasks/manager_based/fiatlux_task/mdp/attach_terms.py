@@ -5,7 +5,7 @@
 
 """Rigid-attach ("weld") an object a subtask starts already holding to a robot body link.
 
-A start state built by ``grasp_poses.compose_carried_pose`` alone is not physically held:
+A start state built by ``nav_terms.compose_carried_pose`` alone is not physically held:
 nothing but incidental finger-mesh contact resists gravity, so a multi-kilogram payload swings
 free of a one-point contact and falls within a few physics steps.
 

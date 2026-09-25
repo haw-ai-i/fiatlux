@@ -3,13 +3,15 @@
 #
 # SPDX-License-Identifier: BSD-3-Clause
 
-"""``FIATLUX-Carry-v0`` -- the G1 grasps a ladder and positions it upright at a target.
+"""``CarryEnvCfg`` -- the G1 grasps a ladder and positions it upright at a target.
 
 The ladder-handling / positioning subtask: a **dynamic, high-friction** ladder starts out in
 front of the G1; the robot **walks to it**, grasps a rail (physics friction, no weld), and
 carries it upright to beneath the ceiling light fixture. **Whole-body** control (`joint_names=
 [".*"]`, like the full Replace task) so locomotion + manipulation are both available. Built as a
-standard ``ManagerBasedRLEnvCfg`` so it slots into train / play / eval.
+standard ``ManagerBasedRLEnvCfg``, but not itself gym-registered -- reached only via the
+``CarryTeleopEnvCfg``/``LadderGalleryTeleopEnvCfg`` teleop subclasses and
+``scripts/verify_randomization.py``'s direct instantiation.
 
 Scoring **reuses the full Replace task's ladder terms** (one shared source of truth):
 ``ladder_fixture_distance`` progress + the ``ladder_ready`` completion/success predicate
@@ -44,7 +46,9 @@ from .scene_cfg import (
 # Ladder-positioning tolerances -- reused from the full Replace task's ladder scoring so the
 # subtask and the full task judge the ladder identically (mdp.ladder_ready / ladder_tipped).
 LADDER_TILT_LIMIT = 0.6  # rad; the upright ladder stands at ~0
-FALL_MIN_HEIGHT = 0.4  # m; robot-fall gate (shared by the penalty + termination)
+FALL_MIN_HEIGHT = 0.4  # m; robot-fall gate (shared by the penalty + termination). Pre-dates
+# subtask_env_cfg.py's own FALL_MIN_HEIGHT = 0.35 (used by Replace + all twelve subtasks) and
+# has never been unified with it -- not this file's own tuning, so left alone here.
 FALL_TILT_LIMIT = 1.0  # rad
 
 
@@ -109,7 +113,7 @@ class ObservationsCfg:
 
     @configclass
     class PrivilegedCfg(ObsGroup):
-        """Ground-truth ("cheat") observations for the critic: exact robot / ladder / fixture poses."""
+        """Ground-truth (privileged) observations for the critic: exact robot / ladder / fixture poses."""
 
         robot_pose = ObsTerm(func=mdp.root_pose_w, params={"asset_cfg": SceneEntityCfg("robot")})
         ladder_pose = ObsTerm(func=mdp.root_pose_w, params={"asset_cfg": SceneEntityCfg("ladder")})

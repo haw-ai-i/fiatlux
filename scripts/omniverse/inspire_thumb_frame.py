@@ -15,10 +15,11 @@ Writes a wrapper USD next to the source that references it and overrides only th
 localRot0/localRot1, so the vendor file is untouched.
 
 Usage: python scripts/omniverse/inspire_thumb_frame.py <g1_..._inspire_...usd> [--out PATH]
-       [--joint R_thumb_proximal_yaw_joint] [--thumb-dir "-0.015,-0.045,-0.063"]
+       [--joints "JOINT:x,y,z;JOINT:x,y,z"]
 
-``--thumb-dir`` is the thumb's rest direction (proximal -> distal) in the palm body's frame,
-measured live at zero joint angles; the default is the right hand of the stock asset.
+``--joints`` is a semicolon-separated list of JOINT:x,y,z pairs -- the thumb rotation joint and
+the thumb's rest direction (proximal -> distal) in the palm body's frame, measured live at zero
+joint angles; the default covers both hands of the stock asset.
 """
 
 import argparse

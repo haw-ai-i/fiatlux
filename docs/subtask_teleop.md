@@ -15,7 +15,7 @@ interface, so changes to a subtask flow through to its twin automatically.
 |---|---|---|
 | Actions | `joint_pos`, all joints | bimanual IK (`arm_action`, `left_arm_action`) + binary grips |
 | Terminations | task's own set | failures and timeout cleared; `success` kept |
-| Legs | policy | SONIC walk/balance ONNX, driven outside the action manager |
+| Legs | policy | GEAR-SONIC walk/balance ONNX, driven outside the action manager |
 | Camera | task viewer | pelvis-anchored `XrCfg` follow camera |
 
 Scene, assets, events, `sim.dt` and decimation are untouched.
@@ -192,6 +192,11 @@ defaults above when unset. Two do NOT have a default and the launcher stops if e
 
 ## The 12 subtasks
 
+All twelve subtasks have a registered teleop adapter under `subtasks/`. That is not the same as
+reaching the gate: a teleoperated take clears the success gate on eight of them (S01, S03, S05,
+S06, S07, S08, S09, S11). The four climbing legs -- S02, S04, S10, S12 -- have no take that
+satisfies their gate yet.
+
 The four ladder legs were folded into `S01-MoveLadder`; everything after it shifted down by
 three. On-ladder tasks are staged at the tread (1.18 m) plus `TOP_STANCE_PELVIS_OFFSET`
 (0.787 m) = **1.97 m** nominal.
@@ -228,8 +233,8 @@ are what appear in a bag's columns and in error messages.
 | What you see | Asset | Notes |
 |---|---|---|
 | Step ladder | `ladder` | A **free rigid body** — nothing bolts it down. It can tip, and `ladder_tipped` is a real termination. |
-| Ceiling/wall fixture | `socket` | Where bulbs go. Mounted at **2.2 m**, ceiling- or wall-mounted per draw. |
-| Old bulb | `old_bulb` | Starts **seated in the fixture** (axial-detent retention spring, issue #167). The one you remove and throw away. |
+| Ceiling/wall fixture | `socket` | Where bulbs go. Ceiling- or wall-mounted per draw, and the two sit at different heights: **2.37 m** (`CEILING_FIXTURE_Z`) and **2.2 m** (`WALL_MOUNT_Z`). The ceiling one was raised by #147 so its bulb is within reach from the ladder. |
+| Old bulb | `old_bulb` | Starts **seated in the fixture** (axial-detent retention, issue #167). The one you remove and throw away. |
 | Fresh bulb | `bulb` | Starts **on the bench**. The one you install. |
 | Disposal crate | `bin` | The **only** container in the scene. The old bulb goes in here. Not the bench. |
 | Bench | `table` | Holds the fresh bulb. Not a target for anything. |
@@ -251,16 +256,16 @@ Shared thresholds: **robot standing** = pelvis above 0.35 m and tilt under 1.0 r
 | | Task | Gate | Complete when |
 |---|---|---|---|
 | S01 | MoveLadder | sustained | the stance that ladder pose would produce could grasp the bulb: its shoulder within **0.419 m** of the bulb's body centre in **3-D**, facing it within **45°**, and standing off far enough that the fixture is not inside its torso · ladder upright · feet down within **2 cm** of the floor · ladder at rest · robot standing |
-| S02 | ClimbLadder | all_of | pelvis within **0.15 m** of the top stance height · within **0.6 m** of the ladder in xy · moving under **1.5 m/s** · standing · ladder vertical |
+| S02 | ClimbLadder | all_of | pelvis within **0.15 m** (`LADDER_TOP_STANCE_TOLERANCE`) of the top stance height · within **0.6 m** of the ladder in xy · moving under **1.5 m/s** · standing · ladder vertical |
 | S03 | RemoveOldBulb | sustained | old bulb **0.10 m** clear of the fixture after release · held (>1 N) · lifted above **0.15 m** · standing · ladder vertical |
 | S04 | DescendWithBulb | all_of | pelvis below the floor-stance height, within **0.6 m** of the ladder, under **1.5 m/s** · bulb held · lifted · standing · ladder vertical |
-| S05 | CarryBulbToDisposal | all_of | within **0.5 m** of the disposal crate (`bin`) · facing it within **0.5 rad** · moving under **1.0 m/s** · bulb still held |
+| S05 | CarryBulbToDisposal | all_of | within **0.5 m** of the disposal crate (`bin`) · facing it within **0.5 rad** (`ARRIVAL_FACING_TOLERANCE`) · moving under **1.0 m/s** (`ARRIVAL_MAX_SPEED`) · bulb still held |
 | S06 | DisposeBulb | sustained | old bulb inside the disposal crate (`bin`) · at rest · **released** (<1 N) · standing |
-| S07 | ApproachNewBulb | all_of | within reach of the fresh bulb (`bulb`, on the bench) · facing it within **0.5 rad** · under **1.0 m/s** |
+| S07 | ApproachNewBulb | all_of | within reach of the fresh bulb (`bulb`, on the bench) · facing it within **0.5 rad** (`ARRIVAL_FACING_TOLERANCE`) · under **1.0 m/s** (`ARRIVAL_MAX_SPEED`) |
 | S08 | GrabNewBulb | sustained | fresh bulb lifted **3 cm** off the bench · **≥2 hand bodies** in contact (>1 N each) · total grip force under **50 N** · standing |
 | S09 | CarryBulbToLadder | all_of | within mounting range of the ladder · facing it within **0.5 rad** · under **1.0 m/s** · bulb held · ladder upright |
 | S10 | ClimbWithBulb | all_of | at top stance (as S02) · bulb held · lifted · standing · ladder vertical |
-| S11 | ScrewInBulb | sustained | fresh bulb **attached** (seated, retention spring holding it) · at rest · **released** (grip <1 N) · standing · ladder vertical |
+| S11 | ScrewInBulb | sustained | fresh bulb **attached** (seated, detent holding it) · at rest · **released** (grip <1 N) · standing · ladder vertical |
 | S12 | ClimbDown | all_of | descended to floor stance (as S04) · **fresh bulb still seated** in the fixture · standing · ladder vertical |
 
 Three patterns worth internalising before operating:
