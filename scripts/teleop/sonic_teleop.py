@@ -1,6 +1,7 @@
 """Whole-body loco-manipulation teleop for any FIATLUX-*-Teleop task.
 
-Runs a real teleop gym env (``--task`` -- Insert / Carry / LadderGallery / ...), FREES the base, and
+Runs a real teleop gym env (``--task`` -- LadderGallery / the S01..S12 subtask teleop twins /
+...), FREES the base, and
 drives legs+waist with the pre-trained NVIDIA SONIC policy so the operator can walk the robot around
 the scene and manipulate -- true whole-body teleop, on any task.
 
@@ -62,9 +63,9 @@ def _find_policy_dir() -> str:
 _POLICY_DIR = _find_policy_dir()
 
 parser = argparse.ArgumentParser()
-# No default: the old one (FIATLUX-Insert-Teleop-v0) is stationary tabletop manipulation with
-# the pelvis bolted, which this driver then unbolts -- not one of the 12 subtasks, and not
-# scoreable against them. Falling back to it silently is worse than asking.
+# No default: this driver frees the base and expects a walking-scale task. An implicit fallback
+# risks silently applying that to a stationary, bolted-base scene, which isn't scoreable against
+# the 12 subtasks. Falling back silently is worse than asking.
 parser.add_argument("--task", required=True, help="env id, e.g. FIATLUX-S07-ApproachNewBulb-Teleop-v0")
 parser.add_argument(
     "--input",
@@ -367,15 +368,11 @@ class WalkRetargeterCfg(RetargeterCfg):
 
 
 def main():  # noqa: C901  (one long orchestration: env setup + settle/resettle + the teleop loop)
-    # --- env: real Insert-Teleop scene, retimed for SONIC, base freed ---
+    # --- env: real teleop scene, retimed for SONIC, base freed ---
     # Subtask teleop envs read the hand from the environment (the swap has to happen inside the
-    # cfg's __post_init__, before its action terms are built). Insert/Carry keep their own
-    # post-parse patches below.
-    _is_subtask_task = re.search(r"-S\d\d-", args.task) is not None
+    # cfg's __post_init__, before its action terms are built).
     # Every env built on the subtask recipe reads its hand from this variable -- the S01..S12
-    # twins and any env derived from them. Only the legacy Insert/Carry patches below ignore
-    # it, and they are harmless with it set. It used to be set only for "-S<NN>-" ids, so a
-    # derived env silently came up with Inspire while the launcher reported dex3.
+    # twins and any env derived from them.
     os.environ["FIATLUX_TELEOP_HAND"] = args.hand.lower()
 
     # Room layout seed. Drawn here rather than left to the scene module's unseeded default so
@@ -446,29 +443,11 @@ def main():  # noqa: C901  (one long orchestration: env setup + settle/resettle 
     env_cfg = parse_env_cfg(args.task, device=args.device, num_envs=args.num_envs)
     if not isinstance(env_cfg, ManagerBasedRLEnvCfg):
         raise ValueError("expected a ManagerBasedRLEnv task")
-    # Insert-Teleop defaults to Inspire (swap to Dex3 on request); Carry-Teleop is Dex3-native
-    # (swap to Inspire on request). Each env's patch handles the robot + hand-action repoint.
-    #
-    # SUBTASKS ARE EXCLUDED. These are substring matches on the task id, and the subtask ids
-    # S05-CarryBulbToDisposal / S09-CarryBulbToLadder contain "Carry" -- so `--hand inspire`
-    # applied the legacy Carry patch to an already-Inspire-native subtask and swap_robot_variant
-    # raised "don't know how to remap joint_names=['R_index_proximal_joint', ...]". The subtask
-    # twins pick their own hand inside apply_subtask_teleop via FIATLUX_TELEOP_HAND, set above.
-    if not _is_subtask_task:
-        if args.hand.lower() == "dex3" and "Insert" in args.task:
-            from fiatlux_teleop.insert_teleop_env_cfg import apply_dex3_hands
-
-            apply_dex3_hands(env_cfg)
-        elif args.hand.lower() == "inspire" and "Carry" in args.task:
-            from fiatlux_teleop.carry_teleop_env_cfg import apply_inspire_hands
-
-            apply_inspire_hands(env_cfg)
-
     env_cfg.sim.dt = 0.005  # 200 Hz (SONIC's rate)
     env_cfg.decimation = 4  # -> 50 Hz control
     env_cfg.sim.render_interval = 4
     env_cfg.terminations.time_out = None
-    # FREE the base so SONIC can balance + walk (the teleop env bolts it down for stationary insert)
+    # FREE the base so SONIC can balance + walk, regardless of what the task's own cfg defaults to.
     env_cfg.scene.robot.spawn.articulation_props.fix_root_link = False
     # Harden the spawn against the intermittent PhysX launch: cap depenetration velocity (a bad
     # contact can't fling the free base metres up) and drop the random joint-offset reset (it
@@ -508,27 +487,14 @@ def main():  # noqa: C901  (one long orchestration: env setup + settle/resettle 
             setattr(env_cfg.terminations, _t, None)
     # Take the robot's x,y from whatever env is loaded (task-specific placement); keep SONIC's
     # standing joint stance so the balance policy starts in-distribution, and raise the spawn a
-    # touch so the feet clear the floor. Generalizes across tasks (Insert, Carry, ...).
+    # touch so the feet clear the floor. Generalizes across every teleop task.
     _p = env_cfg.scene.robot.init_state.pos
     env_cfg.scene.robot.init_state.pos = (_p[0], _p[1], max(_p[2], 0.80))
-    # SONIC leg stance (both envs need it). The ARM spawn pose is env-dependent because the two envs'
-    # IK behaves differently: Insert's redundant IK RELAXES the arm to a natural low rest regardless of
-    # spawn (so a bent-elbow spawn settles to ~0.17), but Carry's IK HOLDS whatever it spawns in -- so
-    # Carry must spawn directly in the natural pose or it stays tucked at the spawn angle. Keep Insert's
-    # spawn exactly as it was so its settled pose is unchanged.
     _legs = {".*_hip_pitch_joint": -0.1, ".*_knee_joint": 0.3, ".*_ankle_pitch_joint": -0.2}
-    # Insert is the ONE env whose IK relaxes the 1.57 spawn on its own. Everything else -- Carry,
-    # LadderGallery, the S01..S12 subtask twins, and any env derived from them -- holds whatever
-    # it spawns in, so all of them take the natural low spawn. Matching the exception rather than
-    # listing the rule: a new env used to fall through to Insert's pose by default and come up
-    # with its arm tucked at the chest.
-    if "Insert" not in args.task:
-        # Drop the SHOULDER so the arm hangs low. The elbow drifts up to ~1.1 on its own (redundant IK),
-        # so we don't fight it -- a low/back shoulder points the upper arm down so the bent forearm sits
-        # low instead of up at the chest. (Per operator: change the joint above the 90-deg elbow.)
-        _arm_spawn = {".*_shoulder_pitch_joint": -0.35, ".*_elbow_joint": 0.35}
-    else:
-        _arm_spawn = {".*_elbow_joint": 1.57}  # Insert etc: IK relaxes this to ~0.17 (unchanged from before)
+    # Drop the SHOULDER so the arm hangs low. The elbow drifts up to ~1.1 on its own (redundant IK),
+    # so we don't fight it -- a low/back shoulder points the upper arm down so the bent forearm sits
+    # low instead of up at the chest. (Per operator: change the joint above the 90-deg elbow.)
+    _arm_spawn = {".*_shoulder_pitch_joint": -0.35, ".*_elbow_joint": 0.35}
 
     # MERGE, don't assign: subtasks stage joints that the task depends on -- the carry/hold ones
     # place the arms where they must be to hold the payload (e.g. S03's LADDER_CARRY_ARM_JOINT_POS,
@@ -1698,9 +1664,10 @@ def main():  # noqa: C901  (one long orchestration: env setup + settle/resettle 
             print(f"[sonic] hand effort limit capped at {_hand_eff} N.m ({len(_hand_ids)} joints)", flush=True)
 
     if args.input == "vr":
-        # Re-anchor the controller_rel arm retargeters to THIS scene's live robot. They default to the
-        # Insert *table* world coords, so on any other scene (e.g. the ladder Carry env) the arm reaches
-        # for a world point far from the robot and flails. Rebake root + EE-start + workspace to live.
+        # Re-anchor the controller_rel arm retargeters to THIS scene's live robot. Their default
+        # root_pos/orientation (xr_controller_retargeters.py) are tuned for one specific stationary
+        # scene, so on any other scene (e.g. a walking task) the arm reaches for a world point far
+        # from the robot and flails. Rebake root + EE-start + workspace to live.
         from scipy.spatial.transform import Rotation as _Rot  # noqa: E402
 
         _rpos = robot.data.root_pos_w[0].cpu().numpy()
@@ -1722,10 +1689,10 @@ def main():  # noqa: C901  (one long orchestration: env setup + settle/resettle 
             _rt._hi = _ee + np.array([0.45, 0.45, 0.45], dtype=np.float32)
             _rt._prev = None
             _rt._smooth = None
-            # Orientation too: the cfg's initial_orientation is the Insert-table rest quat, so the
-            # first clutch snapped the wrist there (e.g. off the carry staging's palm-up pose --
-            # keyboard, which holds the captured settle pose, never did this). Start the rotation
-            # ratchet from the LIVE wrist orientation instead, root frame like the command.
+            # Orientation too: the cfg's initial_orientation defaults to that same stationary scene's
+            # rest quat, so the first clutch snapped the wrist there (e.g. off the carry staging's
+            # palm-up pose -- keyboard, which holds the captured settle pose, never did this). Start
+            # the rotation ratchet from the LIVE wrist orientation instead, root frame like the command.
             _ee_q = robot.data.body_state_w[0, _eeb, 3:7].cpu().numpy()  # w, x, y, z
             _live_R = _R.inv() * _Rot.from_quat([_ee_q[1], _ee_q[2], _ee_q[3], _ee_q[0]])
             _rt._init_R = _live_R

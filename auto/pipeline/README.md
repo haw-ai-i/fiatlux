@@ -19,7 +19,7 @@ runs/ladder/04_usd/ladder.usda   (+ ladder_rigid*.usda single-body fallback)
 
 The result is Z-up, in metres, with convex-decomposition colliders, PBR
 textures, joint limits, and per-part density — checked by `usd/verify_usd.py`
-(27 structural assertions, incl. joint-frame coincidence) plus an
+(28 structural assertions, incl. joint-frame coincidence) plus an
 articulated-vs-rigid bbox cross-check.
 
 ## Install
@@ -39,7 +39,8 @@ bash setup/05_fetch_weights.sh    # ~35 GB Hunyuan3D + DINOv2 + rembg, so runs n
 
 Every script is idempotent — re-run freely after a failure. The three separate
 virtualenvs are required: the stages' dependency pins conflict irreconcilably
-(see [docs/NOTES.md](docs/NOTES.md)).
+(Hunyuan3D needs torch 2.5.1+cu124 and CPython 3.11; SimArt needs torch
+2.4.0+cu121 and CPython 3.10).
 
 ## Use
 
@@ -80,7 +81,7 @@ preview renders in `02_normalized/*_renders/` and adjust `--rot-x/y/z`.
 To consume the result in Isaac Sim, copy `runs/<name>/04_usd/` wholesale (the
 USD references `./textures/` relatively): `ladder.usda` is the articulated
 asset, `ladder_rigid_static.usda` a static prop, `ladder_rigid.usda` a dynamic
-single body. Spawn-config snippet in [docs/NOTES.md](docs/NOTES.md).
+single body.
 
 ## Repository structure
 
@@ -96,12 +97,14 @@ auto/
     ├── usd/verify_usd.py         GPU-free structural checks on the produced USD
     ├── setup/00..05_*.sh         clone / system deps / three venvs / weight prefetch
     ├── patches/simart_infer.patch  3 documented SimArt fixes (attn backend, JSON guard, seeding)
-    ├── docs/NOTES.md             engineering notes: every upstream gotcha and design decision
     └── runs/<name>/              per-run outputs (00_input … 04_usd), not in git
 ```
 
 Model repos, weights (~55 GB), venvs and runs are never committed — enforced by
-`fiatlux/.gitignore` and per-clone `.git/info/exclude` (details in the notes).
+`fiatlux/.gitignore` (root `/auto/*` ignore, with `pipeline/` and `images/`
+re-included) and per-clone `.git/info/exclude` (written by
+`setup/00_clone_repos.sh`, so each model repo's own weights stay untracked
+inside its own `.git` too).
 
 ## Credits
 

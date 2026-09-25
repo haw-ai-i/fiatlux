@@ -7,14 +7,12 @@
 
 This ``InteractiveSceneCfg`` subclass assembles every element as a **named scene entity** so
 each is addressable via ``SceneEntityCfg`` for later randomization: ``ground``, ``dome_light``,
-``key_light``, ``room``, ``robot``, ``ladder``, ``socket``, ``bulb``, ``table``, ``fixture``,
+``key_light``, ``room``, ``robot``, ``ladder``, ``socket``, ``bulb``, ``table``,
 ``hand_contact``.
 
 Every task in the family shares this scene; a *preset* selects the layout for the task's
 phase of the light-bulb-replacement story:
 
-- :func:`apply_workshop_preset` -- the default floor layout: climb ladder + socket-lamp and
-  bulb on the floor (Base / Carry / Climb / Descend / Remove / Install scaffolds).
 - :func:`apply_tabletop_preset` -- the manipulation bench: packing table, socket-lamp on the
   tabletop, bulb at hand height, no ladder (the Insert task).
 - :func:`apply_replace_preset` -- the full replacement task world (issue #20 scene, promoted
@@ -26,19 +24,17 @@ phase of the light-bulb-replacement story:
 
 Presets are plain functions called from an env cfg's ``__post_init__`` --
 ``InteractiveSceneCfg`` treats *every* dataclass field as a scene entity, so preset knobs
-cannot live here as fields. Optional entities (``table``, ``ladder``, ``fixture``) are
-dropped by setting them to ``None``; ``InteractiveScene`` skips ``None`` entities.
+cannot live here as fields. Optional entities (``table``, ``ladder``) are dropped by setting
+them to ``None``; ``InteractiveScene`` skips ``None`` entities.
 
-All assets come from the ``haw-ai-i/fiatlux-assets`` HF dataset (see ``fiatlux_task.assets`` and
-``assets/download_assets.sh``): the same Inspire-hand G1 and BEHAVIOR-1K bulb/lamp
-everywhere, plus the primary BEHAVIOR-1K climb ladder (``shfvtl``). The room dressing (the
-Simple Room backdrop and the PolyHaven HDRI sky) comes from ``DressedSceneCfg``, plus one
-*randomly chosen* BEHAVIOR-1K ceiling fixture per env (``fixture``; needs the opt-in
-``download_assets.sh --scene-dressing`` asset group, and is dropped automatically when
-those assets are absent).
+All assets are synced locally from the ``haw-ai-i/fiatlux-assets`` HF dataset by
+``assets/download_assets.sh`` (see ``fiatlux_task.assets``):
+the same Inspire-hand G1 everywhere, the curated Omniverse bulb/socket pair (``BULB_USD`` /
+``SOCKET_USD``), and the Omniverse AlumStep_D step ladder (``STEP_LADDER_USD``). The room
+dressing -- the Simple Room backdrop and the PolyHaven HDRI sky -- comes from
+``DressedSceneCfg``.
 """
 
-import glob
 import math
 import os
 import random
@@ -58,8 +54,6 @@ from fiatlux_task.assets import (
     BULB_STAND_Z_OFFSET,
     BULB_USD,
     CRATE_USD,
-    ELEVATED_SOCKET_USD,
-    FIATLUX_ASSETS_DIR,
     G1_HORIZONTAL_REACH,
     G1_OVERHEAD_REACH,
     G1_PALM_REACH,
@@ -72,10 +66,10 @@ from fiatlux_task.assets import (
 )
 from fiatlux_task.robots.g1 import G1_INSPIRE_CFG, G1_LADDER_CONTACT_BODIES
 from fiatlux_task.scenes import DressedSceneCfg
-from fiatlux_task.sensors import ego_camera_cfg, mid360_lidar_cfg, wrist_camera_cfg
+from fiatlux_task.sensors import ego_camera_cfg, mid360_lidar_cfg
 
 # -- default (workshop) placement (module constants, not scene fields; override via each
-#    entity's init_state). BEHAVIOR-1K USDs are authored with the origin near the bbox
+#    entity's init_state). Some vendor USDs are authored with the origin near the bbox
 #    center, so a prop resting on the floor sits at roughly half its height. --
 _ROBOT_Z = G1_INSPIRE_CFG.init_state.pos[2]  # standing pelvis height (feet on the floor)
 ROBOT_POSITION = (0.0, 0.0, _ROBOT_Z)
@@ -85,7 +79,6 @@ LADDER_POSITION = (1.6, 0.0, 0.0)
 LADDER_YAW_DEG = 90.0
 # The fixture's origin is its floor-contact plane (SOCKET_BASE_Z_OFFSET = 0).
 SOCKET_POSITION = (-0.8, 0.0, 0.0)  # socket-fixture standing on the floor
-BULB_POSITION = (-0.55, -0.20, -BULB_STAND_Z_OFFSET)  # standing on its cap on the floor
 
 # -- tabletop (manipulation bench) placement: the Insert layout. The robot works
 #    the bench from its +y long side, facing -y: the packing table's collision
@@ -107,7 +100,7 @@ TABLETOP_SOCKET_POSITION = (0.45, 0.10, TABLETOP_SURFACE_Z)
 # root frame), so resting on a surface puts the root under it.
 TABLETOP_BULB_POSITION = (0.30, 0.18, TABLETOP_SURFACE_Z - BULB_STAND_Z_OFFSET)
 
-# -- position (ladder-handling) subtask: FIATLUX-Carry-v0. The ladder is dynamic,
+# -- position (ladder-handling) preset, used by CarryEnvCfg. The ladder is dynamic,
 #    high-friction and graspable, starts upright but off-target, and is carried to the fixed
 #    upright target under the light. Base authored at z=0, so start/target z=0. --
 POSITION_ROBOT_POSITION = (-0.20, -0.20, 0.75)
@@ -116,27 +109,23 @@ POSITION_ROBOT_POSITION = (-0.20, -0.20, 0.75)
 POSITION_LADDER_START_POS = (1.50, 0.85, 0.0)
 POSITION_LADDER_START_YAW = 30.0
 TARGET_LADDER_POSITION = (0.55, -0.30, 0.0)  # directly beneath the ceiling fixture
-# Same SOCKET_USD / BULB_USD as the Insert/Replace tasks, ceiling-mounted above the target and
+# Same SOCKET_USD / BULB_USD as Replace, ceiling-mounted above the target and
 # flipped bulb-down. See apply_position_preset.
 
-# -- at-height presets (climb / descend): elevated fixture over the ladder. --
-ELEVATED_SOCKET_POSITION = (1.9, 0.0, 2.80)  # cage bottom clears the at-top robot's head
-CLIMB_ROBOT_POSITION = (0.75, 0.0, _ROBOT_Z)  # at the step ladder's base, ready to ascend
+# Reference ladder-base stance, at the step ladder's foot -- feeds mdp.nav_terms /
+# subtask_tiers.balance's mount-standoff and floor-stance-height constants (live gates read the
+# ladder's actual root pose, not this fixed point; it is where the base of that math is anchored).
+CLIMB_ROBOT_POSITION = (0.75, 0.0, _ROBOT_Z)
 # Pelvis on the ladder's standing tread (descend). STEP_LADDER_TOP_OFFSET's local x,y are
 # both zero, so the stance sits over the ladder's root at any yaw.
 TOP_ROBOT_POSITION = (LADDER_POSITION[0], LADDER_POSITION[1], STEP_LADDER_TOP_OFFSET[2] + _ROBOT_Z)
-PARKED_BULB_POSITION = (0.5, -0.6, -BULB_STAND_Z_OFFSET)  # standing out of the way on the floor
 
-# -- bench manipulation extras (remove / install share Insert's tabletop world) --
-# Both halves are authored assembled at identity, so a seated bulb is the fixture's own pose:
-# no offset arithmetic, and zero interpenetration at reset by construction.
-TABLETOP_SEATED_BULB_POSITION = TABLETOP_SOCKET_POSITION
+# -- bench manipulation extras --
 BIN_POSITION = (0.15, -0.75, 0.0)  # parts crate on the floor beside the bench
 # The crate's inner floor is at 0.055 m, not the outer bbox's 0.17 rim top. Requires the
 # hollow-collider spawner: against the stock single convex collider a bulb placed here is
 # depenetrated straight out onto the floor.
 BIN_BULB_INTERIOR_Z = 0.055
-BIN_BULB_POSITION = (0.15, -0.75, BIN_BULB_INTERIOR_Z - BULB_STAND_Z_OFFSET)
 
 # -- replace preset: robot / table+bulb / ladder each randomized into their own
 # non-overlapping floor "safe zone", fixture ceiling- or wall-mounted. Inset from the room's own
@@ -194,9 +183,6 @@ ROOM_ENV_SPACING = 10.0
 
 SUBTASK_EPISODE_LENGTH_S = 120.0  # issue #184
 PENDANT_RADIUS = 0.012  # the rod a ceiling fixture hangs from
-# Decorative per-env ceiling fixture, flush against the ceiling: these are ceiling-mount
-# BEHAVIOR-1K assets.
-FIXTURE_POSITION = (0.0, 0.0, ROOM_CEILING_Z)
 
 SCORED_BODY_SLEEP_THRESHOLD = 0.0  # #121
 
@@ -350,26 +336,6 @@ BULB_MASS_KG = 0.035  # a real A19 incandescent/LED is 30-45 g
 SOCKET_MASS_KG = 0.30  # the fixture half; kinematic, so this only matters for reporting
 CRATE_MASS_KG = 1.5  # 0.60 x 0.40 x 0.17 m plastic parts crate
 
-# -- per-env random ceiling fixture pool (visual dressing) --
-# Ceiling-mount BEHAVIOR-1K categories only. Opt-in via ``download_assets.sh --scene-dressing``;
-# when absent the pool is empty and ``FamilyBaseEnvCfg.__post_init__`` drops the ``fixture``
-# entity. Category dirs mix ``<id>/<id>.usd`` and ``<id>/usd/<id>.usd``, hence two globs.
-_FIXTURE_CATEGORIES = (
-    "behavior1k_chandelier",
-    "behavior1k_downlight",
-    "behavior1k_paper_lantern",
-    "behavior1k_rectangular_light",
-    "behavior1k_room_light",
-    "behavior1k_square_light",
-    "behavior1k_track_light",
-)
-FIXTURE_USDS = sorted(
-    usd
-    for cat in _FIXTURE_CATEGORIES
-    for pattern in (os.path.join("*", "*.usd"), os.path.join("*", "usd", "*.usd"))
-    for usd in glob.glob(os.path.join(FIATLUX_ASSETS_DIR, cat, pattern))
-)
-
 
 def _quat_y_deg(angle_deg: float) -> tuple[float, float, float, float]:
     """(w, x, y, z) quaternion for a rotation about +Y, in degrees."""
@@ -483,7 +449,7 @@ def _spawn_collidable_bench(prim_path, cfg, translation=None, orientation=None):
 
     Both passes traverse with ``Usd.TraverseInstanceProxies()``: the default predicate skips
     instance-proxy descendants, so a de-instanceable prim nested under another (none exist in the
-    current asset, but the same instancing scheme is shared across this BEHAVIOR-1K/SimReady
+    current asset, but the same instancing scheme is shared across this SimReady
     asset family) would otherwise be invisible to this walk and keep its collider-blocking
     instancing -- the same failure mode #176 was filed for, just one level deeper. See
     ``scripts/omniverse/omniverse_ladder_collision.py`` for the same predicate on a different asset.
@@ -505,7 +471,7 @@ def _spawn_collidable_bench(prim_path, cfg, translation=None, orientation=None):
 def _spawn_usd_as_rigid_body_frictional(prim_path, cfg, translation=None, orientation=None):
     """Tune rigid/mass props on a *preconfigured* rigid asset + bind a high-friction grip material.
 
-    For the graspable ladder in ``FIATLUX-Carry-v0``, whose ``_collision_rigid`` USD already
+    For the graspable ladder in ``CarryEnvCfg``, whose ``_collision_rigid`` USD already
     carries a single dynamic ``RigidBodyAPI`` + ``MassAPI``: this only *modifies* the existing
     body (solver/sleep props, mass override) and creates + binds a high-friction material
     (``UsdFileCfg`` has no ``physics_material`` field) so it can be held by hand friction -- no
@@ -650,12 +616,12 @@ class G1ReplaceSceneCfg(DressedSceneCfg):
     # every preset builds what it owns with ``_make_bulb_cfg``, so no task inherits a bulb it
     # does not want. Replace is the only preset that builds both.
     #
-    # The class carries no bulb of its own. It used to, and ``apply_workshop_preset`` was an
-    # empty function because that default WAS the workshop layout -- which is exactly how Remove
-    # ended up calling its single seated bulb ``bulb`` and the scoring layer ``old_bulb``.
+    # The class carries no bulb of its own. It used to, back when the class-level default WAS a
+    # retired task's fixed layout -- which is exactly how that task ended up calling its single
+    # seated bulb ``bulb`` and the scoring layer ``old_bulb``.
     fresh_bulb: RigidObjectCfg | None = None
     # Seated in the socket. Retention is ``mdp.bulb_attachment``, which pins it at the seat until
-    # it is rotated to the release angle and travels out of the channel.
+    # it is pulled axially past the release threshold and travels out of the channel.
     old_bulb: RigidObjectCfg | None = None
     # Rod a ceiling-mounted fixture hangs from (see add_ceiling_pendant). Only the presets
     # that mount overhead spawn it; wall mounts and the bench have no pendant.
@@ -701,20 +667,6 @@ class G1ReplaceSceneCfg(DressedSceneCfg):
         track_air_time=False,
     )
 
-    # ------------------------------------------------------------------ randomized dressing
-    # Each cloned env spawns one randomly chosen fixture from FIXTURE_USDS. AssetBaseCfg keeps
-    # it out of physics entirely and collisions are disabled. Heterogeneous per-env assets
-    # require ``replicate_physics=False`` (see ``enable_dressing_randomization``).
-    fixture: AssetBaseCfg | None = AssetBaseCfg(
-        prim_path="{ENV_REGEX_NS}/Fixture",
-        spawn=sim_utils.MultiUsdFileCfg(
-            usd_path=FIXTURE_USDS,
-            random_choice=True,
-            collision_props=sim_utils.CollisionPropertiesCfg(collision_enabled=False),
-        ),
-        init_state=AssetBaseCfg.InitialStateCfg(pos=FIXTURE_POSITION),
-    )
-
 
 # Backwards-compat alias (pre-unification name).
 G1LadderSceneCfg = G1ReplaceSceneCfg
@@ -729,9 +681,8 @@ def _sync_bulb_contact_filters(scene: G1ReplaceSceneCfg) -> None:
     """Rebuild ``hand_contact``'s filter list from whichever bulbs the preset actually built.
 
     Call this at the END of every preset. Rebuilding, rather than appending per preset, is what
-    makes preset chaining safe: ``apply_remove_preset`` runs the tabletop preset first, which
-    builds a ``fresh_bulb``, and then clears it. An appended filter would leave an expression
-    pointing at a prim that no longer exists.
+    would make a preset that runs another preset first and then clears one of its bulbs safe: an
+    appended filter would leave an expression pointing at a prim that no longer exists.
 
     This fails SILENTLY when it is wrong, which is why it is centralized: the sensor reports zero
     force for an unfiltered body, and zero force reads as "not touching".
@@ -743,19 +694,8 @@ def _sync_bulb_contact_filters(scene: G1ReplaceSceneCfg) -> None:
         scene.left_hand_contact.filter_prim_paths_expr = list(paths)
 
 
-def apply_workshop_preset(scene: G1ReplaceSceneCfg) -> None:
-    """The default floor layout: climb ladder + socket-lamp and bulb on the floor.
-
-    This was a documented no-op while the scene class carried a ``bulb`` field whose default
-    WAS this layout. The class no longer does (issue #76 Step 1), so the layout is built here.
-    """
-    scene.fresh_bulb = _make_bulb_cfg("{ENV_REGEX_NS}/Bulb", BULB_POSITION)
-    scene.old_bulb = None
-    _sync_bulb_contact_filters(scene)
-
-
 def apply_tabletop_preset(scene: G1ReplaceSceneCfg) -> None:
-    """The manipulation bench (Insert layout): table, socket on top, bulb at hand height.
+    """The manipulation bench (bench-height layout): table, socket on top, bulb at hand height.
 
     Drops the ladder; the robot stands at the bench's +y side (clear of the
     table's collision footprint) and never locomotes.
@@ -778,7 +718,7 @@ def apply_tabletop_preset(scene: G1ReplaceSceneCfg) -> None:
 
 
 def apply_position_preset(scene: G1ReplaceSceneCfg) -> None:
-    """Ladder-positioning start (FIATLUX-Carry-v0): a DYNAMIC, high-friction, graspable ladder
+    """Ladder-positioning start (used by CarryEnvCfg): a DYNAMIC, high-friction, graspable ladder
     standing upright out in front of the robot; the robot grasps a rail and carries it to
     TARGET_LADDER_POSITION, directly beneath the ceiling light fixture. Scored by reusing the
     Replace task's ladder terms (see carry_env_cfg).
@@ -803,7 +743,6 @@ def apply_position_preset(scene: G1ReplaceSceneCfg) -> None:
     scene.ladder.init_state.pos = POSITION_LADDER_START_POS
     scene.ladder.init_state.rot = _quat_z_deg(POSITION_LADDER_START_YAW)
     scene.robot.init_state.pos = POSITION_ROBOT_POSITION
-    scene.fixture = None
     # Same socket + bulb as the bench tasks, ceiling-mounted above the target, bulb-down. The
     # bulb stays kinematic: this task scores the ladder pose, so it needs no retention. Seated
     # is the fixture's own pose, both halves being authored assembled at identity.
@@ -819,24 +758,6 @@ def apply_position_preset(scene: G1ReplaceSceneCfg) -> None:
     _sync_bulb_contact_filters(scene)
     # hand_contact stays for the net-force obs + compliance penalty; no ladder force-matrix
     # filter.
-
-
-def apply_at_height_preset(scene: G1ReplaceSceneCfg, robot_at: str = "base") -> None:
-    """Elevated-fixture layout shared by climb / descend.
-
-    The socket entity becomes a ceiling chandelier hung above the ladder; the floor lamp
-    is gone. ``robot_at="base"`` starts the robot at the ladder's feet (climb),
-    ``robot_at="top"`` starts it at the upper steps (descend). The random dressing
-    ``fixture`` is dropped -- the task chandelier owns the ceiling.
-    """
-    scene.socket.spawn.usd_path = ELEVATED_SOCKET_USD
-    scene.socket.init_state.pos = ELEVATED_SOCKET_POSITION
-    scene.fresh_bulb = _make_bulb_cfg("{ENV_REGEX_NS}/Bulb", PARKED_BULB_POSITION)
-    scene.old_bulb = None
-    scene.robot.init_state.pos = CLIMB_ROBOT_POSITION if robot_at == "base" else TOP_ROBOT_POSITION
-    scene.fixture = None
-    add_ceiling_pendant(scene, ELEVATED_SOCKET_POSITION[0], ELEVATED_SOCKET_POSITION[1], ELEVATED_SOCKET_POSITION[2])
-    _sync_bulb_contact_filters(scene)
 
 
 def face_robot_at(scene: G1ReplaceSceneCfg, target: Vec2) -> None:
@@ -918,7 +839,7 @@ def frame_viewer_on(
     ladder/mate/balance tier, the fixture's wall or ceiling mount too -- a camera hardcoded at
     the room's origin only happens to frame the action when a draw lands nearby. ``target`` must
     be a position already resolved by the preset (the robot's or ladder's ``init_state.pos``),
-    so this has to run after ``apply_replace_preset``/``apply_at_height_preset``, not before.
+    so this has to run after ``apply_replace_preset``, not before.
 
     The eye sits ``distance`` out from ``target`` back towards the room's floor center, not at a
     fixed azimuth: a wall-mounted fixture can land within a couple of metres of the room's own
@@ -981,9 +902,9 @@ def add_ladder_contact_sensor(scene: G1ReplaceSceneCfg, bodies: list[str] | None
 
     Not a class field: presets without a ``Ladder`` prim (tabletop) could not resolve
     the filter expression. One multi-body sensor suffices — per-body ``force_matrix_w``
-    against a *single* filter body works in this stack (proven by
-    ``verify_interactions.py``'s whole-robot ``limb_ladder_contact`` sensor), so the
-    per-link-sensor workaround from the upstream ContactSensor docstring is not needed.
+    against a *single* filter body works in this stack (verified empirically on the
+    whole-robot sensor below), so the per-link-sensor workaround from the upstream
+    ContactSensor docstring is not needed.
 
     Bodies come from ``G1_LADDER_CONTACT_BODIES``, not a regex: the two hands disagree on the palm
     body's name, so any pattern spelling one variant's resolves to feet only on the other.
@@ -998,11 +919,6 @@ def add_ladder_contact_sensor(scene: G1ReplaceSceneCfg, bodies: list[str] | None
         history_length=1,
         track_air_time=False,
     )
-
-
-def add_wrist_camera(scene: G1ReplaceSceneCfg) -> None:
-    """Attach the standard wrist-mounted RGB camera (manipulation subtasks)."""
-    scene.wrist_camera = wrist_camera_cfg()
 
 
 def add_ego_camera(scene: G1ReplaceSceneCfg) -> None:
@@ -1062,35 +978,6 @@ def _add_parts_bin(scene: G1ReplaceSceneCfg, position: Vec3 = BIN_POSITION) -> N
         ),
         init_state=RigidObjectCfg.InitialStateCfg(pos=position),
     )
-
-
-def apply_remove_preset(scene: G1ReplaceSceneCfg) -> None:
-    """Bulb-removal start: Insert's bench with the bulb SEATED in the table lamp.
-
-    Same world as the Insert/Install bench, with the empty parts crate beside it as the
-    bulb's destination. The bulb stays DYNAMIC and is held only by gravity and contact:
-    the fixture is upright here and its screw hole is an open triangle-mesh collider, so a
-    seated bulb nests and rests, and the robot can lift it straight out. That is what makes
-    this task solvable. It must stay dynamic: a kinematic bulb cannot be moved by any
-    action at all.
-    """
-    apply_tabletop_preset(scene)
-    _add_parts_bin(scene)
-    # The bench preset builds a fresh bulb at hand height. Remove's single bulb is SEATED, so it
-    # is the old bulb, and the inherited fresh one has to go -- two bulbs would make
-    # ``socket_empty`` read the wrong row.
-    scene.fresh_bulb = None
-    scene.old_bulb = _make_bulb_cfg("{ENV_REGEX_NS}/OldBulb", TABLETOP_SEATED_BULB_POSITION)
-    _sync_bulb_contact_filters(scene)
-
-
-def apply_install_preset(scene: G1ReplaceSceneCfg) -> None:
-    """Bulb-installation start: Insert's bench, empty lamp socket, fresh bulb in the crate."""
-    apply_tabletop_preset(scene)
-    _add_parts_bin(scene)
-    # Keeps the bench's fresh bulb; only its placement changes. The socket starts empty.
-    scene.fresh_bulb.init_state.pos = BIN_BULB_POSITION
-    _sync_bulb_contact_filters(scene)
 
 
 ##
@@ -1191,10 +1078,10 @@ def _sample_fixture_mount(rng: random.Random) -> FixtureMount:
     is why the inset is a ladder zone rather than a decorative half-metre -- a fixture in the
     corner of the room has no floor under it to put a ladder on.
 
-    ``ehjsdz`` is authored as an upright desk lamp (socket opening up, base on a horizontal
-    surface), so each mount kind needs a reorienting rotation: ceiling flips it ~180 deg so
-    the shade/socket point down like a pendant light; wall rotates it ~90 deg so it projects
-    outward from the wall face.
+    ``SOCKET_USD`` is authored upright (bore opening along +z, base on a horizontal surface),
+    so each mount kind needs a reorienting rotation: ceiling flips it ~180 deg so the socket
+    points down like a pendant light; wall rotates it ~90 deg so it projects outward from the
+    wall face.
     """
     inset = LADDER_ANCHOR_HALF_SIZE
     standoff = LADDER_FIXTURE_STANDOFF_CEILING
@@ -1366,16 +1253,16 @@ def apply_replace_preset(
     run, and varying it is a between-runs affair. ``rng`` defaults to :func:`set_layout_seed`'s
     declared seed; without one the layout is drawn from OS entropy.
 
-    The fixture reuses ``SOCKET_USD`` (``ehjsdz``/``kfmkwd``, the validated bulblampF/M pair
-    already used by the tabletop Insert task) rather than the decorative ``ELEVATED_SOCKET_USD``
-    chandelier (used only by climb/descend, which never validated a socket metalink on it) --
+    The fixture reuses ``SOCKET_USD`` (the same validated bulb/socket pair
+    :func:`apply_tabletop_preset` uses) rather than the decorative chandelier used only
+    by the retired climb/descend tasks, which never validated a socket metalink on it --
     this scene needs a genuinely insertible bulb+socket at height.
 
     Unlike every other preset the ladder spawns *dynamic* (mass ``LADDER_MASS_KG``): a
     knocked-over ladder is a real, penalized event in this task. The old bulb starts seated
     and DYNAMIC at the fixture's own pose (both halves are authored assembled at identity,
     so no offset arithmetic is needed at any mount orientation). Because the fixture is
-    inverted here, the bulb is held seated by ``mdp.bulb_attachment``'s axial retention spring
+    inverted here, the bulb is held seated by ``mdp.bulb_attachment``'s axial detent
     (issue #167) until it is pulled far enough to release, same as any other mount orientation.
 
     Args:
@@ -1392,7 +1279,6 @@ def apply_replace_preset(
         spawn=sim_utils.UsdFileCfg(usd_path=TABLE_USD, func=_spawn_collidable_bench),  # see apply_tabletop_preset
         init_state=AssetBaseCfg.InitialStateCfg(),
     )
-    scene.fixture = None  # the task fixture owns the ceiling/wall in this scene
 
     # Fixture and floor zones are drawn together: the fixture's ladder anchor is a reserved
     # zone, so the layout is feasible by construction.

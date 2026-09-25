@@ -22,12 +22,12 @@ surface the plug rides against. For the plug it is the MAXIMUM radius, its wides
 height. The bore is open where its min radius is near 20.2 mm and closed where the slice fills
 in toward the axis.
 
-Run via ./pyrun (repo root), not a bare .venv/bin/python -- see verify_twist_damping.py's
-docstring for why.
+Run with `uv run python` from the repo root, not a bare .venv/bin/python -- see
+verify_common.py's docstring for why.
 
 Example
 -------
-    ./pyrun scripts/measure_bore_geometry.py --headless
+    uv run python scripts/measure_bore_geometry.py --headless
 """
 
 """Launch Isaac Sim Simulator first."""
@@ -50,12 +50,12 @@ simulation_app = app_launcher.app
 """Everything else follows."""
 
 import importlib
-import sys
 
 import fiatlux_task.tasks  # noqa: F401  -- registers the FIATLUX Gym environments
 import gymnasium as gym
 import numpy as np
 import torch
+import verify_common
 from fiatlux_task.assets import BULB_PLUG_OFFSET, SOCKET_SEAT_AXIS, SOCKET_SEAT_OFFSET
 from fiatlux_task.tasks.manager_based.fiatlux_task.scene_cfg import set_layout_seed
 
@@ -67,46 +67,10 @@ from isaaclab_tasks.utils import parse_env_cfg
 def build_cfg():
     set_layout_seed(args_cli.seed)
     cfg = parse_env_cfg("FIATLUX-Replace-v0", device=args_cli.device, num_envs=1)
-    assert hasattr(cfg.scene, "old_bulb"), (
-        f"cfg.scene ({type(cfg.scene)} from {sys.modules[type(cfg.scene).__module__].__file__}) has no "
-        "old_bulb -- fiatlux_task likely resolved to the wrong checkout again; check sys.path/pyrun"
-    )
+    verify_common.assert_right_checkout(cfg, "old_bulb")
     cfg.seed = args_cli.seed
-    # Drop the cameras AND the observation terms that read them -- an orphaned obs term fails
-    # cfg parsing with "scene entity 'ego_camera' does not exist".
-    for camera in ("ego_camera", "torso_camera", "wrist_camera"):
-        if getattr(cfg.scene, camera, None) is not None:
-            setattr(cfg.scene, camera, None)
-    for group_name in ("policy", "privileged"):
-        group = getattr(cfg.observations, group_name, None)
-        for term in ("ego_rgb", "torso_rgb", "wrist_rgb"):
-            if group is not None and getattr(group, term, None) is not None:
-                setattr(group, term, None)
+    verify_common.strip_visual_obs(cfg)
     return cfg
-
-
-def all_meshes(stage, prefix: str) -> list[tuple[str, np.ndarray]]:
-    """Every mesh under ``prefix``, as (path, world-space points).
-
-    Enumerating rather than guessing one mesh name: the socket half of this asset is 8 separate
-    base/switch collider meshes (``assets/omneverse_bulb/CHANGES.md``), and which of them
-    carries the cylindrical bore is exactly what needs finding rather than assuming. Picking
-    the first path that merely *ends with* a plausible name also silently crosses bulbs -- the
-    fresh bulb parked across the room has the same mesh names as the seated old one.
-    """
-    from pxr import Gf, UsdGeom
-
-    out = []
-    for prim in stage.Traverse():
-        path = str(prim.GetPath())
-        if not (path.startswith(prefix) and prim.IsA(UsdGeom.Mesh)):
-            continue
-        points = UsdGeom.Mesh(prim).GetPointsAttr().Get()
-        if not points:
-            continue
-        xform = UsdGeom.Xformable(prim).ComputeLocalToWorldTransform(0.0)
-        out.append((path, np.array([xform.Transform(Gf.Vec3d(*p)) for p in points], dtype=np.float64)))
-    return out
 
 
 def profile(label: str, pts_seat: np.ndarray, slice_m: float, statistic: str) -> None:
@@ -172,7 +136,10 @@ def main() -> int:
     print(f"  under {socket_path_prefix}", flush=True)
     bore_pts = None
     bore_name = None
-    for path, pts in all_meshes(stage, socket_path_prefix):
+    # Enumerating rather than guessing one mesh name: the socket half of this asset is 8
+    # separate base/switch collider meshes (assets/omniverse_bulb/CHANGES.md), and which of
+    # them carries the cylindrical bore is exactly what needs finding rather than assuming.
+    for path, pts in verify_common.all_meshes(stage, socket_path_prefix):
         seat_pts = to_seat_frame(pts)
         inner = seat_pts[seat_pts[:, 1] < near_bore]
         # The bore is simply whichever mesh has the most surface near the seat axis. Testing the
@@ -227,7 +194,9 @@ def main() -> int:
     bore_pts = bore_pts[(axial >= bore_lo_m) & (axial <= bore_hi_m)]
 
     print("\n=== PLUG PROFILE (max radius per slice, placed fully home) ===", flush=True)
-    plug_meshes = [(p, pts) for p, pts in all_meshes(stage, bulb_path_prefix) if p.endswith("BulbGrp/Base")]
+    plug_meshes = [
+        (p, pts) for p, pts in verify_common.all_meshes(stage, bulb_path_prefix) if p.endswith("BulbGrp/Base")
+    ]
     if not plug_meshes:
         print(f"  FATAL no BulbGrp/Base mesh under {bulb_path_prefix}", flush=True)
         return 1
@@ -267,18 +236,4 @@ def main() -> int:
 
 
 if __name__ == "__main__":
-    import os
-    import traceback
-
-    exit_code = 1
-    try:
-        exit_code = main()
-    except BaseException:
-        traceback.print_exc()
-        exit_code = 1
-    finally:
-        sys.stdout.flush()
-        sys.stderr.flush()
-        if exit_code:
-            os._exit(exit_code)
-        simulation_app.close()
+    verify_common.run_verify_main(main, simulation_app)

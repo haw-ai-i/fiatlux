@@ -35,7 +35,7 @@ from isaaclab.app import AppLauncher
 parser = argparse.ArgumentParser(description="Replay a recorded grasp and watch the bulb (issue #92).")
 parser.add_argument("--bag", type=str, default="/home/pasha/bags_92/run.h5")
 parser.add_argument("--meta", type=str, default="/home/pasha/bags_92/meta.json")
-parser.add_argument("--task", type=str, default="FIATLUX-Remove-v0")
+parser.add_argument("--task", type=str, default="FIATLUX-Replace-v0")
 parser.add_argument("--variant", type=str, default="dex3", choices=["dex3", "inspire"])
 parser.add_argument("--start", type=int, default=1520, help="Bag step to seed from (hand still closed).")
 parser.add_argument("--steps", type=int, default=58, help="Bag steps to replay forward.")

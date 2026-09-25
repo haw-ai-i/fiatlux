@@ -5,22 +5,23 @@
 
 """Reward / success functions for the Fiatlux G1 tasks.
 
-Bulb insertion (``FIATLUX-Insert-v0``) — the task signal is the pose error between
-the grasped *bulb* and the *socket*:
+Bulb seating (used by ``FIATLUX-Replace-v0`` and the seat/insert subtasks) — the task signal
+is the pose error between the grasped *bulb* and the *socket*:
 - distance kernels (L2 / tanh / exponential) for coarse-to-fine reaching,
 - an orientation-alignment kernel,
 - a sparse "seated" bonus (also reused as the success termination),
 - a contact-force penalty for compliant insertion,
 plus generic smoothness / joint-limit penalties.
 
-Ladder climb (``FIATLUX-Climb-v0``) — ascent terms:
+Ladder climb (used by the on-the-ladder subtasks and Replace, via
+``subtask_tiers/balance.py``'s ``ClimbSubtaskCfg``) — ascent terms:
 - a progressive best-height reward (each centimetre of new height paid once),
 - a limb-on-ladder contact fraction (filtered contact sensor),
 - a whole-body CoM sway penalty,
 - an at-the-top success predicate (also the success termination).
 
-Ladder descent (``FIATLUX-Descend-v0``) — the mirror image of the climb terms: a
-progressive best-*lowest*-height reward (``descend_height_progress``) and an at-the-
+Ladder descent (used by the same tier's ``DescendSubtaskCfg``) — the mirror image of the climb
+terms: a progressive best-*lowest*-height reward (``descend_height_progress``) and an at-the-
 bottom success predicate (``descended_to_target``); reuses climb's contact/sway terms
 and fall gate unchanged.
 
@@ -32,12 +33,9 @@ Full replacement (``FIATLUX-Replace-v0``) — the scored full task:
 - sparse completion predicates (ladder in range, old bulb removed / disposed, full success),
 - a ladder-tipped predicate (penalty + termination for the dynamic ladder).
 
-Bulb removal (``FIATLUX-Remove-v0``) — the old-bulb clearance/disposal channels above,
-standalone: the ``old_bulb_*`` functions take an ``asset_cfg`` (default Replace's
-``old_bulb``) so Remove's single-bulb scene can point them at its own ``bulb`` entity.
-Achievable: Remove's bulb is dynamic and rests in the socket's open hole, so it lifts
-straight out. What is missing there is the *retention gate* -- Replace routes these channels
-through ``mdp.bulb_attachment`` (issue #167), Remove does not yet.
+Old-bulb removal/disposal (used by the remove-old-bulb subtask and Replace) — the
+``old_bulb_*`` functions take an ``asset_cfg`` (default Replace's ``old_bulb``) so a
+single-bulb scene can point them at its own ``bulb`` entity.
 """
 
 from __future__ import annotations
@@ -229,7 +227,7 @@ def joint_pos_limits(env: ManagerBasedRLEnv, asset_cfg: SceneEntityCfg = SceneEn
 
 
 # ---------------------------------------------------------------------------
-# Ladder ascent (FIATLUX-Climb-v0)
+# Ladder ascent
 # ---------------------------------------------------------------------------
 
 

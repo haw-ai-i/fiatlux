@@ -14,10 +14,9 @@
 #   unitreerobotics/unitree_sim_isaaclab_usds (Apache-2.0).
 #
 # Task assets (bulb/socket mechanic + ladder):
-#   behavior1k_bulb/          light_bulb models (bulblampM Male plug)
-#   behavior1k_bulb_broken/   broken_light_bulb models
-#   behavior1k_lamp/          table_lamp models with bulblampF Female socket
-#   behavior1k_ladder/        ladder models
+#   omniverse_bulb/           the graspable bulb + stock socket (BULB_USD/SOCKET_USD); this script
+#                             authors the additive guide-sleeve layer locally, see below
+#   omniverse_ladder/         step ladders; AlumStep_D is the one the benchmark climbs
 #
 # Room dressing (always synced -- defines the default look of every recorded
 # run): table, warehouse backdrop + clutter props, and an HDRI sky, mirrored
@@ -27,18 +26,9 @@
 #   isaac_room/                room backdrop (walls/floor/windows)
 #   isaac_skies/              PolyHaven HDRI sky for the dome light
 #
-# Scene dressing (environment lighting, no bulb socket):
-#   behavior1k_downlight/     recessed ceiling fixtures
-#   behavior1k_room_light/    ceiling/pendant/wall fixtures
-#   behavior1k_spotlight/     directional ceiling/track fixtures
-#   behavior1k_square_light/  flat panel ceiling fixtures
-#   behavior1k_rectangular_light/  fluorescent overhead panels
-#   behavior1k_track_light/   track-mounted fixtures
-#   behavior1k_wall_mounted_light/ wall sconces
-#   behavior1k_chandelier/    ceiling-hanging multi-bulb fixtures
-#   behavior1k_paper_lantern/ hanging pendant lanterns
-#   behavior1k_lampshade/     shade housing components
-#   behavior1k_floor_lamp/    standing lamps
+# Scene dressing (opt-in via --scene-dressing; no benchmark preset spawns these):
+#   omniverse_climb/          Mezzanine/OfficeSet elevated-platform climb structures
+#   omniverse_lamp/           Omniverse residential lamps/fixtures
 #
 # Override the dataset repo with FIATLUX_ASSET_REPO env var.
 # USD/mesh files are git-ignored.
@@ -69,13 +59,8 @@ ROBOT_ASSETS=(
 )
 
 TASK_ASSETS=(
-    behavior1k_bulb
-    behavior1k_bulb_broken
-    behavior1k_lamp
-    behavior1k_ladder
-    behavior1k_materials    # shared OmniGibson vray mdls -- every behavior1k asset needs these to render
-    omniverse_ladder        # 98 climb-ready ladders/platforms (convex-decomp collision)
-    omniverse_bulb          # separable LightBulb (bulb-swap candidate)
+    omniverse_ladder        # climb-ready ladders/platforms (convex-decomp / SDF collision)
+    omniverse_bulb          # the separable LightBulb: BULB_USD + SOCKET_USD
 )
 
 ROOM_ASSETS=(
@@ -84,18 +69,8 @@ ROOM_ASSETS=(
     isaac_skies
 )
 
+# Opt-in dressing.
 SCENE_DRESSING_ASSETS=(
-    behavior1k_downlight
-    behavior1k_room_light
-    behavior1k_spotlight
-    behavior1k_square_light
-    behavior1k_rectangular_light
-    behavior1k_track_light
-    behavior1k_wall_mounted_light
-    behavior1k_chandelier
-    behavior1k_paper_lantern
-    behavior1k_lampshade
-    behavior1k_floor_lamp
     omniverse_climb         # Mezzanine/OfficeSet elevated-platform climb structures
     omniverse_lamp          # Omniverse residential lamps/fixtures
 )
@@ -105,9 +80,15 @@ sync_group() {
     echo "  $group"
     if ! "${HF_DOWNLOAD[@]}" "${group}/"; then
         echo "error: could not fetch '${group}' from ${ASSET_REPO}." >&2
-        echo "  If that was an auth failure: the dataset is private to the haw-ai-i org -- run" >&2
-        echo "  'uvx --from huggingface_hub hf auth login', or set HF_TOKEN to a token scoped to" >&2
-        echo "  that org, then retry." >&2
+        if [[ -z "${FIATLUX_ASSET_REPO:-}" ]]; then
+            echo "  If that was an auth failure: the default dataset is public and needs no login," >&2
+            echo "  so this is likely a transient network/rate-limit issue -- retry, or check" >&2
+            echo "  https://huggingface.co/datasets/${ASSET_REPO} directly." >&2
+        else
+            echo "  If that was an auth failure: FIATLUX_ASSET_REPO points at '${ASSET_REPO}', which" >&2
+            echo "  may be private. Run 'uvx --from huggingface_hub hf auth login', or set HF_TOKEN" >&2
+            echo "  to a token scoped to that repo, then retry." >&2
+        fi
         exit 1
     fi
     # A pattern that matches nothing is a no-op for snapshot_download, NOT an error: without this
@@ -130,7 +111,7 @@ for group in "${TASK_ASSETS[@]}"; do
 done
 
 # Author the socket's guide sleeve (issue #171): the dataset only ships the stock socket, and
-# fiatlux_task/assets.py's SOCKET_USD/OMNI_SOCKET_USD point at the additive "_sleeve" layers this
+# fiatlux_task/assets.py's SOCKET_USD points at the additive "_sleeve" layer this
 # script generates on top of it (see its module docstring). Doing it here rather than baking the
 # sleeve into the dataset keeps the synced asset as the stock socket, and means a fresh sync always
 # leaves SOCKET_USD resolvable instead of failing at scene build with a missing-file error.
@@ -138,8 +119,8 @@ BULB_DIR="${TARGET_DIR}/omniverse_bulb"
 if [[ -d "$BULB_DIR" ]]; then
     echo "Authoring the socket guide sleeve ..."
     if ! (cd "${TARGET_DIR}/.." && uv run python scripts/omniverse/omniverse_socket_guide_sleeve.py "$BULB_DIR"); then
-        echo "  WARNING: could not author the socket guide sleeve. Until it is, SOCKET_USD and" >&2
-        echo "  OMNI_SOCKET_USD (fiatlux_task/assets.py) point at files that do not exist, and any" >&2
+        echo "  WARNING: could not author the socket guide sleeve. Until it is, SOCKET_USD" >&2
+        echo "  (fiatlux_task/assets.py) points at a file that does not exist, and any" >&2
         echo "  task touching the socket will fail at scene build." >&2
         echo "  Re-run by hand from the repo root:" >&2
         echo "    uv run python scripts/omniverse/omniverse_socket_guide_sleeve.py $BULB_DIR" >&2
@@ -207,7 +188,7 @@ if [[ -f "$LADDER_COLLISION_USD" ]]; then
     if ! (cd "${TARGET_DIR}/.." && uv run python scripts/omniverse/omniverse_ladder_platform.py \
             "$LADDER_COLLISION_USD" "${PLATFORM_ARGS[@]}"); then
         echo "  WARNING: could not author the platform collider. Until it is, the at-height" >&2
-        echo "  subtasks (S05-S07, S13-S15) drop the robot straight through the ladder." >&2
+        echo "  subtasks (S02-S04, S10-S12) drop the robot straight through the ladder." >&2
         echo "  Re-run by hand from the repo root:" >&2
         echo "    uv run python scripts/omniverse/omniverse_ladder_platform.py \\" >&2
         echo "        $LADDER_COLLISION_USD ${PLATFORM_ARGS[*]}" >&2

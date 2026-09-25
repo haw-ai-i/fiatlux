@@ -6,10 +6,10 @@ pack's overall structure plus keyword-categorized matches (bulbs, lamps, lights,
 ladders, ...), and can extract just the matching assets to an output dir.
 
 Usage:
-  python scripts/omniverse/omniverse_pack_scan.py <pack.zip>                 # scan + report
+  python scripts/omniverse/omniverse_pack_scan.py <pack.zip>                 # scan + report (markdown)
   python scripts/omniverse/omniverse_pack_scan.py <pack.zip> --extract DIR   # + extract matches (nested)
   python scripts/omniverse/omniverse_pack_scan.py <pack.zip> --extract DIR --flat  # flatten to DIR/<design>/
-  python scripts/omniverse/omniverse_pack_scan.py <pack.zip> --md            # markdown for the log
+  python scripts/omniverse/omniverse_pack_scan.py <pack.zip> --detail ladder # list every matching model USD
 """
 
 import os
