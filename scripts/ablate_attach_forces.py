@@ -73,7 +73,7 @@ parser.add_argument(
     type=str,
     default="",
     help="Instead of the on/off ablations, sweep ONE gain's magnitude: '<gain>=v1,v2,...' "
-    "(e.g. twist_friction=0.5,0.05,0.005,0). Distinguishes a mis-SIZED term from a wrong one.",
+    "(e.g. hold_force=1.5,0.75,0.375,0). Distinguishes a mis-SIZED term from a wrong one.",
 )
 parser.add_argument(
     "--report_friction",

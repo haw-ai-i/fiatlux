@@ -66,6 +66,18 @@ def strip_drop_terminations(cfg) -> None:
             setattr(cfg.terminations, term, None)
 
 
+def strip_all_but_timeout(cfg) -> None:
+    """Drop every termination except ``time_out``.
+
+    These scripts watch a scripted or replayed episode for its whole configured length; any
+    other termination (success, a drop, a fall) firing partway through would cut the window
+    short and hide whatever happens after it.
+    """
+    for term in [t for t in vars(cfg.terminations) if not t.startswith("_")]:
+        if term != "time_out" and getattr(cfg.terminations, term, None) is not None:
+            setattr(cfg.terminations, term, None)
+
+
 def run_verify_main(main, simulation_app) -> None:
     """Standard entrypoint for a verify_*/diagnose_*.py ``if __name__ == "__main__":`` block.
 

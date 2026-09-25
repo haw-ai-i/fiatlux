@@ -72,8 +72,9 @@ uv run python scripts/rsl_rl/play.py  --task FIATLUX-Replace-v0  # roll out a ch
 A single rollout can be recorded to a trajectory "bag" and scored offline, without
 re-running the simulator:
 
-`--enable_cameras` is required because the env carries an ego-camera sensor;
-scoring reads the recorded bag and needs no simulator.
+`record_run.py` sets `--enable_cameras` on itself (the env carries an ego-camera sensor); the
+examples below still pass it explicitly for clarity. Scoring reads the recorded bag and needs
+no simulator.
 
 ```bash
 uv run python scripts/record_run.py --task FIATLUX-S08-GrabNewBulb-v0 --policy random \

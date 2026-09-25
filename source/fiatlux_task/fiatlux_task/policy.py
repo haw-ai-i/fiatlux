@@ -114,7 +114,7 @@ def make_policy(
             # Contract for this (privileged-mode) smoke test: privileged simulator state
             # must be present and readable; actions still go through the normal action space.
             assert isinstance(obs, dict) and "privileged" in obs, (
-                "basic_cheatcode requires a 'privileged' observation group (the cheatcode "
+                "basic_cheatcode requires a 'privileged' observation group (the privileged "
                 "mode); this env exposes only sensor-realizable observations"
             )
             privileged = obs["privileged"]

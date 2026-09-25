@@ -115,28 +115,26 @@ def fixture_orbit(env_cfg) -> dict:
         ValueError: if the scene mounts no fixture at all, rather than silently orbiting the
             origin and producing a video that looks like a successful check.
     """
-    for name in ("socket", "fixture"):
-        entity = getattr(env_cfg.scene, name, None)
-        if entity is None or getattr(entity, "init_state", None) is None:
-            continue
-        from fiatlux_task.tasks.manager_based.fiatlux_task.scene_cfg import ROOM_FLOOR_MAX, ROOM_FLOOR_MIN
+    entity = getattr(env_cfg.scene, "socket", None)
+    if entity is None or getattr(entity, "init_state", None) is None:
+        raise ValueError("the fixture view needs a 'socket' scene entity; this scene has none")
+    from fiatlux_task.tasks.manager_based.fiatlux_task.scene_cfg import ROOM_FLOOR_MAX, ROOM_FLOOR_MIN
 
-        center = tuple(entity.init_state.pos)
-        sweep_deg, phase_deg = 360.0, 0.0
-        # the socket's opening is its local +Z; rotate it by the mount quaternion (w, x, y, z)
-        w, x, y, z = entity.init_state.rot
-        open_x, open_y = 2.0 * (x * z + w * y), 2.0 * (y * z - w * x)
-        if math.hypot(open_x, open_y) > 0.5:  # points sideways -> wall mount
-            sweep_deg = 180.0
-            phase_deg = math.degrees(math.atan2(open_y, open_x)) - 90.0
-        return {
-            "center": center,
-            "radius": _radius_inside(center, sweep_deg, phase_deg, ROOM_FLOOR_MIN, ROOM_FLOOR_MAX),
-            "height": FIXTURE_VIEW_HEIGHT,
-            "sweep_deg": sweep_deg,
-            "phase_deg": phase_deg,
-        }
-    raise ValueError("the fixture view needs a 'socket' or 'fixture' scene entity; this scene has neither")
+    center = tuple(entity.init_state.pos)
+    sweep_deg, phase_deg = 360.0, 0.0
+    # the socket's opening is its local +Z; rotate it by the mount quaternion (w, x, y, z)
+    w, x, y, z = entity.init_state.rot
+    open_x, open_y = 2.0 * (x * z + w * y), 2.0 * (y * z - w * x)
+    if math.hypot(open_x, open_y) > 0.5:  # points sideways -> wall mount
+        sweep_deg = 180.0
+        phase_deg = math.degrees(math.atan2(open_y, open_x)) - 90.0
+    return {
+        "center": center,
+        "radius": _radius_inside(center, sweep_deg, phase_deg, ROOM_FLOOR_MIN, ROOM_FLOOR_MAX),
+        "height": FIXTURE_VIEW_HEIGHT,
+        "sweep_deg": sweep_deg,
+        "phase_deg": phase_deg,
+    }
 
 
 def _draw_overlay(frame: np.ndarray, text: str) -> np.ndarray:

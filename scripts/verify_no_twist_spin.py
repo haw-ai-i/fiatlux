@@ -176,9 +176,7 @@ def build_cfg():
     # Watch the whole window even if a termination would have cut it: the point is what happens
     # to the seated bulb, and a truncated episode would hide a late ejection.
     cfg.episode_length_s = max(args_cli.seconds * 2.0, cfg.episode_length_s)
-    for term in [t for t in vars(cfg.terminations) if not t.startswith("_")]:
-        if term != "time_out" and getattr(cfg.terminations, term, None) is not None:
-            setattr(cfg.terminations, term, None)
+    verify_common.strip_all_but_timeout(cfg)
     return cfg
 
 
