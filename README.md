@@ -8,7 +8,7 @@ Python / Isaac Lab extension — no ROS, no distributed harness — so it plugs 
 
 > **Status (honest):** the **full replacement** (`FIATLUX-Replace-v0`) is the scored
 > benchmark task — randomized room layout, normalized-progress scoring,
-> standard/cheatcode observation modes. The benchmark is the full-length
+> standard/privileged observation modes. The benchmark is the full-length
 > `FIATLUX-Replace-v0` plus the twelve subtasks it decomposes into. The bulb/socket retention mechanic is implemented (`mdp.bulb_attachment`),
 > so Replace's removal and disposal score channels are now achievable. See
 > [docs/roadmap.md](docs/roadmap.md).
