@@ -39,16 +39,11 @@ import argparse
 
 from isaaclab.app import AppLauncher
 
+from fiatlux_task.policy import POLICY_SPEC_HELP
+
 parser = argparse.ArgumentParser(description="Fiatlux benchmark evaluation.")
 parser.add_argument("--task", type=str, required=True, help="Task / env id.")
-parser.add_argument(
-    "--policy",
-    type=str,
-    default="zero",
-    help="Policy spec: zero | random | basic_standard | basic_cheatcode | wbc_stand | "
-    "sonic_stand | groot[:<host:port>] | rsl_rl[:<ckpt>] | <path>.pt (or jit:<path>). "
-    "See fiatlux_task/policy.py.",
-)
+parser.add_argument("--policy", type=str, default="zero", help=POLICY_SPEC_HELP)
 parser.add_argument("--checkpoint", type=str, default=None, help="Checkpoint path for rsl_rl policies.")
 parser.add_argument(
     "--instruction",

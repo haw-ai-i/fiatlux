@@ -58,6 +58,15 @@ from collections.abc import Callable
 
 import torch
 
+# Shared with scripts/eval.py and scripts/record_run.py's --policy argparse help, so the two
+# CLIs can't drift apart on what make_policy() actually accepts. Safe to import before
+# AppLauncher runs: this module has no Isaac-Sim-dependent top-level imports.
+POLICY_SPEC_HELP = (
+    "Policy spec: zero | random | basic_standard | basic_cheatcode | wbc_stand | "
+    "sonic_stand | groot[:<host:port>] | rsl_rl[:<ckpt>] | <path>.pt (or jit:<path>). "
+    "See fiatlux_task/policy.py."
+)
+
 
 def _policy_obs(obs):
     """Extract the sensor-realizable policy observation tensor from a raw env obs."""
