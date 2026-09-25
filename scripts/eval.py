@@ -37,12 +37,12 @@ Examples:
 
 import argparse
 
-from isaaclab.app import AppLauncher
-
 # NOT fiatlux_task.policy: importing anything under the fiatlux_task package runs
 # fiatlux_task/__init__.py's `from .tasks import *`, which -- even no-oping pre-Kit -- still
 # leaves torch imported and cached along the way. See policy_cli_help.py's own docstring.
 from policy_cli_help import add_policy_cli_args
+
+from isaaclab.app import AppLauncher
 
 parser = argparse.ArgumentParser(description="Fiatlux benchmark evaluation.")
 parser.add_argument("--task", type=str, required=True, help="Task / env id.")

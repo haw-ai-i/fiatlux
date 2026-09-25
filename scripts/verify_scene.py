@@ -35,10 +35,10 @@ Examples
 import argparse
 import os
 
-from isaaclab.app import AppLauncher
-
 # See policy_cli_help.py's own docstring for why this isn't fiatlux_task.policy.
 from policy_cli_help import ROBOT_CHOICES
+
+from isaaclab.app import AppLauncher
 
 parser = argparse.ArgumentParser(description="Verify the Fiatlux ladder scene loads and physics is stable.")
 parser.add_argument(

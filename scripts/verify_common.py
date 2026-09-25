@@ -96,6 +96,7 @@ def all_meshes(stage, prefix: str) -> list[tuple[str, np.ndarray]]:
     plausible name can also silently cross similarly-named prims elsewhere in the scene.
     """
     import numpy as np
+
     from pxr import Gf, UsdGeom
 
     out = []

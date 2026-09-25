@@ -31,10 +31,10 @@ Examples:
 
 import argparse
 
-from isaaclab.app import AppLauncher
-
 # See policy_cli_help.py's own docstring for why this isn't fiatlux_task.policy.
 from policy_cli_help import add_policy_cli_args
+
+from isaaclab.app import AppLauncher
 
 parser = argparse.ArgumentParser(description="Record a Fiatlux run (video and/or bag).")
 parser.add_argument("--task", type=str, required=True, help="Task / env id.")
