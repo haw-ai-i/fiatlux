@@ -788,6 +788,7 @@ def stand_robot_near(scene: G1ReplaceSceneCfg, target: Vec2, standoff: float, mi
     the disposal crate's footprint (#205). Moving outward is the safe direction: it walks the
     robot back toward its own sampled zone, never further into another occupant's.
     """
+    assert min_standoff <= standoff, f"min_standoff ({min_standoff}) exceeds standoff ({standoff})"
     rx, ry, rz = scene.robot.init_state.pos
     tx, ty = target
     dx, dy = tx - rx, ty - ry
