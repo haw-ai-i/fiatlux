@@ -3,7 +3,7 @@
 #
 # SPDX-License-Identifier: BSD-3-Clause
 
-"""Script to an environment with random action agent."""
+"""Script to run an environment with a random action agent."""
 
 """Launch Isaac Sim Simulator first."""
 

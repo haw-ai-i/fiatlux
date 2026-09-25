@@ -10,31 +10,33 @@ assets present, preset initial state, robot sanity, gravity/settling, collision 
 contact/penetration.
 
 It covers the whole task family: the entity list is derived from the task's scene cfg, so
-presets that drop entities (tabletop has no ladder, workshop has no table) verify with the
-same tool. RL members work too -- their step returns are ignored and mid-run auto-resets do
+presets that drop entities (tabletop has no ladder, dressing cfgs may drop the fixture) verify
+with the same tool. RL members work too -- their step returns are ignored and mid-run auto-resets do
 not disturb the checks. EVERY task carries a camera sensor (each env cfg calls
 ``add_ego_camera``), so verifying any of them needs ``--enable_cameras``.
 
 Examples
 --------
-    # headless verification (default base env)
+    # headless verification (default: FIATLUX-Replace-v0)
     uv run python scripts/verify_scene.py --headless --enable_cameras
 
     # record an orbiting MP4 of the scene to logs/verify/ (the reliable way to see it headless)
     uv run python scripts/verify_scene.py --record --hold_base --headless --num_envs 1
 
     # verify a specific task env
-    uv run python scripts/verify_scene.py --headless --task FIATLUX-Climb-v0
+    uv run python scripts/verify_scene.py --headless --enable_cameras --task FIATLUX-S02-ClimbLadder-v0
 
     # every task needs camera rendering; without the flag Isaac Lab raises at startup
-    uv run python scripts/verify_scene.py --headless --enable_cameras --task FIATLUX-Insert-v0
+    uv run python scripts/verify_scene.py --headless --enable_cameras --task FIATLUX-Replace-v0
 """
 
 """Launch Isaac Sim Simulator first."""
 
 import argparse
 import os
-import sys
+
+# See policy_cli_help.py's own docstring for why this isn't fiatlux_task.policy.
+from policy_cli_help import ROBOT_CHOICES
 
 from isaaclab.app import AppLauncher
 
@@ -42,18 +44,17 @@ parser = argparse.ArgumentParser(description="Verify the Fiatlux ladder scene lo
 parser.add_argument(
     "--task",
     type=str,
-    default="FIATLUX-Base-v0",
+    default="FIATLUX-Replace-v0",
     help="Gym id of the env/task to verify (any FIATLUX id). EVERY task needs --enable_cameras: "
     "each one calls add_ego_camera, and Isaac Lab raises at startup for a camera spawned without "
-    "the flag. This used to name Insert alone, which sent seven of the eight presets into a "
-    "startup crash that reads like a scene fault.",
+    "the flag.",
 )
 parser.add_argument("--num_envs", type=int, default=4, help="Number of environments to spawn.")
 parser.add_argument(
     "--robot",
     type=str,
     default="inspire",
-    choices=["inspire", "dex3"],
+    choices=ROBOT_CHOICES,
     help="G1 hand variant. dex3 is the variant the VLA baselines score.",
 )
 parser.add_argument(
@@ -114,6 +115,7 @@ import math
 import fiatlux_task.tasks  # noqa: F401  -- registers the FIATLUX Gym environments
 import gymnasium as gym
 import torch
+import verify_common
 from fiatlux_task.assets import BULB_STAND_Z_OFFSET
 from fiatlux_task.tasks.manager_based.fiatlux_task.scene_cfg import CEILING_FIXTURE_Z, set_layout_seed
 from fiatlux_task.viz import fixture_orbit, make_video_camera_cfg, record_orbit
@@ -129,7 +131,7 @@ from isaaclab_tasks.utils import parse_env_cfg
 # global prims (shared across envs) and the per-env tracked entities we expect
 # Candidate scene entities; each is checked only when it exists (and is not None) on the
 # task's scene cfg, so this one verifier covers every family preset: the tabletop preset
-# has no ladder, the workshop presets have no table, dressing cfgs may drop the fixture.
+# has no ladder, dressing cfgs may drop the fixture.
 # ``room`` and ``pendant`` are per-env (each env owns a colliding room), so they belong to
 # the tracked list -- their prim paths carry {ENV_REGEX_NS} and only resolve under env_0.
 GLOBAL_CANDIDATES = ["ground", "dome_light", "key_light"]
@@ -141,14 +143,14 @@ TRACKED_CANDIDATES = ["robot", "ladder", "lamp", "socket", "fresh_bulb", "old_bu
 # Every preset states its bulb role. A bulb seated in the socket is ``old_bulb``, one anywhere
 # else is ``fresh_bulb`` (issue #76 Step 1), and the pair of expectations below is what stops a
 # preset from silently inheriting or dropping one -- the failure mode the rename exists to end.
+#
+# Hand-maintained against ``scene_preset`` values actually assigned in source/ -- nothing
+# asserts these stay in sync. Before editing, ``grep -rn 'scene_preset:' source/`` to check
+# this dict's keys still match every live class-level ``scene_preset`` default (this file's own
+# history has drifted both ways: a dead key left in after its preset's last user was deleted,
+# and a live key deleted too eagerly because its only remaining user was easy to miss).
 PRESET_PRESENCE = {
-    "tabletop": ({"table", "fresh_bulb"}, {"ladder", "old_bulb"}),
-    "workshop": ({"ladder", "fresh_bulb"}, {"table", "old_bulb"}),
     "carry": ({"ladder", "old_bulb"}, {"table", "fresh_bulb"}),
-    "climb": ({"ladder", "fresh_bulb"}, {"table", "old_bulb"}),
-    "descend": ({"ladder", "fresh_bulb"}, {"table", "old_bulb"}),
-    "remove": ({"table", "bin", "old_bulb"}, {"ladder", "fresh_bulb"}),
-    "install": ({"table", "bin", "fresh_bulb"}, {"ladder", "old_bulb"}),
     "replace": ({"table", "ladder", "bin", "old_bulb", "fresh_bulb"}, set()),
 }
 
@@ -461,7 +463,7 @@ def main() -> int:
         )
 
     # =========================== 4. COLLISION COVERAGE ===========================
-    # Imported USD assets (robot and BEHAVIOR-1K props alike) may split visual meshes from
+    # Imported USD assets (the robot and the vendor props alike) may split visual meshes from
     # dedicated collision meshes, so we require colliders to EXIST under each entity rather
     # than a 1:1 visual-geom:collider match.
     print("\n[verify] (4) Collision coverage (every tracked entity must have colliders)")
@@ -531,19 +533,7 @@ def main() -> int:
 
 
 if __name__ == "__main__":
-    code = 1
-    try:
-        code = main()
-    except Exception:  # noqa: BLE001 -- print the traceback before the process exits
-        import traceback
-
-        traceback.print_exc()
-    finally:
-        # SimulationApp.close() ends in a native framework shutdown that terminates the
-        # process with exit code 0, so nothing placed after it (sys.exit included) ever
-        # runs. main() already closed the env; flush and exit with the real verification
-        # result ourselves. os._exit skips Kit's graceful shutdown on purpose -- process
-        # teardown releases the GPU, and CI must see a non-zero code on FAIL.
-        sys.stdout.flush()
-        sys.stderr.flush()
-        os._exit(code)
+    # See verify_common.run_verify_main's docstring for why this shape (print-then-hard-exit
+    # on failure, simulation_app.close() only on real success) is what actually gets the FAIL
+    # case a non-zero exit code for CI instead of close()'s own always-0 process teardown.
+    verify_common.run_verify_main(main, simulation_app)

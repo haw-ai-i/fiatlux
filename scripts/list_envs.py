@@ -10,7 +10,7 @@ The script iterates over all registered environments and stores the details in a
 It prints the name of the environment, the entry point and the config file.
 
 All the environments are registered in the `fiatlux_task` extension. They start
-with `Isaac` in their name.
+with `FIATLUX-` in their name.
 """
 
 """Launch Isaac Sim Simulator first."""

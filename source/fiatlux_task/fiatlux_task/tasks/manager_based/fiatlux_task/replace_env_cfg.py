@@ -13,7 +13,7 @@ remove the old bulb, and place it in the disposal crate. No policy stitching or
 staged-curriculum chaining -- that is solution structure, not benchmark structure (the
 issue-#20 descoping that still stands).
 
-Design notes (full-task benchmark plan, ``journal/specs/full-task-benchmark-plan.md``):
+Design notes:
 
 - **Scoring** uses *normalized* distance progress -- ``(d0 - d) / d0`` clamped to [0, 1],
   per episode, paid as best-progress increments -- so randomized spawn distances cannot
@@ -24,23 +24,25 @@ Design notes (full-task benchmark plan, ``journal/specs/full-task-benchmark-plan
   per-term episode sums in ``extras['log']`` *are* the score breakdown.
 - **Observation modes**: the ``policy`` group is the *standard* (sensor-realizable) mode --
   IMU, estimated base state, proprioception, hand contact, a head-mounted RGB camera, previous
-  action. The ``privileged`` group is the *cheatcode* mode -- exact robot/object/fixture/
-  target poses and the score-relevant distances. The group names stay ``policy``/
-  ``privileged`` because rsl_rl's ``obs_groups`` routing is keyed to them (see
-  ``ClimbPPORunnerCfg``); the benchmark docs map standard->policy, cheatcode->privileged.
+  action. The ``privileged`` group is the *privileged* mode -- exact robot/object/fixture/
+  target poses and the score-relevant distances. The group is named ``policy`` rather than
+  ``standard`` because rsl_rl's ``obs_groups`` routing is keyed to it (see
+  ``ClimbPPORunnerCfg``); the benchmark docs call it the standard mode regardless.
 - **The ladder is dynamic** (only here): knocking it over is a real, penalized, episode-
   ending physical event. **Both bulbs are dynamic**, seated in the fixture by contact rather
   than pinned kinematic, so removal and disposal are real physical events.
 
-  ``mdp.bulb_attachment`` (issue #167) adds a simple axial retention spring on top of that
+  ``mdp.bulb_attachment`` (issue #167) adds a simple axial detent on top of that
   contact geometry: reaching the seat while reasonably aligned, with the socket unoccupied,
   seats the bulb; a real, physics-driven pull past a release threshold frees it again.
-  Lateral position and orientation are left entirely to real bulb-socket contact -- there is
-  no scripted lock or twist requirement, since this asset has no physical lug/groove for one
-  to model. The state machine reads bulb motion, never wrist pose.
+  Real bulb-socket contact is still the primary constraint on lateral position and
+  orientation; issue #171 added a much gentler lateral + tilt centering term on top of it,
+  which only damps the wobble real contact leaves. There is no scripted lock and no twist
+  term at all, since this asset has no physical lug/groove for one to model (and the one
+  twist term that was tried turned out to be generating the spin it was meant to damp -- see
+  ``mdp/attach.py``). The state machine reads bulb motion, never wrist pose.
   ``fresh_bulb_inserted`` and ``success`` read the attachment state, not raw seating
-  geometry, so every score channel is genuinely achievable. Remove/Install do not gate on
-  attachment at all: their bulbs are dynamic and simply lift out of / drop into the socket.
+  geometry, so every score channel is genuinely achievable.
 """
 
 from isaaclab.envs import ManagerBasedRLEnvCfg
@@ -59,7 +61,6 @@ from fiatlux_task.robots.g1 import (
 )
 
 from . import mdp
-from .climb_env_cfg import FALL_MIN_HEIGHT, FALL_TILT_LIMIT
 from .scene_cfg import (
     LADDER_READY_FACING_TOLERANCE,
     LADDER_READY_REACH,
@@ -69,6 +70,7 @@ from .scene_cfg import (
     add_mid360_lidar,
     apply_replace_preset,
 )
+from .subtask_env_cfg import FALL_MIN_HEIGHT, FALL_TILT_LIMIT
 
 ##
 # Task thresholds
@@ -76,7 +78,7 @@ from .scene_cfg import (
 
 LADDER_TILT_LIMIT = 0.6  # rad; the ladder stands at 0, real climbing wobble stays well under
 REMOVAL_CLEARANCE = 0.10  # m; old-bulb plug this far from the seat counts as removed
-SEAT_POS_THRESHOLD = 0.015  # m; fresh-bulb seating tolerance (Insert's validated values)
+SEAT_POS_THRESHOLD = 0.015  # m; fresh-bulb seating tolerance (mdp.bulb_attachment's own default)
 SEAT_ORI_THRESHOLD = 0.2  # rad
 FRESH_BULB_DROP_HEIGHT = 0.4  # m; the fresh bulb's working heights are table (~1.0) and up
 OLD_BULB_DROP_HEIGHT = 0.15  # m; must clear a bulb resting *inside* the floor crate (~0.1)
@@ -95,13 +97,13 @@ BULB_RELEASE_THRESHOLD = 0.015
 
 
 def bulb_attachment_event() -> EventTerm:
-    """The axial retention spring event term, with this task's parameters.
+    """The axial detent event term, with this task's parameters.
 
     A factory, not a shared instance, so each caller gets its own ``EventTermCfg`` to attach to
-    its own config class -- ``EventCfg`` here, ``BulbAttachmentEventCfg``
-    (``subtask_tiers/balance.py``, also used standalone by S01), and ``g1_bulb_env_cfg.py``'s
-    ``EventCfg`` all wire in the identical term; before this they each hand-duplicated the same
-    ``EventTerm(...)`` block, with nothing enforcing the three stayed in sync on a future change.
+    its own config class -- ``EventCfg`` here and ``BulbAttachmentEventCfg``
+    (``subtask_tiers/balance.py``, also used standalone by S01) both wire in the identical term;
+    before this they each hand-duplicated the same ``EventTerm(...)`` block, with nothing
+    enforcing the two stayed in sync on a future change.
     """
     return EventTerm(
         func=mdp.bulb_attachment,
@@ -135,7 +137,7 @@ class ActionsCfg:
 @configclass
 class ObservationsCfg:
     """Two groups: ``policy`` = the *standard* (sensor-realizable) observation mode,
-    ``privileged`` = the *cheatcode* (exact simulator state) mode."""
+    ``privileged`` = the *privileged* (exact simulator state) mode."""
 
     @configclass
     class PolicyCfg(ObsGroup):
@@ -185,7 +187,7 @@ class ObservationsCfg:
 
     @configclass
     class PrivilegedCfg(ObsGroup):
-        """Cheatcode mode: exact poses of everything score-relevant + the score distances."""
+        """Privileged mode: exact poses of everything score-relevant + the score distances."""
 
         robot_pose = ObsTerm(func=mdp.root_pose_w, params={"asset_cfg": SceneEntityCfg("robot")})
         ladder_pose = ObsTerm(func=mdp.root_pose_w, params={"asset_cfg": SceneEntityCfg("ladder")})
@@ -211,7 +213,7 @@ class ObservationsCfg:
 class EventCfg:
     """Reset-time randomization (the room layout itself randomizes per scene build)."""
 
-    # Axial retention spring (issue #167). Zero interval -> enforce it every env step.
+    # Axial detent (issue #167). Zero interval -> enforce it every env step.
     bulb_attachment = bulb_attachment_event()
     reset_all = EventTerm(func=mdp.reset_scene_to_default, mode="reset")
     reset_robot_joints = EventTerm(
@@ -231,8 +233,8 @@ class EventCfg:
     )
     # Replicate-safe visual DR (this cfg keeps replicate_physics=True): light intensity +
     # direction, and a global albedo tint on the shared room. Prestartup prop-SCALE DR is
-    # the documented opt-in instead: set `scene.replicate_physics = False` and add the
-    # prestartup terms from FamilyBaseEnvCfg.EventCfg (randomize_*_scale) -- the event
+    # the documented opt-in instead: set `scene.replicate_physics = False` and add a
+    # prestartup EventTerm wiring `mdp.randomize_prop_scale` (mdp/events.py) -- the event
     # manager raises if the terms are present under replicated physics.
     randomize_sky_intensity = EventTerm(
         func=mdp.randomize_light_properties,
@@ -423,7 +425,7 @@ class TerminationsCfg:
 
 @configclass
 class ReplaceEnvCfg(ManagerBasedRLEnvCfg):
-    """The full replacement task (randomized room layout, standard/cheatcode obs modes)."""
+    """The full replacement task (randomized room layout, standard/privileged obs modes)."""
 
     scene_preset: str = "replace"
     # wide framing: the room-scale layout, not a fixed bench corner. The Simple Room is NOT
@@ -472,7 +474,7 @@ class ReplaceEnvCfg(ManagerBasedRLEnvCfg):
         self.sim.physx.solver_type = 1
         self.sim.physx.min_position_iteration_count = 8
         self.sim.physx.min_velocity_iteration_count = 1  # floor, not a target:
-        # per-body counts above it are kept; see FamilyBaseEnvCfg.solver_velocity_iterations
+        # per-body counts above it are kept; see the ladder/bulb rigid_props in scene_cfg.py
         self.sim.physx.bounce_threshold_velocity = 0.2
         self.sim.physx.enable_stabilization = True
 

@@ -7,9 +7,9 @@
 
 Starts from S01's end state: the ladder standing at rest at the fixture, the robot on the floor at
 its steps, the old bulb still seated above. Success is a controlled stance on the upper steps, with
-the height and the horizontal centre read from the ladder's LIVE pose -- ``FIATLUX-Climb-v0``
-hardcodes both from ``TOP_ROBOT_POSITION``, which describes the default workshop layout rather than
-wherever a placement subtask left this ladder.
+the height and the horizontal centre read from the ladder's LIVE pose -- an older, fixed-layout
+approach hardcoded both from ``TOP_ROBOT_POSITION``, which describes the default workshop layout
+rather than wherever a placement subtask left this ladder.
 """
 
 from isaaclab.utils import configclass
