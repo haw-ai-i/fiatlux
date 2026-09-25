@@ -33,9 +33,8 @@ import argparse
 
 from isaaclab.app import AppLauncher
 
-# See eval.py's identical import for why this doesn't violate "launch Kit first" despite
-# appearances -- GPU-verified end-to-end, not just reasoned through.
-from fiatlux_task.policy import CHECKPOINT_HELP, POLICY_SPEC_HELP
+# See policy_cli_help.py's own docstring for why this isn't fiatlux_task.policy.
+from policy_cli_help import CHECKPOINT_HELP, POLICY_SPEC_HELP
 
 parser = argparse.ArgumentParser(description="Record a Fiatlux run (video and/or bag).")
 parser.add_argument("--task", type=str, required=True, help="Task / env id.")

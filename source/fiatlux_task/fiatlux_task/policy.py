@@ -56,16 +56,9 @@ from __future__ import annotations
 
 from collections.abc import Callable
 
-# Shared with scripts/eval.py and scripts/record_run.py's --policy argparse help, so the two
-# CLIs can't drift apart on what make_policy() actually accepts. Safe to import before
-# AppLauncher runs: this module has no top-level Isaac-Sim-dependent (or even torch) imports --
-# torch is lazy, like every other heavy dep make_policy() only sometimes needs.
-POLICY_SPEC_HELP = (
-    "Policy spec: zero | random | basic_standard | basic_cheatcode | wbc_stand | "
-    "sonic_stand | groot[:<host:port>] | rsl_rl[:<ckpt>] | <path>.pt (or jit:<path>). "
-    "See fiatlux_task/policy.py."
-)
-CHECKPOINT_HELP = "Checkpoint path for rsl_rl policies."
+# The --policy/--checkpoint CLI help text living in scripts/policy_cli_help.py (not here) is
+# the one other place that has to stay in sync with the spec list below -- it can't import
+# this module directly (see that module's docstring for why).
 
 
 def _policy_obs(obs):
