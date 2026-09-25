@@ -3,7 +3,7 @@
 Every subtask (``FIATLUX-S01..S12-*-v0``) derives from the same ``SubtaskEnvCfg`` and uses the
 same RL action space (``joint_pos``: whole-body joint targets). They differ only in scene
 staging, success gates and rewards -- so a teleop twin is the SAME three swaps every hand-written
-teleop cfg does, and is applied here generically rather than copied 15 times:
+teleop cfg does, and is applied here generically rather than copied 12 times:
 
 1. **actions** -> bimanual arm IK + binary grip (legs/waist stay SONIC's, driven by the driver)
 2. **XR** -> pelvis-anchored follow camera + the ``controller_rel`` device with the four

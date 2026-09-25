@@ -4,7 +4,7 @@
 # SPDX-License-Identifier: BSD-3-Clause
 
 """Is the FIATLUX_ARM_REST_LEFT leak into non-rail tasks fixed? (code-review finding, fix
-verification -- sonic_teleop.py ~L609)
+verification -- sonic_teleop.py ~L624)
 
 The original bug: sonic_teleop.py wrote the FIATLUX_ARM_REST_LEFT-derived left-arm pose into
 ``robot.data.default_joint_pos`` unconditionally (``if _ARM_REST_L.strip():``), never consulting
@@ -102,7 +102,7 @@ def main() -> int:
     cfg = parse_env_cfg(TASK, device=args_cli.device, num_envs=1)
     verify_common.assert_right_checkout(cfg, "robot")
 
-    # Mirror sonic_teleop.py's own _rail_on computation (~L531-535): this task's ladder scene
+    # Mirror sonic_teleop.py's own _rail_on computation (~L541-544): this task's ladder scene
     # attribute is NOT None (Replace's obs/reward terms need it, so TestLightbulbMechanism keeps
     # it, just parked away from the tabletop bench) -- _rail_on is decided by whether the robot is
     # actually staged ON the ladder (pelvis >= 1 m above the ladder root), not by the attribute's

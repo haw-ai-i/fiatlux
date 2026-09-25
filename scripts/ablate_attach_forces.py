@@ -376,14 +376,7 @@ def build_cfg():
     cfg = parse_env_cfg("FIATLUX-Replace-v0", device=args_cli.device, num_envs=1)
     verify_common.assert_right_checkout(cfg, "fresh_bulb")
     cfg.seed = args_cli.seed
-    for camera in ("ego_camera", "torso_camera", "wrist_camera"):
-        if getattr(cfg.scene, camera, None) is not None:
-            setattr(cfg.scene, camera, None)
-    for group_name in ("policy", "privileged"):
-        group = getattr(cfg.observations, group_name, None)
-        for term in ("ego_rgb", "torso_rgb", "wrist_rgb"):
-            if group is not None and getattr(group, term, None) is not None:
-                setattr(group, term, None)
+    verify_common.strip_visual_obs(cfg)
     for term in ("success", "old_bulb_dropped", "fresh_bulb_dropped"):
         if getattr(cfg.terminations, term, None) is not None:
             setattr(cfg.terminations, term, None)
