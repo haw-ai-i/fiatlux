@@ -486,7 +486,8 @@ most likely **one fused model** (base + shade + bulb together), not a removable 
 socket. The Fiatlux task needs a bulb you can take out and replace — which at the time of this
 scan pointed at the BEHAVIOR-1K lamps (with socket metadata). That is no longer the case: the
 shipped pair is the separable Omniverse LightBulb from pack 8; the BEHAVIOR-1K lamps are no
-longer loaded by any task, and survive only as opt-in scene dressing (see `assets/README.md`). So treat these as **fixture / lamp
+longer loaded by any task, and have since been removed from the dataset entirely (see
+`assets/README.md`). So treat these as **fixture / lamp
 variety and scene dressing** unless inspection shows the bulb is a separate part.
 
 ---
