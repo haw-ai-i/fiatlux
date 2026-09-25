@@ -3,10 +3,7 @@
 Two things are scored, on two different models. **`FIATLUX-Replace-v0`** (the full
 replacement; see `docs/task_spec.md`) is scored by the metrics below. The **twelve subtasks**
 are scored by `subtask_score` — see [Subtask score](#subtask-score--the-benchmark-headline)
-— and are also evaluable with the tooling below. The remaining family members (`Insert`,
-`Climb`, `Carry`, `Descend`, `Remove`, `Install`, `Base`) predate the twelve-subtask
-decomposition and run the same tooling as development aids, not benchmark targets — none
-of them is part of what the paper reports on.
+— and are also evaluable with the tooling below.
 
 Evaluation is a single command, `scripts/eval.py`, run from a
 fixed seed for a fixed number of episodes. Same `--task`, `--seed`, `--policy`

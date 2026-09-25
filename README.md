@@ -27,10 +27,6 @@ Python / Isaac Lab extension — no ROS, no distributed harness — so it plugs 
 | S05 | `CarryBulbToDisposal` — walk it to the crate | | S11 | `ScrewInBulb` — seat it and let go |
 | S06 | `DisposeBulb` — drop it in and release | | S12 | `ClimbDown` — descend, bulb left seated |
 
-**The flat task and the coarse envs.** All but `Base-v0` are functional RL envs with their own
-rewards and terminations; `Base-v0` registers the non-RL `ManagerBasedEnv` and exists to load the
-scene.
-
 | Env id | Description | Status |
 | --- | --- | --- |
 | `FIATLUX-Replace-v0` | **the benchmark**: full replacement — fetch the ladder, swap the bulb, dispose of the old one (randomized room) | ✅ functional |
