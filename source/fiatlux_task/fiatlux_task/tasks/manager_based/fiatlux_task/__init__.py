@@ -28,7 +28,7 @@ One family, one scene (``scene_cfg.G1ReplaceSceneCfg``), preset layouts per task
   standalone ``bulb`` entity). RL and achievable -- the bulb is dynamic and lifts out of
   the socket's open hole -- but nothing gates removal on the retention detent here, so it scores
   "pick it up and bin it". Replace gates removal on ``mdp.bulb_attachment`` (issue #54); porting
-  that term here is what would make this a genuine removal task.
+  that term here is what would require freeing the bulb from its detent first.
 - ``FIATLUX-Base-v0``    : the shared scene-only cfg, deliberately **non-RL**
   (:class:`base_env_cfg.FamilyBaseEnvCfg` -- observation/action/event managers only, no
   task to reward). Not a task; ``verify_scene.py``'s default target.
