@@ -79,9 +79,10 @@ sync_group() {
     echo "  $group"
     if ! "${HF_DOWNLOAD[@]}" "${group}/"; then
         echo "error: could not fetch '${group}' from ${ASSET_REPO}." >&2
-        echo "  If that was an auth failure: the dataset is private to the haw-ai-i org -- run" >&2
+        echo "  If that was an auth failure: the default dataset is public and needs no login, so" >&2
+        echo "  this is likely a private FIATLUX_ASSET_REPO override. Run" >&2
         echo "  'uvx --from huggingface_hub hf auth login', or set HF_TOKEN to a token scoped to" >&2
-        echo "  that org, then retry." >&2
+        echo "  the dataset's org, then retry." >&2
         exit 1
     fi
     # A pattern that matches nothing is a no-op for snapshot_download, NOT an error: without this
