@@ -61,6 +61,13 @@ live — one wandb chart per named channel (`Episode_Reward/<term>`,
 episodes. `--wandb` also attaches the rollout MP4 to the run, and the final
 aggregate results land in the run summary.
 
+**The run summary's `gate_progress` is a live diagnostic, not the benchmark
+score.** It is computed the same way as the deleted live scorer was
+(`ScoreLogger.gate_progress`, unchanged by this consolidation) and inherits the
+same `at_reset`-before-step-0 bias described above and in issue #239 -- treat
+it as a rough during-the-run signal only. The scored number is always
+`scripts/score.py` run on the bag.
+
 ```bash
 python scripts/record_run.py --task FIATLUX-Replace-v0 --policy basic_standard \
     --episodes 20 --seed 0 --record bag --enable_cameras --out logs/runs/basic_standard0 \

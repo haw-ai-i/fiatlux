@@ -244,6 +244,13 @@ class ScoreLogger:
         by ``max_episode_length_s``, so the telescoped value the channel is built to carry is
         ``logged * max_episode_length_s / step_dt``. The logged value on its own is not
         comparable across subtasks: their horizons run 20 s to 90 s.
+
+        NOT the benchmark headline. This is the *live* term's value -- it captures its
+        ``at_reset`` baseline before the first step, which reads too early on several subtasks
+        (see ``scripts/score.py``'s ``episode_gate_progress`` and issue #239) and has been
+        measured up to 0.50 off per subtask from the offline, bag-scored number. It streams here
+        only as a rough during-the-run signal (e.g. for a live wandb dashboard); the scored
+        result is ``scripts/score.py`` run on the recorded bag, nothing computed live.
         """
         key = "Episode_Reward/gate_progress"
         if key not in self._sums or not self._max_episode_length_s or not self._step_dt:
