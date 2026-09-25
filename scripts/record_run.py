@@ -33,12 +33,12 @@ import argparse
 
 from isaaclab.app import AppLauncher
 
-from fiatlux_task.policy import POLICY_SPEC_HELP
+from fiatlux_task.policy import CHECKPOINT_HELP, POLICY_SPEC_HELP
 
 parser = argparse.ArgumentParser(description="Record a Fiatlux run (video and/or bag).")
 parser.add_argument("--task", type=str, required=True, help="Task / env id.")
 parser.add_argument("--policy", type=str, default="zero", help=POLICY_SPEC_HELP)
-parser.add_argument("--checkpoint", type=str, default=None, help="Checkpoint path for rsl_rl policies.")
+parser.add_argument("--checkpoint", type=str, default=None, help=CHECKPOINT_HELP)
 parser.add_argument(
     "--record",
     type=str,

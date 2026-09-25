@@ -66,6 +66,7 @@ POLICY_SPEC_HELP = (
     "sonic_stand | groot[:<host:port>] | rsl_rl[:<ckpt>] | <path>.pt (or jit:<path>). "
     "See fiatlux_task/policy.py."
 )
+CHECKPOINT_HELP = "Checkpoint path for rsl_rl policies."
 
 
 def _policy_obs(obs):
