@@ -10,34 +10,17 @@ HF dataset and synced locally via `download_assets.sh`. Binary USD files are git
 # Robot + task assets + room dressing (table, warehouse backdrop, HDRI sky)
 ./assets/download_assets.sh
 
-# ... + the optional extras (omniverse_climb, omniverse_lamp)
+# ... + opt-in scene dressing (Omniverse climb structures and residential lamps)
 ./assets/download_assets.sh --scene-dressing
 ```
 
 Room dressing (`isaac_*` paths below) is always synced -- it's what every recorded
-run looks like by default. The `--scene-dressing` extras are opt-in and nothing in the task
-scene loads them.
+run looks like by default -- unlike the opt-in scene dressing.
 
 Requires `uv` (assets are fetched via `uvx --from huggingface_hub hf`) and access to the
 `haw-ai-i` HF org. Override the source dataset repo with the `FIATLUX_ASSET_REPO` env var.
 
 ## HF Paths
-
-### BEHAVIOR-1K -- scene dressing only
-
-**No benchmark task loads these.** The bulb and socket are the Omniverse pair
-(`BULB_USD` / `SOCKET_USD`) and the ladder is `omniverse_ladder/AlumStep_D`; no scene entity
-references a `behavior1k_*` asset.
-
-The eleven lighting-fixture categories are still synced by `./download_assets.sh
---scene-dressing`, so they are on hand if you want to dress a scene of your own or add a
-fixture to an existing one. `behavior1k_materials/` syncs with them and is **required** --
-every B1K asset binds OmniGibson's shared `OmniGibsonVRayMtl` by relative path into that
-bundle, and without it they render red rather than failing loudly (issue 18).
-
-The task-asset groups (`behavior1k_bulb`, `_bulb_broken`, `_lamp`, `_ladder`) are **not**
-synced: they were the original bulb/lamp/ladder choice and nothing uses them now. They remain
-in the dataset; clearing them is a dataset-cleanup decision, not a code one.
 
 ### Omniverse asset packs (NVIDIA SimReady / ArchVis)
 
@@ -107,10 +90,6 @@ Isaac Sim's asset-root URL is version-pinned (`.../Assets/Isaac/5.1/...`) -- re-
 these paths after any Isaac Sim upgrade.
 
 ## Source
-
-**BEHAVIOR-1K** (scene dressing, above) is from [BEHAVIOR-1K](https://behavior.stanford.edu/) (Stanford
-OmniGibson dataset), decrypted from `.encrypted.usd` using the `omnigibson.key`. The key and
-decrypted binaries were never committed to git. The intake scripts are `scripts/behavior1k/`.
 
 **Omniverse** assets are from the NVIDIA [Omniverse downloadable USD packs](https://docs.omniverse.nvidia.com/usd/latest/usd_content_samples/downloadable_packs.html#d-openusd-asset-packs)
 (Warehouse, SimReady Warehouse 01, Residential, Sample Scenes). Used under non-commercial
