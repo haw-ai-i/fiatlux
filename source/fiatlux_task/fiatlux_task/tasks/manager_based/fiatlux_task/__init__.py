@@ -34,7 +34,7 @@ One family, one scene (``scene_cfg.G1ReplaceSceneCfg``), preset layouts per task
   task to reward). Not a task; ``verify_scene.py``'s default target.
 
 ``FIATLUX-Base-v0`` registers the non-RL ``isaaclab.envs:ManagerBasedEnv`` entry point,
-so ``gym.make`` (record_run.py, eval.py, zero_agent.py) cannot construct it --
+so ``gym.make`` (record_run.py, zero_agent.py) cannot construct it --
 ``ManagerBasedEnv.__init__`` has no ``**kwargs`` catch-all for the registration's own
 ``env_cfg_entry_point``, unlike ``ManagerBasedRLEnv``. ``scripts/verify_scene.py``
 bypasses ``gym.make`` for exactly this reason and covers every family member directly
@@ -104,7 +104,7 @@ gym.register(
 
 # NOTE: Descend/Remove/Install intentionally carry no rsl_rl_cfg_entry_point yet -- no
 # PPORunnerCfg (network sizes, obs_groups routing) has been designed/tuned for them. They
-# work fully with record_run.py / eval.py / any non-rsl_rl policy (including groot); only
+# work fully with record_run.py / any non-rsl_rl policy (including groot); only
 # scripts/rsl_rl/{train,play}.py would need one added first.
 
 gym.register(

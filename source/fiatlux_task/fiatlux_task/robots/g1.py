@@ -459,8 +459,8 @@ _HAND_REMAPS: dict[str, dict[tuple[str, ...], list[str]]] = {
     },
 }
 # Symmetric "back to inspire" entries, kept for completeness / testability even though no
-# script currently calls ``swap_robot_variant(cfg, "inspire")`` (eval.py / record_run.py
-# only swap when ``--robot != "inspire"``).
+# script currently calls ``swap_robot_variant(cfg, "inspire")`` (record_run.py only
+# swaps when ``--robot != "inspire"``).
 _HAND_REMAPS["inspire"] = {tuple(v): list(k) for k, v in _HAND_REMAPS["dex3"].items()}
 
 # Substrings that flag a joint-name list as hand-specific for *some* variant, so an

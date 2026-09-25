@@ -170,7 +170,8 @@ def _cam_pose_fn(kind: str, env_cfg, base_env=None):
 
 def main():
     # The room layout is drawn at cfg-build time, so its seed is declared before
-    # parse_env_cfg (same determinism contract as eval.py).
+    # parse_env_cfg -- that ordering is the whole determinism contract (same-seed-
+    # same-numbers), so it has to happen here, before the env is built.
     set_layout_seed(args_cli.seed)
     random.seed(args_cli.seed)
     env_cfg = parse_env_cfg(

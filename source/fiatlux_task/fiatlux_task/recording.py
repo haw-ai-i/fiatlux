@@ -184,8 +184,8 @@ def term_flag(env, name: str, n: int, device) -> torch.Tensor:
     The term flags reflect the step that triggered the done and survive the
     in-``step`` auto-reset, so they are the correct source for "did this episode
     end in success / a drop". We try the public accessor first, then the manager's
-    internal store for cross-version robustness. Shared with ``scripts/eval.py``,
-    which reads the ``success`` term through it.
+    internal store for cross-version robustness. Used by :class:`TrajectoryRecorder`
+    to write the ``success``/``dropped``/``timeout`` term columns into the bag.
     """
     tm = env.termination_manager
     getter = getattr(tm, "get_term", None)
