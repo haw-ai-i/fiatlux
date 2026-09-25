@@ -62,7 +62,7 @@ The NVIDIA-sourced groups are mirrored here as part of the benchmark under NVIDI
 NVIDIA's notice and the name of the source pack are being added to each group. The BEHAVIOR-1K
 groups were not redistributable and have been removed from this dataset (Stanford distributes
 those models encrypted for use inside OmniGibson only, and no benchmark preset has loaded them
-since #230). Progress: [haw-ai-i/fiatlux#231](https://github.com/haw-ai-i/fiatlux/issues/231).
+since #232). Progress: [haw-ai-i/fiatlux#231](https://github.com/haw-ai-i/fiatlux/issues/231).
 
 ## Citation
 
