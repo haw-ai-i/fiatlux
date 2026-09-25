@@ -17,8 +17,11 @@ HF dataset and synced locally via `download_assets.sh`. Binary USD files are git
 Room dressing (`isaac_*` paths below) is always synced -- it's what every recorded
 run looks like by default -- unlike the opt-in scene dressing.
 
-Requires `uv` (assets are fetched via `uvx --from huggingface_hub hf`). The dataset is public;
-no Hugging Face login is needed. Override the source dataset repo with the `FIATLUX_ASSET_REPO` env var.
+Requires `uv` (assets are fetched via `uvx --from huggingface_hub hf`). The dataset is meant to be
+public and to need no Hugging Face login; until the post-merge publish step lands (see
+[#231](https://github.com/haw-ai-i/fiatlux/issues/231)), or if you hit an auth error, run
+`uvx --from huggingface_hub hf auth login` or set `HF_TOKEN` to a token scoped to the
+`haw-ai-i` org. Override the source dataset repo with the `FIATLUX_ASSET_REPO` env var.
 
 ## HF Paths
 
