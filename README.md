@@ -3,7 +3,7 @@
 A minimal Isaac Lab benchmark for **humanoid light-bulb replacement**: a Unitree
 G1 robot inserts a light bulb into a socket. It is a plain Python / Isaac Lab
 extension — no ROS, no distributed harness — so it plugs into the standard
-`train` / `play` / `teleop` / `eval` scripts.
+`train` / `play` / `teleop` / `record_run` / `score` scripts.
 
 > **Status (honest):** the **full replacement** (`FIATLUX-Replace-v0`) is the scored
 > benchmark task — randomized room layout, normalized-progress scoring,
@@ -29,7 +29,7 @@ extension — no ROS, no distributed harness — so it plugs into the standard
 
 All seven ids are members of **one task family** backed by **one scene** with preset
 layouts; the scaffolds share a non-RL base env (observation/action/event managers only).
-The train / eval / record scripts apply to the RL members; `scripts/verify_scene.py`
+The train / record / score scripts apply to the RL members; `scripts/verify_scene.py`
 covers every member.
 
 ## Repository layout
@@ -49,7 +49,7 @@ fiatlux/
 │       ├── mdp/                 # rewards, events, observations
 │       ├── agents/              # rsl_rl PPO config
 │       └── __init__.py          # gym.register(...) x7
-├── scripts/                  # zero / random / teleop / list_envs / rsl_rl / eval / verify_scene
+├── scripts/                  # zero / random / teleop / list_envs / rsl_rl / record_run / score / verify_scene
 ├── assets/                   # download_assets.sh (pulls USDs from the HF dataset; git-ignored)
 └── docs/                     # overview, getting_started, task_spec, scoring, roadmap
 ```
