@@ -9,10 +9,10 @@ Start layout: Insert's bench world with the OLD BULB seated in the table lamp --
 resting in the socket's open hole under gravity (see ``apply_remove_preset``) -- and an
 empty parts crate beside the bench as its destination.
 
-**Honesty note:** the bulb lifts straight out -- nothing gates the retention detent here, so the
-task is "pick it up and bin it" rather than "free it from the detent". ``FIATLUX-Replace-v0`` now gates
-removal on ``mdp.bulb_attachment`` (issue #54); porting that term here is the remaining
-work (unification spec Phase 4: a revolute/screw
+**Honesty note:** the bulb lifts straight out -- nothing gates removal on the retention detent
+here, so the task is "pick it up and bin it" rather than "free it from the detent".
+``FIATLUX-Replace-v0`` now gates removal on ``mdp.bulb_attachment`` (issue #54); porting that
+term here is the remaining work (unification spec Phase 4: a revolute/screw
 joint or a make/break fixed-joint attach gated by rotation, anchored at the lamp's socket
 seat pose). The reward/termination code below is real, not a placeholder -- it is
 Replace's own ``old_bulb_removed`` / ``old_bulb_disposed`` channels, parametrized
