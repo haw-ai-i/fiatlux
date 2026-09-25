@@ -68,9 +68,7 @@ ROOM_ASSETS=(
     isaac_skies
 )
 
-# Opt-in dressing. behavior1k_materials MUST come first: every other behavior1k group binds
-# OmniGibson's shared ``OmniGibsonVRayMtl`` by relative path into this bundle, and without it
-# they render red rather than failing loudly (issue 18).
+# Opt-in dressing.
 SCENE_DRESSING_ASSETS=(
     omniverse_climb         # Mezzanine/OfficeSet elevated-platform climb structures
     omniverse_lamp          # Omniverse residential lamps/fixtures
