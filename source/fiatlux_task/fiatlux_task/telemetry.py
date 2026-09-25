@@ -12,8 +12,10 @@ extended here and nowhere else:
   ``extras``, done counts) into named metrics -- the manager score channels
   (``Episode_Reward/<term>``, ``Episode_Termination/<term>``), success, episode length,
   control effort, contact force. Add a metric here and it shows up everywhere at once:
-  the live sinks and the final summary (the scored headline is
-  :meth:`ScoreLogger.close`'s return value -- scripts do not aggregate on their own).
+  the live sinks and the final summary (:meth:`ScoreLogger.close`'s return value --
+  scripts do not aggregate on their own). That return value is a live diagnostic
+  snapshot, not the benchmark score: the score is always ``scripts/score.py`` run on
+  a recorded bag (see :meth:`ScoreLogger.gate_progress`).
 - **Sinks** (*where*): the :class:`Sink` protocol (``log`` / ``video`` / ``close``).
   ``WandbSink`` is the shipped backend; a TensorBoard or CSV sink is a new class in
   this file, nothing else changes.
