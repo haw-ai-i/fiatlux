@@ -465,8 +465,9 @@ _HAND_REMAPS: dict[str, dict[tuple[str, ...], list[str]]] = {
 }
 # Symmetric "back to inspire" entries. Not just completeness / testability: this package's
 # own scripts only swap TO dex3 (record_run.py swaps when ``--robot != "inspire"``, i.e.
-# never back), but ``fiatlux_teleop.hand_swap`` calls ``swap_robot_variant(cfg, "inspire")``
-# directly for ``--hand inspire`` teleop, so these entries are load-bearing there.
+# never back), but ``fiatlux_teleop.subtask_teleop``'s ``apply_subtask_teleop`` calls
+# ``swap_robot_variant(cfg, hand)`` with ``hand == "inspire"`` for a dex3-native subtask
+# driven with ``--hand inspire``, so these entries are load-bearing there.
 _HAND_REMAPS["inspire"] = {tuple(v): list(k) for k, v in _HAND_REMAPS["dex3"].items()}
 
 # Substrings that flag a joint-name list as hand-specific for *some* variant, so an
