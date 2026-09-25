@@ -12,9 +12,9 @@ empty parts crate beside the bench as its destination.
 **Honesty note:** the bulb lifts straight out -- nothing gates removal on the retention detent
 here, so the task is "pick it up and bin it" rather than "free it from the detent".
 ``FIATLUX-Replace-v0`` now gates removal on ``mdp.bulb_attachment`` (issue #54); porting that
-term here is the remaining work (unification spec Phase 4: a revolute/screw
-joint or a make/break fixed-joint attach gated by rotation, anchored at the lamp's socket
-seat pose). The reward/termination code below is real, not a placeholder -- it is
+term here is the remaining work (unification spec Phase 4, issue #167: the same FREE/SEATED
+axial-detent wrench already wired for Replace, not a rotation-gated joint, anchored at the
+lamp's socket seat pose). The reward/termination code below is real, not a placeholder -- it is
 Replace's own ``old_bulb_removed`` / ``old_bulb_disposed`` channels, parametrized
 to point at this scene's ``bulb`` entity instead of Replace's ``old_bulb``. A policy can
 solve it today by lifting the bulb out and binning it; what the mechanic would add is the
@@ -274,8 +274,9 @@ class RemoveEnvCfg(ManagerBasedRLEnvCfg):
         self.scene.fixture = None
         # Tabletop preset has no ladder; the top-level SceneEntityCfg would fail to resolve.
         self.events.randomize_ladder_scale = None
-        # TODO(task phase): create a bulb<->socket joint at the seat pose (revolute/screw or a
-        #   fixed joint broken by rotation), add a grasp/attach action, and a removal reward.
+        # TODO(task phase): wire mdp.bulb_attachment (issue #167's FREE/SEATED axial-detent
+        #   wrench, not a rotation-gated joint) at the seat pose, add a grasp/attach action,
+        #   and a removal reward.
 
         add_wrist_camera(self.scene)
         # GrootPolicy looks up ``scene["ego_camera"]`` unconditionally (same gap
