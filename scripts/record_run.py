@@ -9,9 +9,10 @@ A single rollout produces both artifacts so they describe the *same* run:
 
 - ``video/`` : an MP4 of the run plus a poster PNG, captured by an RTX sensor camera
   (``fiatlux_task.viz``) posed by ``--cam``: fixed ``third_person`` / ``closeup``
-  viewpoints, a 360-degree ``orbit`` of the scene, or ``ego`` -- the robot's own
-  head-mounted ``ego_camera`` sensor (any task whose scene attaches one), unposed
-  since it already moves with the robot.
+  viewpoints, a 360-degree ``orbit`` of the scene, a low ``fixture`` orbit looking up
+  at the mounted fixture, a ``hand`` view tracking the working hand, or ``ego`` -- the
+  robot's own head-mounted ``ego_camera`` sensor (any task whose scene attaches one),
+  unposed since it already moves with the robot.
 - ``run.h5`` + ``meta.json`` : the experiment bag -- every per-step signal needed to
   score the run offline (see ``scripts/score.py``). ``--format npz`` for a flat fallback.
 
@@ -20,9 +21,9 @@ The policy is anything ``make_policy`` accepts (``zero`` / ``random`` / a TorchS
 policy-agnostic.
 
 Examples:
-    python scripts/record_run.py --task FIATLUX-Insert-v0 --policy random \
+    python scripts/record_run.py --task FIATLUX-S08-GrabNewBulb-v0 --policy random \
         --episodes 2 --record both --out logs/runs/random0
-    python scripts/record_run.py --task FIATLUX-Insert-v0 --policy logs/.../policy.pt \
+    python scripts/record_run.py --task FIATLUX-S08-GrabNewBulb-v0 --policy logs/.../policy.pt \
         --record bag --episodes 50 --seed 0 --out logs/runs/policyA
 """
 
@@ -30,17 +31,14 @@ Examples:
 
 import argparse
 
+# See policy_cli_help.py's own docstring for why this isn't fiatlux_task.policy.
+from policy_cli_help import add_policy_cli_args
+
 from isaaclab.app import AppLauncher
 
 parser = argparse.ArgumentParser(description="Record a Fiatlux run (video and/or bag).")
 parser.add_argument("--task", type=str, required=True, help="Task / env id.")
-parser.add_argument(
-    "--policy",
-    type=str,
-    default="zero",
-    help="Policy spec: zero | random | <path>.pt | rsl_rl[:<ckpt>].",
-)
-parser.add_argument("--checkpoint", type=str, default=None, help="Checkpoint path for rsl_rl policies.")
+add_policy_cli_args(parser)
 parser.add_argument(
     "--record",
     type=str,
@@ -69,19 +67,6 @@ parser.add_argument(
 )
 parser.add_argument("--video_length", type=int, default=600, help="Video length (env steps).")
 parser.add_argument("--disable_fabric", action="store_true", default=False, help="Use USD I/O.")
-parser.add_argument(
-    "--instruction",
-    type=str,
-    default=None,
-    help="Language instruction for VLA policies (groot); default: the task's canonical sentence.",
-)
-parser.add_argument(
-    "--robot",
-    type=str,
-    default="inspire",
-    choices=["inspire", "dex3"],
-    help="G1 hand variant. dex3 matches GR00T's REAL_G1 embodiment.",
-)
 # Benchmark telemetry flags (--wandb, --wandb_project, ...); mirrors fiatlux_task.telemetry.
 parser.add_argument("--wandb", action="store_true", default=False, help="Stream the score breakdown to wandb.")
 parser.add_argument("--wandb_project", type=str, default="fiatlux", help="wandb project name.")

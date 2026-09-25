@@ -6,7 +6,7 @@
 [project]
 name = "fiatlux"
 version = "0.1.0"
-description = "Reproducible runtime environment for the Fiatlux humanoid light-bulb benchmark."
+description = "Reproducible runtime environment for the Fiatlux humanoid ladder-climbing and light-bulb replacement benchmark."
 readme = "README.md"
 license = { text = "Apache-2.0" }
 # Isaac Sim 5.1 requires CPython 3.11.
@@ -229,6 +229,21 @@ ignore-words-list = "haa,slq,collapsable,buss,reacher,thirdparty,retuned,tread"
 
 [tool.pytest.ini_options]
 
+# Every real test lives in the tests package. Env cfgs live beside the code, and one of them is
+# named after its task rather than its role -- ``test_lightbulb_mechanism_env_cfg.py`` is the cfg
+# for FIATLUX-TestLightbulbMechanism-Teleop-v0, not a test. Without this, pytest imports it,
+# which pulls in ``isaaclab.sim`` (unavailable until Kit bootstraps) and aborts collection for
+# the WHOLE repo -- every other test silently never runs. ``testpaths`` covers a bare ``pytest``;
+# the ignore covers ``pytest source/``.
+testpaths = ["source/fiatlux_task/fiatlux_task/tests"]
+addopts = ["--ignore=source/fiatlux_teleop/fiatlux_teleop/test_lightbulb_mechanism_env_cfg.py"]
+
+# ``isaacsim_ci`` marks the individual tests that import Isaac Lab (and through it ``pxr``),
+# which only resolves once Kit has bootstrapped. They ``importorskip`` out when Kit is absent,
+# so a bare ``pytest`` is green and reports them as SKIPPED rather than failed -- visible, not
+# hidden. Under Isaac Sim, ``pytest -m isaacsim_ci`` runs them for real. Mark per test, never
+# per module: a module-level mark deselects its import-light tests too, which silently shrank
+# this suite by six.
 markers = [
     "isaacsim_ci: mark test to run in isaacsim ci",
 ]

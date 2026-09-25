@@ -65,7 +65,7 @@ def orbit_pose(
 
 
 # Orbit geometry for the fixture view: low enough to be a genuine upward look at a mount at
-# 2.2 m (wall) or 3.0 m (ceiling), close enough that the fixture is more than a speck.
+# 2.2 m (wall) or 2.37 m (ceiling), close enough that the fixture is more than a speck.
 FIXTURE_VIEW_RADIUS = 2.2
 FIXTURE_VIEW_HEIGHT = 1.5
 FIXTURE_VIEW_MIN_RADIUS = 0.6  # closer than this and the fixture overflows the frame
@@ -115,39 +115,37 @@ def fixture_orbit(env_cfg) -> dict:
         ValueError: if the scene mounts no fixture at all, rather than silently orbiting the
             origin and producing a video that looks like a successful check.
     """
-    for name in ("socket", "fixture"):
-        entity = getattr(env_cfg.scene, name, None)
-        if entity is None or getattr(entity, "init_state", None) is None:
-            continue
-        from fiatlux_task.tasks.manager_based.fiatlux_task.scene_cfg import ROOM_FLOOR_MAX, ROOM_FLOOR_MIN
+    entity = getattr(env_cfg.scene, "socket", None)
+    if entity is None or getattr(entity, "init_state", None) is None:
+        raise ValueError("the fixture view needs a 'socket' scene entity; this scene has none")
+    from fiatlux_task.tasks.manager_based.fiatlux_task.scene_cfg import ROOM_FLOOR_MAX, ROOM_FLOOR_MIN
 
-        center = tuple(entity.init_state.pos)
-        sweep_deg, phase_deg = 360.0, 0.0
-        # the socket's opening is its local +Z; rotate it by the mount quaternion (w, x, y, z)
-        w, x, y, z = entity.init_state.rot
-        open_x, open_y = 2.0 * (x * z + w * y), 2.0 * (y * z - w * x)
-        if math.hypot(open_x, open_y) > 0.5:  # points sideways -> wall mount
-            sweep_deg = 180.0
-            phase_deg = math.degrees(math.atan2(open_y, open_x)) - 90.0
-        return {
-            "center": center,
-            "radius": _radius_inside(center, sweep_deg, phase_deg, ROOM_FLOOR_MIN, ROOM_FLOOR_MAX),
-            "height": FIXTURE_VIEW_HEIGHT,
-            "sweep_deg": sweep_deg,
-            "phase_deg": phase_deg,
-        }
-    raise ValueError("the fixture view needs a 'socket' or 'fixture' scene entity; this scene has neither")
+    center = tuple(entity.init_state.pos)
+    sweep_deg, phase_deg = 360.0, 0.0
+    # the socket's opening is its local +Z; rotate it by the mount quaternion (w, x, y, z)
+    w, x, y, z = entity.init_state.rot
+    open_x, open_y = 2.0 * (x * z + w * y), 2.0 * (y * z - w * x)
+    if math.hypot(open_x, open_y) > 0.5:  # points sideways -> wall mount
+        sweep_deg = 180.0
+        phase_deg = math.degrees(math.atan2(open_y, open_x)) - 90.0
+    return {
+        "center": center,
+        "radius": _radius_inside(center, sweep_deg, phase_deg, ROOM_FLOOR_MIN, ROOM_FLOOR_MAX),
+        "height": FIXTURE_VIEW_HEIGHT,
+        "sweep_deg": sweep_deg,
+        "phase_deg": phase_deg,
+    }
 
 
 def _draw_overlay(frame: np.ndarray, text: str) -> np.ndarray:
     """Burn a few lines of text into the top-left of a frame, over a dark panel.
 
-    Some state a recording needs to show has no visual signature at all. The retention release is
-    the case in point: the bulb is a surface of revolution, so turning it about its own axis
-    changes almost nothing on screen -- measured at 5.7 percent of pixels between two
-    mid-rotation frames, and most of that is specular drift. The event is real, and the camera
-    cannot show it. Printing the state machine's own numbers is honest where implying visible
-    motion would not be.
+    Some state a recording needs to show has no visual signature at all. The bulb's retention
+    wrench is the case in point: a seated bulb is held by a continuously applied force
+    (``mdp.bulb_attachment``), not a visible mechanism, so a frame cannot tell a bulb held
+    under that force apart from one merely resting in the same pose. The event is real, and
+    the camera cannot show it. Printing the state machine's own numbers is honest where
+    implying visible motion would not be.
 
     Falls back to the unannotated frame if PIL is missing, because a recording without a caption
     is still worth having.

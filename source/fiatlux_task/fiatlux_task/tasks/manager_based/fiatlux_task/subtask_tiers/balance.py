@@ -8,9 +8,9 @@
 The preset is drawn with the ladder's zone coupled to the fixture's anchor.
 
 The ladder is dynamic here (S01 moves it into place), so it can tip -- tipping is a
-termination and a penalty in every subtask in this file, and absent from
-``FIATLUX-Climb-v0``/``FIATLUX-Descend-v0``, which climb a kinematic ladder -- and it can stand
-anywhere, so the stances and success gates read its live pose, not ``LADDER_POSITION``.
+termination and a penalty in every subtask in this file, and absent from an older, fixed-layout
+approach that climbed a kinematic ladder -- and it can stand anywhere, so the stances and success
+gates read its live pose, not ``LADDER_POSITION``.
 
 ``mdp.bulb_attachment`` is wired here (as ``BulbAttachmentEventCfg``) rather than on the mate
 tier: the old bulb starts seated in the inverted fixture on every subtask in this file, and
@@ -60,7 +60,7 @@ from ..subtask_env_cfg import (
 
 @configclass
 class BulbAttachmentEventCfg(SubtaskEventCfg):
-    """Axial retention spring, with ``FIATLUX-Replace-v0``'s parameters.
+    """Axial detent, with ``FIATLUX-Replace-v0``'s parameters.
 
     Nothing ladder-specific: S01 (Place tier, off-ladder) wires this in directly, so it must stay
     usable on its own, without whatever ``BalanceEventCfg`` adds for the on-the-ladder tier.

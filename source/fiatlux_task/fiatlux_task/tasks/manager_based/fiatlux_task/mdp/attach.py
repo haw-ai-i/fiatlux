@@ -15,16 +15,16 @@ The workaround was to filter bulb-socket collision out entirely (``scene_cfg.py`
 ``_spawn_bulb_socket_filtered``, now removed) and let the scripted projection substitute for
 real contact everywhere.
 
-Two independent diagnostics (``scripts/diagnose_contact_twist.py``,
-``scripts/diagnose_contact_axial.py``; see ``plans/bayonet-force-based-attachment.md``) found
-that with collision genuinely enabled, real contact geometry blocked BOTH the twist-release and
-axial-insertion motions the bayonet assumed were unobstructed -- the plug's radius was equal to
-or larger than the bore at every relevant height. Shrinking the plug (2026-09-07) fixed that,
-and a rerun under real contact (2026-09-08) confirmed insertion now works given reasonable
-orientation guidance. That result removed the reason for the bayonet's own existence: with
-collision back on, the socket's geometry confines the bulb laterally and angularly on its own --
-nothing scripted has to. There is also no physical lug or groove in this asset (a plain round
-bore), so the twist/lock semantics were never modeling a real feature, only a scripted one.
+Two independent diagnostics -- one for twist, one for axial insertion
+(``scripts/diagnose_contact_axial.py``) -- found that with collision genuinely enabled, real
+contact geometry blocked BOTH the twist-release and axial-insertion motions the bayonet assumed
+were unobstructed -- the plug's radius was equal to or larger than the bore at every relevant
+height. Shrinking the plug (2026-09-07) fixed that, and a rerun under real contact (2026-09-08)
+confirmed insertion now works given reasonable orientation guidance. That result removed the
+reason for the bayonet's own existence: with collision back on, the socket's geometry confines
+the bulb laterally and angularly on its own -- nothing scripted has to. There is also no
+physical lug or groove in this asset (a plain round bore), so the twist/lock semantics were
+never modeling a real feature, only a scripted one.
 
 What real contact still cannot provide is RETENTION: nothing stops the bulb sliding back out of
 a plain round bore under gravity or a knock. This module supplies exactly that, and nothing
@@ -779,7 +779,7 @@ def old_bulb_release_clearance(env: ManagerBasedRLEnv) -> torch.Tensor:
     """Old-bulb fixture clearance (m) that reads 0 until the bulb is released.
 
     Attach-aware ``old_bulb_fixture_clearance``: a transient shove of a seated bulb must not
-    read as clearance, since the retention spring (not a projection) still owns the axial
+    read as clearance, since the detent (not a projection) still owns the axial
     error and will pull it back.
     """
     clearance = old_bulb_fixture_clearance(env)

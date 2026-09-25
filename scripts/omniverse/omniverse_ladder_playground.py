@@ -16,7 +16,7 @@ rigid one starts upright with a gap and TOPPLES onto the wall on play. One open
 representative per design, plus a folded variant for every design that ships one.
 Across all keep folders.
 
-Run:  DISPLAY=:1001 python scripts/omniverse/omniverse_ladder_playground.py
+Run:  python scripts/omniverse/omniverse_ladder_playground.py   # GUI window on $DISPLAY
 
 Visual tool only -- physics plays automatically; you judge it by eye (a headless
 pass/fail on "did a box rest on an open ladder" is too noisy to be meaningful).
