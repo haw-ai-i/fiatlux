@@ -3,7 +3,9 @@
 #
 # SPDX-License-Identifier: BSD-3-Clause
 
-"""Argparse args shared between ``record_run.py`` and ``verify_scene.py``'s CLIs.
+"""Argparse args for the policy CLI surface, used by ``record_run.py``'s CLI
+(``verify_scene.py`` also imports this module, but only for the ``ROBOT_CHOICES``
+constant, not the full policy-arg surface -- see below).
 
 Deliberately its own module outside the ``fiatlux_task`` package, not just constants in
 ``fiatlux_task/policy.py``: importing anything under ``fiatlux_task`` runs
