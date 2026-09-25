@@ -35,7 +35,7 @@ Supports overriding the lateral/tilt gains (``--tilt_k``/``--tilt_d``/``--max_to
 ships, not just confirming the shipped one.
 
 Run with `uv run python` from the repo root, not a bare .venv/bin/python -- see
-verify_ceiling_hold.py's docstring for why.
+verify_common.py's docstring for why.
 
 Example
 -------
@@ -134,9 +134,7 @@ def build_cfg():
     verify_common.assert_right_checkout(cfg, "fresh_bulb")
     cfg.seed = args_cli.seed
     verify_common.strip_visual_obs(cfg)
-    for term in ("success", "old_bulb_dropped", "fresh_bulb_dropped"):
-        if getattr(cfg.terminations, term, None) is not None:
-            setattr(cfg.terminations, term, None)
+    verify_common.strip_drop_terminations(cfg)
     cfg.scene.robot.spawn.articulation_props.fix_root_link = True
 
     # Force a WALL mount, the "west" wall's own orientation (scene_cfg.py's _sample_fixture_mount

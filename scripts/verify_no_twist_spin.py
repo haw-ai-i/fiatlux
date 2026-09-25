@@ -46,7 +46,7 @@ The ``--hold_force``/``--bore_depth`` overrides are kept for exactly the job the
 separating "does it spin" from "does it stay in" when one of the two is broken.
 
 Run with `uv run python` from the repo root, not a bare .venv/bin/python -- see
-verify_twist_damping.py's docstring for why.
+verify_common.py's docstring for why.
 
 Example
 -------

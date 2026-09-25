@@ -54,6 +54,18 @@ def strip_visual_obs(cfg) -> None:
                 setattr(group, term, None)
 
 
+def strip_drop_terminations(cfg) -> None:
+    """Drop the success/dropped-bulb terminations that would end the episode early.
+
+    These scripts step a forced scenario for a fixed duration to observe one specific mechanism;
+    letting the benchmark's own success or drop terminations fire would cut that observation
+    short before the diagnostic has run its course.
+    """
+    for term in ("success", "old_bulb_dropped", "fresh_bulb_dropped"):
+        if getattr(cfg.terminations, term, None) is not None:
+            setattr(cfg.terminations, term, None)
+
+
 def run_verify_main(main, simulation_app) -> None:
     """Standard entrypoint for a verify_*/diagnose_*.py ``if __name__ == "__main__":`` block.
 

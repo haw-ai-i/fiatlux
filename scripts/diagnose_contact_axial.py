@@ -98,9 +98,7 @@ def build_cfg():
     verify_common.assert_right_checkout(cfg, "fresh_bulb")
     cfg.seed = args_cli.seed
     verify_common.strip_visual_obs(cfg)
-    for term in ("success", "old_bulb_dropped", "fresh_bulb_dropped"):
-        if getattr(cfg.terminations, term, None) is not None:
-            setattr(cfg.terminations, term, None)
+    verify_common.strip_drop_terminations(cfg)
     cfg.scene.robot.spawn.articulation_props.fix_root_link = True
     for bulb_cfg in (cfg.scene.fresh_bulb, cfg.scene.old_bulb):
         if DISABLE_GRAVITY and getattr(bulb_cfg.spawn, "rigid_props", None) is not None:

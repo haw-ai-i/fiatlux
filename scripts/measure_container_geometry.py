@@ -30,7 +30,6 @@ Example
 """
 
 import argparse
-import sys
 
 import numpy as np
 
@@ -154,4 +153,4 @@ def main() -> int:
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    verify_common.run_verify_main(main, simulation_app)
