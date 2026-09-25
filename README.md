@@ -75,22 +75,19 @@ uv run python scripts/list_envs.py                                        # all 
 uv run python scripts/verify_scene.py --headless                          # FIATLUX-Base-v0 checks
 uv run python scripts/verify_scene.py --headless --task FIATLUX-Climb-v0  # any family member
 
-# 4. Evaluate (standardized, reproducible):
+# 4. Evaluate (standardized, reproducible): record a run, then score it offline
+#    (no simulator needed for scoring). Same --task/--seed/--policy (and checkpoint)
+#    -> same numbers. --enable_cameras is required: the env carries a wrist-camera
+#    sensor. Use a smaller --episodes for a quick smoke test instead of a full run.
 uv run python scripts/record_run.py --task FIATLUX-Insert-v0 --policy random \
-    --episodes 20 --seed 0 --record bag --out logs/runs/eval0
-uv run python scripts/score.py logs/runs/eval0
-
-# 5. Record a run, then score it offline (no simulator needed for scoring).
-#    --enable_cameras is required: the env carries a wrist-camera sensor.
-uv run python scripts/record_run.py --task FIATLUX-Insert-v0 --policy random \
-    --episodes 2 --record bag --headless --enable_cameras --out logs/runs/random0
+    --episodes 20 --seed 0 --record bag --enable_cameras --out logs/runs/random0
 uv run python scripts/score.py logs/runs/random0
 
-# 6. Train a policy:
+# 5. Train a policy:
 uv run python scripts/rsl_rl/train.py --task FIATLUX-Insert-v0
 uv run python scripts/rsl_rl/train.py --task FIATLUX-Climb-v0
 
-# 7. Run the GR00T N1.7 model baseline on the benchmark (needs the external
+# 6. Run the GR00T N1.7 model baseline on the benchmark (needs the external
 #    PolicyServer -- setup in journal/specs/groot-sonic-baseline.md):
 uv sync --extra groot
 scripts/groot/serve.sh &   # terminal 1: the VLA server (own venv, HF token required)
@@ -98,7 +95,7 @@ uv run python scripts/record_run.py --task FIATLUX-Replace-v0 --policy groot --r
     --episodes 20 --seed 0 --enable_cameras --out logs/runs/groot0
 uv run python scripts/score.py logs/runs/groot0
 
-# 8. Teleoperate the tasks (whole-body: SONIC walking + bimanual arms; keyboard or
+# 7. Teleoperate the tasks (whole-body: SONIC walking + bimanual arms; keyboard or
 #    Pico VR) and record scored demo sessions -- guide: source/fiatlux_teleop/README.md
 ./scripts/teleop/setup_sim_teleop.sh            # one-command setup (keyboard tier; `vr` adds CloudXR)
 PYTHONPATH=source/fiatlux_task:source/fiatlux_teleop \
