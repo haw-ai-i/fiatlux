@@ -22,14 +22,13 @@ SONIC whole-body controller handled locomotion.
 ## Layout
 
 ```
-2026-09-13-dex3-teleop-takes/
-  FIATLUX-S<nn>-<Subtask>-Teleop-v0/dex3/hdf5/vr/{success,fail}/
-    <date>_<time>_ep<nn>_score<x.xx>/
-      run.h5              # observations, actions, contacts, gate signals per step
-      meta.json           # task id, benchmark version, commit, seed, joint order, thresholds
-      ego.mp4             # head-camera video of the episode
-      ego_poster.png      # first frame
-      score_report.txt    # the scorer's verdict and gate timeline
+FIATLUX-S<nn>-<Subtask>-Teleop-v0/dex3/hdf5/vr/<YYYY-MM-DD>/<HHMMSS>/
+  ep<nn>_score<x.xx>/
+    run.h5              # observations, actions, contacts, gate signals per step
+    meta.json           # task id, benchmark version, commit, seed, joint order, thresholds
+    ego.mp4             # head-camera video of the episode
+    ego_poster.png      # first frame
+    score_report.txt    # the scorer's verdict and gate timeline
 ```
 
 125 episodes; 3.7 GB. The `run.h5` field list and the action joint order are in each `meta.json`.
