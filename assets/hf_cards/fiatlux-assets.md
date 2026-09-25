@@ -59,10 +59,10 @@ Per-asset provenance and physics-verification notes: `omniverse_uploaded_manifes
 | `isaac_skies/` | `kloofendal_43d_clear_puresky_4k.hdr`, [Poly Haven](https://polyhaven.com/a/kloofendal_43d_clear_puresky) | CC0 |
 
 The NVIDIA-sourced groups are mirrored here as part of the benchmark under NVIDIA's terms above;
-NVIDIA's notice and the name of the source pack are being added to each group. The BEHAVIOR-1K groups are not
-redistributable and are being dropped from this dataset (Stanford distributes those models
-encrypted for use inside OmniGibson only, and no benchmark preset has loaded them since #230).
-Progress: [haw-ai-i/fiatlux#231](https://github.com/haw-ai-i/fiatlux/issues/231).
+NVIDIA's notice and the name of the source pack are being added to each group. The BEHAVIOR-1K
+groups were not redistributable and have been removed from this dataset (Stanford distributes
+those models encrypted for use inside OmniGibson only, and no benchmark preset has loaded them
+since #230). Progress: [haw-ai-i/fiatlux#231](https://github.com/haw-ai-i/fiatlux/issues/231).
 
 ## Citation
 
