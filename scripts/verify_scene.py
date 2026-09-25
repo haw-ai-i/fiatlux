@@ -37,6 +37,9 @@ import os
 
 from isaaclab.app import AppLauncher
 
+# See policy_cli_help.py's own docstring for why this isn't fiatlux_task.policy.
+from policy_cli_help import ROBOT_CHOICES
+
 parser = argparse.ArgumentParser(description="Verify the Fiatlux ladder scene loads and physics is stable.")
 parser.add_argument(
     "--task",
@@ -51,7 +54,7 @@ parser.add_argument(
     "--robot",
     type=str,
     default="inspire",
-    choices=["inspire", "dex3"],
+    choices=ROBOT_CHOICES,
     help="G1 hand variant. dex3 is the variant the VLA baselines score.",
 )
 parser.add_argument(
