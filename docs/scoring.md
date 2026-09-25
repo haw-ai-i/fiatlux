@@ -127,16 +127,19 @@ them together caps at 0.5; only the gate firing reaches 1.0.
 - **`success_rate`** — fraction of episodes whose gate latched.
 - **`gate_progress`** — partial credit in [0, 1]: the most conjuncts ever true *simultaneously*,
   normalized against how many were already true at reset, so conditions like `robot_standing`
-  that hold at t=0 everywhere hand out no free credit. `None` for a bag recorded before the
-  `gate_*` columns existed — reported as missing, never as zero.
+  that hold at t=0 everywhere hand out no free credit. `None` in `score.py`'s own JSON output
+  for a bag recorded before the `gate_*` columns existed, never a fabricated 0.0.
 
 Both come from the bag's recorded `gate_*` conjunct columns, so the headline is reproducible from
 a recording rather than existing only inside a live reward manager. `scripts/score_subtasks.py`
 rolls bags up across subtasks, weighting each by its difficulty — the product of its factor
 multipliers (`FACTOR_MULTIPLIERS`: balance 2.0, release 1.8, grasp 1.4, carry/traverse/mate/span
 1.5), with a factorless subtask weighing 1.0. A subtask absent from the results is reported
-missing and excluded from the denominator: "did not run" and "ran and failed" are different
-claims.
+missing and excluded from the denominator ("did not run" and "ran and failed" are different
+claims); a `gate_progress: null` result for a subtask that DID run is a different case again --
+not comparable, so `score_subtasks.py` raises loudly rather than silently dropping it, and the
+bag needs re-scoring with `score.py` after the run that produced it recorded the `gate_*`
+columns.
 
 Subtask scores may not be compared across layout seeds.
 `FIATLUX-Replace-v0`'s own score (above) is a separate number:
