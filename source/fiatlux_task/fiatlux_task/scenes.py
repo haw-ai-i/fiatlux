@@ -5,10 +5,11 @@
 
 """Shared scene vocabulary for the Fiatlux benchmark scenes.
 
-Every task in the family shares one scene -- ``scene_cfg.G1ReplaceSceneCfg`` -- and differs only
-by which *preset layout* its env cfg applies (tabletop for Insert, replace for the benchmark and
-the twelve subtasks, and so on). This module holds the part of that world which is not a preset
-knob at all:
+The tabletop preset (``scene_cfg.apply_tabletop_preset``) and the ladder-family presets
+(``apply_position_preset`` / ``apply_replace_preset``) are deliberately different *layouts* --
+tabletop subtask vs
+at-fixture task family -- but they describe the same world. This module holds the pieces
+that must stay literally identical across them:
 
 - :class:`DressedSceneCfg` -- the common room dressing (HDRI sky dome + Simple Room backdrop).
   ``G1ReplaceSceneCfg`` subclasses it, so the room and sky are inherited rather than re-declared.

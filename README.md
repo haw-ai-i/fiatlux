@@ -6,15 +6,12 @@ the spent bulb for a fresh one, and drops the spent one in a disposal crate. It 
 Python / Isaac Lab extension — no ROS, no distributed harness — so it plugs into the standard
 `train` / `play` / `teleop` / `eval` scripts.
 
-> **Status (honest):** the benchmark has two framings of the same job. **`FIATLUX-Replace-v0`**
-> is the full replacement as one flat scored episode; the **twelve subtasks**
-> (`FIATLUX-S01-MoveLadder-v0` … `FIATLUX-S12-ClimbDown-v0`) are the same chain cut into legs,
-> each with its own success gate, its own score (`docs/scoring.md`), a `-Training-v0` RL tier
-> and a `-Teleop-v0` twin for human demonstration. The older coarse envs (`Insert`, `Climb`,
-> `Carry`) are functional development aids, not benchmark targets, as are `Descend`, `Remove`
-> and `Install` — each now covered by a subtask. `Base` is the non-RL scene-only env. The
-> bulb/socket retention mechanic is implemented (`mdp.bulb_attachment`), so Replace's removal
-> and disposal score channels are achievable. See [docs/roadmap.md](docs/roadmap.md).
+> **Status (honest):** the **full replacement** (`FIATLUX-Replace-v0`) is the scored
+> benchmark task — randomized room layout, normalized-progress scoring,
+> standard/cheatcode observation modes. The benchmark is the full-length
+> `FIATLUX-Replace-v0` plus the twelve subtasks it decomposes into. The bulb/socket retention mechanic is implemented (`mdp.bulb_attachment`),
+> so Replace's removal and disposal score channels are now achievable. See
+> [docs/roadmap.md](docs/roadmap.md).
 
 ## Task hierarchy
 
@@ -36,26 +33,28 @@ scene.
 
 | Env id | Description | Status |
 | --- | --- | --- |
-| `FIATLUX-Replace-v0` | **the flat benchmark**: the whole chain in one episode (randomized room) | ✅ RL |
-| `FIATLUX-Insert-v0` | G1 seats a bulb into a socket (tabletop manipulation) | ✅ RL · has a teleop twin |
-| `FIATLUX-Climb-v0` | G1 climbs the step ladder to the fixture height (whole-body RL) | ✅ RL |
-| `FIATLUX-Carry-v0` | G1 walks to a ladder, grasps it, and carries it upright to a target | ✅ RL · has a teleop twin |
-| `FIATLUX-Descend-v0` | bipedal ladder descent — Climb's reward scheme mirrored | ✅ RL · superseded by S04/S12 |
-| `FIATLUX-Remove-v0` | remove the seated bulb from the bench-lamp socket (`Insert`'s bench, not the elevated fixture) | ✅ RL · superseded by S03 |
-| `FIATLUX-Install-v0` | seat a new bulb into that same empty bench-lamp socket | ✅ RL · superseded by S11 |
-| `FIATLUX-Base-v0` | shared scene, no task logic — `verify_scene.py`'s default target | 🧱 non-RL |
+| `FIATLUX-Replace-v0` | **the benchmark**: full replacement — fetch the ladder, swap the bulb, dispose of the old one (randomized room) | ✅ functional |
+| `FIATLUX-S01-MoveLadder-v0` | carry the ladder to the fixture and stand it up | ✅ functional |
+| `FIATLUX-S02-ClimbLadder-v0` | climb to working height, hands free | ✅ functional |
+| `FIATLUX-S03-RemoveOldBulb-v0` | free the old bulb from the fixture | ✅ functional |
+| `FIATLUX-S04-DescendWithBulb-v0` | carry the old bulb down the ladder | ✅ functional |
+| `FIATLUX-S05-CarryBulbToDisposal-v0` | carry it to the disposal crate | ✅ functional |
+| `FIATLUX-S06-DisposeBulb-v0` | put it in the crate and let go | ✅ functional |
+| `FIATLUX-S07-ApproachNewBulb-v0` | walk to the fresh bulb on the bench | ✅ functional |
+| `FIATLUX-S08-GrabNewBulb-v0` | pick it up without crushing it | ✅ functional |
+| `FIATLUX-S09-CarryBulbToLadder-v0` | carry it back to the ladder | ✅ functional |
+| `FIATLUX-S10-ClimbWithBulb-v0` | climb one-handed holding the bulb | ✅ functional |
+| `FIATLUX-S11-ScrewInBulb-v0` | seat the fresh bulb in the fixture | ✅ functional |
+| `FIATLUX-S12-ClimbDown-v0` | come back down, bulb still seated | ✅ functional |
 
-`Replace-v0` and `Climb-v0` are also **load-bearing for the subtasks**, which import their
-thresholds (`FRESH_BULB_DROP_HEIGHT`, `REMOVAL_CLEARANCE`, `SEAT_*_THRESHOLD`,
-`bulb_attachment_event`; `FALL_MIN_HEIGHT` / `FALL_TILT_LIMIT`) rather than redeclaring them.
-`Descend`, `Remove` and `Install` have no such dependants and no teleop twin — a subtask covers
-each of their jobs now, so they are candidates for retirement.
+The benchmark is **one full-length task and the twelve subtasks it decomposes into**, backed
+by one scene with preset layouts. Each subtask starts from its predecessor's end state, so a
+policy can be trained and scored on any leg independently; `FIATLUX-Replace-v0` runs the whole
+chain. Each subtask also has a `-Training-v0` variant (replicated physics, shaping rewards) and
+a `-Teleop-v0` variant for operator recording.
 
-Every id is a member of **one task family** backed by **one scene** with preset layouts; they
-all share one non-RL base env (observation/action/event managers only). `scripts/list_envs.py`
-prints the live list — 32 ids from `fiatlux_task` plus 16 teleop ids from `fiatlux_teleop`. The
-train / eval / record scripts apply to the RL members; `scripts/verify_scene.py` covers every
-member.
+The eval / record scripts and `scripts/verify_scene.py` apply to every id; `scripts/rsl_rl/`
+train / play need a PPO config, which only `FIATLUX-Replace-v0` has so far.
 
 ## Repository layout
 
@@ -68,17 +67,13 @@ fiatlux/
 │   ├── .../fiatlux_task/viz.py      # shared video capture (orbit / rollout MP4s + posters)
 │   ├── .../fiatlux_task/subtask_score.py  # the subtask headline score
 │   └── .../manager_based/fiatlux_task/
-│       ├── scene_cfg.py         # THE family scene + tabletop/workshop/replace presets
-│       ├── base_env_cfg.py      # shared non-RL base env (managers only)
-│       ├── subtask_env_cfg.py   # shared subtask MDP (obs/actions/events/gates)
-│       ├── subtask_tiers/       # behaviour shared by a group of legs (balance, carry, grasp…)
-│       ├── subtasks/            # s01_…_env_cfg.py … s12_…_env_cfg.py + the training tier
-│       ├── replace_env_cfg.py   # the flat benchmark task
-│       ├── g1_bulb_env_cfg.py   # Insert task MDP (RL, tabletop preset)
-│       ├── climb_env_cfg.py / carry_env_cfg.py   # Climb / Carry MDPs (RL)
-│       ├── mdp/                 # rewards, events, observations, the attach state machine
+│       ├── scene_cfg.py         # THE family scene + tabletop/position/replace presets
+│       ├── replace_env_cfg.py   # FIATLUX-Replace-v0 MDP (the benchmark task)
+│       ├── subtask_env_cfg.py   # shared recipe for the twelve subtasks
+│       ├── subtasks/            # one thin cfg file per subtask
+│       ├── mdp/                 # rewards, events, observations
 │       ├── agents/              # rsl_rl PPO config
-│       └── __init__.py          # gym.register(...) x32
+│       └── __init__.py          # gym.register() for Replace-v0 + the twelve subtasks
 ├── source/fiatlux_teleop/    # teleop twins (gym.register(...) x16) + recording, behind the
 │                             #   `teleop` extra -- not a core benchmark dependency
 ├── scripts/                  # zero / random / eval / record_run / score / score_subtasks /
@@ -104,25 +99,22 @@ uv sync
 # 2. Pull the USD assets (G1, bulb/socket, ladder) from the HF dataset:
 ./assets/download_assets.sh
 
-# 3. Sanity-check registration and launch a baseline. Every task carries a camera sensor,
-#    so --enable_cameras is required even here (headless verification, no video):
-uv run python scripts/list_envs.py                                                        # every registered FIATLUX id
-uv run python scripts/verify_scene.py --headless --enable_cameras                         # FIATLUX-Base-v0 checks
-uv run python scripts/verify_scene.py --headless --enable_cameras --task FIATLUX-Climb-v0  # any family member
+# 3. Sanity-check registration and launch a baseline:
+uv run python scripts/list_envs.py                                        # every registered FIATLUX id
+uv run python scripts/verify_scene.py --headless --enable_cameras --task FIATLUX-Replace-v0   # scene checks
+uv run python scripts/verify_scene.py --headless --enable_cameras --task FIATLUX-S02-ClimbLadder-v0  # any member
 
 # 4. Evaluate (standardized, reproducible):
-uv run python scripts/eval.py --task FIATLUX-Insert-v0 --policy random --episodes 20 --seed 0 \
-    --enable_cameras
+uv run python scripts/eval.py --task FIATLUX-S08-GrabNewBulb-v0 --policy random --episodes 20 --seed 0
 
 # 5. Record a run, then score it offline (no simulator needed for scoring).
-#    --enable_cameras is required: the env carries a wrist-camera sensor.
-uv run python scripts/record_run.py --task FIATLUX-Insert-v0 --policy random \
+#    --enable_cameras is required: the env carries an ego-camera sensor.
+uv run python scripts/record_run.py --task FIATLUX-S08-GrabNewBulb-v0 --policy random \
     --episodes 2 --record bag --headless --enable_cameras --out logs/runs/random0
 uv run python scripts/score.py logs/runs/random0
 
-# 6. Train a policy:
-uv run python scripts/rsl_rl/train.py --task FIATLUX-Insert-v0 --enable_cameras
-uv run python scripts/rsl_rl/train.py --task FIATLUX-Climb-v0 --enable_cameras
+# 6. Train a policy (only FIATLUX-Replace-v0 ships an rsl_rl PPO config so far):
+uv run python scripts/rsl_rl/train.py --task FIATLUX-Replace-v0
 
 # 7. Run the GR00T N1.7 model baseline on the benchmark (needs the external
 #    PolicyServer -- setup and required env vars are in scripts/groot/serve.sh's header):
@@ -136,7 +128,7 @@ uv run python scripts/eval.py --task FIATLUX-Replace-v0 --policy groot \
 ./scripts/teleop/setup_sim_teleop.sh            # one-command setup (keyboard tier; `vr` adds CloudXR)
 PYTHONPATH=source/fiatlux_task:source/fiatlux_teleop \
 uv run --extra teleop python scripts/teleop/sonic_teleop.py \
-    --task FIATLUX-Carry-Teleop-v0 --input keyboard
+    --task FIATLUX-S07-ApproachNewBulb-Teleop-v0 --input keyboard
 ```
 
 ## Sim-to-real

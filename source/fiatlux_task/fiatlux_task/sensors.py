@@ -26,27 +26,10 @@ import isaaclab.sim as sim_utils
 from isaaclab.sensors import TiledCameraCfg
 from isaaclab.sensors.ray_caster import MultiMeshRayCasterCfg, patterns
 
-from .robots.g1 import G1_D435_BODY, G1_EE_BODY, G1_MID360_BODY
+from .robots.g1 import G1_D435_BODY, G1_MID360_BODY
 
-WRIST_CAMERA_NAME = "wrist_camera"
 EGO_CAMERA_NAME = "ego_camera"
 MID360_LIDAR_NAME = "mid360_lidar"
-
-
-def wrist_camera_cfg() -> TiledCameraCfg:
-    """Wrist-mounted RGB camera: the manipulation subtasks' close-in eef view."""
-    return TiledCameraCfg(
-        prim_path="{ENV_REGEX_NS}/Robot/" + G1_EE_BODY + "/" + WRIST_CAMERA_NAME,
-        spawn=sim_utils.PinholeCameraCfg(
-            focal_length=22.48,
-            horizontal_aperture=20.955,
-            clipping_range=(0.05, 5.0),
-        ),
-        height=224,
-        width=224,
-        data_types=["rgb"],
-        offset=TiledCameraCfg.OffsetCfg(pos=(0.05, 0.0, 0.0), rot=(1.0, 0.0, 0.0, 0.0), convention="ros"),
-    )
 
 
 def ego_camera_cfg() -> TiledCameraCfg:

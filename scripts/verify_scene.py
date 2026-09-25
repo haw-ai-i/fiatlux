@@ -10,24 +10,24 @@ assets present, preset initial state, robot sanity, gravity/settling, collision 
 contact/penetration.
 
 It covers the whole task family: the entity list is derived from the task's scene cfg, so
-presets that drop entities (tabletop has no ladder, workshop has no table) verify with the
-same tool. RL members work too -- their step returns are ignored and mid-run auto-resets do
+presets that drop entities (tabletop has no ladder, dressing cfgs may drop the fixture) verify
+with the same tool. RL members work too -- their step returns are ignored and mid-run auto-resets do
 not disturb the checks. EVERY task carries a camera sensor (each env cfg calls
 ``add_ego_camera``), so verifying any of them needs ``--enable_cameras``.
 
 Examples
 --------
-    # headless verification (default base env)
+    # headless verification (default: FIATLUX-Replace-v0)
     uv run python scripts/verify_scene.py --headless --enable_cameras
 
     # record an orbiting MP4 of the scene to logs/verify/ (the reliable way to see it headless)
     uv run python scripts/verify_scene.py --record --hold_base --headless --num_envs 1
 
     # verify a specific task env
-    uv run python scripts/verify_scene.py --headless --task FIATLUX-Climb-v0
+    uv run python scripts/verify_scene.py --headless --enable_cameras --task FIATLUX-S02-ClimbLadder-v0
 
     # every task needs camera rendering; without the flag Isaac Lab raises at startup
-    uv run python scripts/verify_scene.py --headless --enable_cameras --task FIATLUX-Insert-v0
+    uv run python scripts/verify_scene.py --headless --enable_cameras --task FIATLUX-Replace-v0
 """
 
 """Launch Isaac Sim Simulator first."""
@@ -42,11 +42,10 @@ parser = argparse.ArgumentParser(description="Verify the Fiatlux ladder scene lo
 parser.add_argument(
     "--task",
     type=str,
-    default="FIATLUX-Base-v0",
+    default="FIATLUX-Replace-v0",
     help="Gym id of the env/task to verify (any FIATLUX id). EVERY task needs --enable_cameras: "
     "each one calls add_ego_camera, and Isaac Lab raises at startup for a camera spawned without "
-    "the flag. This used to name Insert alone, which sent seven of the eight presets into a "
-    "startup crash that reads like a scene fault.",
+    "the flag.",
 )
 parser.add_argument("--num_envs", type=int, default=4, help="Number of environments to spawn.")
 parser.add_argument(
@@ -129,7 +128,7 @@ from isaaclab_tasks.utils import parse_env_cfg
 # global prims (shared across envs) and the per-env tracked entities we expect
 # Candidate scene entities; each is checked only when it exists (and is not None) on the
 # task's scene cfg, so this one verifier covers every family preset: the tabletop preset
-# has no ladder, the workshop presets have no table, dressing cfgs may drop the fixture.
+# has no ladder, dressing cfgs may drop the fixture.
 # ``room`` and ``pendant`` are per-env (each env owns a colliding room), so they belong to
 # the tracked list -- their prim paths carry {ENV_REGEX_NS} and only resolve under env_0.
 GLOBAL_CANDIDATES = ["ground", "dome_light", "key_light"]
@@ -141,14 +140,14 @@ TRACKED_CANDIDATES = ["robot", "ladder", "lamp", "socket", "fresh_bulb", "old_bu
 # Every preset states its bulb role. A bulb seated in the socket is ``old_bulb``, one anywhere
 # else is ``fresh_bulb`` (issue #76 Step 1), and the pair of expectations below is what stops a
 # preset from silently inheriting or dropping one -- the failure mode the rename exists to end.
+#
+# Hand-maintained against ``scene_preset`` values actually assigned in source/ -- nothing
+# asserts these stay in sync. Before editing, ``grep -rn 'scene_preset:' source/`` to check
+# this dict's keys still match every live class-level ``scene_preset`` default (this file's own
+# history has drifted both ways: a dead key left in after its preset's last user was deleted,
+# and a live key deleted too eagerly because its only remaining user was easy to miss).
 PRESET_PRESENCE = {
-    "tabletop": ({"table", "fresh_bulb"}, {"ladder", "old_bulb"}),
-    "workshop": ({"ladder", "fresh_bulb"}, {"table", "old_bulb"}),
     "carry": ({"ladder", "old_bulb"}, {"table", "fresh_bulb"}),
-    "climb": ({"ladder", "fresh_bulb"}, {"table", "old_bulb"}),
-    "descend": ({"ladder", "fresh_bulb"}, {"table", "old_bulb"}),
-    "remove": ({"table", "bin", "old_bulb"}, {"ladder", "fresh_bulb"}),
-    "install": ({"table", "bin", "fresh_bulb"}, {"ladder", "old_bulb"}),
     "replace": ({"table", "ladder", "bin", "old_bulb", "fresh_bulb"}, set()),
 }
 

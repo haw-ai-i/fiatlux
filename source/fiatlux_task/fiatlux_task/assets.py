@@ -27,12 +27,6 @@ BULB_USD = os.path.join(FIATLUX_ASSETS_DIR, "omniverse_bulb", "LightBulb_bulb_z_
 # files, authored by scripts/omniverse/omniverse_socket_guide_sleeve.py (run it if they are missing).
 SOCKET_USD = os.path.join(FIATLUX_ASSETS_DIR, "omniverse_bulb", "LightBulb_socket_z_static_sleeve.usda")
 
-# Curated Omniverse LightBulb split into a graspable bulb + its socket base (Y-up, cm-authored ->
-# spawn scale + an X rotation). Clean-rendering; used by the
-# teleop bench (FIATLUX-Insert-Teleop-v0).
-OMNI_BULB_USD = os.path.join(FIATLUX_ASSETS_DIR, "omniverse_bulb", "LightBulb_bulb.usda")
-OMNI_SOCKET_USD = os.path.join(FIATLUX_ASSETS_DIR, "omniverse_bulb", "LightBulb_socket_sleeve.usda")
-
 # Metres, in each object's own root frame, Z-up. Both halves are authored assembled at
 # identity, so "seated" is *bulb root pose == socket root pose*.
 SOCKET_SEAT_OFFSET = (0.0, 0.0, 0.036259)
@@ -110,11 +104,6 @@ G1_HORIZONTAL_REACH = 0.5045
 # cannot close around.
 G1_PALM_REACH = 0.419  # m
 G1_WORKING_SHOULDER_OFFSET = (0.001, -0.101, 0.291)  # m, robot frame
-
-# The at-height presets' fixture. Kept as its own name because climb/descend spawn it at a
-# different scale and pose, but it is now the SAME asset as the tabletop socket -- it once
-# pointed at a decorative chandelier that never had a validated socket metalink.
-ELEVATED_SOCKET_USD = SOCKET_USD
 
 # The ``_physics`` variant ships collision geometry.
 CRATE_USD = os.path.join(

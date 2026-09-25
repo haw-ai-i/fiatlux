@@ -42,8 +42,7 @@ Design notes:
   twist term that was tried turned out to be generating the spin it was meant to damp -- see
   ``mdp/attach.py``). The state machine reads bulb motion, never wrist pose.
   ``fresh_bulb_inserted`` and ``success`` read the attachment state, not raw seating
-  geometry, so every score channel is genuinely achievable. Remove/Install do not gate on
-  attachment at all: their bulbs are dynamic and simply lift out of / drop into the socket.
+  geometry, so every score channel is genuinely achievable.
 """
 
 from isaaclab.envs import ManagerBasedRLEnvCfg
@@ -62,7 +61,6 @@ from fiatlux_task.robots.g1 import (
 )
 
 from . import mdp
-from .climb_env_cfg import FALL_MIN_HEIGHT, FALL_TILT_LIMIT
 from .scene_cfg import (
     LADDER_READY_FACING_TOLERANCE,
     LADDER_READY_REACH,
@@ -72,6 +70,7 @@ from .scene_cfg import (
     add_mid360_lidar,
     apply_replace_preset,
 )
+from .subtask_env_cfg import FALL_MIN_HEIGHT, FALL_TILT_LIMIT
 
 ##
 # Task thresholds
@@ -79,7 +78,7 @@ from .scene_cfg import (
 
 LADDER_TILT_LIMIT = 0.6  # rad; the ladder stands at 0, real climbing wobble stays well under
 REMOVAL_CLEARANCE = 0.10  # m; old-bulb plug this far from the seat counts as removed
-SEAT_POS_THRESHOLD = 0.015  # m; fresh-bulb seating tolerance (Insert's validated values)
+SEAT_POS_THRESHOLD = 0.015  # m; fresh-bulb seating tolerance (mdp.bulb_attachment's own default)
 SEAT_ORI_THRESHOLD = 0.2  # rad
 FRESH_BULB_DROP_HEIGHT = 0.4  # m; the fresh bulb's working heights are table (~1.0) and up
 OLD_BULB_DROP_HEIGHT = 0.15  # m; must clear a bulb resting *inside* the floor crate (~0.1)
@@ -101,10 +100,10 @@ def bulb_attachment_event() -> EventTerm:
     """The axial detent event term, with this task's parameters.
 
     A factory, not a shared instance, so each caller gets its own ``EventTermCfg`` to attach to
-    its own config class -- ``EventCfg`` here, ``BulbAttachmentEventCfg``
-    (``subtask_tiers/balance.py``, also used standalone by S01), and ``g1_bulb_env_cfg.py``'s
-    ``EventCfg`` all wire in the identical term; before this they each hand-duplicated the same
-    ``EventTerm(...)`` block, with nothing enforcing the three stayed in sync on a future change.
+    its own config class -- ``EventCfg`` here and ``BulbAttachmentEventCfg``
+    (``subtask_tiers/balance.py``, also used standalone by S01) both wire in the identical term;
+    before this they each hand-duplicated the same ``EventTerm(...)`` block, with nothing
+    enforcing the two stayed in sync on a future change.
     """
     return EventTerm(
         func=mdp.bulb_attachment,
@@ -234,8 +233,8 @@ class EventCfg:
     )
     # Replicate-safe visual DR (this cfg keeps replicate_physics=True): light intensity +
     # direction, and a global albedo tint on the shared room. Prestartup prop-SCALE DR is
-    # the documented opt-in instead: set `scene.replicate_physics = False` and add the
-    # prestartup terms from FamilyBaseEnvCfg.EventCfg (randomize_*_scale) -- the event
+    # the documented opt-in instead: set `scene.replicate_physics = False` and add a
+    # prestartup EventTerm wiring `mdp.randomize_prop_scale` (mdp/events.py) -- the event
     # manager raises if the terms are present under replicated physics.
     randomize_sky_intensity = EventTerm(
         func=mdp.randomize_light_properties,
@@ -475,7 +474,7 @@ class ReplaceEnvCfg(ManagerBasedRLEnvCfg):
         self.sim.physx.solver_type = 1
         self.sim.physx.min_position_iteration_count = 8
         self.sim.physx.min_velocity_iteration_count = 1  # floor, not a target:
-        # per-body counts above it are kept; see FamilyBaseEnvCfg.solver_velocity_iterations
+        # per-body counts above it are kept; see the ladder/bulb rigid_props in scene_cfg.py
         self.sim.physx.bounce_threshold_velocity = 0.2
         self.sim.physx.enable_stabilization = True
 

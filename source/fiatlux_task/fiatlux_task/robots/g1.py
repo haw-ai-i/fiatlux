@@ -114,6 +114,8 @@ G1_ARM_JOINTS = [
     "right_wrist_pitch_joint",
     "right_wrist_yaw_joint",
 ]
+# The left arm's mirror of G1_ARM_JOINTS -- bimanual teleop cfgs drive both arms.
+G1_LEFT_ARM_JOINTS = [j.replace("right_", "left_", 1) for j in G1_ARM_JOINTS]
 # Right Inspire-hand joints (12 DoF). Split four-fingers / thumb because they curl to different
 # targets: the thumb's pitch joint tops out at 0.6 rad where the fingers reach 1.7. ORDER IS
 # LOAD-BEARING -- it lays out the hand's slice of the action vector, so append, do not
@@ -158,6 +160,9 @@ G1_HAND_GRASP = {
     "R_thumb_intermediate_joint": 0.6,
     "R_thumb_distal_joint": 0.9,
 }
+# Left-hand mirrors of G1_HAND_OPEN/G1_HAND_GRASP above -- bimanual teleop cfgs' left grip.
+G1_LEFT_HAND_OPEN = {k.replace("R_", "L_", 1): v for k, v in G1_HAND_OPEN.items()}
+G1_LEFT_HAND_GRASP = {k.replace("R_", "L_", 1): v for k, v in G1_HAND_GRASP.items()}
 # End-effector body the wrist camera mounts on / eef pose is read from (exists in
 # all G1 variants). The Inspire hand links hang off this via right_hand_palm_link.
 G1_EE_BODY = "right_wrist_yaw_link"
@@ -477,11 +482,10 @@ _HAND_MARKERS_BY_VARIANT: dict[str, tuple[str, ...]] = {"inspire": ("R_", "L_"),
 # values cannot be carried across positionally either -- a grasp angle authored for Inspire's
 # proximal joints does not mean the same thing on a Dex3 knuckle -- so the target variant's own
 # preset is substituted instead.
-_INSPIRE_LEFT = lambda d: {j.replace("R_", "L_", 1): v for j, v in d.items()}  # noqa: E731
 _HAND_COMMANDS: dict[str, dict[str, tuple[dict[str, float], dict[str, float]]]] = {
     "inspire": {
         "right": (dict(G1_HAND_OPEN), dict(G1_HAND_GRASP)),
-        "left": (_INSPIRE_LEFT(G1_HAND_OPEN), _INSPIRE_LEFT(G1_HAND_GRASP)),
+        "left": (dict(G1_LEFT_HAND_OPEN), dict(G1_LEFT_HAND_GRASP)),
     },
     "dex3": {
         "right": (dict(G1_DEX3_HAND_OPEN), dict(G1_DEX3_HAND_GRASP)),

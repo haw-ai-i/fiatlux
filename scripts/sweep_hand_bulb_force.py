@@ -36,7 +36,7 @@ import argparse
 from isaaclab.app import AppLauncher
 
 parser = argparse.ArgumentParser(description="Sweep hand-bulb contact force against distance (issue #92).")
-parser.add_argument("--task", type=str, default="FIATLUX-Remove-v0")
+parser.add_argument("--task", type=str, default="FIATLUX-Replace-v0")
 parser.add_argument("--variant", type=str, default="dex3", choices=["dex3", "inspire"])
 parser.add_argument("--hand", type=str, default="right", choices=["left", "right"])
 parser.add_argument(
@@ -110,6 +110,7 @@ from fiatlux_task.robots.g1 import (  # noqa: E402
     G1_DEX3_LEFT_HAND_GRASP,
     G1_DEX3_PALM_BODIES,
     G1_HAND_GRASP,
+    G1_LEFT_HAND_GRASP,
     G1_PALM_BODIES,
     G1_PALM_LOCAL_AXES,
     swap_robot_variant,
@@ -137,7 +138,7 @@ def grasp_targets(variant: str, hand: str) -> dict[str, float]:
     if variant == "dex3":
         return dict(G1_DEX3_LEFT_HAND_GRASP if hand == "left" else G1_DEX3_HAND_GRASP)
     if hand == "left":
-        return {j.replace("R_", "L_", 1): v for j, v in G1_HAND_GRASP.items()}
+        return dict(G1_LEFT_HAND_GRASP)
     return dict(G1_HAND_GRASP)
 
 

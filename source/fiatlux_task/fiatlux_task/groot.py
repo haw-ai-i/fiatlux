@@ -214,7 +214,7 @@ class SonicDecoder:
         if not os.path.isfile(onnx_path):
             raise FileNotFoundError(
                 f"SONIC decoder ONNX not found at {onnx_path} -- download it with "
-                "GR00T-WholeBodyControl's download_from_hf.py (see journal/specs/groot-sonic-baseline.md)"
+                "GR00T-WholeBodyControl's download_from_hf.py"
             )
         # The graph is a small MLP ([1, 994] -> [1, 29]); CPU keeps it clear of the
         # simulator's GPU memory.
@@ -429,8 +429,7 @@ class GearWbcDecoder:
             if not os.path.isfile(path):
                 raise FileNotFoundError(
                     f"decoupled WBC ONNX not found at {path} -- clone GR00T-WholeBodyControl and "
-                    "`git lfs pull --include 'gr00t_wbc/sim2mujoco/resources/robots/g1/policy/*'` "
-                    "(see journal/specs/groot-sonic-baseline.md)"
+                    "`git lfs pull --include 'gr00t_wbc/sim2mujoco/resources/robots/g1/policy/*'`"
                 )
         self._balance, self._walk = (ort.InferenceSession(path, providers=["CPUExecutionProvider"]) for path in paths)
         self._input_name = self._balance.get_inputs()[0].name
@@ -694,7 +693,7 @@ class GrootPolicy:
         except Exception as exc:
             raise RuntimeError(
                 f"no Isaac-GR00T PolicyServer reachable at {endpoint_str}; "
-                "start it with scripts/groot/serve.sh (see journal/specs/groot-sonic-baseline.md)"
+                "start it with scripts/groot/serve.sh"
             ) from exc
 
     def _capture_frame(self) -> None:

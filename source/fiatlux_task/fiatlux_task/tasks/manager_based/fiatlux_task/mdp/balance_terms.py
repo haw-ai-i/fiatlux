@@ -5,7 +5,7 @@
 
 """Predicates for the balance mode (S02, S04, S10, S12 -- climbing and descending).
 
-``FIATLUX-Climb-v0`` and ``FIATLUX-Descend-v0`` gate on a hardcoded ``xy_center`` taken from
+An older, fixed-layout approach gated on a hardcoded ``xy_center`` taken from
 ``TOP_ROBOT_POSITION`` / ``CLIMB_ROBOT_POSITION``, which describe the default workshop layout's
 ladder. In this chain the ladder is wherever a placement subtask left it, so the gates below read
 its LIVE root pose instead. That is the only structural difference; the height/proximity/speed
