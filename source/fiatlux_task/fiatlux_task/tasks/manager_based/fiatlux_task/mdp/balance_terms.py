@@ -26,6 +26,7 @@ import torch
 from isaaclab.assets import Articulation
 from isaaclab.managers import SceneEntityCfg
 
+from ..scene_cfg import TOP_STANCE_PELVIS_OFFSET
 from .rewards import _ladder_top_point_w, _root_pos_env
 
 if TYPE_CHECKING:
@@ -42,18 +43,24 @@ def climbed_to_ladder_top(
     height_slack: float,
     xy_radius: float,
     max_speed: float,
+    stance_pelvis_offset: float = TOP_STANCE_PELVIS_OFFSET,
     asset_cfg: SceneEntityCfg = SceneEntityCfg("robot"),
 ) -> torch.Tensor:
     """True where the robot's pelvis has reached the placed ladder's upper steps, under control.
 
     The height bound and the horizontal centre both come from the ladder's live top point, so a
-    ladder standing anywhere in the room gates identically. ``height_slack`` is how far below the
-    top step a solid stance may leave the pelvis.
+    ladder standing anywhere in the room gates identically.
+
+    The bound is the pelvis height a stance on the PLATFORM has -- the platform surface plus
+    ``stance_pelvis_offset``, the same figure ``stand_robot_on_ladder_top`` stages with -- less
+    ``height_slack``. Comparing the pelvis against the platform surface itself instead let a
+    robot standing on the second of four treads pass, 0.7 m low, because a standing pelvis
+    clears that surface by a body height (issue #213).
     """
     asset: Articulation = env.scene[asset_cfg.name]
     top = _ladder_top_point_w(env) - env.scene.env_origins
     pos = _root_pos_env(env, asset_cfg)
-    high = pos[:, 2] > top[:, 2] - height_slack
+    high = pos[:, 2] > top[:, 2] + stance_pelvis_offset - height_slack
     near = torch.norm((pos - top)[:, :2], dim=1) < xy_radius
     calm = asset.data.root_lin_vel_w.norm(dim=-1) < max_speed
     return high & near & calm
