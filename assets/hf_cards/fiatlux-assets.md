@@ -41,7 +41,7 @@ git clone https://github.com/haw-ai-i/fiatlux && cd fiatlux
 | `unitree_g1/` | the robot: legged G1 with Inspire hands (default), Dex3 and gripper variants, plus fixed-base variants | 48 | 0.46 GB |
 | `omniverse_bulb/` | the graspable bulb and its guide-sleeve socket (`BULB_USD` / `SOCKET_USD`) | 12 | <0.01 GB |
 | `omniverse_ladder/` | 98 step ladders / platforms in three physics tiers; `AlumStep_D` is the one the benchmark climbs | 961 | 3.60 GB |
-| `isaac_packing_table/`, `isaac_room/`, `isaac_skies/` | room dressing: the table the lamp rests on, the room backdrop, the HDRI sky | 202 | 0.29 GB |
+| `isaac_packing_table/`, `isaac_room/`, `isaac_skies/` | room dressing: the table the fresh bulb rests on, the room backdrop, the HDRI sky | 202 | 0.29 GB |
 | `omniverse_climb/`, `omniverse_lamp/` | opt-in scene dressing: elevated platforms, residential lamps and fixtures | 1,212 | 3.25 GB |
 
 Each ladder ships as `<name>.usd` (original geometry), `<name>_collision.usd` (static, climbable) and
