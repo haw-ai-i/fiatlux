@@ -14,7 +14,8 @@
 #   unitreerobotics/unitree_sim_isaaclab_usds (Apache-2.0).
 #
 # Task assets (bulb/socket mechanic + ladder):
-#   omniverse_bulb/           the graspable bulb + its guide-sleeve socket (BULB_USD/SOCKET_USD)
+#   omniverse_bulb/           the graspable bulb + stock socket (BULB_USD/SOCKET_USD); this script
+#                             authors the additive guide-sleeve layer locally, see below
 #   omniverse_ladder/         step ladders; AlumStep_D is the one the benchmark climbs
 #
 # Room dressing (always synced -- defines the default look of every recorded
