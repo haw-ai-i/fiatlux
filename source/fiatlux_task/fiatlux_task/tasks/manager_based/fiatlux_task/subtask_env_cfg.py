@@ -59,7 +59,8 @@ ARRIVAL_MAX_SPEED = 1.0  # m/s; rejects scoring while still charging at the targ
 # the ladder, abeam of a rail, still clears it (#258).
 ARRIVAL_STEP_SIDE_MARGIN = 0.10  # m
 # How long arrival has to HOLD. Without it one frame where every conjunct happens to line up
-# scores the leg, which is how a take passed on a single step at its very end.
+# scores the leg, which is how a take passed on a single step at its very end. S05 and S07 still
+# gate on a single frame (#259).
 ARRIVAL_SUSTAIN_SECONDS = 0.5
 
 
