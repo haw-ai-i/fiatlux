@@ -74,11 +74,13 @@ def drop(height: float) -> tuple[float, float, float, bool]:
     bulb.write_root_velocity_to_sim(torch.zeros((1, 6), device=env.device))
 
     pinned_root = robot.data.root_state_w[:, :7].clone()
-    previous = bulb.data.root_lin_vel_w[0].clone()
     landing_speed, peak_dv, fired = 0.0, 0.0, False
     resting_z = release_z
     for _ in range(args_cli.settle_steps):
-        speed = float(previous.norm())
+        # Live read, not a carried-over clone: nothing writes to the bulb between one iteration's
+        # env.step() and the next iteration's read, so this always matches what a stored value from
+        # last iteration would have held.
+        speed = float(bulb.data.root_lin_vel_w[0].norm())
         # Captured pre-step on purpose: a post-step read on the firing iteration would return the
         # next episode's spawn height, not the impact height (env.step's internal auto-reset has
         # already run by the time it returns). This still leaves `fall` one step stale on FIRED
@@ -91,10 +93,6 @@ def drop(height: float) -> tuple[float, float, float, bool]:
         dv = float(old_bulb_struck.last_dv[0])
         if dv > peak_dv:
             peak_dv, landing_speed = dv, speed
-        # env.step auto-resets on termination, so a later read is the next episode's velocity --
-        # fine here, since `previous` only feeds next iteration's `speed`, and a termination breaks
-        # the loop before that iteration runs.
-        previous = bulb.data.root_lin_vel_w[0].clone()
         # `.dones`, not a name-specific `get_term("old_bulb_struck")`: the Replace preset this task
         # uses spawns a `fresh_bulb` too, so `fresh_bulb_struck` is a second live termination that
         # can also auto-reset this env (e.g. solver jitter on the parked bulb). Missing that would
