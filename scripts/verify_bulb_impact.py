@@ -79,6 +79,11 @@ def drop(height: float) -> tuple[float, float, float, bool]:
     resting_z = release_z
     for _ in range(args_cli.settle_steps):
         speed = float(previous.norm())
+        # Captured pre-step on purpose: a post-step read on the firing iteration would return the
+        # next episode's spawn height, not the impact height (env.step's internal auto-reset has
+        # already run by the time it returns). This still leaves `fall` one step stale on FIRED
+        # rows -- tracked, not fixed here, since a correct fix needs `last_dv`-style pre-reset
+        # instrumentation for position too (issue #255).
         resting_z = float(bulb.data.root_pos_w[0, 2])
         robot.write_root_pose_to_sim(pinned_root)
         robot.write_root_velocity_to_sim(torch.zeros((1, 6), device=env.device))
