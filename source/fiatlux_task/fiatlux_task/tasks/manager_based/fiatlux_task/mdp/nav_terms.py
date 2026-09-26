@@ -33,7 +33,7 @@ import torch
 from isaaclab.assets import Articulation, RigidObject
 from isaaclab.managers import SceneEntityCfg
 from isaaclab.sensors import ContactSensor, ContactSensorCfg
-from isaaclab.utils.math import quat_apply_inverse
+from isaaclab.utils.math import quat_apply_inverse, yaw_quat
 
 from fiatlux_task.assets import G1_HORIZONTAL_REACH
 from fiatlux_task.grasp_poses import BULB_GLASS_RADIUS_M, BULB_IN_ROOT_STANDING
@@ -402,10 +402,14 @@ def base_on_step_side(
     stops behind it, facing it, satisfies both and scores as ready to climb while standing where
     it cannot start. Evaluated in the ladder's own frame, where the step side is the sign of
     ``LADDER_STEP_FACE_LOCAL``, so a yawed or carried ladder is handled -- and S01 moves it.
+
+    Only the ladder's YAW is undone. Its root sits at its base and the robot's pelvis ~0.8 m above
+    it, so undoing a tilt as well swings that height into the step-side axis: at the 0.6 rad
+    ``ladder_upright`` still accepts, a robot 0.05 m past the plane reads 0.49 m or -0.41 m.
     """
     robot: Articulation = env.scene["robot"]
     ladder: RigidObject = env.scene[asset_cfg.name]
-    rel = quat_apply_inverse(ladder.data.root_quat_w, robot.data.root_pos_w - ladder.data.root_pos_w)
+    rel = quat_apply_inverse(yaw_quat(ladder.data.root_quat_w), robot.data.root_pos_w - ladder.data.root_pos_w)
     face = torch.tensor(LADDER_STEP_FACE_LOCAL[:2], device=env.device)
     return (rel[:, :2] * face).sum(dim=1) > margin
 
