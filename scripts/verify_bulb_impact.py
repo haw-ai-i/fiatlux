@@ -95,8 +95,12 @@ def drop(height: float) -> tuple[float, float, float, bool]:
         # fine here, since `previous` only feeds next iteration's `speed`, and a termination breaks
         # the loop before that iteration runs.
         previous = bulb.data.root_lin_vel_w[0].clone()
-        if bool(env.termination_manager.get_term("old_bulb_struck")[0]):
-            fired = True
+        # `.dones`, not a name-specific `get_term("old_bulb_struck")`: the Replace preset this task
+        # uses spawns a `fresh_bulb` too, so `fresh_bulb_struck` is a second live termination that
+        # can also auto-reset this env (e.g. solver jitter on the parked bulb). Missing that would
+        # keep looping past the reset, reading the next episode's state as if nothing happened.
+        if bool(env.termination_manager.dones[0]):
+            fired = bool(env.termination_manager.get_term("old_bulb_struck")[0])
             break
     return release_z - resting_z, landing_speed, peak_dv, fired
 
