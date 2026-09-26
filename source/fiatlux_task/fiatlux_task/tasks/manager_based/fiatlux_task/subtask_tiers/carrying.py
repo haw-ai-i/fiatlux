@@ -11,6 +11,7 @@ S10); the five carry legs span four tiers, so it cannot be declared on one of th
 that leaf already builds.
 
 ``add_bulb_impact_gate`` is the impact bound, and every leg that handles a bulb takes it (#138).
+S07, S08 and S12 have a bulb in the scene but do not call it yet (#252).
 """
 
 from isaaclab.managers import RewardTermCfg as RewTerm
