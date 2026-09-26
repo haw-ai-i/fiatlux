@@ -44,6 +44,7 @@ from fiatlux_task.tasks.manager_based.fiatlux_task.mdp.pre_reset_snapshot import
 from fiatlux_task.tasks.manager_based.fiatlux_task.scene_cfg import set_layout_seed  # noqa: E402
 
 from isaaclab.managers import TerminationTermCfg as DoneTerm  # noqa: E402
+
 from isaaclab_tasks.utils import parse_env_cfg  # noqa: E402
 
 TASK = "FIATLUX-S06-DisposeBulb-v0"
