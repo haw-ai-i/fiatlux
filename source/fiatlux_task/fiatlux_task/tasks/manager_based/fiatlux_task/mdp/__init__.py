@@ -68,6 +68,7 @@ from .observations import (  # noqa: F401
     replace_score_distances,
     root_pose_w,
 )
+from .pre_reset_snapshot import snapshot_before_reset  # noqa: F401
 from .rewards import (  # noqa: F401
     LADDER_TILT_LIMIT,
     base_facing_error,
