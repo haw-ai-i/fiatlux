@@ -162,3 +162,4 @@ class S11ScrewInBulbEnvCfg(MateSubtaskCfg):
         add_grip_contact_sensor(self.scene, self.scene.fresh_bulb.prim_path)
         add_bulb_impact_gate(self)
         # The longest of the chain: fine insertion under balance.
+        # TODO(#250): override was never written, only this comment -- still runs at the 20 s default.
