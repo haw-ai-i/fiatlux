@@ -54,9 +54,11 @@ class payload_struck(ManagerTermBase):
         self.last_dv = torch.zeros(env.num_envs, device=env.device)
 
     def reset(self, env_ids: Sequence[int] | None = None) -> None:
-        ids = slice(None) if env_ids is None else env_ids
-        self._previous[ids] = 0.0
-        self.last_dv[ids] = 0.0
+        # `last_dv` is deliberately NOT reset here, unlike `_previous`: for an env whose
+        # termination just fired, this reset runs inside the SAME env.step() call that computed
+        # its last_dv, before step() returns -- zeroing it here would erase the value on exactly
+        # the step external readers (scripts/verify_bulb_impact.py) need it for.
+        self._previous[slice(None) if env_ids is None else env_ids] = 0.0
 
     def __call__(
         self,
