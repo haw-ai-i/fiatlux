@@ -61,8 +61,9 @@ The benchmark ships its own logging abstraction (`fiatlux_task.telemetry.ScoreLo
 issue #16): pass `--wandb` to `scripts/record_run.py` to stream the score breakdown
 live — one wandb chart per named channel (`Episode_Reward/<term>`,
 `Episode_Termination/<term>`) plus the running `success_rate`, x-axis = completed
-episodes. `--wandb` also attaches the rollout MP4 to the run, and the final
-aggregate results land in the run summary.
+episodes. If `--record` includes video (`video` or `both`), `--wandb` also attaches
+the rollout MP4 to the run; the final aggregate results land in the run summary
+either way.
 
 **The run summary's `gate_progress` is a live diagnostic, not the benchmark
 score.** It is computed the same way as the deleted live scorer was
