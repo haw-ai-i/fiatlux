@@ -46,7 +46,11 @@ by slamming the bulb in is not a good policy.
 ## Reporting convention
 
 - Default protocol: `--episodes 20 --seed 0`.
-- Report all five metrics, the policy type, and the checkpoint.
+- Report all five metrics, the policy type, and the checkpoint. **Known gap (issue
+  #248):** `scripts/score.py` does not currently produce `score_breakdown` or
+  `mean_control_effort` at all, and `record_run.py`'s live wandb summary silently
+  reports `0.0`/empty for the latter and for `mean_episode_length` -- neither
+  remaining path reliably gives you all five since `eval.py`'s deletion.
 - For learned policies, also report seeds `0,1,2` and their mean ± std.
 
 ## Protocol contract
