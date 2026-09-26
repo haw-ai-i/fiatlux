@@ -100,8 +100,9 @@ apart from the score channels (see `fiatlux_task/policy.py`).
 
 Determinism note: the replace preset's room layout is drawn at scene-build time from a
 private `random.Random` (not the global `random` module), seeded via
-`scene_cfg.set_layout_seed`, which `record_run.py` calls from `--seed` before the env is
-built — so the same-seed-same-numbers contract covers the layout too.
+`scene_cfg.set_layout_seed`. `record_run.py`, `rsl_rl/train.py`, and `verify_scene.py` all
+call it from `--seed` before the env is built — so the same-seed-same-numbers contract
+covers the layout too.
 
 ## Baselines
 

@@ -104,7 +104,8 @@ uv run python scripts/verify_scene.py --headless --enable_cameras --task FIATLUX
 # 4. Evaluate (standardized, reproducible): record a run, then score it offline
 #    (no simulator needed for scoring). Same --task/--seed/--policy (and checkpoint)
 #    -> same numbers. --enable_cameras is required: the env carries an ego-camera
-#    sensor. Use a smaller --episodes for a quick smoke test instead of a full run.
+#    sensor. This is the full 20-episode reporting protocol (docs/scoring.md); for
+#    a quick smoke test instead, drop --episodes to 2 (docs/getting_started.md).
 uv run python scripts/record_run.py --task FIATLUX-S08-GrabNewBulb-v0 --policy random \
     --episodes 20 --seed 0 --record bag --enable_cameras --out logs/runs/random0
 uv run python scripts/score.py logs/runs/random0
