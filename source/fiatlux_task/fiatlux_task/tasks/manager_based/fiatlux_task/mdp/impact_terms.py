@@ -54,7 +54,9 @@ class payload_struck(ManagerTermBase):
         self.last_dv = torch.zeros(env.num_envs, device=env.device)
 
     def reset(self, env_ids: Sequence[int] | None = None) -> None:
-        self._previous[slice(None) if env_ids is None else env_ids] = 0.0
+        ids = slice(None) if env_ids is None else env_ids
+        self._previous[ids] = 0.0
+        self.last_dv[ids] = 0.0
 
     def __call__(
         self,
