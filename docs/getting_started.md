@@ -69,7 +69,8 @@ uv run python scripts/rsl_rl/play.py  --task FIATLUX-Replace-v0  # roll out a ch
 
 To run a policy for a fixed number of episodes and get a score, see "4. Record
 and score a run" below -- there is no standalone "just run it" evaluation
-command; recording (at least a bag) and scoring are the same step.
+command; recording (at least a bag) is now always the first of the two steps
+that together replace it.
 
 ## 4. Record and score a run
 
