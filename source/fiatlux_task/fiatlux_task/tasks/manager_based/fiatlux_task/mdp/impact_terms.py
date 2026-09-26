@@ -40,12 +40,18 @@ class payload_struck(ManagerTermBase):
 
     Gravity is subtracted, so a bulb in free fall reads zero however far it falls. What is left is
     the velocity contact took away or added. The episode's first ``STAGING_STEPS`` steps are exempt.
+
+    ``last_dv`` caches this step's gravity-compensated velocity-change norm for outside readers --
+    e.g. ``scripts/verify_bulb_impact.py``, which needs the impact magnitude on the exact step that
+    terminates the episode, after which the manager's own reset overwrites the asset's velocity with
+    the next episode's.
     """
 
     def __init__(self, cfg: TerminationTermCfg, env: ManagerBasedRLEnv):
         super().__init__(cfg, env)
         self._previous = torch.zeros(env.num_envs, 3, device=env.device)
         self._gravity = torch.tensor(env.sim.cfg.gravity, device=env.device)
+        self.last_dv = torch.zeros(env.num_envs, device=env.device)
 
     def reset(self, env_ids: Sequence[int] | None = None) -> None:
         self._previous[slice(None) if env_ids is None else env_ids] = 0.0
@@ -58,6 +64,7 @@ class payload_struck(ManagerTermBase):
     ) -> torch.Tensor:
         asset: RigidObject = env.scene[asset_cfg.name]
         velocity = asset.data.root_lin_vel_w
-        struck = (velocity - self._previous - self._gravity * env.step_dt).norm(dim=-1) > limit
+        self.last_dv = (velocity - self._previous - self._gravity * env.step_dt).norm(dim=-1)
+        struck = self.last_dv > limit
         self._previous = velocity.clone()
         return struck & (env.episode_length_buf > STAGING_STEPS)

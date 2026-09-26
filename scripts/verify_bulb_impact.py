@@ -55,8 +55,12 @@ env = gym.make(TASK, cfg=env_cfg).unwrapped
 bulb = env.scene["old_bulb"]
 crate = env.scene["bin"]
 robot = env.scene["robot"]
-gravity_step = torch.tensor(env.sim.cfg.gravity, device=env.device) * env.step_dt
 zero_action = torch.zeros((1, env.action_space.shape[1]), device=env.device)
+# The term's own `last_dv`, not a recomputation here: on the step that fires the termination,
+# `env.step()` has already reset the bulb to the next episode's state by the time it returns, so a
+# `bulb.data.root_lin_vel_w` read afterward is the wrong episode. The term computed `last_dv` from
+# the correct pre-reset velocity, during `termination_manager.compute()`, before that reset ran.
+old_bulb_struck = env.termination_manager.get_term_cfg("old_bulb_struck").func
 
 
 def drop(height: float) -> tuple[float, float, float, bool]:
@@ -79,14 +83,13 @@ def drop(height: float) -> tuple[float, float, float, bool]:
         robot.write_root_pose_to_sim(pinned_root)
         robot.write_root_velocity_to_sim(torch.zeros((1, 6), device=env.device))
         env.step(zero_action)
-        velocity = bulb.data.root_lin_vel_w[0]
-        dv = float((velocity - previous - gravity_step).norm())
+        dv = float(old_bulb_struck.last_dv[0])
         if dv > peak_dv:
             peak_dv, landing_speed = dv, speed
-        previous = velocity.clone()
-        # env.step auto-resets on termination, so a later read is the next episode.
-        # TODO(#251): this also corrupts THIS step's own dv/peak_dv/landing_speed above --
-        # the reset already happened by the time `velocity` was read post-step.
+        # env.step auto-resets on termination, so a later read is the next episode's velocity --
+        # fine here, since `previous` only feeds next iteration's `speed`, and a termination breaks
+        # the loop before that iteration runs.
+        previous = bulb.data.root_lin_vel_w[0].clone()
         if bool(env.termination_manager.get_term("old_bulb_struck")[0]):
             fired = True
             break
