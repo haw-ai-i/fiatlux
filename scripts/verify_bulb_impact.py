@@ -85,6 +85,8 @@ def drop(height: float) -> tuple[float, float, float, bool]:
             peak_dv, landing_speed = dv, speed
         previous = velocity.clone()
         # env.step auto-resets on termination, so a later read is the next episode.
+        # TODO(#251): this also corrupts THIS step's own dv/peak_dv/landing_speed above --
+        # the reset already happened by the time `velocity` was read post-step.
         if bool(env.termination_manager.get_term("old_bulb_struck")[0]):
             fired = True
             break
