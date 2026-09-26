@@ -45,7 +45,7 @@ from ..subtask_tiers.balance import (
     DescendRewardsCfg,
     DescendSubtaskCfg,
 )
-from ..subtask_tiers.carrying import add_bulb_crush_gate
+from ..subtask_tiers.carrying import add_bulb_crush_gate, add_bulb_impact_gate
 
 _OLD_BULB = SceneEntityCfg("old_bulb")
 _GRIP = SceneEntityCfg("grip_contact")
@@ -143,3 +143,4 @@ class S04DescendWithBulbEnvCfg(DescendSubtaskCfg):
         }
         add_grip_contact_sensor(self.scene, self.scene.old_bulb.prim_path)
         add_bulb_crush_gate(self)
+        add_bulb_impact_gate(self)

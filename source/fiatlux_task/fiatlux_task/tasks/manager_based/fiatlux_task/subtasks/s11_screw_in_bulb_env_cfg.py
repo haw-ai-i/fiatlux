@@ -48,6 +48,7 @@ from ..replace_env_cfg import FRESH_BULB_DROP_HEIGHT
 from ..scene_cfg import park_old_bulb_in_crate
 from ..subtask_env_cfg import FALL_MIN_HEIGHT, FALL_TILT_LIMIT, SubtaskRewardsCfg
 from ..subtask_tiers.balance import BalanceEventCfg
+from ..subtask_tiers.carrying import add_bulb_impact_gate
 from ..subtask_tiers.mate import (
     MATE_ALIGNMENT_STD,
     MATE_ALIGNMENT_WEIGHT,
@@ -159,3 +160,6 @@ class S11ScrewInBulbEnvCfg(MateSubtaskCfg):
             **HAND_CUP,
         }
         add_grip_contact_sensor(self.scene, self.scene.fresh_bulb.prim_path)
+        add_bulb_impact_gate(self)
+        # The longest of the chain: fine insertion under balance.
+        # TODO(#250): override was never written, only this comment -- still runs at the 20 s default.
