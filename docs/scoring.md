@@ -47,10 +47,11 @@ by slamming the bulb in is not a good policy.
 
 - Default protocol: `--episodes 20 --seed 0`.
 - Report all five metrics, the policy type, and the checkpoint. **Known gap (issue
-  #248):** `scripts/score.py` does not currently produce `score_breakdown` or
-  `mean_control_effort` at all, and `record_run.py`'s live wandb summary silently
-  reports `0.0`/empty for the latter and for `mean_episode_length` -- neither
-  remaining path reliably gives you all five since `eval.py`'s deletion.
+  #248):** `scripts/score.py` -- the authoritative, scored path -- does not currently
+  produce `score_breakdown` or `mean_control_effort` at all. (`mean_episode_length` is
+  fine from `score.py`, computed independently from the bag's own step count;
+  `record_run.py`'s *live* wandb summary is separately broken for it and for
+  `mean_control_effort`, but that summary was never the scored number to begin with.)
 - For learned policies, also report seeds `0,1,2` and their mean ± std.
 
 ## Protocol contract
