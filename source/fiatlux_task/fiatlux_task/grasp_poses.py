@@ -33,6 +33,9 @@ BULB_GLASS_CENTRE_M = 0.131
 GLASS_CONTACT_LIMIT_N = 50.0
 CAP_CONTACT_LIMIT_N = 300.0
 
+# Speed the bulb may lose or gain to contact in one control step (#138).
+BULB_IMPACT_SPEED_LIMIT = 2.4  # m/s
+
 # Where the bulb sits along the palm frame's fingers axis, per hand variant.
 PALM_GRASP_FORWARD_M_BY_VARIANT: dict[str, float] = {"dex3": 0.045, "inspire": -0.148}
 

@@ -4,7 +4,7 @@ A minimal Isaac Lab benchmark for **humanoid ladder climbing and light-bulb repl
 Unitree G1 robot positions a step ladder under a ceiling or wall fixture, climbs it, exchanges
 the spent bulb for a fresh one, and drops the spent one in a disposal crate. It is a plain
 Python / Isaac Lab extension — no ROS, no distributed harness — so it plugs into the standard
-`train` / `play` / `teleop` / `eval` scripts.
+`train` / `play` / `teleop` / `record_run` / `score` scripts.
 
 > **Status (honest):** the **full replacement** (`FIATLUX-Replace-v0`) is the scored
 > benchmark task — randomized room layout, normalized-progress scoring,
@@ -49,7 +49,7 @@ policy can be trained and scored on any leg independently; `FIATLUX-Replace-v0` 
 chain. Each subtask also has a `-Training-v0` variant (replicated physics, shaping rewards) and
 a `-Teleop-v0` variant for operator recording.
 
-The eval / record scripts and `scripts/verify_scene.py` apply to every id; `scripts/rsl_rl/`
+The record / score scripts and `scripts/verify_scene.py` apply to every id; `scripts/rsl_rl/`
 train / play need a PPO config, which only `FIATLUX-Replace-v0` has so far.
 
 ## Repository layout
@@ -73,7 +73,7 @@ fiatlux/
 ├── source/fiatlux_teleop/    # teleop twins (gym.register() for the twelve subtask twins plus
 │                             #   2 standalone benches) + recording, behind the
 │                             #   `teleop` extra -- not a core benchmark dependency
-├── scripts/                  # zero / random / eval / record_run / score / score_subtasks /
+├── scripts/                  # zero / random / record_run / score / score_subtasks /
 │                             #   list_envs / rsl_rl / verify_* / teleop / omniverse
 ├── assets/                   # download_assets.sh (pulls USDs from the HF dataset; git-ignored)
 └── docs/                     # overview, getting_started, task_spec, subtask_teleop, scoring,
@@ -101,26 +101,27 @@ uv run python scripts/list_envs.py                                        # ever
 uv run python scripts/verify_scene.py --headless --enable_cameras --task FIATLUX-Replace-v0   # scene checks
 uv run python scripts/verify_scene.py --headless --enable_cameras --task FIATLUX-S02-ClimbLadder-v0  # any member
 
-# 4. Evaluate (standardized, reproducible):
-uv run python scripts/eval.py --task FIATLUX-S08-GrabNewBulb-v0 --policy random --episodes 20 --seed 0
-
-# 5. Record a run, then score it offline (no simulator needed for scoring).
-#    --enable_cameras is required: the env carries an ego-camera sensor.
+# 4. Evaluate (standardized, reproducible): record a run, then score it offline
+#    (no simulator needed for scoring). Same --task/--seed/--policy (and checkpoint)
+#    -> same numbers. --enable_cameras is required: the env carries an ego-camera
+#    sensor. This is the full 20-episode reporting protocol (docs/scoring.md); for
+#    a quick smoke test instead, drop --episodes to 2 (docs/getting_started.md).
 uv run python scripts/record_run.py --task FIATLUX-S08-GrabNewBulb-v0 --policy random \
-    --episodes 2 --record bag --headless --enable_cameras --out logs/runs/random0
+    --episodes 20 --seed 0 --record bag --enable_cameras --out logs/runs/random0
 uv run python scripts/score.py logs/runs/random0
 
-# 6. Train a policy (only FIATLUX-Replace-v0 ships an rsl_rl PPO config so far):
+# 5. Train a policy (only FIATLUX-Replace-v0 ships an rsl_rl PPO config so far):
 uv run python scripts/rsl_rl/train.py --task FIATLUX-Replace-v0
 
-# 7. Run the GR00T N1.7 model baseline on the benchmark (needs the external
+# 6. Run the GR00T N1.7 model baseline on the benchmark (needs the external
 #    PolicyServer -- setup and required env vars are in scripts/groot/serve.sh's header):
 uv sync --extra groot
 scripts/groot/serve.sh &   # terminal 1: the VLA server (own venv, HF token required)
-uv run python scripts/eval.py --task FIATLUX-Replace-v0 --policy groot \
-    --episodes 20 --seed 0 --enable_cameras
+uv run python scripts/record_run.py --task FIATLUX-Replace-v0 --policy groot --record bag \
+    --episodes 20 --seed 0 --enable_cameras --out logs/runs/groot0
+uv run python scripts/score.py logs/runs/groot0
 
-# 8. Teleoperate the tasks (whole-body: SONIC walking + bimanual arms; keyboard or
+# 7. Teleoperate the tasks (whole-body: SONIC walking + bimanual arms; keyboard or
 #    Pico VR) and record scored demo sessions -- guide: source/fiatlux_teleop/README.md
 ./scripts/teleop/setup_sim_teleop.sh            # one-command setup (keyboard tier; `vr` adds CloudXR)
 PYTHONPATH=source/fiatlux_task:source/fiatlux_teleop \
@@ -157,3 +158,8 @@ teleoperated recordings used to specify and check the success gates are at
 ## License
 
 Apache-2.0 (see `LICENSE`). Files derived from Isaac Lab are BSD-3 (`LICENSE.isaaclab`).
+
+The USD assets are not part of this repository. They are mirrored from third parties under their
+own terms -- Unitree (Apache-2.0), NVIDIA Omniverse asset packs and Isaac Sim sample content
+(NVIDIA terms), a Poly Haven HDRI (CC0) -- see the provenance table in
+[`assets/README.md`](assets/README.md#provenance-and-licences).

@@ -46,7 +46,7 @@ from ..subtask_tiers.balance import (
     ClimbRewardsCfg,
     ClimbSubtaskCfg,
 )
-from ..subtask_tiers.carrying import add_bulb_crush_gate
+from ..subtask_tiers.carrying import add_bulb_crush_gate, add_bulb_impact_gate
 
 _BULB = SceneEntityCfg("fresh_bulb")
 _GRIP = SceneEntityCfg("grip_contact")
@@ -139,3 +139,6 @@ class S10ClimbWithBulbEnvCfg(ClimbSubtaskCfg):
         }
         add_grip_contact_sensor(self.scene, self.scene.fresh_bulb.prim_path)
         add_bulb_crush_gate(self)
+        add_bulb_impact_gate(self)
+        # episode_length_s stays at the shared 120 s subtask default: docs/scoring.md's protocol
+        # contract fixes every subtask env's horizon and forbids changing it.

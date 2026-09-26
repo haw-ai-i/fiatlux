@@ -61,6 +61,12 @@ One `epNN_score<X.XX>/` folder per record-on..off take, each holding `run.h5`, `
 `<task>/<hand>/<kind>/` is always a schema-homogeneous training set (dex3 bags have 43 joint
 columns, inspire 53; never mixable).
 
+This is the capture tree, not the published one: the
+[`haw-ai-i/fiatlux-teleoperation`](https://huggingface.co/datasets/haw-ai-i/fiatlux-teleoperation)
+dataset is a curated export that splits takes into `success/` / `fail/` and folds the date and
+time into each take's folder name. Its card (`assets/hf_cards/fiatlux-teleoperation.md`) has the
+published layout.
+
 What the launcher takes. These are environment variables, not flags -- the full flag reference is
 [Driver flags](#driver-flags) below, and anything not listed here keeps the driver's own default.
 

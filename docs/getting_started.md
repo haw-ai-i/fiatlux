@@ -4,8 +4,9 @@
 
 - [uv](https://docs.astral.sh/uv/) (the only thing you install by hand).
 - An NVIDIA GPU with a driver new enough for CUDA 12.8 (the pinned torch build).
-- Access to the `haw-ai-i` HF org (`uvx --from huggingface_hub hf auth login`, or an `HF_TOKEN`
-  scoped to it), for the assets in step 2.
+- The assets in step 2 are public; no Hugging Face login is needed. If you hit an auth error
+  anyway, run `uvx --from huggingface_hub hf auth login` or set `HF_TOKEN` to a token scoped to
+  the `haw-ai-i` org.
 
 ## 1. Build the environment
 
@@ -62,10 +63,14 @@ policy or output actually needs camera data (see each script's own `--help`):
 ```bash
 uv run python scripts/list_envs.py                              # list registered tasks
 uv run python scripts/zero_agent.py --task FIATLUX-S08-GrabNewBulb-v0    # launch the scene
-uv run python scripts/eval.py --task FIATLUX-S08-GrabNewBulb-v0 --policy random --episodes 20
 uv run python scripts/rsl_rl/train.py --task FIATLUX-Replace-v0  # train PPO (the only id with a PPO config)
 uv run python scripts/rsl_rl/play.py  --task FIATLUX-Replace-v0  # roll out a checkpoint
 ```
+
+To run a policy for a fixed number of episodes and get a score, see "4. Record
+and score a run" below -- there is no standalone "just run it" evaluation
+command; recording (at least a bag) is now always the first of the two steps
+that together replace it.
 
 ## 4. Record and score a run
 

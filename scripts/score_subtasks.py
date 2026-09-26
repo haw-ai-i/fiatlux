@@ -3,9 +3,9 @@
 #
 # SPDX-License-Identifier: BSD-3-Clause
 
-"""Roll per-subtask ``eval.py`` results up into the weighted benchmark score.
+"""Roll per-subtask ``score.py`` results up into the weighted benchmark score.
 
-Reads the JSON ``eval.py`` writes for each subtask and applies ``fiatlux_task.subtask_score``'s
+Reads the JSON ``score.py --output`` writes for each subtask and applies ``fiatlux_task.subtask_score``'s
 difficulty weights and partial credit. No simulator, so re-weighting a set of results is free.
 
 A subtask with no result is reported missing, not zero.
@@ -42,7 +42,7 @@ from fiatlux_task.subtask_score import (  # noqa: E402
 
 
 def load_results(paths: list[Path]) -> dict[str, dict[str, float]]:
-    """Read ``eval.py`` JSONs, keyed by the ``task`` each one records."""
+    """Read ``score.py`` JSONs, keyed by the ``task`` each one records."""
     files: list[Path] = []
     for p in paths:
         files.extend(sorted(p.glob("*.json")) if p.is_dir() else [p])
@@ -52,7 +52,7 @@ def load_results(paths: list[Path]) -> dict[str, dict[str, float]]:
         blob = json.loads(f.read_text())
         task = blob.get("task")
         if task is None:
-            raise ValueError(f"{f} has no 'task' field; it is not an eval.py result")
+            raise ValueError(f"{f} has no 'task' field; it is not a score.py result")
         # A teleop take of a subtask is a take of that subtask, and records the twin's id.
         task = base_subtask_id(task)
         if task in results:
@@ -61,7 +61,7 @@ def load_results(paths: list[Path]) -> dict[str, dict[str, float]]:
         # which is not comparable across subtasks. A bag recorded after, but with no gate columns
         # in it, writes the key as null -- also unscoreable, and it has to be caught here too.
         if blob.get("gate_progress") is None:
-            raise ValueError(f"{f} ({task}) has no partial credit -- re-run eval.py to score it")
+            raise ValueError(f"{f} ({task}) has no partial credit -- re-record the bag and re-run score.py")
         results[task] = {"success_rate": blob["success_rate"], "gate_progress": blob["gate_progress"]}
     return results
 
@@ -76,7 +76,7 @@ def print_weights() -> None:
 
 def main() -> int:
     parser = argparse.ArgumentParser(description="Weighted subtask benchmark score.")
-    parser.add_argument("results", nargs="*", type=Path, help="eval.py JSON files, or directories of them.")
+    parser.add_argument("results", nargs="*", type=Path, help="score.py JSON files, or directories of them.")
     parser.add_argument("--weights", action="store_true", help="Print the weight table and exit.")
     parser.add_argument(
         "--success-share",

@@ -61,12 +61,14 @@ from .events import (  # noqa: F401
     randomize_prop_scale,
 )
 from .gates import all_of, conjuncts_of, gate_progress, success_term_fired, sustained  # noqa: F401
+from .impact_terms import payload_struck  # noqa: F401
 from .observations import (  # noqa: F401
     contact_net_forces,
     lidar_ranges,
     replace_score_distances,
     root_pose_w,
 )
+from .pre_reset_snapshot import snapshot_before_reset  # noqa: F401
 from .rewards import (  # noqa: F401
     LADDER_TILT_LIMIT,
     base_facing_error,

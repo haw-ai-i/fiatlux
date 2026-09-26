@@ -182,10 +182,17 @@ def term_flag(env, name: str, n: int, device) -> torch.Tensor:
     """Read a termination term flag for the current step (False vector if absent).
 
     The term flags reflect the step that triggered the done and survive the
-    in-``step`` auto-reset, so they are the correct source for "did this episode
-    end in success / a drop". We try the public accessor first, then the manager's
-    internal store for cross-version robustness. Shared with ``scripts/eval.py``,
-    which reads the ``success`` term through it.
+    in-``step`` auto-reset, so this is the correct source for "did this episode end in
+    success / a drop" *when the task names its drop term* ``bulb_dropped``. It does not
+    for ``FIATLUX-Replace-v0``, which names two, ``fresh_bulb_dropped`` / ``old_bulb_dropped``
+    (issue #134): the recorded ``dropped_term`` column is an all-False vector for every
+    Replace-v0 bag, and ``score.py``'s separate per-bulb-position height check is what
+    actually catches drops there, not this column. We try the public accessor first, then
+    the manager's internal store for cross-version robustness. Shared by
+    :class:`TrajectoryRecorder` (and its ``fiatlux_teleop`` subclass), which write the
+    ``success``/``dropped``/``timeout`` term columns into the bag, and by
+    ``telemetry.ScoreLogger.step``, which reads the ``success`` term through it for the
+    live ``success_rate``.
     """
     tm = env.termination_manager
     getter = getattr(tm, "get_term", None)

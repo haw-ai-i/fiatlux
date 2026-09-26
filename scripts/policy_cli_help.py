@@ -3,7 +3,9 @@
 #
 # SPDX-License-Identifier: BSD-3-Clause
 
-"""Argparse args shared between ``eval.py`` and ``record_run.py``'s CLIs.
+"""Argparse args for the policy CLI surface, used by ``record_run.py``'s CLI
+(``verify_scene.py`` also imports this module, but only for the ``ROBOT_CHOICES``
+constant, not the full policy-arg surface -- see below).
 
 Deliberately its own module outside the ``fiatlux_task`` package, not just constants in
 ``fiatlux_task/policy.py``: importing anything under ``fiatlux_task`` runs
@@ -17,7 +19,8 @@ imports only ``argparse`` (already required pre-launch by both callers anyway), 
 nothing heavy left to pull in early.
 
 ``add_policy_cli_args`` adds the full ``type``/``default``/``choices``/``help`` for each flag,
-not just the help strings -- so eval.py and record_run.py can't drift on those either.
+not just the help strings, so a future second caller can't drift on those either
+(``verify_scene.py`` currently only imports ``ROBOT_CHOICES`` from this module).
 """
 
 import argparse
