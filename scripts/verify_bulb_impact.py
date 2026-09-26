@@ -99,6 +99,9 @@ def drop(height: float) -> tuple[float, float, float, bool]:
         # uses spawns a `fresh_bulb` too, so `fresh_bulb_struck` is a second live termination that
         # can also auto-reset this env (e.g. solver jitter on the parked bulb). Missing that would
         # keep looping past the reset, reading the next episode's state as if nothing happened.
+        # NOTE: if fresh_bulb_struck is what actually breaks the loop, this row prints identically
+        # to a genuine no-impact "ok" -- there's no signal here that the drop was cut short before
+        # old_bulb necessarily landed (issue #256).
         if bool(env.termination_manager.dones[0]):
             fired = bool(env.termination_manager.get_term("old_bulb_struck")[0])
             break
