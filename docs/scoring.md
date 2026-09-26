@@ -98,9 +98,10 @@ per-step diagnostics (e.g. a critic value estimate) via an `info` dict
 attribute; these stream as running means under the `policy/` namespace, kept
 apart from the score channels (see `fiatlux_task/policy.py`).
 
-Determinism note: the replace preset's room layout is drawn at scene-build time from
-the global `random` stream, which `record_run.py` seeds from `--seed` — so the
-same-seed-same-numbers contract covers the layout too.
+Determinism note: the replace preset's room layout is drawn at scene-build time from a
+private `random.Random` (not the global `random` module), seeded via
+`scene_cfg.set_layout_seed`, which `record_run.py` calls from `--seed` before the env is
+built — so the same-seed-same-numbers contract covers the layout too.
 
 ## Baselines
 

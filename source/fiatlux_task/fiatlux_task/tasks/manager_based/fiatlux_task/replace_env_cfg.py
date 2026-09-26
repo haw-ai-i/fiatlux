@@ -489,11 +489,12 @@ class ReplaceEnvCfg(ManagerBasedRLEnvCfg):
         Strips the reset-time randomization terms; ``reset_all`` stays -- restoring
         default state between episodes is correctness, not noise.
 
-        Does NOT touch the room layout. That is drawn once at cfg-build time from the
-        global ``random`` stream (``apply_replace_preset``), before this runs and before
-        Isaac Lab has seen ``cfg.seed`` -- so it is reproducible only for callers that
-        seed the global stream themselves ahead of ``parse_env_cfg`` (``record_run.py``
-        does; ``rsl_rl/train.py`` and ``verify_scene.py`` do not).
+        Does NOT touch the room layout. That is drawn once at cfg-build time
+        (``apply_replace_preset``) from a private ``random.Random`` seeded by
+        ``scene_cfg.set_layout_seed`` -- not the global ``random`` module -- before this
+        runs and before Isaac Lab has seen ``cfg.seed``. So it is reproducible only for
+        callers that call ``set_layout_seed`` themselves ahead of ``parse_env_cfg``:
+        ``record_run.py``, ``rsl_rl/train.py``, and ``verify_scene.py`` all do.
         """
         self.events.reset_robot_joints = None
         self.events.reset_robot_root = None
