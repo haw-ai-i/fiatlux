@@ -141,4 +141,4 @@ class S10ClimbWithBulbEnvCfg(ClimbSubtaskCfg):
         add_bulb_crush_gate(self)
         add_bulb_impact_gate(self)
         # episode_length_s stays at the shared 120 s subtask default: docs/scoring.md's protocol
-        # contract fixes every subtask env's horizon and forbids changing it (issue #250).
+        # contract fixes every subtask env's horizon and forbids changing it.

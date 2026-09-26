@@ -162,4 +162,4 @@ class S11ScrewInBulbEnvCfg(MateSubtaskCfg):
         add_grip_contact_sensor(self.scene, self.scene.fresh_bulb.prim_path)
         add_bulb_impact_gate(self)
         # episode_length_s stays at the shared 120 s subtask default: docs/scoring.md's protocol
-        # contract fixes every subtask env's horizon and forbids changing it (issue #250).
+        # contract fixes every subtask env's horizon and forbids changing it.
