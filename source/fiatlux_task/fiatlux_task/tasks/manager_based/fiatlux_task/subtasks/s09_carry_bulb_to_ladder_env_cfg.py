@@ -10,8 +10,9 @@ Starts from S08's end state: the fresh bulb already held upright in hand
 itself is untouched from ``apply_replace_preset`` -- it is this leg's navigation target, not its
 payload, and was placed by S01. Success is the robot at the ladder within foot-placement range to
 start climbing (``LADDER_MOUNT_RADIUS``, not the grasp-reach ``LADDER_APPROACH_RADIUS``), facing
-it, standing, ladder upright, and the bulb still gripped -- without that last conjunct a thrown
-bulb that skids into the radius would score.
+it, on the side its steps face, calm, ladder upright, and the bulb still gripped -- without that
+last conjunct a thrown bulb that skids into the radius would score -- all of it held for
+``ARRIVAL_SUSTAIN_SECONDS`` rather than lined up on a single frame (issue #206).
 
 Ladder-tipped termination (unlike S05, which never touches the ladder): walking a carried payload
 into the now free-standing, dynamic ladder can knock it over, a failure unrelated to the bulb grip.
@@ -63,8 +64,8 @@ from ..subtask_env_cfg import (
 )
 from ..subtask_tiers.carrying import add_bulb_crush_gate, add_bulb_impact_gate
 
-# The success gate as data (mdp.all_of): an omitted conjunct in a hand-written conjunction is a
-# gate that passes vacuously.
+# The success gate as data (mdp.all_of, held by mdp.sustained): an omitted conjunct in a
+# hand-written conjunction is a gate that passes vacuously.
 AT_LADDER_WITH_BULB_CONJUNCTS = [
     (base_near, {"asset_cfg": SceneEntityCfg("ladder"), "xy_radius": LADDER_MOUNT_RADIUS}),
     (base_facing, {"asset_cfg": SceneEntityCfg("ladder"), "facing_tolerance": ARRIVAL_FACING_TOLERANCE}),
