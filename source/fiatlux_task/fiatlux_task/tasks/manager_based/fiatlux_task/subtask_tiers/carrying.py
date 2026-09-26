@@ -69,8 +69,9 @@ def add_bulb_impact_gate(cfg) -> None:
                 params={"asset_cfg": SceneEntityCfg(name), "limit": BULB_IMPACT_SPEED_LIMIT},
             ),
         )
-        setattr(
-            cfg.rewards,
-            term,
-            RewTerm(func=mdp.success_term_fired, weight=CRUSH_PENALTY_WEIGHT, params={"term_name": term}),
-        )
+        if isinstance(cfg.rewards, SubtaskShapingRewardsCfg):
+            setattr(
+                cfg.rewards,
+                term,
+                RewTerm(func=mdp.success_term_fired, weight=CRUSH_PENALTY_WEIGHT, params={"term_name": term}),
+            )
