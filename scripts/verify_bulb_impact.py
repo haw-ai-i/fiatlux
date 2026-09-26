@@ -38,7 +38,12 @@ import fiatlux_task.tasks  # noqa: E402, F401
 import gymnasium as gym  # noqa: E402
 import torch  # noqa: E402
 from fiatlux_task.grasp_poses import BULB_IMPACT_SPEED_LIMIT  # noqa: E402
+from fiatlux_task.tasks.manager_based.fiatlux_task.mdp.pre_reset_snapshot import (  # noqa: E402
+    snapshot_before_reset,
+)
 from fiatlux_task.tasks.manager_based.fiatlux_task.scene_cfg import set_layout_seed  # noqa: E402
+
+from isaaclab.managers import TerminationTermCfg as DoneTerm  # noqa: E402
 
 from isaaclab_tasks.utils import parse_env_cfg  # noqa: E402
 
@@ -51,6 +56,12 @@ for name in list(vars(env_cfg.terminations)):
     if not name.startswith("_") and not name.endswith("_bulb_struck"):
         setattr(env_cfg.terminations, name, None)
 env_cfg.events.settle_bulb = None
+# Watches the bulb's height across the same pre-reset boundary `old_bulb_struck` already watches
+# its velocity across (#255): both read whatever a script needs from the exact step a termination
+# fires, before that step's own auto-reset overwrites it with the next episode's state.
+env_cfg.terminations.bulb_snapshot = DoneTerm(
+    func=snapshot_before_reset, params={"fields": (("old_bulb", "root_pos_w"),)}
+)
 env = gym.make(TASK, cfg=env_cfg).unwrapped
 
 bulb = env.scene["old_bulb"]
@@ -62,6 +73,7 @@ zero_action = torch.zeros((1, env.action_space.shape[1]), device=env.device)
 # `bulb.data.root_lin_vel_w` read afterward is the wrong episode. The term computed `last_dv` from
 # the correct pre-reset velocity, during `termination_manager.compute()`, before that reset ran.
 old_bulb_struck = env.termination_manager.get_term_cfg("old_bulb_struck").func
+bulb_snapshot = env.termination_manager.get_term_cfg("bulb_snapshot").func
 
 
 def drop(height: float) -> tuple[float, float, float, str]:
@@ -87,15 +99,15 @@ def drop(height: float) -> tuple[float, float, float, str]:
         # env.step() and the next iteration's read, so this always matches what a stored value from
         # last iteration would have held.
         speed = float(bulb.data.root_lin_vel_w[0].norm())
-        # Captured pre-step on purpose: a post-step read on the firing iteration would return the
-        # next episode's spawn height, not the impact height (env.step's internal auto-reset has
-        # already run by the time it returns). This still leaves `fall` one step stale on FIRED
-        # rows -- tracked, not fixed here, since a correct fix needs `last_dv`-style pre-reset
-        # instrumentation for position too (issue #255).
-        resting_z = float(bulb.data.root_pos_w[0, 2])
         robot.write_root_pose_to_sim(pinned_root)
         robot.write_root_velocity_to_sim(torch.zeros((1, 6), device=env.device))
         env.step(zero_action)
+        # `bulb_snapshot`, not a live `bulb.data.root_pos_w` read: on the step that fires a
+        # termination, env.step()'s internal auto-reset has already run by the time it returns, so
+        # a read here would land on the next episode's spawn height, not the impact height.
+        # `bulb_snapshot` cached the height during `termination_manager.compute()`, before that
+        # reset ran -- same trick `old_bulb_struck.last_dv` uses for velocity, generalized (#255).
+        resting_z = float(bulb_snapshot.snapshot["old_bulb.root_pos_w"][0, 2])
         dv = float(old_bulb_struck.last_dv[0])
         if dv > peak_dv:
             peak_dv, landing_speed = dv, speed
