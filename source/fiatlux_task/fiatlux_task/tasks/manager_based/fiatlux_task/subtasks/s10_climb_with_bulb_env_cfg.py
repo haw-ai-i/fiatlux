@@ -140,5 +140,5 @@ class S10ClimbWithBulbEnvCfg(ClimbSubtaskCfg):
         add_grip_contact_sensor(self.scene, self.scene.fresh_bulb.prim_path)
         add_bulb_crush_gate(self)
         add_bulb_impact_gate(self)
-        # Longer than S02's 20 s: one-handed is slower.
-        # TODO(#250): override was never written, only this comment -- still runs at the 20 s default.
+        # episode_length_s stays at the shared 120 s subtask default: docs/scoring.md's protocol
+        # contract fixes every subtask env's horizon and forbids changing it (issue #250).
