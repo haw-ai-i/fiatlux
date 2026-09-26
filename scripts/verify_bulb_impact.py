@@ -8,7 +8,8 @@
 Releases the old bulb from a range of heights above the crate with zero velocity and nothing
 touching it, so the only contact is the landing. Reports, per drop, the landing speed, the largest
 velocity change one control step took (what ``mdp.impact_terms.payload_struck`` measures, free
-fall removed), and whether the leg's own impact termination fired.
+fall removed), and the leg's own impact termination status: ``FIRED``, a clean ``ok``, or
+``interrupted`` where the scene's other bulb's termination cut the drop short first.
 
 The robot's root is pinned and the leg's re-seat event is off, so the drop owns the bulb's motion.
 
@@ -55,12 +56,21 @@ env = gym.make(TASK, cfg=env_cfg).unwrapped
 bulb = env.scene["old_bulb"]
 crate = env.scene["bin"]
 robot = env.scene["robot"]
-gravity_step = torch.tensor(env.sim.cfg.gravity, device=env.device) * env.step_dt
 zero_action = torch.zeros((1, env.action_space.shape[1]), device=env.device)
+# The term's own `last_dv`, not a recomputation here: on the step that fires the termination,
+# `env.step()` has already reset the bulb to the next episode's state by the time it returns, so a
+# `bulb.data.root_lin_vel_w` read afterward is the wrong episode. The term computed `last_dv` from
+# the correct pre-reset velocity, during `termination_manager.compute()`, before that reset ran.
+old_bulb_struck = env.termination_manager.get_term_cfg("old_bulb_struck").func
 
 
-def drop(height: float) -> tuple[float, float, float, bool]:
-    """Release the bulb ``height`` above the crate; return fall, landing speed, peak dv, gate."""
+def drop(height: float) -> tuple[float, float, float, str]:
+    """Release the bulb ``height`` above the crate; return fall, landing speed, peak dv, status.
+
+    Status is ``"FIRED"`` (old_bulb_struck tripped), ``"ok"`` (the full settle window ran clean),
+    or ``"interrupted"`` (some other termination -- in practice fresh_bulb_struck -- ended the
+    episode first, so old_bulb was never necessarily observed long enough to judge).
+    """
     env.reset()
     state = bulb.data.root_state_w.clone()
     state[0, :2] = crate.data.root_pos_w[0, :2]
@@ -70,34 +80,46 @@ def drop(height: float) -> tuple[float, float, float, bool]:
     bulb.write_root_velocity_to_sim(torch.zeros((1, 6), device=env.device))
 
     pinned_root = robot.data.root_state_w[:, :7].clone()
-    previous = bulb.data.root_lin_vel_w[0].clone()
-    landing_speed, peak_dv, fired = 0.0, 0.0, False
+    landing_speed, peak_dv, status = 0.0, 0.0, "ok"
     resting_z = release_z
     for _ in range(args_cli.settle_steps):
-        speed = float(previous.norm())
+        # Live read, not a carried-over clone: nothing writes to the bulb between one iteration's
+        # env.step() and the next iteration's read, so this always matches what a stored value from
+        # last iteration would have held.
+        speed = float(bulb.data.root_lin_vel_w[0].norm())
+        # Captured pre-step on purpose: a post-step read on the firing iteration would return the
+        # next episode's spawn height, not the impact height (env.step's internal auto-reset has
+        # already run by the time it returns). This still leaves `fall` one step stale on FIRED
+        # rows -- tracked, not fixed here, since a correct fix needs `last_dv`-style pre-reset
+        # instrumentation for position too (issue #255).
         resting_z = float(bulb.data.root_pos_w[0, 2])
         robot.write_root_pose_to_sim(pinned_root)
         robot.write_root_velocity_to_sim(torch.zeros((1, 6), device=env.device))
         env.step(zero_action)
-        velocity = bulb.data.root_lin_vel_w[0]
-        dv = float((velocity - previous - gravity_step).norm())
+        dv = float(old_bulb_struck.last_dv[0])
         if dv > peak_dv:
             peak_dv, landing_speed = dv, speed
-        previous = velocity.clone()
-        # env.step auto-resets on termination, so a later read is the next episode.
-        # TODO(#251): this also corrupts THIS step's own dv/peak_dv/landing_speed above --
-        # the reset already happened by the time `velocity` was read post-step.
-        if bool(env.termination_manager.get_term("old_bulb_struck")[0]):
-            fired = True
+        # `.dones`, not a name-specific `get_term("old_bulb_struck")`: the Replace preset this task
+        # uses spawns a `fresh_bulb` too, so `fresh_bulb_struck` is a second live termination that
+        # can also auto-reset this env (e.g. solver jitter on the parked bulb). Missing that would
+        # keep looping past the reset, reading the next episode's state as if nothing happened.
+        if bool(env.termination_manager.dones[0]):
+            # Distinguish which termination actually broke the loop (issue #256): old_bulb_struck
+            # means we have a real answer; anything else (fresh_bulb_struck) means old_bulb was cut
+            # off before it was necessarily observed long enough to judge, so it's not a genuine ok.
+            if bool(env.termination_manager.get_term("old_bulb_struck")[0]):
+                status = "FIRED"
+            else:
+                status = "interrupted"
             break
-    return release_z - resting_z, landing_speed, peak_dv, fired
+    return release_z - resting_z, landing_speed, peak_dv, status
 
 
 print(f"\n[verify] {TASK}, layout seed {args_cli.seed}, bound {BULB_IMPACT_SPEED_LIMIT} m/s")
-print(f"{'fall':>8} {'landing speed':>14} {'peak dv':>9} {'gate':>6}")
+print(f"{'fall':>8} {'landing speed':>14} {'peak dv':>9} {'gate':>11}")
 for height in DROP_HEIGHTS:
-    fall, speed, dv, fired = drop(height)
-    print(f"{fall:>7.3f}m {speed:>11.2f} m/s {dv:>6.2f} m/s {'FIRED' if fired else 'ok':>6}")
+    fall, speed, dv, status = drop(height)
+    print(f"{fall:>7.3f}m {speed:>11.2f} m/s {dv:>6.2f} m/s {status:>11}")
 
 env.close()
 simulation_app.close()
