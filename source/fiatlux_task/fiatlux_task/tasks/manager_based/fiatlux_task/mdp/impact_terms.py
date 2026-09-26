@@ -45,6 +45,7 @@ class payload_struck(ManagerTermBase):
     def __init__(self, cfg: TerminationTermCfg, env: ManagerBasedRLEnv):
         super().__init__(cfg, env)
         self._previous = torch.zeros(env.num_envs, 3, device=env.device)
+        self._gravity = torch.tensor(env.sim.cfg.gravity, device=env.device)
 
     def reset(self, env_ids: Sequence[int] | None = None) -> None:
         self._previous[slice(None) if env_ids is None else env_ids] = 0.0
@@ -57,7 +58,6 @@ class payload_struck(ManagerTermBase):
     ) -> torch.Tensor:
         asset: RigidObject = env.scene[asset_cfg.name]
         velocity = asset.data.root_lin_vel_w
-        gravity = torch.tensor(env.sim.cfg.gravity, device=env.device)
-        struck = (velocity - self._previous - gravity * env.step_dt).norm(dim=-1) > limit
+        struck = (velocity - self._previous - self._gravity * env.step_dt).norm(dim=-1) > limit
         self._previous = velocity.clone()
         return struck & (env.episode_length_buf > STAGING_STEPS)
