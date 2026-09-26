@@ -144,6 +144,14 @@ class gate_progress(ManagerTermBase):
         return total
 
     def reset(self, env_ids: Sequence[int] | None = None) -> None:
+        # Runs before the first step -- before reset-mode events like settle_carried_payload_live
+        # finish -- so on subtasks where a conjunct only becomes true once such an event runs,
+        # ``_at_reset`` undercounts and this term reports inflated progress (issue #239, the
+        # live-vs-offline scoring angle). This is NOT only a live-telemetry accuracy problem:
+        # this same class is `SubtaskRewardsCfg`'s `gate_progress` RewTerm at weight=1.0
+        # (subtask_env_cfg.py), which `SubtaskShapingRewardsCfg` inherits unmodified, so
+        # `-Training-v0` envs optimize a policy against this same too-early baseline, not just
+        # report it on a dashboard (issue #249, the training-correctness angle).
         ids = slice(None) if env_ids is None else env_ids
         self._at_reset[ids] = self._count(self._env)[ids]
         self._best[ids] = 0.0

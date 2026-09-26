@@ -12,8 +12,10 @@ extended here and nowhere else:
   ``extras``, done counts) into named metrics -- the manager score channels
   (``Episode_Reward/<term>``, ``Episode_Termination/<term>``), success, episode length,
   control effort, contact force. Add a metric here and it shows up everywhere at once:
-  the live sinks, the final summary, and ``eval.py``'s JSON (which is
-  :meth:`ScoreLogger.close`'s return value -- scripts do not aggregate on their own).
+  the live sinks and the final summary (:meth:`ScoreLogger.close`'s return value --
+  scripts do not aggregate on their own). That return value is a live diagnostic
+  snapshot, not the benchmark score: the score is always ``scripts/score.py`` run on
+  a recorded bag (see :meth:`ScoreLogger.gate_progress`).
 - **Sinks** (*where*): the :class:`Sink` protocol (``log`` / ``video`` / ``close``).
   ``WandbSink`` is the shipped backend; a TensorBoard or CSV sink is a new class in
   this file, nothing else changes.
@@ -244,6 +246,15 @@ class ScoreLogger:
         by ``max_episode_length_s``, so the telescoped value the channel is built to carry is
         ``logged * max_episode_length_s / step_dt``. The logged value on its own is not
         comparable across subtasks: their horizons run 20 s to 90 s.
+
+        NOT the benchmark headline. This is the *live* term's value -- it captures its
+        ``at_reset`` baseline before the first step, which reads too early on several subtasks
+        (mechanism: ``scripts/score.py``'s ``episode_gate_progress`` docstring). Issue #239 has
+        the measured GR00T-baseline comparison this was caught from: up to 0.50 off per subtask
+        against the offline, bag-scored number (a different 0.50 than score.py's illustrative
+        worked example, which is a hypothetical, not a measurement). This channel streams here
+        only as a rough during-the-run signal (e.g. for a live wandb dashboard); the scored
+        result is ``scripts/score.py`` run on the recorded bag, nothing computed live.
         """
         key = "Episode_Reward/gate_progress"
         if key not in self._sums or not self._max_episode_length_s or not self._step_dt:

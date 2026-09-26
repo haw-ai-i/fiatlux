@@ -38,7 +38,7 @@ from . import agents
 
 # NOTE: only Replace carries an rsl_rl_cfg_entry_point. The subtask ids (benchmark and -Training)
 # intentionally have none yet -- no PPORunnerCfg (network sizes, obs_groups routing) has been
-# designed/tuned for them. They work fully with record_run.py / eval.py / any non-rsl_rl policy
+# designed/tuned for them. They work fully with record_run.py / any non-rsl_rl policy
 # (including groot); only scripts/rsl_rl/{train,play}.py would need one added first.
 
 ##

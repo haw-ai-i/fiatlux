@@ -5,15 +5,18 @@ replacement; see `docs/task_spec.md`) is scored by the metrics below. The **twel
 are scored by `subtask_score` — see [Subtask score](#subtask-score--the-benchmark-headline)
 — and are also evaluable with the tooling below.
 
-Evaluation is a single command, `scripts/eval.py`, run from a
-fixed seed for a fixed number of episodes. Same `--task`, `--seed`, `--policy`
-(and checkpoint) → same numbers.
+Evaluation is two commands, `scripts/record_run.py` then
+`scripts/score.py` (see "Offline scoring" below), run from a fixed seed for a
+fixed number of episodes. Same `--task`, `--seed`, `--policy` (and checkpoint)
+→ same numbers.
 
 ```bash
-python scripts/eval.py --task FIATLUX-Replace-v0 --policy basic_standard \
-    --episodes 20 --seed 0 --enable_cameras
-python scripts/eval.py --task FIATLUX-Replace-v0 --policy rsl_rl --checkpoint <model.pt> \
-    --episodes 50 --seed 0 --output results.json
+python scripts/record_run.py --task FIATLUX-Replace-v0 --policy basic_standard \
+    --episodes 20 --seed 0 --record bag --enable_cameras --out logs/runs/basic_standard0
+python scripts/score.py logs/runs/basic_standard0
+python scripts/record_run.py --task FIATLUX-Replace-v0 --policy rsl_rl --checkpoint <model.pt> \
+    --episodes 50 --seed 0 --record bag --enable_cameras --out logs/runs/rsl_rl0
+python scripts/score.py logs/runs/rsl_rl0 --output results.json
 ```
 
 ## Metrics
@@ -42,8 +45,13 @@ by slamming the bulb in is not a good policy.
 
 ## Reporting convention
 
-- Default protocol: `--episodes 20 --seed 0` (`scripts/eval.py`'s own defaults).
-- Report all five metrics, the policy type, and the checkpoint.
+- Default protocol: `--episodes 20 --seed 0`.
+- Report all five metrics, the policy type, and the checkpoint. **Known gap (issue
+  #248):** `scripts/score.py` -- the authoritative, scored path -- does not currently
+  produce `score_breakdown` or `mean_control_effort` at all. (`mean_episode_length` is
+  fine from `score.py`, computed independently from the bag's own step count;
+  `record_run.py`'s *live* wandb summary is separately broken for it and for
+  `mean_control_effort`, but that summary was never the scored number to begin with.)
 - For learned policies, also report seeds `0,1,2` and their mean ± std.
 
 ## Protocol contract
@@ -55,15 +63,25 @@ so changing it changes what `success_rate` means. Report a run against the horiz
 ## Telemetry (Weights & Biases)
 
 The benchmark ships its own logging abstraction (`fiatlux_task.telemetry.ScoreLogger`,
-issue #16): pass `--wandb` to `scripts/eval.py` or `scripts/record_run.py` to stream
-the score breakdown live — one wandb chart per named channel (`Episode_Reward/<term>`,
+issue #16): pass `--wandb` to `scripts/record_run.py` to stream the score breakdown
+live — one wandb chart per named channel (`Episode_Reward/<term>`,
 `Episode_Termination/<term>`) plus the running `success_rate`, x-axis = completed
-episodes. `record_run.py --wandb` also attaches the rollout MP4 to the run, and the
-final aggregate results land in the run summary.
+episodes. If `--record` includes video (`video` or `both`), `--wandb` also attaches
+the rollout MP4 to the run; the final aggregate results land in the run summary
+either way.
+
+**The run summary's `gate_progress` is a live diagnostic, not the benchmark
+score.** It is computed the same way as the deleted live scorer was
+(`ScoreLogger.gate_progress`, unchanged by this consolidation) and inherits the
+same `at_reset`-before-step-0 bias documented in `scripts/score.py`'s
+`episode_gate_progress` docstring and issue #239 -- treat it as a rough
+during-the-run signal only. The scored number is always `scripts/score.py`
+run on the bag.
 
 ```bash
-python scripts/eval.py --task FIATLUX-Replace-v0 --policy basic_standard \
-    --episodes 20 --seed 0 --enable_cameras --wandb --wandb_project fiatlux
+python scripts/record_run.py --task FIATLUX-Replace-v0 --policy basic_standard \
+    --episodes 20 --seed 0 --record bag --enable_cameras --out logs/runs/basic_standard0 \
+    --wandb --wandb_project fiatlux
 ```
 
 This is *benchmark-side* telemetry: the channels are defined by the task's own
@@ -75,15 +93,17 @@ matter how the policy was produced. Use `WANDB_MODE=offline` without an account;
 
 Extending it: all metric definitions live in one module,
 `fiatlux_task/telemetry.py` — new channels go in `ScoreLogger.step`/`results`
-(they then appear in wandb, the run summary, and `eval.py`'s JSON at once), new
-backends implement the small `Sink` protocol next to `WandbSink`. Policies may
-optionally expose per-step diagnostics (e.g. a critic value estimate) via an
-`info` dict attribute; these stream as running means under the `policy/`
-namespace, kept apart from the score channels (see `fiatlux_task/policy.py`).
+(they then appear in wandb and the run summary at once), new backends implement
+the small `Sink` protocol next to `WandbSink`. Policies may optionally expose
+per-step diagnostics (e.g. a critic value estimate) via an `info` dict
+attribute; these stream as running means under the `policy/` namespace, kept
+apart from the score channels (see `fiatlux_task/policy.py`).
 
-Determinism note: the replace preset's room layout is drawn at scene-build time from
-the global `random` stream, which `eval.py`/`record_run.py` seed from `--seed` — so
-the same-seed-same-numbers contract covers the layout too.
+Determinism note: the replace preset's room layout is drawn at scene-build time from a
+private `random.Random` (not the global `random` module), seeded via
+`scene_cfg.set_layout_seed`. `record_run.py`, `rsl_rl/train.py`, and `verify_scene.py` all
+call it from `--seed` before the env is built — so the same-seed-same-numbers contract
+covers the layout too.
 
 ## Baselines
 
@@ -147,9 +167,9 @@ the whole flat episode, not one subtask.
 
 ## Offline scoring (`scripts/score.py`)
 
-`eval.py` computes metrics live during a rollout. For repeatable, no-simulator
-scoring instead, record a run once and score the bag as many times as needed
-under different rules:
+Scoring is decoupled from the simulator: record a run once and score the bag
+as many times as needed under different rules, with no re-run of the sim
+required:
 
 ```bash
 python scripts/record_run.py --task FIATLUX-S08-GrabNewBulb-v0 --policy random \

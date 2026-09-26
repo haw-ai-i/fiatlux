@@ -407,7 +407,7 @@ class TerminationsCfg:
         func=mdp.old_bulb_dropped_after_release,
         params={"min_height": OLD_BULB_DROP_HEIGHT},
     )
-    # Contract name: recording.py / score.py / eval.py read the `success` term. The pos/ori
+    # Contract name: recording.py / score.py read the `success` term. The pos/ori
     # params stay for the meta.json contract; the attach gate is what enforces them.
     success = DoneTerm(
         func=mdp.attached_replacement_success,
@@ -489,11 +489,12 @@ class ReplaceEnvCfg(ManagerBasedRLEnvCfg):
         Strips the reset-time randomization terms; ``reset_all`` stays -- restoring
         default state between episodes is correctness, not noise.
 
-        Does NOT touch the room layout. That is drawn once at cfg-build time from the
-        global ``random`` stream (``apply_replace_preset``), before this runs and before
-        Isaac Lab has seen ``cfg.seed`` -- so it is reproducible only for callers that
-        seed the global stream themselves ahead of ``parse_env_cfg`` (``eval.py`` and
-        ``record_run.py`` do; ``rsl_rl/train.py`` and ``verify_scene.py`` do not).
+        Does NOT touch the room layout. That is drawn once at cfg-build time
+        (``apply_replace_preset``) from a private ``random.Random`` seeded by
+        ``scene_cfg.set_layout_seed`` -- not the global ``random`` module -- before this
+        runs and before Isaac Lab has seen ``cfg.seed``. So it is reproducible only for
+        callers that call ``set_layout_seed`` themselves ahead of ``parse_env_cfg``:
+        ``record_run.py``, ``rsl_rl/train.py``, and ``verify_scene.py`` all do.
         """
         self.events.reset_robot_joints = None
         self.events.reset_robot_root = None

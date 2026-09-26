@@ -142,8 +142,12 @@ def episode_gate_progress(ep: dict[str, np.ndarray]) -> float | None:
     hand out free credit.
 
     One documented difference from the live term: it captures its baseline in the reward manager's
-    reset, before the first step, while the bag's first row is after it. A conjunct that flips
-    during step 0 therefore moves this by one conjunct's worth.
+    reset, before the first step, while the bag's first row is after it. ``at_reset`` is the
+    DENOMINATOR here (``n - at_reset``), not counted additively, so a conjunct that flips during
+    step 0 does not move this by a flat "one conjunct's worth" -- it rescales the whole headroom.
+    Example: a 5-conjunct gate with ``at_reset`` 3 vs 4 turns one remaining conjunct from worth
+    0.50 into worth 1.00. See issue #239 for a case (S06) where the resulting live/offline
+    disagreement is not yet explained by this alone.
 
     ``None`` when the bag carries no gate columns (recorded before they existed), which is
     reported as missing rather than as a zero.
