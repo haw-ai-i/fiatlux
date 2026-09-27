@@ -79,11 +79,6 @@ assert _TOKEN_DIM + len(PSI0_HAND_JOINT_NAMES) + _NECK_DIM == PSI0_ACTION_DIM
 # -> ``src/psi/deploy/mock_psi0_client_rtc.py:fsq_quantize``), the grid the decoder was trained on.
 _FSQ_MIN, _FSQ_MAX, _FSQ_STEP = -0.625, 0.625, 0.0625
 
-# SONIC holds its standing latent this long before the first query -- the deploy procedure
-# (Psi0 ``real/SONIC/DEPLOYMENT.md``): engage SONIC, wait for the robot to settle in its
-# default standing reference, only then enable the policy's token stream.
-SETTLE_S = 1.0
-
 # One plain sentence per subtask, written from each subtask's own module docstring, plus the
 # full task's canonical sentence. Psi-0 was trained with per-task instructions (its pooled CLIP
 # cache holds ~100 of them, e.g. "pick up the paper ball and turn left and throw it into the
@@ -207,12 +202,19 @@ class _Psi0Client:
 class Psi0Policy:
     """Psi-0 SONIC checkpoint + in-process GEAR-SONIC decoder, on the Dex3 G1.
 
-    Per query (every 15 Psi-0 rows = 25 env ticks, once the settle window is over): sends the
-    current head-camera frame, the 45-D joint state, and the instruction; receives a (15, 80)
-    chunk. Each 50 Hz tick then feeds the held row's token to :class:`SonicDecoder` (body) and
-    its 14 finger targets to the Dex3 joints. The first query of each episode sends
-    ``history["reset"]`` so the server's test-time RTC does not splice onto the previous
-    episode's chunk.
+    Per query (every 15 Psi-0 rows = 25 env ticks, from the tick after the one-tick startup
+    hold): sends the current head-camera frame, the 45-D joint state, and the instruction;
+    receives a (15, 80) chunk. Each 50 Hz tick then feeds the held row's token to
+    :class:`SonicDecoder` (body) and its 14 finger targets to the Dex3 joints. The first query of
+    each episode sends ``history["reset"]`` so the server's test-time RTC does not splice onto
+    the previous episode's chunk.
+
+    No standing-latent settle before the first query, although Psi-0's real-robot procedure
+    settles SONIC in its standing reference first: half the subtasks START with the bulb in hand,
+    and a settle under SONIC's standing latent swings the arms to SONIC's rest pose and opens the
+    fingers to their defaults, which drops the bulb before Psi-0 ever acts (S06 then ends at
+    step ~48, exactly like the ``zero`` policy). The fingers instead hold their spawn pose until
+    the first chunk arrives, and the body holds its spawn pose for the one startup tick.
 
     Exposes the optional ``info`` telemetry dict (``policy/`` namespace): server round-trip,
     query count, and the current token's magnitude.
@@ -237,7 +239,8 @@ class Psi0Policy:
         self._blend = _StartupBlend(
             env, self._decoder.robot, self._decoder.joint_ids, self._decoder.sonic_default, self._decoder.action_scale
         )
-        self._settle_steps = max(self._blend.steps, int(round(SETTLE_S / env.step_dt)))
+        # The decoder still runs during the startup hold (it keeps its state histories fed), but
+        # its output is discarded there, so the token it gets does not matter.
         self._stand = torch.from_numpy(STAND_TOKEN).to(device).expand(env.num_envs, -1)
 
         state_ids, _ = self.robot.find_joints(PSI0_STATE_JOINT_NAMES, preserve_order=True)
@@ -270,6 +273,7 @@ class Psi0Policy:
             )
 
         self._chunk: np.ndarray | None = None
+        self._hand_hold = torch.zeros(len(PSI0_HAND_JOINT_NAMES), device=device)
         self._ticks_into_chunk = 0
         self._reset_session = True
         self._queries = 0
@@ -308,12 +312,12 @@ class Psi0Policy:
             self._chunk = None
             self._ticks_into_chunk = 0
             self._reset_session = True
+            self._hand_hold = self.robot.data.joint_pos[0, self._hand_ids].clone()
 
         blend_mask = self._blend.mask(env)
-        t = int(env.episode_length_buf[0])
-        hand_targets: torch.Tensor | None = None
-        if t < self._settle_steps:
+        if bool(blend_mask.any()):
             tokens = self._stand
+            hand_targets = self._hand_hold
         else:
             if self._chunk is None or self._ticks_into_chunk >= self._query_ticks:
                 self._query()
@@ -324,12 +328,11 @@ class Psi0Policy:
             self.info["token_abs_mean"] = float(np.abs(row[:_TOKEN_DIM]).mean())
 
         action = self._decoder.step(env, tokens, hold_mask=blend_mask)
-        if hand_targets is not None:
-            data = self.robot.data
-            limits = data.soft_joint_pos_limits[0, self._hand_ids]
-            hand_targets = hand_targets.clamp(limits[:, 0], limits[:, 1])
-            hand_offsets = hand_targets - data.default_joint_pos[0, self._hand_ids]
-            action[:, self._hand_ids] = hand_offsets / self._decoder.action_scale
+        data = self.robot.data
+        limits = data.soft_joint_pos_limits[0, self._hand_ids]
+        hand_targets = hand_targets.clamp(limits[:, 0], limits[:, 1])
+        hand_offsets = hand_targets - data.default_joint_pos[0, self._hand_ids]
+        action[:, self._hand_ids] = hand_offsets / self._decoder.action_scale
         return self._blend.override(env, action, blend_mask)
 
 
