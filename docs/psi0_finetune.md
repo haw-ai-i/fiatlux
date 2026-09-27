@@ -229,21 +229,22 @@ Comparison on S06 (same protocol):
 | policy | robot | subtask_score (per seed) | success | gate_progress | source |
 | --- | --- | --- | --- | --- | --- |
 | Psi-0 fine-tuned (this) | Dex3 | **0.250** (0.333, 0, 0.333, 0.333) | 0/4 | 0.500 | above |
-| Psi-0 zero-shot | Dex3 | 0.167 (seed 0 only so far) | 0/1 | 0.333 | `logs/runs/psi0_zeroshot`; seeds 1-3 still to run |
+| Psi-0 zero-shot | Dex3 | 0.250 (0.167, 0.250, 0.333) | 0/3 | 0.500 | `logs/runs/psi0_zeroshot`, seeds 0-2 |
+| `zero` | Dex3 | 0.167 (0.167, 0.167) | 0/2 | 0.333 | `logs/runs/zero_dex3`, seeds 0-1, current code |
 | GR00T N1.7 zero-shot | Dex3 | 0.333 (every seed) | 0/4 | 0.667 | `rerun_2026-09-26/groot_dex3_S06_*` |
 | `zero` | **Inspire** | 0.208 (0.333, 0.167, 0.167, 0.167) | 0/4 | 0.417 | `rerun_2026-09-26/zero_S06_*` (default robot) |
 
-There is no same-code Dex3 `zero` S06 run. The 2026-09-26 reruns used the default Inspire hand, and
-the earlier Dex3 `zero`/`random` sweep (`~/fiatlux-eval/results`) predates `subtask_score` and the
-current benchmark code, so it is not comparable. Running one takes ~3 min of GPU but was not done:
-the GPU had been handed back for the zero-shot seeds.
+The 2026-09-26 `zero` rerun used the default Inspire hand. The same-robot, current-code Dex3
+`zero` rows came later, from the interleaved sweep described in `docs/psi0_baseline.md` #18.
 
-**Reading it.** No success in any seed. The fine-tuned mean (0.250) is above Psi-0 zero-shot seed 0
-(0.167) and the Inspire `zero` rerun (0.208), and below GR00T (0.333), with four episodes each. The
-spread between these numbers is one or two gate conjuncts per seed. What did change is the behaviour:
-it moved toward the demos, where zero-shot never released the bulb at all (it held it aloft for the
-full 120 s). In 3 of 4 seeds the fine-tuned policy moves the bulb and deliberately opens the hand
-within 1.0-1.5 s, and in seed 2 the bulb reached the crate footprint. What ends those three episodes is the release itself. The bulb is
+**Reading it.** No success in any seed, and **the fine-tune did not move the S06 score**: 0.250 over 4
+seeds, the same as zero-shot Psi-0's 0.250 over 3 (above the Dex3 `zero` floor's 0.167, below
+GR00T's 0.333). The spread between all of these is one or two gate conjuncts per seed. What changed
+is the behaviour. Zero-shot seed 0 held the bulb aloft for the full 120 s; in zero-shot seeds 1 and
+2 the bulb fell (peak 4.0 m/s) and the episode ended at steps 142 and 216, never over the crate. In
+3 of 4 seeds the fine-tuned policy moves the bulb and opens the hand within 1.0-1.5 s. In seed 2
+the bulb reached the crate footprint (`old_bulb_in_bin` at step 92), the only S06 episode of any
+Psi-0 variant to do so. What ends those three episodes is the release itself. The bulb is
 dropped from 0.75-0.78 m and is still falling at 3.7-3.9 m/s when a termination that is neither
 success, drop, nor timeout fires. The bag does not record its name; this is consistent with the
 glass-impact term `old_bulb_struck`, the one the second token replay ended on.
