@@ -62,12 +62,14 @@ def replay(env, npz_path: str) -> dict:
     state_ids = torch.tensor(robot.find_joints(PSI0_STATE_JOINT_NAMES, preserve_order=True)[0], device=base.device)
     hand_ids = torch.tensor(robot.find_joints(PSI0_HAND_JOINT_NAMES, preserve_order=True)[0], device=base.device)
 
-    env.reset(seed=0)
     ticks = -(-len(tokens) * 50 // 30)
     if args_cli.seconds is not None:
         ticks = min(ticks, int(args_cli.seconds * 50))
     sim_q, rows, root_xy, ended = [], [], [], None
+    # The reset belongs inside inference mode too: once a step has run under it, the articulation
+    # buffers are inference tensors, and a reset outside it cannot write them in place.
     with torch.inference_mode():
+        env.reset(seed=0)
         for n in range(ticks):
             row = min(chunk_row(n), len(tokens) - 1)
             mask = blend.mask(base)
@@ -94,15 +96,38 @@ def replay(env, npz_path: str) -> dict:
     if keep.sum() < 10:
         result["error"] = "too short after the settle window"
         return result
+    sim_k = sim_q[keep]
     for name, sl in GROUPS.items():
         best = None
         for lag in range(MAX_LAG_ROWS + 1):
             ref = state[np.clip(rows[keep] - lag, 0, len(state) - 1), sl]
-            rmse = float(np.sqrt(np.mean((sim_q[keep, sl] - ref) ** 2)))
+            rmse = float(np.sqrt(np.mean((sim_k[:, sl] - ref) ** 2)))
             if best is None or rmse < best[0]:
                 best = (rmse, lag)
-        motion = float(np.sqrt(np.mean((state[rows[keep], sl] - state[rows[keep], sl].mean(0)) ** 2)))
-        result[name] = {"rmse_rad": round(best[0], 4), "lag_rows": best[1], "recorded_motion_rms_rad": round(motion, 4)}
+        ref = state[np.clip(rows[keep] - best[1], 0, len(state) - 1), sl]
+        motion = float(np.sqrt(np.mean((ref - ref.mean(0)) ** 2)))
+        # A robot frozen in its first post-settle pose: tracking must beat this to mean anything.
+        hold = float(np.sqrt(np.mean((sim_k[:1, sl] - ref) ** 2)))
+        # Per-joint agreement of the motion's SHAPE, for joints that actually move (> 0.05 rad std):
+        # a wrong joint order or sign shows up here as ~0 or negative, whatever the offsets.
+        moving = ref.std(0) > 0.05
+        corr = [float(np.corrcoef(sim_k[:, sl][:, j], ref[:, j])[0, 1]) for j in np.flatnonzero(moving)]
+        names = [PSI0_STATE_JOINT_NAMES[sl.start + j] for j in np.flatnonzero(moving)]
+        result[name] = {
+            "rmse_rad": round(best[0], 4),
+            "hold_rmse_rad": round(hold, 4),
+            "lag_rows": best[1],
+            "recorded_motion_rms_rad": round(motion, 4),
+            "mean_offset_rad": [round(float(v), 3) for v in (sim_k[:, sl] - ref).mean(0)],
+            "moving_joint_corr": {n: round(c, 3) for n, c in zip(names, corr)},
+        }
+    if args_cli.out:
+        np.savez(
+            os.path.splitext(args_cli.out)[0] + f"_{os.path.splitext(os.path.basename(npz_path))[0]}.npz",
+            sim_q=sim_q,
+            rows=rows,
+            state=state,
+        )
     drift = np.linalg.norm(np.asarray(root_xy)[-1] - np.asarray(root_xy)[0])
     result["root_xy_drift_m"] = round(float(drift), 3)
     return result
