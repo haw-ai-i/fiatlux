@@ -10,8 +10,9 @@ Starts from S08's end state: the fresh bulb already held upright in hand
 itself is untouched from ``apply_replace_preset`` -- it is this leg's navigation target, not its
 payload, and was placed by S01. Success is the robot at the ladder within foot-placement range to
 start climbing (``LADDER_MOUNT_RADIUS``, not the grasp-reach ``LADDER_APPROACH_RADIUS``), facing
-it, standing, ladder upright, and the bulb still gripped -- without that last conjunct a thrown
-bulb that skids into the radius would score.
+it, on the side its steps face, calm, ladder upright, and the bulb still gripped -- without that
+last conjunct a thrown bulb that skids into the radius would score -- all of it held for
+``ARRIVAL_SUSTAIN_SECONDS`` rather than lined up on a single frame (issue #206).
 
 Ladder-tipped termination (unlike S05, which never touches the ladder): walking a carried payload
 into the now free-standing, dynamic ladder can knock it over, a failure unrelated to the bulb grip.
@@ -35,6 +36,7 @@ from ..mdp.nav_terms import (
     base_calm,
     base_facing,
     base_near,
+    base_on_step_side,
     compose_carried_pose,
     ladder_upright,
     payload_held,
@@ -52,6 +54,8 @@ from ..scene_cfg import (
 from ..subtask_env_cfg import (
     ARRIVAL_FACING_TOLERANCE,
     ARRIVAL_MAX_SPEED,
+    ARRIVAL_STEP_SIDE_MARGIN,
+    ARRIVAL_SUSTAIN_SECONDS,
     NavigateRewardsCfg,
     NavigateSubtaskCfg,
     SubtaskEventCfg,
@@ -60,11 +64,14 @@ from ..subtask_env_cfg import (
 )
 from ..subtask_tiers.carrying import add_bulb_crush_gate, add_bulb_impact_gate
 
-# The success gate as data (mdp.all_of): an omitted conjunct in a hand-written conjunction is a
-# gate that passes vacuously.
+# The success gate as data (mdp.all_of, held by mdp.sustained): an omitted conjunct in a
+# hand-written conjunction is a gate that passes vacuously.
 AT_LADDER_WITH_BULB_CONJUNCTS = [
     (base_near, {"asset_cfg": SceneEntityCfg("ladder"), "xy_radius": LADDER_MOUNT_RADIUS}),
     (base_facing, {"asset_cfg": SceneEntityCfg("ladder"), "facing_tolerance": ARRIVAL_FACING_TOLERANCE}),
+    # A ladder is climbable from one side only, so near + facing is not arrival: stopping BEHIND
+    # it, facing it, satisfies both and scores as ready to climb (issue #206).
+    (base_on_step_side, {"asset_cfg": SceneEntityCfg("ladder"), "margin": ARRIVAL_STEP_SIDE_MARGIN}),
     (base_calm, {"max_speed": ARRIVAL_MAX_SPEED}),
     (
         payload_held,
@@ -124,8 +131,12 @@ class S09CarryBulbToLadderEnvCfg(NavigateSubtaskCfg):
     orbit_radius: float = 5.0
     orbit_height: float = 2.4
 
-    success_predicate = mdp.all_of
-    success_params: dict | None = {"predicates": AT_LADDER_WITH_BULB_CONJUNCTS}
+    success_predicate = mdp.sustained
+    success_params: dict | None = {
+        "predicate_fn": mdp.all_of,
+        "seconds": ARRIVAL_SUSTAIN_SECONDS,
+        "predicate_params": {"predicates": AT_LADDER_WITH_BULB_CONJUNCTS},
+    }
     progress_distance_fn = mdp.base_ladder_distance
 
     events: S09EventCfg = S09EventCfg()

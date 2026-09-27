@@ -53,6 +53,15 @@ FALL_TILT_LIMIT = 1.0  # rad
 # Arrival gate shape, shared by every navigation subtask.
 ARRIVAL_FACING_TOLERANCE = 0.5  # rad
 ARRIVAL_MAX_SPEED = 1.0  # m/s; rejects scoring while still charging at the target
+# Both used by S09 only so far (#206). How far past the ladder's centre plane the robot stands
+# to count as on its STEP side, the only side it can be climbed from -- zero is the plane
+# itself, a little more keeps a robot straddling it from scoring. Known loose: a robot beside
+# the ladder, abeam of a rail, still clears it (#258).
+ARRIVAL_STEP_SIDE_MARGIN = 0.10  # m
+# How long arrival has to HOLD. Without it one frame where every conjunct happens to line up
+# scores the leg, which is how a take passed on a single step at its very end. S05 and S07 still
+# gate on a single frame (#259).
+ARRIVAL_SUSTAIN_SECONDS = 0.5
 
 
 @configclass

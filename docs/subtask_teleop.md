@@ -269,7 +269,7 @@ Shared thresholds: **robot standing** = pelvis above 0.35 m and tilt under 1.0 r
 | S06 | DisposeBulb | sustained | old bulb inside the disposal crate (`bin`) · at rest · **released** (<1 N) · standing |
 | S07 | ApproachNewBulb | all_of | within reach of the fresh bulb (`bulb`, on the bench) · facing it within **0.5 rad** (`ARRIVAL_FACING_TOLERANCE`) · under **1.0 m/s** (`ARRIVAL_MAX_SPEED`) |
 | S08 | GrabNewBulb | sustained | fresh bulb lifted **3 cm** off the bench · **≥2 hand bodies** in contact (>1 N each) · total grip force under **50 N** · standing |
-| S09 | CarryBulbToLadder | all_of | within mounting range of the ladder · facing it within **0.5 rad** · under **1.0 m/s** · bulb held · ladder upright |
+| S09 | CarryBulbToLadder | sustained | within mounting range of the ladder · facing it within **0.5 rad** · on the side its **steps face**, clear of the centre plane by **0.10 m** · under **1.0 m/s** · bulb held · ladder upright · all of it held for **0.5 s** |
 | S10 | ClimbWithBulb | all_of | at top stance (as S02) · bulb held · lifted · standing · ladder vertical |
 | S11 | ScrewInBulb | sustained | fresh bulb **attached** (seated, detent holding it) · at rest · **released** (grip <1 N) · standing · ladder vertical |
 | S12 | ClimbDown | all_of | descended to floor stance (as S04) · **fresh bulb still seated** in the fixture · standing · ladder vertical |
