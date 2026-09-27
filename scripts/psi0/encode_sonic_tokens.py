@@ -151,10 +151,81 @@ def load_take(run_h5: Path) -> dict[str, np.ndarray]:
         demos = sorted(f["data"].keys())
         assert len(demos) == 1, f"{run_h5}: expected one demo per take, got {demos}"
         d = f["data"][demos[0]]
-        out = {k: d[k][()] for k in ("joint_pos", "joint_pos_target", "robot_root_quat", "step_in_episode")}
+        keys = (
+            "joint_pos",
+            "joint_vel",
+            "joint_pos_target",
+            "robot_root_quat",
+            "robot_root_ang_vel",
+            "step_in_episode",
+        )
+        out = {k: d[k][()] for k in keys}
     out["joint_names"] = np.array(meta["joint_names"])
     out["step_dt"] = np.float64(meta["step_dt"])
     return out
+
+
+def _rotate_inv(q: np.ndarray, v: np.ndarray) -> np.ndarray:
+    """World vector ``v`` expressed in the frame of wxyz rotation ``q`` (R(q)^T v)."""
+    qv = np.concatenate([np.zeros((*v.shape[:-1], 1)), v], axis=-1)
+    return quat_mul(quat_mul(quat_conj(q), qv), q)[..., 1:]
+
+
+def check_decoder(encoder: SonicEncoder, run_h5: Path, decoder_path: str, lead: int = 5) -> None:
+    """Offline check that the encoded tokens mean what the demo did, without a simulator.
+
+    For sampled frames t, run the released SONIC decoder on token_t plus the demo's own 10-frame
+    proprio history (the decoder's input layout, ``fiatlux_task.groot.SonicDecoder``; its own past
+    actions are approximated by the actions that would target the recorded poses), and measure how
+    far its joint targets ``default + a * scale`` land from the demo's pose ``lead`` steps later.
+    The same is done with two control tokens (SONIC's standing latent, and the token of a frame
+    from the other half of the take): the demo's own token should be clearly closest.
+    """
+    import onnxruntime as ort
+
+    session = ort.InferenceSession(decoder_path, providers=["CPUExecutionProvider"])
+    name = session.get_inputs()[0].name
+    take = load_take(run_h5)
+    col = {n: i for i, n in enumerate(take["joint_names"])}
+    body = [col[n] for n in SONIC_JOINT_NAMES]
+    q = take["joint_pos"][:, body].astype(np.float64)
+    dq = take["joint_vel"][:, body].astype(np.float64)
+    quat = take["robot_root_quat"].astype(np.float64)
+    ang_b = _rotate_inv(quat, take["robot_root_ang_vel"].astype(np.float64))
+    grav_b = _rotate_inv(quat, np.tile([0.0, 0.0, -1.0], (len(quat), 1)))
+    default = _isaac_order(0).numpy().astype(np.float64)
+    scale = _isaac_order(3).numpy().astype(np.float64)
+    tokens = encoder(encoder_inputs(q, np.gradient(q, float(take["step_dt"]), axis=0), quat))
+
+    def targets(token: np.ndarray, t: int) -> np.ndarray:
+        hist = np.clip(np.arange(t - 9, t + 1), 0, None)
+        # The action history's newest entry is the previous tick's action (SonicDecoder.step),
+        # approximated as the action that targeted the pose each frame actually reached.
+        prev_act = (q[hist] - default) / scale
+        obs = np.concatenate(
+            [
+                token,
+                ang_b[hist].ravel(),
+                (q[hist] - default).ravel(),
+                dq[hist].ravel(),
+                prev_act.ravel(),
+                grav_b[hist].ravel(),
+            ]
+        ).astype(np.float32)
+        return default + session.run(None, {name: obs[None]})[0][0] * scale
+
+    t_len = len(q)
+    frames = range(10, t_len - lead, max(1, (t_len - lead - 10) // 25))
+    err = {"own token": [], "standing latent": [], "other-half token": [], "(hold current pose)": []}
+    for t in frames:
+        future = q[t + lead]
+        err["own token"].append(np.abs(targets(tokens[t], t) - future).mean())
+        err["standing latent"].append(np.abs(targets(STAND_TOKEN, t) - future).mean())
+        err["other-half token"].append(np.abs(targets(tokens[(t + t_len // 2) % t_len], t) - future).mean())
+        err["(hold current pose)"].append(np.abs(q[t] - future).mean())
+    print(f"{run_h5.parent.name}: mean |target - q(t+{lead})| over {len(err['own token'])} frames (rad)")
+    for k, v in err.items():
+        print(f"  {k:22s} {np.mean(v):.4f}")
 
 
 def convert_take(encoder: SonicEncoder, run_h5: Path) -> dict[str, np.ndarray]:
@@ -183,11 +254,17 @@ def main() -> None:
     ap.add_argument("--out", type=Path, help="output directory for <take>.npz")
     ap.add_argument("--encoder", default=DEFAULT_ENCODER)
     ap.add_argument("--check-stand", action="store_true", help="only run the standing-pose sanity check")
+    ap.add_argument("--check-decoder", action="store_true", help="only run the offline decoder check per take")
+    ap.add_argument("--decoder", default=os.path.expanduser("~/tools/sonic_models/policy/release/model_decoder.onnx"))
     args = ap.parse_args()
 
     encoder = SonicEncoder(args.encoder)
     check_stand(encoder)
     if args.check_stand:
+        return
+    if args.check_decoder:
+        for run_h5 in sorted(args.takes.glob("*/run.h5")):
+            check_decoder(encoder, run_h5, args.decoder)
         return
     args.out.mkdir(parents=True, exist_ok=True)
     for run_h5 in sorted(args.takes.glob("*/run.h5")):
