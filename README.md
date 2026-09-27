@@ -1,5 +1,7 @@
 # Fiatlux Benchmark
 
+**[Project page](https://fiatlux-bench.github.io)** · [Paper](https://fiatlux-bench.github.io/static/paper/fiatlux.pdf) · [Video](https://youtu.be/qAqW_5kYmlU) · [Data](https://huggingface.co/haw-ai-i)
+
 A minimal Isaac Lab benchmark for **humanoid ladder climbing and light-bulb replacement**: a
 Unitree G1 robot positions a step ladder under a ceiling or wall fixture, climbs it, exchanges
 the spent bulb for a fresh one, and drops the spent one in a disposal crate. It is a plain
