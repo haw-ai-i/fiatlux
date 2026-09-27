@@ -150,10 +150,112 @@ demonstration. Recorded at fiatlux commit `02cf17e` (pre-history-flatten), task
     data for a loss number that says little about closed-loop success. Closed-loop evaluation is
     the metric; the val loss is only a sanity signal.
 
-_Sections below are filled in as the GPU work runs._
+13. **Warm start verified before any GPU time.** The trainer loads the action header with
+    `load_state_dict(..., strict=False)`, which would silently leave a mismatched block randomly
+    initialized. Built the CLI-configured model on CPU (meta-device VLM) and compared: 336/336
+    header tensors present in the export, 0 missing, 0 unexpected, 0 shape mismatches.
+
+14. **Batch 8 x grad-accumulation 2** (effective 16, the recipe's per-GPU batch). Batch 16 ran out
+    of memory on the first step: 20.4 GB for the trainer, with 2.3 GB held by three processes that
+    already occupied the GPU. `PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True` as the OOM message
+    suggests.
+
+15. **DeepSpeed told to stay out.** The first real launch died at step 0 in `trainer.evaluate()`:
+    accelerate's `unwrap_model` imports `deepspeed` whenever the package is installed, and its
+    import-time op check raises `MissingCUDAException: CUDA_HOME does not exist` (no CUDA toolkit on
+    iolani-3). The run is plain single-GPU DDP, so `train_sdpa.py` reports DeepSpeed as unavailable
+    to accelerate.
+
+16. **2,000 optimizer steps.** At 1.5 it/s this takes ~22 min, well under the 90-min budget. The
+    budget would have allowed ~8,000 steps, but that is ~75 epochs of a 56 s pack. 2,000 steps is
+    ~19 epochs, the same order as Psi0's own fine-tunes (psi-dream: 40k steps x 128 over ~540k
+    frames, ~9.5 epochs). Checkpoints at 1,000 and 2,000.
 
 ## Token replay
 
+`replay_tokens.py` drives the Dex3 G1 in `FIATLUX-S06-DisposeBulb-v0` (the take's own layout
+seed, the RL env rather than the teleop twin) with exactly the encoded tokens (50 Hz, one per
+recorded step, through `SonicDecoder`) and the commanded finger targets:
+
+| take | demo steps | replay ended | by | mean abs joint err (arm) | demo arm motion |
+| --- | --- | --- | --- | --- | --- |
+| `2026-09-13_234341_ep00` | 276 | step 265 | **`success`**: bulb disposed in the crate | 0.080 (0.107) rad | 0.158 rad |
+| `2026-09-14_184617_ep01` | 267 | step 214 | `old_bulb_struck` | 0.060 (0.080) rad | 0.055 rad |
+
+The first replay reproduces the whole task from tokens alone. The second tracks the demo equally
+closely but ends in a failure termination. The start state is the RL env's reset, not the take's
+exact first frame (start-pose error 0.13 rad for both), so an open-loop replay is not expected to
+succeed every time. This is the closed-loop evidence that the tokens encode the demonstrated
+motion.
+
 ## Training
 
+Run dir (iolani-3): `~/psi0_ft/runs/finetune/s06ft.g1soni.flow1000.cosine.lr1.0e-04.b16.gpus1.2609262230`
+(`argv.txt`, `run_config.json`, `clip_pooled_cache.pt`, `dataset_statistics.json`,
+`checkpoints/ckpt_{1000,2000}`, 12 GB each with optimizer state).
+
+- 2,000 optimizer steps, batch 8 x accumulation 2, lr 1e-4 cosine (warmup 100) to 0, bf16 autocast,
+  frozen bf16 VLM, 673.8 M trainable parameters, RTX 3090. **23 min wall time** (1.44-1.85 it/s),
+  ~21 GB peak.
+- Training loss (flow-matching, per-step values from the progress bar, 200-step windows):
+
+  | steps | 1-200 | 201-400 | 401-600 | 601-800 | 801-1000 | 1001-1200 | 1201-1400 | 1401-1600 | 1601-1800 | 1801-2000 |
+  | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+  | mean | 2.225 | 1.095 | 1.148 | 0.939 | 0.844 | 0.817 | 0.689 | 0.723 | 0.605 | 0.600 |
+  | median | 1.250 | 0.759 | 0.794 | 0.651 | 0.526 | 0.487 | 0.427 | 0.424 | 0.378 | 0.373 |
+
+  Validation passes ran at steps 0/1000/1999 on the training pack (decision 12), but with no
+  tracker configured (`--log.report_to` unset, no wandb on iolani-3) their values were not
+  printed.
+
 ## Evaluation
+
+Same adapter (`--policy psi0:localhost:8015 --robot dex3`), same server settings (test-time RTC,
+15 of 30 rows per query, 10 flow steps), same instruction ("put the light bulb into the yellow crate
+and let go of it", which is also the pack's task string), same protocol (`sweep.sh S06`, seeds 0-3,
+one episode each, `score.py`). Checkpoint `ckpt_2000`. Bags:
+`~/fiatlux-worktrees/psi0-ft/logs/runs/psi0_ft_s06/` on iolani-3.
+
+| S06 seed | fine-tuned subtask_score | success | gate_progress | steps | what happened |
+| --- | --- | --- | --- | --- | --- |
+| 0 | 0.333 | 0 | 0.667 | 129 | released at step 53 from 0.77 m beside the crate; episode ended mid-fall |
+| 1 | 0.000 | 0 | 0.000 | 6000 | held the bulb the whole 120 s, never released (timeout) |
+| 2 | 0.333 | 0 | 0.667 | 94 | released at step 53 from 0.78 m; `old_bulb_in_bin` fired at step 92, episode ended at 94 |
+| 3 | 0.333 | 0 | 0.667 | 101 | released at step 73 from 0.75 m; episode ended mid-fall |
+| **mean** | **0.250** | **0/4** | **0.500** | | |
+
+Comparison on S06 (same protocol):
+
+| policy | robot | subtask_score (per seed) | success | gate_progress | source |
+| --- | --- | --- | --- | --- | --- |
+| Psi-0 fine-tuned (this) | Dex3 | **0.250** (0.333, 0, 0.333, 0.333) | 0/4 | 0.500 | above |
+| Psi-0 zero-shot | Dex3 | 0.167 (seed 0 only so far) | 0/1 | 0.333 | `logs/runs/psi0_zeroshot`; seeds 1-3 still to run |
+| GR00T N1.7 zero-shot | Dex3 | 0.333 (every seed) | 0/4 | 0.667 | `rerun_2026-09-26/groot_dex3_S06_*` |
+| `zero` | **Inspire** | 0.208 (0.333, 0.167, 0.167, 0.167) | 0/4 | 0.417 | `rerun_2026-09-26/zero_S06_*` (default robot) |
+
+There is no same-code Dex3 `zero` S06 run. The 2026-09-26 reruns used the default Inspire hand, and
+the earlier Dex3 `zero`/`random` sweep (`~/fiatlux-eval/results`) predates `subtask_score` and the
+current benchmark code, so it is not comparable. Running one takes ~3 min of GPU but was not done:
+the GPU had been handed back for the zero-shot seeds.
+
+**Reading it.** No success in any seed. The fine-tuned mean (0.250) is above Psi-0 zero-shot seed 0
+(0.167) and the Inspire `zero` rerun (0.208), and below GR00T (0.333), with four episodes each. The
+spread between these numbers is one or two gate conjuncts per seed. What did change is the behaviour:
+it moved toward the demos, where zero-shot never released the bulb at all (it held it aloft for the
+full 120 s). In 3 of 4 seeds the fine-tuned policy moves the bulb and deliberately opens the hand
+within 1.0-1.5 s, and in seed 2 the bulb reached the crate footprint. What ends those three episodes is the release itself. The bulb is
+dropped from 0.75-0.78 m and is still falling at 3.7-3.9 m/s when a termination that is neither
+success, drop, nor timeout fires. The bag does not record its name; this is consistent with the
+glass-impact term `old_bulb_struck`, the one the second token replay ended on.
+
+**That release is what the demos teach.** All 10 successful takes drop the bulb from 0.63-0.90 m
+(peak 3.4-4.0 m/s) into the crate. They could still score success because the teleop twins clear
+every failure termination but `success` (`docs/subtask_teleop.md`), so an impact check never ran
+during teleop. The RL env that `sweep.sh` evaluates keeps it, and the first token replay shows a
+0.74 m drop *can* pass in the RL env when the bulb lands cleanly. This is a benchmark/data finding
+worth raising: S06 demos recorded under the teleop twin can contain releases the benchmark's own env
+terminates on.
+
+**Caveats.** Four episodes; ~56 s of demonstration; frozen VLM (only the action expert adapted);
+one checkpoint evaluated (`ckpt_1000` exists and was not evaluated, to hand the GPU back for the
+zero-shot seeds 1-3).
