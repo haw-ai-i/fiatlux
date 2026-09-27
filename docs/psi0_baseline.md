@@ -156,4 +156,37 @@ own files, the source is named; nothing here was reverse-engineered from weights
 
 ## Results
 
-_Filled in by the sweep; see below._
+Run on iolani-3 (RTX 3090) from `feat/psi0-zero-shot` (on `main` at `6c9d4de`), 2026-09-26.
+`python scripts/psi0/summarize.py logs/runs/psi0_zeroshot` regenerates the Psi-0 columns.
+
+### Seed 0, all twelve subtasks
+
+`subtask_score` (0.5 x success + 0.5 x gate_progress). No Psi-0 episode succeeded.
+The comparison columns are the existing iolani-3 runs: `zero`/`random` S03-S12 and `groot`
+from the 2026-09-26 rerun (`main` at `65f16c4`, mean of 4 seeds), `zero`/`random` S01-S02 from
+the earlier full sweep (older code). `groot` there drove the Inspire robot, whose hands it cannot
+command; `groot` on Dex3 exists only for S06 (4 seeds) and S09 (1 seed). S09 changed since the
+rerun (#223, the step-side conjunct), so its columns are not strictly comparable.
+
+| Subtask | weight | zero | random | groot (Inspire) | groot (Dex3) | **psi0 seed 0** | psi0 episode |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| S01 MoveLadder | 2.25 | 0.000 | 0.000 | - | - | 0.000 | 6000 steps, stands in place |
+| S02 ClimbLadder | 3.00 | 0.000 | 0.000 | - | - | 0.000 | 6000 steps |
+| S03 RemoveOldBulb | 4.20 | 0.062 | 0.062 | 0.062 | - | 0.000 | 282 steps |
+| S04 DescendWithBulb | 4.50 | 0.000 | 0.000 | 0.000 | - | 0.250 | 19 steps, bulb crushed (64.6 N) |
+| S05 CarryBulbToDisposal | 1.50 | 0.000 | 0.000 | 0.000 | - | 0.250 | 338 steps, bulb dropped |
+| S06 DisposeBulb | 1.80 | 0.208 | 0.167 | 0.167 | 0.333 | 0.167 | 6000 steps, holds the bulb, never releases |
+| S07 ApproachNewBulb | 1.00 | 0.000 | 0.000 | 0.000 | - | 0.000 | 6000 steps, stands in place |
+| S08 GrabNewBulb | 1.40 | 0.000 | 0.000 | 0.000 | - | 0.000 | 6000 steps, bulb out of view |
+| S09 CarryBulbToLadder | 1.50 | 0.000 | 0.000 | 0.000 | 0.250 | 0.250 | 6000 steps, holds the bulb |
+| S10 ClimbWithBulb | 4.50 | 0.000 | 0.000 | 0.000 | - | 0.250 | 414 steps, bulb dropped |
+| S11 ScrewInBulb | 5.40 | 0.062 | 0.000 | 0.000 | - | 0.250 | 24 steps |
+| S12 ClimbDown | 3.00 | 0.000 | 0.000 | - | - | 0.000 | 25 steps |
+| **Weighted, seed 0** | | 0.057 | 0.009 | 0.012 (9 subtasks) | 0.295 (2 subtasks) | **0.137** | |
+
+What the ego videos show, consistently across subtasks: after the first query Psi-0 lifts the
+bulb-holding hand up toward the camera and holds it there, the other hand open; it never walks,
+turns, or releases. Its partial credit comes from keeping the bulb held and lifted where the
+floor baselines drop or crush it. Two confounds are the camera (decision 9: standing, the fixed
+D435 sees only floor within a couple of metres, and the S08 bulb is out of frame) and the
+instructions, which are unseen sentences about unseen objects.
