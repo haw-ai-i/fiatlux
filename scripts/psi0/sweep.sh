@@ -36,9 +36,11 @@ else
 fi
 
 mkdir -p "$OUT"
-for sub in "${SUBTASKS[@]}"; do
-    task="FIATLUX-${sub}-v0"
-    for seed in $SEEDS; do
+# Seed-major: every subtask for one seed before the next seed, so a sweep cut short still leaves
+# complete per-seed roll-ups (score_subtasks.py scores one seed's twelve results at a time).
+for seed in $SEEDS; do
+    for sub in "${SUBTASKS[@]}"; do
+        task="FIATLUX-${sub}-v0"
         dir="$OUT/$task/seed$seed"
         if [ -f "$dir/score.json" ]; then
             echo "[skip] $task seed$seed"
