@@ -89,8 +89,11 @@ own files, the source is named; nothing here was reverse-engineered from weights
    describes a *different* order (`hands arms legs waist neck`) for the newer `psix_sonic_v1`
    packs. The stats settle it: slots 3 and 9 are the only strictly positive leg slots (the knees);
    slots 32-35 are all <= 0 and 39-42 all >= 0 (the mirrored curl directions of the left and right
-   index/middle fingers); 29-31 and 36-38 have the thumb ranges. The 80-D action's hand block is
-   the same 14 joints in the same order.
+   index/middle fingers); 29-31 and 36-38 have the thumb ranges. A third, independent source
+   agrees: the public UnifoLM SONIC pack Psi-0 was post-trained on
+   (`USC-PSI-Lab/psi-data:sonic/unifolm_sonic_lerobot_val.zip`) *names* its 43 state columns in
+   `meta/info.json`, legs, waist, arms, then both hands thumb/middle/index, and this checkpoint
+   appends the 2 neck slots. The 80-D action's hand block is the same 14 joints in the same order.
 
 8. **No neck.** This G1 has no neck joints and its head camera is fixed. The two neck state slots
    are sent as 0 (inside the training range), and the two neck action channels are dropped.
@@ -102,7 +105,13 @@ own files, the source is named; nothing here was reverse-engineered from weights
    own 16:9 colour mode (69.4 x 42.5 deg). It changes the sensor's resolution only, never the task.
    What cannot be matched: Psi-Dream's camera sits on an actuated neck the policy aims itself;
    this robot's D435 is fixed to the torso and pitched steeply down. In S08 the fresh bulb on the
-   tabletop is out of frame at spawn.
+   tabletop is out of frame at spawn, and in S01 the view while standing is floor only: at the
+   G1's ~48 deg mount pitch the top edge of a 42.5 deg-tall frame is still ~26 deg below the
+   horizon (the square 69.4 deg frame's top edge is ~13 deg below it, which is also no horizon).
+   For reference, the UnifoLM post-train pack is 640x480 (4:3), which training stretches 1.33x
+   to 480x270; the Psi-Dream fine-tune pack is not public. A native 16:9 frame is the smallest
+   distortion on offer. The alternative, sending the square frame and letting the server stretch
+   it 1.78x, would keep 27 deg more vertical view and was not chosen.
 
 10. **Token quantization and timing.** The flow head outputs a continuous token; Psi0's own robot
     client snaps it onto SONIC's FSQ grid (range +-0.625, step 1/16) before publishing it
