@@ -154,6 +154,30 @@ own files, the source is named; nothing here was reverse-engineered from weights
     roll-ups, and it is paused to hand the GPU to the S06 fine-tune (`docs/psi0_finetune.md`),
     whose CPU-only data preparation starts in parallel with the sweep rather than after it.
 
+17. **The token path below the VLA was checked against ground truth, not just for shape.**
+    `scripts/psi0/verify_sonic_tracking.py` replays episodes of Psi-0's own post-training pack
+    (`unifolm_sonic_lerobot_val`: `action.body_token` plus the real robot's recorded
+    `observation.state`) through `SonicDecoder` in the benchmark sim, fed exactly as the adapter
+    feeds a chunk, and compares the simulated joints with the recorded ones. Three episodes
+    (0, 6, 8), after a 1 s transient:
+    - arm joints that move correlate 0.80-0.99 with the recording (shoulders, elbows, wrist roll);
+      the arm RMSE is 0.13-0.16 rad against 0.31-0.49 rad for a robot frozen in place;
+    - in episode 8, which squats, hip pitch and knee correlate 0.92-0.99, with leg RMSE 0.16 rad
+      against 0.63 rad frozen;
+    - Dex3 joints correlate 0.86-0.99 (their targets are applied directly);
+    - the weak spots are small-amplitude joints (wrist yaw, one ankle), and episode 6 walked 2.6 m
+      and then terminated.
+    A wrong joint order, sign, or token space would show up as correlations near 0 or below. What
+    remains is tracking error plus sim-to-real. So when Psi-0 stands still or lifts the bulb to
+    its face in these rollouts, that is the model's output, not the decoder mangling it.
+
+18. **Comparison floors and the hand variant.** The `zero`/`random`/`groot` runs already on
+    iolani-3 (2026-09-26 rerun) used the default **Inspire** robot (53 joints in their bags); only
+    `groot_dex3` is on Dex3. A policy's floor depends on the hand (the Inspire and Dex3 hands hold,
+    drop, or crush the in-hand bulb differently at reset). So a current-code `zero --robot dex3`
+    sweep (`logs/runs/zero_dex3`) runs interleaved with Psi-0's seeds 1-3, one Isaac instance at a
+    time, to give a same-robot floor.
+
 ## Results
 
 Run on iolani-3 (RTX 3090) from `feat/psi0-zero-shot` (on `main` at `6c9d4de`), 2026-09-26.
@@ -163,10 +187,11 @@ Run on iolani-3 (RTX 3090) from `feat/psi0-zero-shot` (on `main` at `6c9d4de`), 
 
 `subtask_score` (0.5 x success + 0.5 x gate_progress). No Psi-0 episode succeeded.
 The comparison columns are the existing iolani-3 runs: `zero`/`random` S03-S12 and `groot`
-from the 2026-09-26 rerun (`main` at `65f16c4`, mean of 4 seeds), `zero`/`random` S01-S02 from
-the earlier full sweep (older code). `groot` there drove the Inspire robot, whose hands it cannot
-command; `groot` on Dex3 exists only for S06 (4 seeds) and S09 (1 seed). S09 changed since the
-rerun (#223, the step-side conjunct), so its columns are not strictly comparable.
+from the 2026-09-26 rerun (`main` at `65f16c4`, mean of 4 seeds, **Inspire robot**, see
+decision 18), and `zero`/`random` S01-S02 from the earlier full Dex3 sweep (older code). `groot`
+on the Inspire robot cannot command its hands. `groot` on Dex3 exists only for S06 (4 seeds) and
+S09 (1 seed). S09 changed since the rerun (#223, the step-side conjunct), so its columns are not
+strictly comparable. The same-robot Dex3 `zero` floor is in the multi-seed table below.
 
 | Subtask | weight | zero | random | groot (Inspire) | groot (Dex3) | **psi0 seed 0** | psi0 episode |
 | --- | --- | --- | --- | --- | --- | --- | --- |
