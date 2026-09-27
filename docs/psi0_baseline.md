@@ -218,34 +218,36 @@ instructions, which are unseen sentences about unseen objects.
 
 ### All seeds, with a same-robot floor
 
-Psi-0 zero-shot seeds 0-2 (seed 3 was still running when this was written), and the
-current-code `zero` policy on the same Dex3 robot, seeds 0-1 (decision 18). Mean `subtask_score`
-over seeds. **0 successes in 36 Psi-0 episodes and 24 `zero` episodes.**
+Psi-0 zero-shot seeds 0-3, and the current-code `zero` policy on the same Dex3 robot, seeds 0-1
+(decision 18; its seeds 2-3 were still running when this was written). Mean `subtask_score` over
+seeds. **0 successes in 48 Psi-0 episodes and 24 `zero` episodes.**
 
-| Subtask | weight | `zero`, Dex3 (2 seeds) | **psi0 zero-shot (3 seeds)** | psi0 gate_progress |
+| Subtask | weight | `zero`, Dex3 (2 seeds) | **psi0 zero-shot (4 seeds)** | psi0 gate_progress |
 | --- | --- | --- | --- | --- |
 | S01 MoveLadder | 2.25 | 0.000 | 0.000 | 0.000 |
 | S02 ClimbLadder | 3.00 | 0.000 | 0.000 | 0.000 |
-| S03 RemoveOldBulb | 4.20 | 0.000 | 0.083 | 0.167 |
-| S04 DescendWithBulb | 4.50 | 0.125 | 0.250 | 0.500 |
+| S03 RemoveOldBulb | 4.20 | 0.000 | 0.062 | 0.125 |
+| S04 DescendWithBulb | 4.50 | 0.125 | 0.188 | 0.375 |
 | S05 CarryBulbToDisposal | 1.50 | 0.250 | 0.250 | 0.500 |
-| S06 DisposeBulb | 1.80 | 0.167 | 0.250 | 0.500 |
+| S06 DisposeBulb | 1.80 | 0.167 | 0.271 | 0.542 |
 | S07 ApproachNewBulb | 1.00 | 0.000 | 0.000 | 0.000 |
 | S08 GrabNewBulb | 1.40 | 0.000 | 0.000 | 0.000 |
-| S09 CarryBulbToLadder | 1.50 | 0.125 | 0.167 | 0.333 |
-| S10 ClimbWithBulb | 4.50 | 0.125 | 0.167 | 0.333 |
-| S11 ScrewInBulb | 5.40 | 0.000 | 0.083 | 0.167 |
+| S09 CarryBulbToLadder | 1.50 | 0.125 | 0.125 | 0.250 |
+| S10 ClimbWithBulb | 4.50 | 0.125 | 0.125 | 0.250 |
+| S11 ScrewInBulb | 5.40 | 0.000 | 0.062 | 0.125 |
 | S12 ClimbDown | 3.00 | 0.000 | 0.000 | 0.000 |
-| **Weighted, per seed** | | 0.064, 0.053 | **0.137, 0.088, 0.106** | |
-| **Weighted, mean +- std** | | **0.058 +- 0.006** | **0.110 +- 0.020** | |
+| **Weighted, per seed** | | 0.064, 0.053 | **0.137, 0.088, 0.106, 0.029** | |
+| **Weighted, mean +- std** | | **0.058 +- 0.006** | **0.090 +- 0.039** | |
 
-Reading it: zero-shot Psi-0 scores about twice the do-nothing floor on the same robot. All of
-the difference is partial gate credit on the six subtasks that start with the bulb in hand
-(S03-S06, S09-S11), where it keeps the bulb held and off the floor somewhat more often than
-`zero`. It scores nothing on anything that needs walking, climbing, or a grasp (S01, S02, S07,
-S08, S12), the same as `zero`. It is far from GR00T-on-Dex3's 0.333 on S06, but that comparison
-rests on 4 GR00T episodes of one subtask. The S06 fine-tune is in `docs/psi0_finetune.md`:
-0.250 over 4 seeds, the same as zero-shot's 0.250 over 3.
+Reading it: zero-shot Psi-0 lands above the do-nothing floor on the same robot (0.090 vs 0.058),
+but the gap is about one seed-to-seed standard deviation. Seed 3 (0.029) scored below both `zero`
+seeds: its in-hand-bulb episodes ended within 4-39 steps in S03, S04, S09, and S11. All of Psi-0's
+credit is partial gate credit on the subtasks that start with the bulb in hand (S03-S06,
+S09-S11), where it sometimes keeps the bulb held and off the floor longer than `zero`. It scores
+nothing on anything that needs walking, climbing, or a grasp (S01, S02, S07, S08, S12), the same
+as `zero`. On S06 it is below GR00T-on-Dex3's 0.333, but that comparison rests on 4 GR00T
+episodes of one subtask. The S06 fine-tune is in `docs/psi0_finetune.md`: 0.250 over 4 seeds,
+against zero-shot's 0.271 over the same 4 seeds.
 
 Regenerate: `python scripts/psi0/summarize.py logs/runs/psi0_zeroshot` and
 `... logs/runs/zero_dex3` on iolani-3 (`~/fiatlux-worktrees/psi0`).

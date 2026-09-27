@@ -229,7 +229,7 @@ Comparison on S06 (same protocol):
 | policy | robot | subtask_score (per seed) | success | gate_progress | source |
 | --- | --- | --- | --- | --- | --- |
 | Psi-0 fine-tuned (this) | Dex3 | **0.250** (0.333, 0, 0.333, 0.333) | 0/4 | 0.500 | above |
-| Psi-0 zero-shot | Dex3 | 0.250 (0.167, 0.250, 0.333) | 0/3 | 0.500 | `logs/runs/psi0_zeroshot`, seeds 0-2 |
+| Psi-0 zero-shot | Dex3 | 0.271 (0.167, 0.250, 0.333, 0.333) | 0/4 | 0.542 | `logs/runs/psi0_zeroshot`, seeds 0-3 |
 | `zero` | Dex3 | 0.167 (0.167, 0.167) | 0/2 | 0.333 | `logs/runs/zero_dex3`, seeds 0-1, current code |
 | GR00T N1.7 zero-shot | Dex3 | 0.333 (every seed) | 0/4 | 0.667 | `rerun_2026-09-26/groot_dex3_S06_*` |
 | `zero` | **Inspire** | 0.208 (0.333, 0.167, 0.167, 0.167) | 0/4 | 0.417 | `rerun_2026-09-26/zero_S06_*` (default robot) |
@@ -237,9 +237,9 @@ Comparison on S06 (same protocol):
 The 2026-09-26 `zero` rerun used the default Inspire hand. The same-robot, current-code Dex3
 `zero` rows came later, from the interleaved sweep described in `docs/psi0_baseline.md` #18.
 
-**Reading it.** No success in any seed, and **the fine-tune did not move the S06 score**: 0.250 over 4
-seeds, the same as zero-shot Psi-0's 0.250 over 3 (above the Dex3 `zero` floor's 0.167, below
-GR00T's 0.333). The spread between all of these is one or two gate conjuncts per seed. What changed
+**Reading it.** No success in any seed, and **the fine-tune did not raise the S06 score**: 0.250 over 4
+seeds against zero-shot Psi-0's 0.271 over the same 4 seeds (both above the Dex3 `zero` floor's
+0.167, both below GR00T's 0.333). The spread between all of these is one or two gate conjuncts per seed. What changed
 is the behaviour. Zero-shot seed 0 held the bulb aloft for the full 120 s; in zero-shot seeds 1 and
 2 the bulb fell (peak 4.0 m/s) and the episode ended at steps 142 and 216, never over the crate. In
 3 of 4 seeds the fine-tuned policy moves the bulb and opens the hand within 1.0-1.5 s. In seed 2
