@@ -26,6 +26,17 @@ def _from_pretrained_sdpa(*args, **kwargs):
 
 Qwen3VLForConditionalGeneration.from_pretrained = _from_pretrained_sdpa
 
+# accelerate's unwrap_model imports deepspeed whenever the package is installed (Psi0's venv has
+# it for its multi-node recipes), and deepspeed's import-time op check raises
+# ``MissingCUDAException: CUDA_HOME does not exist`` on a box with no CUDA toolkit -- the first
+# evaluate() dies there before step 1. This run is plain single-GPU DDP and never uses deepspeed,
+# so accelerate is told it is absent.
+import accelerate.accelerator  # noqa: E402
+import accelerate.utils.other  # noqa: E402
+
+accelerate.utils.other.is_deepspeed_available = lambda: False
+accelerate.accelerator.is_deepspeed_available = lambda: False
+
 train_py = os.path.join(os.environ["PSI0_REPO"], "scripts", "train.py")
 sys.argv = [train_py] + sys.argv[1:]
 runpy.run_path(train_py, run_name="__main__")
