@@ -14,7 +14,7 @@ waist, arms, hands). Rows are fed exactly as ``fiatlux_task.psi0`` feeds a chunk
 joints are compared with the recorded ones per joint group, at the best lag within 0.5 s (a
 tracking controller trails its reference).
 
-    python scripts/psi0/replay_tokens.py --npz episode_000008.npz --out replay.json --headless
+    python scripts/psi0/verify_sonic_tracking.py --npz episode_000008.npz --out replay.json --headless
 """
 
 import argparse
