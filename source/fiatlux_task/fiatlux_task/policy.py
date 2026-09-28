@@ -47,8 +47,14 @@ Supported specs (``make_policy(spec, env)``):
                            embodiment) and decodes its navigation/height/arm
                            chunks through the decoupled WBC in-process.
                            ``instruction`` sets the language prompt.
+- ``"psi0[:<host:port>]"`` -- the Psi-0 SONIC baseline: queries a running Psi-0 HTTP
+                           server (external process, ``scripts/psi0/serve.sh``) and
+                           decodes its motion-token chunks through the GEAR-SONIC decoder
+                           in-process, with its Dex3 finger targets applied directly
+                           (``fiatlux_task.psi0``; needs ``--robot dex3``). ``instruction``
+                           sets the prompt; the default is the task's own sentence.
 
-The ``rsl_rl``, TorchScript, and GR00T/SONIC loaders are imported lazily so the
+The ``rsl_rl``, TorchScript, GR00T/SONIC, and Psi-0 loaders are imported lazily so the
 baselines work without those dependencies installed.
 """
 
@@ -68,6 +74,23 @@ def _policy_obs(obs):
     return obs
 
 
+def _is_spec(spec: str, name: str) -> bool:
+    return spec == name or spec.startswith(f"{name}:")
+
+
+def prepare_env_cfg(spec: str, env_cfg) -> None:
+    """Apply the sensor settings a policy spec needs to ``env_cfg`` BEFORE the env is built.
+
+    Only sensor configuration, never the task: ``psi0`` renders the head camera in the 16:9
+    D435 mode its checkpoint was trained on (``fiatlux_task.psi0.configure_env_cfg``). Every
+    other spec is a no-op.
+    """
+    if _is_spec(spec, "psi0"):
+        from .psi0 import configure_env_cfg
+
+        configure_env_cfg(env_cfg)
+
+
 def make_policy(
     spec: str,
     env,
@@ -75,19 +98,22 @@ def make_policy(
     checkpoint: str | None = None,
     device: str | None = None,
     instruction: str | None = None,
+    task: str | None = None,
 ) -> Callable:
     """Return a callable ``policy(obs) -> actions`` for ``spec``.
 
     Args:
         spec: One of ``"zero"``, ``"random"``, ``"basic_standard"``, ``"basic_cheatcode"``,
-            ``"wbc_stand"``, ``"sonic_stand"``, ``"rsl_rl"`` / ``"rsl_rl:<checkpoint>"``, or
-            ``"groot"`` / ``"groot:<host:port>"``. Anything else is treated as a TorchScript
-            path (optionally prefixed ``jit:``).
+            ``"wbc_stand"``, ``"sonic_stand"``, ``"rsl_rl"`` / ``"rsl_rl:<checkpoint>"``,
+            ``"groot"`` / ``"groot:<host:port>"``, or ``"psi0"`` / ``"psi0:<host:port>"``.
+            Anything else is treated as a TorchScript path (optionally prefixed ``jit:``).
         env: The (unwrapped) environment; used for ``num_envs``/``action_space``/``device``.
         checkpoint: Checkpoint path for ``"rsl_rl"`` (alternative to the ``rsl_rl:`` suffix).
         device: Override device; defaults to ``env.device``.
-        instruction: Language prompt for ``"groot"`` (the task description the VLA
-            conditions on); ignored by every other spec.
+        instruction: Language prompt for ``"groot"`` / ``"psi0"`` (the task description the
+            VLA conditions on); ignored by every other spec.
+        task: The env id; ``"psi0"`` picks its default per-task instruction from it. Ignored
+            by every other spec.
     """
     import torch
 
@@ -141,6 +167,12 @@ def make_policy(
 
         endpoint = spec.split(":", 1)[1] if ":" in spec else None
         return make_groot_policy(env, endpoint=endpoint, instruction=instruction)
+    # Psi-0 SONIC baseline (fiatlux_task.psi0; the VLA runs in its own server process).
+    if _is_spec(spec, "psi0"):
+        from .psi0 import make_psi0_policy
+
+        endpoint = spec.split(":", 1)[1] if ":" in spec else None
+        return make_psi0_policy(env, endpoint=endpoint, instruction=instruction, task=task)
 
     # RSL-RL convenience loader: "rsl_rl" (+ checkpoint) or "rsl_rl:<path>".
     if spec == "rsl_rl" or spec.startswith("rsl_rl:"):

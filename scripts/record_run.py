@@ -17,7 +17,7 @@ A single rollout produces both artifacts so they describe the *same* run:
   score the run offline (see ``scripts/score.py``). ``--format npz`` for a flat fallback.
 
 The policy is anything ``make_policy`` accepts (``zero`` / ``random`` / a TorchScript
-``.pt`` / ``rsl_rl[:<ckpt>]`` / ``sonic_stand`` / ``groot``) -- the recorder is
+``.pt`` / ``rsl_rl[:<ckpt>]`` / ``sonic_stand`` / ``groot`` / ``psi0``) -- the recorder is
 policy-agnostic.
 
 Examples:
@@ -101,7 +101,7 @@ import traceback
 import fiatlux_task.tasks  # noqa: F401
 import gymnasium as gym
 import torch
-from fiatlux_task.policy import make_policy
+from fiatlux_task.policy import make_policy, prepare_env_cfg
 from fiatlux_task.recording import TrajectoryRecorder
 from fiatlux_task.tasks.manager_based.fiatlux_task.scene_cfg import set_layout_seed
 from fiatlux_task.telemetry import ScoreLogger
@@ -172,6 +172,7 @@ def main():
         swap_robot_variant(env_cfg, args_cli.robot)
     if args_cli.no_randomize:
         env_cfg.disable_randomization()
+    prepare_env_cfg(args_cli.policy, env_cfg)
     if want_video and args_cli.cam == "ego":
         if getattr(env_cfg.scene, "ego_camera", None) is None:
             raise ValueError(f"--cam ego needs an ego_camera sensor; {args_cli.task}'s scene does not attach one.")
@@ -191,7 +192,13 @@ def main():
         video = VideoRecorder(base_env, base_env.scene[cam_name], video_path)
         print(f"[INFO] recording video to {video_path}")
 
-    policy = make_policy(args_cli.policy, base_env, checkpoint=args_cli.checkpoint, instruction=args_cli.instruction)
+    policy = make_policy(
+        args_cli.policy,
+        base_env,
+        checkpoint=args_cli.checkpoint,
+        instruction=args_cli.instruction,
+        task=args_cli.task,
+    )
     recorder = (
         TrajectoryRecorder(
             base_env,
