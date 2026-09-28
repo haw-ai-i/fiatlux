@@ -34,7 +34,7 @@ layout), ``step`` (T,). Stage B (``build_psi0_pack.py``, Psi0 venv) resamples to
 writes the LeRobot pack.
 
 Run in the fiatlux venv (needs onnxruntime + h5py; no simulator):
-    python scripts/psi0/encode_sonic_tokens.py --takes ~/psi0_ft/raw/success --out ~/psi0_ft/encoded
+    python scripts/psi0/encode_sonic_tokens.py --takes ~/psi0_ft/raw/success --out ~/psi0_ft/encoded/success
     python scripts/psi0/encode_sonic_tokens.py --check-stand     # encoder-layout sanity check
 """
 

@@ -29,7 +29,7 @@ STEPS="${STEPS:-2000}"
 WARMUP="${WARMUP:-100}"
 CKPT_EVERY="${CKPT_EVERY:-1000}"
 LR="${LR:-1e-4}"
-DRY_RUN="${DRY_RUN:-}"
+DRY_RUN="${DRY_RUN:-}"   # DRY_RUN=1: CPU data-path check; CHECK_INIT=1: CPU warm-start key check
 
 export PSI0_REPO HF_HUB_OFFLINE="${HF_HUB_OFFLINE:-1}" CUDA_LAUNCH_BLOCKING=0 OMP_NUM_THREADS="${OMP_NUM_THREADS:-8}"
 STATS="$PACK_ROOT/$PACK_ID/meta/stats_psi0.json"
@@ -120,6 +120,9 @@ HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$PSI0_REPO"
 if [ -n "$DRY_RUN" ]; then
     exec "$PSI0_REPO/.venv-psi/bin/python" "$HERE/dryrun_pack.py" "${args[@]}"
+fi
+if [ -n "${CHECK_INIT:-}" ]; then
+    exec "$PSI0_REPO/.venv-psi/bin/python" "$HERE/check_init.py" "${args[@]}"
 fi
 exec "$PSI0_REPO/.venv-psi/bin/torchrun" --nnodes=1 --nproc_per_node=1 --master_port="${MASTER_PORT:-29611}" \
     "$HERE/train_sdpa.py" "${args[@]}"
