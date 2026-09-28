@@ -61,7 +61,7 @@ if want 2; then
     # Pre-fetch the two public HF models the server and trainer load by name (the trainer runs
     # with HF_HUB_OFFLINE=1): the Qwen3-VL config/processor and the frozen CLIP-L text encoder.
     hf download Qwen/Qwen3-VL-2B-Instruct --exclude "*.safetensors" > /dev/null
-    hf download openai/clip-vit-large-patch14 > /dev/null
+    hf download openai/clip-vit-large-patch14 --include "*.json" "*.txt" "model.safetensors" > /dev/null
     say "checkpoint: $run"
 fi
 
