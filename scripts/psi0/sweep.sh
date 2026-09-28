@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Psi-0 subtask sweep: each subtask x seed, one episode, recorded as a bag and scored by
-# scripts/score.py. Seed 0 also keeps the robot's ego-camera video (the frames Psi-0 sees).
+# scripts/score.py. VIDEO_SEEDS (default 0) also keep the robot's ego-camera video (the frames Psi-0 sees).
 # Resumable -- a run that already has score.json is skipped. Needs the Psi-0 server running
 # (scripts/psi0/serve.sh) and the Dex3 robot (psi0 refuses anything else).
 #
@@ -20,6 +20,8 @@ PY="${PY:-.venv/bin/python}"
 OUT="${PSI0_OUT:-logs/runs/psi0_zeroshot}"
 SPEC="${PSI0_SPEC:-psi0}"
 SEEDS="${SEEDS:-0 1 2 3}"
+# Seeds that also keep the ego-camera video (buffered in RAM: ~2.3 GB for a full 6000-step episode).
+VIDEO_SEEDS="${VIDEO_SEEDS:-0}"
 # Hard wall-clock cap per run: a 120 s episode is 6000 env steps plus ~240 server round trips.
 RUN_TIMEOUT_S="${RUN_TIMEOUT_S:-2400}"
 
@@ -48,7 +50,7 @@ for seed in $SEEDS; do
         fi
         rm -rf "$dir" && mkdir -p "$dir"
         record=(--record bag)
-        [ "$seed" = "0" ] && record=(--record both --cam ego --video_length 6000)
+        [[ " $VIDEO_SEEDS " == *" $seed "* ]] && record=(--record both --cam ego --video_length 6000)
         echo "[run] $task seed$seed $(date -u +%H:%M:%S)"
         t0=$(date +%s)
         timeout -k 60 "$RUN_TIMEOUT_S" "$PY" -u scripts/record_run.py --task "$task" --policy "$SPEC" \
