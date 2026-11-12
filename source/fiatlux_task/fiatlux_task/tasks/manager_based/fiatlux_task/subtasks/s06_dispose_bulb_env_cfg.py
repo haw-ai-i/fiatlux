@@ -17,6 +17,7 @@ body and can be past the crate wall while the bulb rests against it from the ins
 
 from isaaclab.managers import EventTermCfg as EventTerm
 from isaaclab.managers import SceneEntityCfg
+from isaaclab.managers import TerminationTermCfg as DoneTerm
 from isaaclab.utils import configclass
 
 from fiatlux_task.grasp_poses import BULB_IN_ROOT_STANDING
@@ -122,4 +123,36 @@ class S06DisposeBulbEnvCfg(PlaceSubtaskCfg):
         add_release_contact_sensor(self.scene, self.scene.old_bulb.prim_path)
         add_bulb_crush_gate(self, "release_contact")
         add_bulb_impact_gate(self)
+        # ...but NOT on the bulb this subtask disposes of. What S06 measures is whether the
+        # bulb ends up in the crate -- `old_bulb_in_bin` + `object_at_rest` + `object_released`
+        # -- and it is a dead bulb being thrown away, so how hard it lands is not part of the
+        # task. The gate guards a bulb being THROWN or KICKED; the success conjunction already
+        # covers that here, since a thrown bulb neither stays in the footprint nor comes to
+        # rest in it. It is also only partly under the policy's control: one recorded take
+        # released at 1.31 m/s -- well inside the limit -- and still tripped it on the rebound
+        # off the crate floor. The fresh bulb stays gated: it sits idle and can still be kicked.
+        #
+        # Both halves go: `add_bulb_impact_gate` installs a DoneTerm AND a penalty RewTerm that
+        # reads it. Dropping only the termination leaves a reward term whose lookup raises
+        # KeyError, is swallowed, and silently scores zero forever -- dead config that reads as
+        # live. See issue #263.
+        self.terminations.old_bulb_struck = None
+        if getattr(self.rewards, "old_bulb_struck", None) is not None:
+            self.rewards.old_bulb_struck = None
+        # Removing it leaves S06 with NO early exit for a lost bulb: #202 took the drop floor
+        # away (a low bulb is the goal here) and there is no drop termination, so the impact
+        # gate firing on the landing was the only thing ending a failed run -- by accident, and
+        # only for bulbs lost HARD. A bulb set down gently beside the crate ran the full
+        # episode with nothing recoverable, since the leg starts bulb-in-hand and cannot
+        # re-grasp. `payload_lost` replaces that properly: stopped, released, not in the crate.
+        self.terminations.old_bulb_lost = DoneTerm(
+            func=place_terms.payload_lost,
+            params={
+                "asset_cfg": SceneEntityCfg("old_bulb"),
+                "bin_cfg": SceneEntityCfg("bin"),
+                "sensor_cfg": SceneEntityCfg("release_contact"),
+                "other_sensor_cfg": SceneEntityCfg("release_contact_left"),
+                "force_threshold": RELEASE_FORCE_THRESHOLD_N,
+            },
+        )
         frame_viewer_on(self.viewer, self.scene.robot.init_state.pos)
