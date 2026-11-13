@@ -205,7 +205,7 @@ defaults above when unset. Two do NOT have a default and the launcher stops if e
 auto-labelled takes:
 
 ```
-IDLE  sim running, robot standing, YOUR INPUT IS NOT FORWARDED, not recording
+IDLE  PAUSED: physics stopped, scene held exactly as staged, not recording
   |  press B (right upper face button) / [C]
 ARMED input live, bag open, clock running
   |-- the success gate latches ---------------> success/
@@ -218,9 +218,17 @@ ARMED input live, bag open, clock running
 One press, one labelled take. There is no abort: a press while a take is running is ignored,
 because a fumbled attempt is a failure and belongs in `failure/` with the rest.
 
-**Idle is not a pause.** The sim keeps stepping and the robot keeps standing under SONIC, so
-staging and `settle_bulb` run exactly as they always do; what is withheld is your *motion*
-command. The buttons still read, which is how you arm. A staged payload stays in a closed hand.
+**Idle is paused.** Physics does not advance; the loop renders and reads the arming button.
+Three reasons, all borrowed from BEHAVIOR-1K's recovery console, which pauses before reading
+its own buttons: the button is sampled at *render* rate rather than once per env step, so a
+quick tap cannot fall between two physics steps and be lost; the robot cannot topple while
+nobody is driving, which is a real risk on the ladder legs; and the scene cannot drift between
+the reset and the arm, so every take starts from the identical staged state. Nothing is lost by
+freezing -- the settle and `settle_bulb` run at startup and after each reset, *before* idle
+begins.
+
+`--keys` timestamps are sim seconds, and sim time is frozen while paused, so a scripted press
+during idle is fired on the wall clock instead (the log line says `(paused)`).
 
 **Why the terminations are still cleared.** A termination in the cfg resets the scene inside
 `env.step`, which would yank it away mid-take and leave post-reset state in the last bag row.
@@ -228,8 +236,9 @@ So the terms stay cleared and `fiatlux_teleop.episode_runner` evaluates the same
 out-of-band -- the trick the recorder already uses for the success gate. The episode ends
 because the driver stops it, not because the env reset underneath it.
 
-**The idle window warns instead of failing.** While idle, a predicate that is already true is
-reported and nothing else:
+**Entering idle reports what is already broken.** Checked once on the way in -- with physics
+stopped a crushed bulb is a static fact, so polling would only repeat itself -- and it reports,
+never ends anything:
 
 ```
 [episode] !! bulb_crushed is ALREADY TRUE before the take starts -- reset before arming,

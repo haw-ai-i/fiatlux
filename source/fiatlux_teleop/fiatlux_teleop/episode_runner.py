@@ -223,16 +223,12 @@ class EpisodeRunner:
         watch: FailureWatch,
         timeout_steps: int,
         step_dt: float = 0.02,
-        warn_every_steps: int = 250,
     ):
         self.watch = watch
         self.timeout_steps = int(timeout_steps)
         self.step_dt = float(step_dt)
-        self.warn_every = int(warn_every_steps)
         self.state = self.IDLE
         self.steps = 0
-        self._idle_steps = 0
-        self._warned: dict[str, int] = {}
 
     # -- state ---------------------------------------------------------------
     @property
@@ -253,7 +249,6 @@ class EpisodeRunner:
         self.watch.reset()
         self.state = self.ARMED
         self.steps = 0
-        self._warned.clear()
         print(
             f"[episode] ARMED -- commands live, clock running ({self.timeout_steps} steps / "
             f"{self.timeout_steps * self.step_dt:.0f} s)",
@@ -263,29 +258,32 @@ class EpisodeRunner:
     def disarm(self) -> None:
         self.state = self.IDLE
         self.steps = 0
-        self._idle_steps = 0
-        self._warned.clear()
 
     # -- per-step ------------------------------------------------------------
-    def step(self, success_fired: bool) -> Verdict | None:
-        """Advance one env step. Returns a :class:`Verdict` on the step the episode ends.
+    def report_idle(self) -> list[str]:
+        """Name the predicates that are ALREADY true while paused. Reports; never ends anything.
 
-        While IDLE this only *reports* predicates that are already true -- the point of the
-        idle window is that the operator finds out before committing, not that the harness
-        starts banking zero-length failures while nobody is driving.
+        Called once on entering the paused state rather than per step: with physics stopped a
+        crushed bulb or a toppled robot is a static fact, so polling it would only repeat
+        itself. The operator finds out before committing, instead of banking a take that
+        cannot be used (issue #198).
+        """
+        hits = self.watch.fired()
+        for name in hits:
+            print(
+                f"[episode] !! {name} is ALREADY TRUE before the take starts -- reset before "
+                "arming, this take would fail immediately",
+                flush=True,
+            )
+        return hits
+
+    def step(self, success_fired: bool) -> Verdict | None:
+        """Advance one ARMED step. Returns a :class:`Verdict` on the step the episode ends.
+
+        Harmless while idle (returns None) but the driver does not call it there: idle is
+        paused, so there are no steps to count.
         """
         if not self.armed:
-            self._idle_steps += 1
-            if self.warn_every and self._idle_steps % self.warn_every == 0:
-                for name in self.watch.fired():
-                    seen = self._warned.get(name, 0)
-                    self._warned[name] = seen + 1
-                    if seen == 0:
-                        print(
-                            f"[episode] !! {name} is ALREADY TRUE before the take starts -- "
-                            "reset before arming, this take would fail immediately",
-                            flush=True,
-                        )
             return None
 
         self.steps += 1

@@ -121,14 +121,15 @@ def test_watch_accepts_plain_bools_as_well_as_tensors():
 # -- EpisodeRunner -----------------------------------------------------------
 
 
-def _runner(fired=(), timeout_steps=10, warn_every=0):
+def _runner(fired=(), timeout_steps=10):
     state = {"fired": list(fired)}
     terms = {name: _Term(lambda e, _n=name, **k: _Vec(_n in state["fired"])) for name in ("fell", "dropped")}
-    r = er.EpisodeRunner(_watch(_Env(), terms), timeout_steps=timeout_steps, step_dt=0.02, warn_every_steps=warn_every)
+    r = er.EpisodeRunner(_watch(_Env(), terms), timeout_steps=timeout_steps, step_dt=0.02)
     return r, state
 
 
 def test_idle_never_ends_an_episode_even_when_a_predicate_is_true():
+    """The driver does not step while idle (idle is paused), but if it did, nothing may end."""
     r, _ = _runner(fired=["fell"])
     assert not r.armed
     for _ in range(50):
@@ -136,11 +137,20 @@ def test_idle_never_ends_an_episode_even_when_a_predicate_is_true():
     assert r.steps == 0  # idle does not consume the budget
 
 
-def test_idle_warns_once_per_predicate():
-    r, _ = _runner(fired=["fell"], warn_every=5)
-    for _ in range(40):
-        r.step(success_fired=False)
-    assert r._warned["fell"] >= 1
+def test_report_idle_names_predicates_that_are_already_true():
+    r, _ = _runner(fired=["fell"])
+    assert r.report_idle() == ["fell"]
+
+
+def test_report_idle_is_quiet_when_the_scene_is_clean():
+    r, _ = _runner()
+    assert r.report_idle() == []
+
+
+def test_report_idle_does_not_end_or_arm_anything():
+    r, _ = _runner(fired=["fell", "dropped"])
+    r.report_idle()
+    assert not r.armed and r.steps == 0
 
 
 def test_arming_starts_the_clock_at_zero():

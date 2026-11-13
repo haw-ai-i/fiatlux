@@ -27,6 +27,7 @@ import math
 import os
 import random
 import re
+import time
 
 from isaaclab.app import AppLauncher
 
@@ -913,6 +914,7 @@ def main():  # noqa: C901  (one long orchestration: env setup + settle/resettle 
                 session_dir_override=args.out,
             ),
             "verdict": None,
+            "idle_checked": False,
         }
         # Resolve the watch NOW rather than on the first arm, so the operator is told which
         # predicates are live (and which were dropped) before committing to a take, not after.
@@ -923,22 +925,6 @@ def main():  # noqa: C901  (one long orchestration: env setup + settle/resettle 
             "-- idle until [C] / right ctrl B (upper)",
             flush=True,
         )
-
-    def _idle_arm_action():
-        """What the robot is commanded while NOT armed: the staged rest pose, nothing else.
-
-        Deliberately the same path the loop already takes when the headset is not streaming --
-        a FIXED pose rather than a re-solved IK target (no jitter), and the rail hand kept on
-        the cap. That also keeps a staged grip CLOSED, so a bulb-in-hand leg does not drop its
-        payload while the operator is still getting ready.
-        """
-        _a = rest_arm
-        _p = _rail_main_L() if _rail is not None else None
-        if _p is not None:
-            _a = _a.clone()
-            _a[8:15] = _p
-            _a[15] = 1.0
-        return _a
 
     # true world spawn (to re-home on reset) + the position-hold target.
     spawn_root = robot.data.root_state_w[:, 0:7].clone()
@@ -2078,6 +2064,7 @@ def main():  # noqa: C901  (one long orchestration: env setup + settle/resettle 
     _rotate_axis = os.environ.get("FIATLUX_ROTATE_AXIS", "x")
     _rotated = [False]
     step_i = 0
+    _wall_t0 = time.time()  # scripted-key clock while paused (sim time is frozen then)
     while simulation_app.is_running():
         try:
             with torch.inference_mode():
@@ -2152,7 +2139,48 @@ def main():  # noqa: C901  (one long orchestration: env setup + settle/resettle 
                                 # robot and resettles it before control resumes.
                                 episode["verdict"] = None
                                 episode["runner"].disarm()
+                                episode["idle_checked"] = False  # re-check after the re-stage
                                 reset_flag["do"] = True
+
+                # NOT ARMED -> PAUSED. Physics does not advance; the loop only renders and
+                # reads the arming button.
+                #
+                # Pausing rather than stepping-with-withheld-commands, for three reasons. The
+                # button is sampled at RENDER rate instead of once per env step, and at teleop
+                # sim rates a quick tap can fall between two physics steps entirely (the same
+                # reason BEHAVIOR-1K's console pauses before reading its buttons). The robot
+                # cannot topple while nobody is driving -- a real risk on the ladder legs. And
+                # the scene cannot drift between the reset and the arm, so every take starts
+                # from the identical staged state.
+                #
+                # Nothing is lost by freezing here: the settle and `settle_bulb` run during
+                # startup and after each reset, BEFORE idle begins.
+                # `not reset_flag["do"]`: a verdict disarms AND asks for a reset in the same
+                # iteration, so idling here first would skip the re-stage forever.
+                if episode is not None and not episode["runner"].armed and not reset_flag["do"]:
+                    if not episode["idle_checked"]:
+                        episode["runner"].report_idle()
+                        episode["idle_checked"] = True
+                    env.sim.render()  # keep the headset and the viewport alive
+                    if args.input == "vr":
+                        _out = teleop.advance()
+                        if _out is not None:
+                            _rec_now = _out[-n_walk:].detach().cpu().numpy()[5] > 0.5
+                            if _rec_now and not vr_rec_prev:
+                                rec_flag["toggle"] = True
+                            vr_rec_prev = _rec_now
+                    elif kb is not None:
+                        # Scripted keys run on the WALL clock while paused: --keys timestamps are
+                        # sim seconds (step_i / 50) and sim time is frozen here, so a scripted
+                        # press during idle would never come due.
+                        while _scripted_keys and (time.time() - _wall_t0) >= _scripted_keys[0][0]:
+                            _t, _name = _scripted_keys.pop(0)
+                            _pressed.append(_name)
+                            print(f"[sonic] scripted key {_name} at t={_t:.1f}s (paused)", flush=True)
+                        kb_drain()
+                        if kb["quit"]:
+                            break
+                    continue
 
                 if reset_flag["do"]:
                     reset_flag["do"] = False
@@ -2290,15 +2318,6 @@ def main():  # noqa: C901  (one long orchestration: env setup + settle/resettle 
                         kb["L_ee"] = _rail_pose.clone()
                         kb["L_grip_open"] = True
                     last_arm = kb_arm_action()
-
-                # NOT ARMED -> the operator's input is not forwarded. The buttons above still
-                # register (that is how a take gets armed) and the sim keeps running; only
-                # MOTION is withheld, so the robot stands under SONIC and a staged payload stays
-                # in its closed hand while the operator gets ready.
-                if episode is not None and not episode["runner"].armed:
-                    last_arm = _idle_arm_action()
-                    loco_cmd[:] = 0.0
-                    rpy_cmd[:] = 0.0
 
                 # Position hold: SONIC is a velocity policy with no position feedback, so cmd=0 slowly
                 # glides the base away. Steer a gentle velocity back to home -- but only AFTER a warmup so
