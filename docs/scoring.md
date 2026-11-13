@@ -130,6 +130,12 @@ covers the layout too.
   server at the fine-tuned checkpoint (`GROOT_MODEL=<path> GROOT_EMBODIMENT=<tag>
   scripts/groot/serve.sh`); a `UNITREE_G1_SONIC` finetune plugs into the
   ready `SonicDecoder` path.
+- `psi0` — zero-shot Psi-0 (USC PSI Lab's released SONIC checkpoint, the only
+  open VLA trained on the G1 with Dex3 hands): one 16:9 head-camera frame +
+  proprioception + a per-subtask instruction in, SONIC motion tokens and Dex3
+  finger targets out, decoded in-process by `SonicDecoder`. Requires
+  `--robot dex3` and the external server `scripts/psi0/serve.sh`; setup,
+  protocol and every wiring decision are in `docs/psi0_baseline.md`.
 
 ## Subtask score — the benchmark headline
 
