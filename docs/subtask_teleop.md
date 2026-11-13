@@ -182,6 +182,9 @@ limit. On the six in-hand legs the right grip **starts closed** on the seated bu
 | `--out` | path | dump takes flat into ONE folder (`<dir>/epNN_score<X.XX>/`), no tree — for a one-off, not for collecting a dataset. Unset uses the tree below |
 | `--camera` | **`auto`** / `follow` / `static` / `fixture` / `bench` / `crate` | the third-person shot. `auto` picks per task: socket side view on S03/S11, bench side view on S07/S08, crate side view on S06, chase cam framing the task's objects elsewhere |
 | `--stop-on-success` / `--no-stop-on-success` | **on** | close the take the moment the success gate latches |
+| `--episodes` | | **episode mode**: idle until armed, then one auto-labelled take per arm (see below). Implies `--record bag` |
+| `--episode-timeout` | sim s, **0** = the task's RL budget | the take's clock, counted from the arm, not from the scene reset |
+| `--operator` | name | recorded in each take's `verdict.json` and the session manifest |
 | `--max_steps` | int, **0** = run until quit | stop after N loop steps, writing the bag cleanly. Killing the process instead skips the final write |
 | `--keys` | `NAME@SECONDS,...` | scripted key presses for hands-off runs, e.g. `"G@4,R@8,ESCAPE@15"`; keyboard input only. Pair with `--max_steps` |
 | `--teleop_device` | **`controller_rel`** | which XR device config to drive the arms with |
@@ -195,6 +198,78 @@ variables rather than flags: `FIATLUX_HAND`, `FIATLUX_LAYOUT_SEED`, `FIATLUX_WAL
 `FIATLUX_RECORD_SETTLE`, `FIATLUX_RECORD_VIDEO` and `FIATLUX_CAPTURES_DIR` -- those fall back to the driver
 defaults above when unset. Two do NOT have a default and the launcher stops if either is missing:
 `FIATLUX_TASK` and `NV_CXR_ENDPOINT_IP`; see [Running](#running).
+
+## Episode mode
+
+`--episodes` turns a session from a free-running recorder into a sequence of discrete,
+auto-labelled takes:
+
+```
+IDLE  sim running, robot standing, YOUR INPUT IS NOT FORWARDED, not recording
+  |  press B (right upper face button) / [C]
+ARMED input live, bag open, clock running
+  |-- the success gate latches ---------------> success/
+  |-- a failure predicate fires --------------> failure/   (reason: the term's name)
+  |-- the clock runs out ---------------------> failure/   (reason: "timeout")
+  |
+  v  the take is sealed, the scene resets, and you are back in IDLE
+```
+
+One press, one labelled take. There is no abort: a press while a take is running is ignored,
+because a fumbled attempt is a failure and belongs in `failure/` with the rest.
+
+**Idle is not a pause.** The sim keeps stepping and the robot keeps standing under SONIC, so
+staging and `settle_bulb` run exactly as they always do; what is withheld is your *motion*
+command. The buttons still read, which is how you arm. A staged payload stays in a closed hand.
+
+**Why the terminations are still cleared.** A termination in the cfg resets the scene inside
+`env.step`, which would yank it away mid-take and leave post-reset state in the last bag row.
+So the terms stay cleared and `fiatlux_teleop.episode_runner` evaluates the same functions
+out-of-band -- the trick the recorder already uses for the success gate. The episode ends
+because the driver stops it, not because the env reset underneath it.
+
+**The idle window warns instead of failing.** While idle, a predicate that is already true is
+reported and nothing else:
+
+```
+[episode] !! bulb_crushed is ALREADY TRUE before the take starts -- reset before arming,
+          this take would fail immediately
+```
+
+That is issue #198's suggestion: the operator finds out before committing, rather than banking
+an unusable take or watching the harness file zero-length failures while nobody is driving.
+
+**Timeout follows the RL budget** (`episode_length_s`, 120 s for every subtask) because
+behaviour cloning reproduces demo pace -- a demo longer than the budget trains a policy the
+evaluation env terminates. Across 121 recorded VR takes that costs nothing on seven of the
+eight recorded subtasks (successes average 5.6-18.7 s); `S01-MoveLadder` is the exception at
+91.2 s mean and 152.5 s max, where it is deliberately binding.
+
+### Where takes land
+
+```
+<out>/
+  success/ep03_score1.00/      run.h5  meta.json  verdict.json  video.mp4  ego.mp4
+  failure/ep04_score0.00/      run.h5  meta.json  verdict.json  ...
+  manifest.jsonl
+  ep05/                        <- a take still recording, or one a crash left behind
+```
+
+The `--out` tree already puts the task above the session
+(`<captures>/<task>/<hand>/<kind>/<input>/<date>/<time>/`), so episode mode only adds the two
+outcome folders and the index. The failure *reason* is a field in `verdict.json` and in the
+manifest rather than a directory level -- a level per reason gives a sparse tree of
+mostly-empty folders. `success/` and `failure/` only ever hold finished takes; a session killed
+mid-take leaves its `epNN/` at the session root, where no loader scans.
+
+`manifest.jsonl` is append-only, one JSON object per take, so a killed session keeps every line
+it had already written:
+
+```json
+{"take": "ep03_score1.00", "outcome": "success", "reason": "success", "steps": 271,
+ "seconds": 5.42, "score": 1.0, "seed": 42, "operator": "yj", "path": "success/ep03_score1.00"}
+```
+
 
 ## The 12 subtasks
 

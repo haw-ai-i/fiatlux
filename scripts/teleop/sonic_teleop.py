@@ -181,6 +181,30 @@ parser.add_argument(
     help="capture every Nth recorded step for --record-images (default 5 = 10 Hz at the 50 Hz control rate).",
 )
 parser.add_argument(
+    "--episodes",
+    action="store_true",
+    help="EPISODE MODE: run the session as discrete, auto-labelled takes instead of a free "
+    "recorder. The scene runs but teleop commands are NOT forwarded until the operator arms a "
+    "take (keyboard [C] / right controller B); the take then ends on its own -- success gate, "
+    "any of the task's failure predicates, or the timeout -- is filed under success/ or "
+    "failure/ with its reason, and the scene resets back to idle. Implies --record bag and "
+    "--record-start toggle.",
+)
+parser.add_argument(
+    "--episode-timeout",
+    type=float,
+    default=0.0,
+    help="episode time limit in SIM seconds, counted from the arm (0 = the task's own RL "
+    "budget, episode_length_s: 120 s for every subtask). Matching RL is the point -- behaviour "
+    "cloning reproduces demo pace, so a demo longer than the budget trains a policy the "
+    "evaluation env terminates.",
+)
+parser.add_argument(
+    "--operator",
+    default="",
+    help="operator name recorded in each take's verdict.json and the session manifest.",
+)
+parser.add_argument(
     "--out",
     default="",
     help="output directory for the --record bags. Default: the dataset-first tree "
@@ -847,7 +871,7 @@ def main():  # noqa: C901  (one long orchestration: env setup + settle/resettle 
             )
             return _v, _ego, _im
 
-        recording_on = args.record_start == "auto"
+        recording_on = args.record_start == "auto" and not args.episodes
         if recording_on:
             video, ego_video, images = _open_take_capture(os.path.join(args.out, "ep00"))
         _state = "ON from start" if recording_on else "OFF -- press [C] / right ctrl B (upper) to start"
@@ -856,6 +880,65 @@ def main():  # noqa: C901  (one long orchestration: env setup + settle/resettle 
             "one epNN/ folder -- bag + meta + video -- per record-on..off take)",
             flush=True,
         )
+
+    # ---- episode mode: arm on a button, end on a gate, file the take by its verdict ----
+    # The terminations stay cleared (an auto-reset inside env.step would yank the scene away
+    # mid-take and leave post-reset state in the last bag row); the same predicates are
+    # evaluated out-of-band here, exactly as the recorder already does for the success gate.
+    episode = None
+    if args.episodes:
+        from fiatlux_teleop.episode_runner import EpisodeRunner, FailureWatch, TakeStore, failure_terms_of
+
+        if recorder is None:
+            raise SystemExit("--episodes needs a recorder: pass --record bag")
+        _timeout_s = args.episode_timeout or float(getattr(env_cfg, "episode_length_s", 0.0) or 0.0)
+        if _timeout_s <= 0:
+            raise SystemExit("--episodes needs a timeout: the task declares no episode_length_s, so pass one")
+        _step_dt = float(getattr(env, "step_dt", None) or env_cfg.sim.dt * env_cfg.decimation)
+        _terms = failure_terms_of(env_cfg)
+        if not _terms:
+            print(
+                "[episode] WARNING: no failure terminations found on this task's RL cfg -- takes can "
+                "only end on success or timeout",
+                flush=True,
+            )
+        episode = {
+            "runner": EpisodeRunner(
+                FailureWatch(env, _terms), timeout_steps=round(_timeout_s / _step_dt), step_dt=_step_dt
+            ),
+            "store": TakeStore(
+                root=args.out,
+                task_id=args.task,
+                operator=args.operator or None,
+                session_dir_override=args.out,
+            ),
+            "verdict": None,
+        }
+        # Resolve the watch NOW rather than on the first arm, so the operator is told which
+        # predicates are live (and which were dropped) before committing to a take, not after.
+        _watched = episode["runner"].watch.names
+        print(
+            f"[episode] episode mode: timeout {_timeout_s:.0f} s "
+            f"({episode['runner'].timeout_steps} steps), {len(_watched)} failure terms watched "
+            "-- idle until [C] / right ctrl B (upper)",
+            flush=True,
+        )
+
+    def _idle_arm_action():
+        """What the robot is commanded while NOT armed: the staged rest pose, nothing else.
+
+        Deliberately the same path the loop already takes when the headset is not streaming --
+        a FIXED pose rather than a re-solved IK target (no jitter), and the rail hand kept on
+        the cap. That also keeps a staged grip CLOSED, so a bulb-in-hand leg does not drop its
+        payload while the operator is still getting ready.
+        """
+        _a = rest_arm
+        _p = _rail_main_L() if _rail is not None else None
+        if _p is not None:
+            _a = _a.clone()
+            _a[8:15] = _p
+            _a[15] = 1.0
+        return _a
 
     # true world spawn (to re-home on reset) + the position-hold target.
     spawn_root = robot.data.root_state_w[:, 0:7].clone()
@@ -2000,7 +2083,13 @@ def main():  # noqa: C901  (one long orchestration: env setup + settle/resettle 
             with torch.inference_mode():
                 if rec_flag["toggle"]:
                     rec_flag["toggle"] = False
-                    if recorder is not None:
+                    # Episode mode has no abort: a take ends on its gate, not on a button. A
+                    # press while one is running is swallowed (and said out loud, so the
+                    # operator knows the press registered and was deliberately ignored).
+                    _ignore_press = episode is not None and episode["runner"].armed and episode["verdict"] is None
+                    if _ignore_press:
+                        print("[episode] already armed -- a take ends on its own gate, not on a button", flush=True)
+                    if recorder is not None and not _ignore_press:
                         recording_on = not recording_on
                         _ep_dir = os.path.join(args.out, f"ep{ep_idx:02d}")
                         if recording_on:
@@ -2015,6 +2104,8 @@ def main():  # noqa: C901  (one long orchestration: env setup + settle/resettle 
                                 f"ego={'yes' if ego_video is not None else 'NO'})",
                                 flush=True,
                             )
+                            if episode is not None:
+                                episode["runner"].arm()
                         else:
                             # OFF closes the take: its own folder gets the bag, meta and a
                             # finalized video; buffers reset so the next take starts fresh.
@@ -2046,8 +2137,22 @@ def main():  # noqa: C901  (one long orchestration: env setup + settle/resettle 
                                 print(f"[sonic] RECORDING OFF -- take saved: {_sealed}", flush=True)
                                 print(f"[sonic] {_score_line(_info)}", flush=True)
                                 ep_idx += 1
+                                if episode is not None and episode["verdict"] is not None:
+                                    _v = episode["verdict"]
+                                    _filed = episode["store"].seal(_sealed, _v, _info)
+                                    print(
+                                        f"[episode] {_v.outcome.upper()} ({_v.reason}) after "
+                                        f"{_v.seconds:.1f}s -> {_filed}",
+                                        flush=True,
+                                    )
                             else:
                                 print("[sonic] RECORDING OFF (nothing buffered)", flush=True)
+                            if episode is not None and episode["verdict"] is not None:
+                                # Back to idle, then re-stage: the reset block below re-homes the
+                                # robot and resettles it before control resumes.
+                                episode["verdict"] = None
+                                episode["runner"].disarm()
+                                reset_flag["do"] = True
 
                 if reset_flag["do"]:
                     reset_flag["do"] = False
@@ -2186,6 +2291,15 @@ def main():  # noqa: C901  (one long orchestration: env setup + settle/resettle 
                         kb["L_grip_open"] = True
                     last_arm = kb_arm_action()
 
+                # NOT ARMED -> the operator's input is not forwarded. The buttons above still
+                # register (that is how a take gets armed) and the sim keeps running; only
+                # MOTION is withheld, so the robot stands under SONIC and a staged payload stays
+                # in its closed hand while the operator gets ready.
+                if episode is not None and not episode["runner"].armed:
+                    last_arm = _idle_arm_action()
+                    loco_cmd[:] = 0.0
+                    rpy_cmd[:] = 0.0
+
                 # Position hold: SONIC is a velocity policy with no position feedback, so cmd=0 slowly
                 # glides the base away. Steer a gentle velocity back to home -- but only AFTER a warmup so
                 # it doesn't fight the fragile settle; while walking, home follows the robot.
@@ -2259,6 +2373,15 @@ def main():  # noqa: C901  (one long orchestration: env setup + settle/resettle 
                         ego_video.capture()  # head-mounted: pose comes from the robot
                     if images is not None:
                         images.maybe_capture(len(recorder._buf["done"]) - 1)  # flat recorded-step index
+                # Episode tick: runs whether or not a take is rolling. While idle it only
+                # REPORTS predicates that are already true (the staging crush of #198, a robot
+                # that toppled while nobody was driving); armed, it is what ends the take.
+                if episode is not None and episode["verdict"] is None:
+                    _v = episode["runner"].step(success_fired=bool(getattr(recorder, "_gate_fired", False)))
+                    if _v is not None:
+                        episode["verdict"] = _v
+                        print(f"[episode] *** {_v.outcome.upper()}: {_v.reason} at {_v.seconds:.1f}s ***", flush=True)
+                        rec_flag["toggle"] = True  # closes + seals the take on the next iteration
                 step_i += 1
                 if args.max_steps and step_i >= args.max_steps:
                     print(f"[sonic] --max_steps {args.max_steps} reached; ending session.", flush=True)
