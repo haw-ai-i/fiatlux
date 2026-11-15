@@ -136,6 +136,9 @@ class S09CarryBulbToLadderEnvCfg(NavigateSubtaskCfg):
         "predicate_fn": mdp.all_of,
         "seconds": ARRIVAL_SUSTAIN_SECONDS,
         "predicate_params": {"predicates": AT_LADDER_WITH_BULB_CONJUNCTS},
+        # Carried with the other two arrival gates rather than left behind: #206's window is
+        # here already, but a spawn inside the success region clears any window (issue #266).
+        "require_transition": True,
     }
     progress_distance_fn = mdp.base_ladder_distance
 

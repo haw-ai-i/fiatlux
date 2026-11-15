@@ -195,6 +195,26 @@ TABLE_ZONE_HALF_SIZE = 1.5
 LADDER_ZONE_HALF_SIZE = 1.0
 DISPOSAL_ZONE_HALF_SIZE = 0.5  # the old-bulb disposal crate (crate footprint ~0.6 m + clearance)
 ZONE_MARGIN = 0.5  # minimum gap left between any two zones' bounding squares
+
+# Where a robot stands to mount the ladder, as the authored climb pose has it. Defined here
+# rather than in ``mdp.nav_terms`` (which imports it from this module) because the layout
+# sampler below needs it: ``nav_terms`` imports FROM ``scene_cfg``, so the dependency only
+# runs one way.
+LADDER_MOUNT_RADIUS = math.dist(CLIMB_ROBOT_POSITION[:2], LADDER_POSITION[:2])
+# Floor the carry legs that START at the ladder must cross before their arrival gate can fire,
+# measured from the spawn to the DISPOSAL ZONE's edge.
+#
+# Nothing else in the draw keeps those two apart. The zone test only separates bounding squares,
+# and under ``couple_ladder_to_fixture`` the ladder occupies the 0.18 m reserved anchor, not the
+# 1.0 m ladder zone -- so ladder and crate can sit 1.18 m apart, and the S05 spawn stands
+# ``LADDER_MOUNT_RADIUS`` of that back toward the crate. Measured over 200 seeds before this
+# floor existed: 2 of them spawned INSIDE S05's success region (worst, seed 5: 0.695 m centre to
+# centre, 0.349 m to the crate footprint, against a 0.5045 m arrival radius), scoring 1.00 after
+# two steps and 2 mm of travel (issue #266).
+#
+# One metre to the zone edge is ~1.2 m to the crate footprint, so the robot always has to cross
+# roughly twice the arrival radius before the gate is reachable.
+MIN_CARRY_CLEARANCE = 1.0
 # The nearest a wall mount's reserved ladder anchor can physically be to the wall face: the
 # ladder's footprint is 0.979 m deep and the coupled draw turns that depth normal to the wall, so
 # the root cannot come nearer than 0.49 m plus clearance. The previous standoff was
@@ -1175,6 +1195,32 @@ def _sample_nonoverlapping_centers(
     return cast(list[tuple[float, float]], centers)  # every slot filled: fixed, or by the loop
 
 
+def _zone_edge_distance(point: Vec2, center: Vec2, half_size: float) -> float:
+    """Distance from ``point`` to the edge of an axis-aligned square zone; 0 anywhere inside it."""
+    return math.hypot(
+        max(abs(point[0] - center[0]) - half_size, 0.0),
+        max(abs(point[1] - center[1]) - half_size, 0.0),
+    )
+
+
+def _ladder_mount_spawn(ladder_center: Vec2, robot_center: Vec2) -> Vec2:
+    """Where ``stand_robot_near(ladder, LADDER_MOUNT_RADIUS)`` will put the robot.
+
+    The legs that start at the ladder pull the robot's own sampled spawn IN to
+    ``LADDER_MOUNT_RADIUS`` along the bearing it already sits on. Zone separation keeps that
+    sampled spawn further out than the radius, so the pull always happens -- which makes this
+    the exact spawn, not an estimate of it.
+    """
+    dx, dy = robot_center[0] - ladder_center[0], robot_center[1] - ladder_center[1]
+    d = math.hypot(dx, dy)
+    if d < 1e-6:  # no bearing to pull along; stand_robot_near falls back to -x
+        return (ladder_center[0] - LADDER_MOUNT_RADIUS, ladder_center[1])
+    return (
+        ladder_center[0] + LADDER_MOUNT_RADIUS * dx / d,
+        ladder_center[1] + LADDER_MOUNT_RADIUS * dy / d,
+    )
+
+
 def _sample_replace_layout(
     rng: random.Random,
     couple_ladder_to_fixture: bool,
@@ -1188,6 +1234,10 @@ def _sample_replace_layout(
     fixture can land over the table and leave the task unsolvable while rendering normally.
 
     Returns ``(mount, [robot, table, ladder, disposal] centers, ladder_yaw_deg)``.
+
+    Draws are also rejected when they leave the ladder-mount spawn within
+    ``MIN_CARRY_CLEARANCE`` of the disposal zone: non-overlapping zones are not enough to give
+    a carry leg a carry (issue #266).
 
     Samples the SAME five zones in the SAME order regardless of ``couple_ladder_to_fixture``
     -- robot, table, a free ladder draw, disposal, and the fixture's anchor, always reserved
@@ -1238,6 +1288,19 @@ def _sample_replace_layout(
             )
         except LayoutInfeasible as exc:
             last = exc
+            continue
+        # A carry leg needs somewhere to carry TO. The zone test above only keeps bounding
+        # squares apart, and the reserved anchor is a small one, so it allows a draw that stands
+        # the robot inside S05's own success region -- scored on arrival, two steps in (#266).
+        # Judged against ``ladder_anchor`` rather than ``ladder_center`` on purpose: the anchor
+        # is drawn either way, so which layouts are accepted -- and therefore every rng draw
+        # after this point -- stays identical whether or not the ladder is coupled, which is the
+        # invariant this docstring spends a paragraph protecting.
+        spawn = _ladder_mount_spawn(ladder_anchor, centers[0])
+        if _zone_edge_distance(spawn, centers[3], DISPOSAL_ZONE_HALF_SIZE) < MIN_CARRY_CLEARANCE:
+            last = LayoutInfeasible(
+                f"ladder-mount spawn {spawn} is within {MIN_CARRY_CLEARANCE} m of the disposal zone"
+            )
             continue
         ladder_center = ladder_anchor if couple_ladder_to_fixture else centers[2]
         return mount, [centers[0], centers[1], ladder_center, centers[3]], ladder_yaw

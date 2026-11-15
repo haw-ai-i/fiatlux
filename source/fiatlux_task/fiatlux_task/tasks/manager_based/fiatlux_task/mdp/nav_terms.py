@@ -39,9 +39,8 @@ from fiatlux_task.assets import G1_HORIZONTAL_REACH
 from fiatlux_task.grasp_poses import BULB_GLASS_RADIUS_M, BULB_IN_ROOT_STANDING
 
 from ..scene_cfg import (
-    CLIMB_ROBOT_POSITION,
     DISPOSAL_ZONE_HALF_SIZE,
-    LADDER_POSITION,
+    LADDER_MOUNT_RADIUS,
     STANCE_RESET_JITTER,
     TABLE_COLLISION_HALF_EXTENT,
     TABLETOP_BULB_POSITION,
@@ -64,7 +63,9 @@ Quat = tuple[float, float, float, float]
 # "Close enough to start climbing" -- a foot-placement question, unlike LADDER_APPROACH_RADIUS
 # (arm's reach to a rail, for grasping). PROVISIONAL. A radius rather than a directional offset
 # because the replace preset samples the ladder's yaw, so no fixed direction generalizes.
-LADDER_MOUNT_RADIUS = math.dist(CLIMB_ROBOT_POSITION[:2], LADDER_POSITION[:2])
+# Now DEFINED in scene_cfg -- the layout sampler needs it to keep a carry leg's spawn clear of
+# its own goal (#266), and scene_cfg cannot import from here. Re-exported through this
+# import so the subtasks that already pull it from mdp.nav_terms keep working.
 
 # "Close enough to reach for the bulb next." PROVISIONAL: the tabletop preset's own
 # manipulation standoff, applied to the replace preset's randomly placed copy of that table.
