@@ -45,7 +45,13 @@ from ..scene_cfg import (
     frame_viewer_on,
     stand_robot_near,
 )
-from ..subtask_env_cfg import ARRIVAL_FACING_TOLERANCE, ARRIVAL_MAX_SPEED, NavigateSubtaskCfg, SubtaskEventCfg
+from ..subtask_env_cfg import (
+    ARRIVAL_FACING_TOLERANCE,
+    ARRIVAL_MAX_SPEED,
+    ARRIVAL_SUSTAIN_SECONDS,
+    NavigateSubtaskCfg,
+    SubtaskEventCfg,
+)
 from ..subtask_tiers.carrying import add_bulb_crush_gate, add_bulb_impact_gate
 
 # The success gate as data (mdp.all_of). Without the grip conjunct a thrown bulb that skids into
@@ -108,8 +114,19 @@ class S05CarryBulbToDisposalEnvCfg(NavigateSubtaskCfg):
     orbit_radius: float = 5.0
     orbit_height: float = 2.4
 
-    success_predicate = mdp.all_of
-    success_params: dict | None = {"predicates": OLD_BULB_AT_CRATE_CONJUNCTS}
+    # Debounced like every other arrival gate (issue #267): the bare conjunction scored a take
+    # on the single frame where all four happened to line up, which is what #206 fixed on S09
+    # and what this leaf never inherited. ``require_transition`` is the separate half: the
+    # layout sampler can hand this leaf a spawn already inside the success region, and a
+    # stationary robot holds all four conjuncts forever, so a window alone would still score it
+    # (issue #266).
+    success_predicate = mdp.sustained
+    success_params: dict | None = {
+        "predicate_fn": mdp.all_of,
+        "seconds": ARRIVAL_SUSTAIN_SECONDS,
+        "predicate_params": {"predicates": OLD_BULB_AT_CRATE_CONJUNCTS},
+        "require_transition": True,
+    }
     progress_distance_fn = base_disposal_distance
     events: S05EventCfg = S05EventCfg()
 

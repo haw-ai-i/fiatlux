@@ -42,14 +42,24 @@ class sustained(ManagerTermBase):
     Use ONLY in the termination manager; pair it with :func:`success_term_fired` on the reward side.
     A momentary dip resets the counter, so a state that is only stable while a hand steadies it does
     not pass.
+
+    ``require_transition`` additionally demands that the predicate was observed FALSE at some point
+    first, so the episode has to *achieve* the goal rather than be spawned holding it. A duration
+    alone cannot tell those apart: a robot that spawns inside the success region and never moves
+    holds every conjunct indefinitely, and so clears any window you pick (issue #266).
     """
 
     def __init__(self, cfg: TerminationTermCfg, env: ManagerBasedRLEnv):
         super().__init__(cfg, env)
         self._held = torch.zeros(env.num_envs, dtype=torch.long, device=env.device)
+        # Latched per episode: has this env ever seen the predicate false? Reset with the episode,
+        # never mid-episode -- once a goal has genuinely been approached it stays approached.
+        self._armed = torch.zeros(env.num_envs, dtype=torch.bool, device=env.device)
 
     def reset(self, env_ids: Sequence[int] | None = None) -> None:
-        self._held[slice(None) if env_ids is None else env_ids] = 0
+        idx = slice(None) if env_ids is None else env_ids
+        self._held[idx] = 0
+        self._armed[idx] = False
 
     def __call__(
         self,
@@ -57,10 +67,13 @@ class sustained(ManagerTermBase):
         predicate_fn: Callable[..., torch.Tensor],
         seconds: float,
         predicate_params: dict | None = None,
+        require_transition: bool = False,
     ) -> torch.Tensor:
         now = predicate_fn(env, **(predicate_params or {}))
+        self._armed |= ~now
         self._held = torch.where(now, self._held + 1, torch.zeros_like(self._held))
-        return self._held >= max(1, round(seconds / env.step_dt))
+        fired = self._held >= max(1, round(seconds / env.step_dt))
+        return fired & self._armed if require_transition else fired
 
 
 def success_term_fired(env: ManagerBasedRLEnv, term_name: str = "success") -> torch.Tensor:

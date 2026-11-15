@@ -31,7 +31,12 @@ from ..scene_cfg import (
     park_old_bulb_in_crate,
     stand_robot_near,
 )
-from ..subtask_env_cfg import ARRIVAL_FACING_TOLERANCE, ARRIVAL_MAX_SPEED, NavigateSubtaskCfg
+from ..subtask_env_cfg import (
+    ARRIVAL_FACING_TOLERANCE,
+    ARRIVAL_MAX_SPEED,
+    ARRIVAL_SUSTAIN_SECONDS,
+    NavigateSubtaskCfg,
+)
 
 # The success gate as data (mdp.all_of). No payload conjunct: hands are free here, and nothing
 # in this scene can tip over.
@@ -51,8 +56,15 @@ class S07ApproachNewBulbEnvCfg(NavigateSubtaskCfg):
     orbit_radius: float = 5.0
     orbit_height: float = 2.4
 
-    success_predicate = mdp.all_of
-    success_params: dict | None = {"predicates": AT_FRESH_BULB_CONJUNCTS}
+    # Debounced like every other arrival gate (issue #267); see S05 for why the window alone is
+    # not enough and ``require_transition`` is carried with it (issue #266).
+    success_predicate = mdp.sustained
+    success_params: dict | None = {
+        "predicate_fn": mdp.all_of,
+        "seconds": ARRIVAL_SUSTAIN_SECONDS,
+        "predicate_params": {"predicates": AT_FRESH_BULB_CONJUNCTS},
+        "require_transition": True,
+    }
     progress_distance_fn = base_bulb_distance
 
     def __post_init__(self) -> None:
