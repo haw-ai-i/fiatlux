@@ -56,7 +56,11 @@ def _class_level_assignment(tree: ast.Module, name: str):
     for node in ast.walk(tree):
         if isinstance(node, ast.ClassDef):
             for stmt in node.body:
-                targets = stmt.targets if isinstance(stmt, ast.Assign) else ([stmt.target] if isinstance(stmt, ast.AnnAssign) else [])
+                targets = (
+                    stmt.targets
+                    if isinstance(stmt, ast.Assign)
+                    else ([stmt.target] if isinstance(stmt, ast.AnnAssign) else [])
+                )
                 for t in targets:
                     if isinstance(t, ast.Name) and t.id == name and getattr(stmt, "value", None) is not None:
                         return stmt.value
@@ -86,9 +90,7 @@ def test_every_arrival_gate_is_debounced_and_armed(filename):
     params = _class_level_assignment(tree, "success_params")
     assert isinstance(params, ast.Dict), f"{filename}: success_params is not a dict literal"
     keys = {k.value for k in params.keys if isinstance(k, ast.Constant)}
-    by_key = {
-        k.value: v for k, v in zip(params.keys, params.values) if isinstance(k, ast.Constant)
-    }
+    by_key = {k.value: v for k, v in zip(params.keys, params.values) if isinstance(k, ast.Constant)}
 
     assert "seconds" in keys, f"{filename}: no sustain window (#267)"
     assert ast.unparse(by_key["seconds"]) == "ARRIVAL_SUSTAIN_SECONDS", (
@@ -217,8 +219,9 @@ def test_no_sampled_layout_spawns_a_carry_leg_at_its_own_goal():
     assert worst >= sc.MIN_CARRY_CLEARANCE - 1e-9, f"closest ladder-mount spawn to the crate zone: {worst:.3f} m"
 
 
-def _stand_robot_near(robot: tuple[float, float], target: tuple[float, float],
-                      standoff: float, min_standoff: float = 0.0) -> tuple[float, float]:
+def _stand_robot_near(
+    robot: tuple[float, float], target: tuple[float, float], standoff: float, min_standoff: float = 0.0
+) -> tuple[float, float]:
     """``scene_cfg.stand_robot_near``'s placement arithmetic, without building a scene.
 
     Kept here rather than imported because the real one mutates a scene cfg; this is the same
@@ -251,8 +254,10 @@ def test_no_sampled_layout_spawns_an_arrival_leg_at_its_own_goal(leaf):
     nt = pytest.importorskip("fiatlux_task.tasks.manager_based.fiatlux_task.mdp.nav_terms")
 
     # The fresh bulb rides the table at the authored bench offset (apply_replace_preset).
-    bulb_dx, bulb_dy = (sc.TABLETOP_BULB_POSITION[0] - sc.TABLE_POSITION[0],
-                        sc.TABLETOP_BULB_POSITION[1] - sc.TABLE_POSITION[1])
+    bulb_dx, bulb_dy = (
+        sc.TABLETOP_BULB_POSITION[0] - sc.TABLE_POSITION[0],
+        sc.TABLETOP_BULB_POSITION[1] - sc.TABLE_POSITION[1],
+    )
     worst = None
     for seed in range(200):
         _, centers, _ = sc._sample_replace_layout(random.Random(seed), couple_ladder_to_fixture=True)
@@ -260,8 +265,9 @@ def test_no_sampled_layout_spawns_an_arrival_leg_at_its_own_goal(leaf):
         if leaf == "s07":
             # Pinned both ways at the departure radius from the crate (#205/#224), then the leg
             # is a walk to the fresh bulb on the table.
-            spawn = _stand_robot_near(robot_center, disposal_center, nt.DISPOSAL_DEPARTURE_RADIUS,
-                                      min_standoff=nt.DISPOSAL_DEPARTURE_RADIUS)
+            spawn = _stand_robot_near(
+                robot_center, disposal_center, nt.DISPOSAL_DEPARTURE_RADIUS, min_standoff=nt.DISPOSAL_DEPARTURE_RADIUS
+            )
             goal = (table_center[0] + bulb_dx, table_center[1] + bulb_dy)
             radius = nt.BULB_APPROACH_RADIUS
         else:

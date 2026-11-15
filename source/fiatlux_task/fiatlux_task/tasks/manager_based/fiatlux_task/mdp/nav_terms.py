@@ -40,7 +40,7 @@ from fiatlux_task.grasp_poses import BULB_GLASS_RADIUS_M, BULB_IN_ROOT_STANDING
 
 from ..scene_cfg import (
     DISPOSAL_ZONE_HALF_SIZE,
-    LADDER_MOUNT_RADIUS,
+    LADDER_MOUNT_RADIUS,  # noqa: F401  re-export; s05 and s09 import it from here
     STANCE_RESET_JITTER,
     TABLE_COLLISION_HALF_EXTENT,
     TABLETOP_BULB_POSITION,
