@@ -23,6 +23,7 @@ gate added later without the fix, which is the shape both bugs actually had.
 from __future__ import annotations
 
 import ast
+import math
 import pathlib
 import random
 
@@ -214,3 +215,63 @@ def test_no_sampled_layout_spawns_a_carry_leg_at_its_own_goal():
         d = sc._zone_edge_distance(spawn, disposal_center, sc.DISPOSAL_ZONE_HALF_SIZE)
         worst = d if worst is None else min(worst, d)
     assert worst >= sc.MIN_CARRY_CLEARANCE - 1e-9, f"closest ladder-mount spawn to the crate zone: {worst:.3f} m"
+
+
+def _stand_robot_near(robot: tuple[float, float], target: tuple[float, float],
+                      standoff: float, min_standoff: float = 0.0) -> tuple[float, float]:
+    """``scene_cfg.stand_robot_near``'s placement arithmetic, without building a scene.
+
+    Kept here rather than imported because the real one mutates a scene cfg; this is the same
+    three lines against plain tuples, and a drift between them would show up as this test and
+    the leaf disagreeing about where the robot stands.
+    """
+    dx, dy = target[0] - robot[0], target[1] - robot[1]
+    dist = math.hypot(dx, dy)
+    if not (dist > standoff or dist < min_standoff):
+        return robot
+    ux, uy = (dx / dist, dy / dist) if dist > 1e-6 else (-1.0, 0.0)
+    placed = min(max(dist, min_standoff), standoff)
+    return (target[0] - ux * placed, target[1] - uy * placed)
+
+
+@pytest.mark.isaacsim_ci
+@pytest.mark.parametrize("leaf", ["s07", "s09"])
+def test_no_sampled_layout_spawns_an_arrival_leg_at_its_own_goal(leaf):
+    """#266 for the two arrival gates the S05 sweep above does not reach.
+
+    ``require_transition`` makes a goal held from step zero unscoreable, which is the point. The
+    flip side is that a leaf which LEGITIMATELY spawns inside its own success region would then
+    need the robot to walk away and come back. For S05 the sampler now guarantees it cannot
+    happen; for these two it falls out of the zone packing instead -- the robot/table/disposal
+    separations are larger than either arrival radius -- and this is that argument measured
+    rather than asserted, which is the whole reason #266 was reachable in the first place.
+    """
+    pytest.importorskip("isaaclab.sim", reason="needs a bootstrapped Kit runtime")
+    sc = pytest.importorskip("fiatlux_task.tasks.manager_based.fiatlux_task.scene_cfg")
+    nt = pytest.importorskip("fiatlux_task.tasks.manager_based.fiatlux_task.mdp.nav_terms")
+
+    # The fresh bulb rides the table at the authored bench offset (apply_replace_preset).
+    bulb_dx, bulb_dy = (sc.TABLETOP_BULB_POSITION[0] - sc.TABLE_POSITION[0],
+                        sc.TABLETOP_BULB_POSITION[1] - sc.TABLE_POSITION[1])
+    worst = None
+    for seed in range(200):
+        _, centers, _ = sc._sample_replace_layout(random.Random(seed), couple_ladder_to_fixture=True)
+        robot_center, table_center, ladder_center, disposal_center = centers
+        if leaf == "s07":
+            # Pinned both ways at the departure radius from the crate (#205/#224), then the leg
+            # is a walk to the fresh bulb on the table.
+            spawn = _stand_robot_near(robot_center, disposal_center, nt.DISPOSAL_DEPARTURE_RADIUS,
+                                      min_standoff=nt.DISPOSAL_DEPARTURE_RADIUS)
+            goal = (table_center[0] + bulb_dx, table_center[1] + bulb_dy)
+            radius = nt.BULB_APPROACH_RADIUS
+        else:
+            # S09 stands at a validated offset from the table and carries to the ladder.
+            spawn = (table_center[0] + nt.TABLE_CARRY_OFFSET[0], table_center[1] + nt.TABLE_CARRY_OFFSET[1])
+            goal, radius = ladder_center, sc.LADDER_MOUNT_RADIUS
+        slack = math.dist(spawn, goal) - radius
+        worst = slack if worst is None else min(worst, slack)
+    assert worst > 0.0, (
+        f"{leaf}: a sampled layout spawns the robot inside its own arrival radius "
+        f"(worst margin {worst:.3f} m) -- require_transition would make that seed need a "
+        f"walk away and back"
+    )
