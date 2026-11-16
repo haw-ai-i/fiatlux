@@ -119,7 +119,17 @@ def main() -> int:
         print(f"   {'body':34s} {'frames':>7} {'peak N':>10} {'t range':>16}")
         for nm, cnt, pk, f0, f1 in hits:
             print(f"   {nm:34s} {cnt:7d} {pk:10.1f}  {f0/50:6.2f}-{f1/50:6.2f}s")
+    FOOT = ("ankle_roll",)
+    nonfoot = [(nm, cnt, pk) for nm, cnt, pk, _, _ in hits if not any(f in nm for f in FOOT)]
+    nf_frames = sum(c for _, c, _ in nonfoot)
+    nf_peak = max([p for _, _, p in nonfoot], default=0.0)
+    foot_frames = sum(c for nm, c, pk, _, _ in hits if any(f in nm for f in FOOT))
+    print(f"[SCORE ] nonfoot_contact_frames={nf_frames} nonfoot_peak_N={nf_peak:.1f} "
+          f"nonfoot_bodies={len(nonfoot)} foot_contact_frames={foot_frames} checked={checked}",
+          flush=True)
     json.dump({"clip": a.clip, "stride": a.stride, "checked": checked,
+               "nonfoot_contact_frames": nf_frames, "nonfoot_peak_N": nf_peak,
+               "nonfoot_bodies": len(nonfoot), "foot_contact_frames": foot_frames,
                "bodies": names, "peak_force_N": peak.tolist(),
                "frames": {names[b]: v for b, v in frames_hit.items() if v}},
               open(os.path.join(a.out, "contacts.json"), "w"), indent=2)

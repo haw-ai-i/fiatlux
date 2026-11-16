@@ -71,6 +71,8 @@ def main() -> int:
     ap.add_argument("--out-clip", required=True)
     ap.add_argument("--out-meta", required=True)
     ap.add_argument("--margin", type=float, default=0.040)
+    ap.add_argument("--stance", type=float, default=None,
+                    help="override FOOT_HALF_STANCE (lateral half-separation on the tread)")
     ap.add_argument("--lean", type=float, default=None,
                     help="override PELVIS_INTO_LADDER (negative = stand further out)")
     ap.add_argument("--out-bulge", type=float, default=0.0,
@@ -85,9 +87,11 @@ def main() -> int:
     ap.add_argument("--no-platform", dest="platform", action="store_false")
     a = ap.parse_args()
 
-    global PELVIS_INTO_LADDER
+    global PELVIS_INTO_LADDER, FOOT_HALF_STANCE
     if a.lean is not None:
         PELVIS_INTO_LADDER = a.lean
+    if a.stance is not None:
+        FOOT_HALF_STANCE = a.stance
     G = json.load(open(a.geometry))
     sole = json.load(open(a.treads))["meta"]["sole_offset_m"]
     lp = np.array(G["ladder_pos"]); lyaw = math.radians(G["ladder_yaw_deg"])
