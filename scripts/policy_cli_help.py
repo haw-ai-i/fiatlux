@@ -27,13 +27,13 @@ import argparse
 
 POLICY_SPEC_HELP = (
     "Policy spec: zero | random | basic_standard | basic_cheatcode | wbc_stand | "
-    "sonic_stand | groot[:<host:port>] | rsl_rl[:<ckpt>] | <path>.pt (or jit:<path>). "
+    "sonic_stand | groot[:<host:port>] | psi0[:<host:port>] | rsl_rl[:<ckpt>] | <path>.pt (or jit:<path>). "
     "See fiatlux_task/policy.py."
 )
 CHECKPOINT_HELP = "Checkpoint path for rsl_rl policies."
-INSTRUCTION_HELP = "Language instruction for VLA policies (groot); default: the task's canonical sentence."
+INSTRUCTION_HELP = "Language instruction for VLA policies (groot, psi0); default: the task's canonical sentence."
 ROBOT_CHOICES = ("inspire", "dex3")
-ROBOT_HELP = "G1 hand variant. dex3 matches GR00T's REAL_G1 embodiment."
+ROBOT_HELP = "G1 hand variant. dex3 matches GR00T's REAL_G1 embodiment and is required by psi0."
 
 
 def add_policy_cli_args(parser: argparse.ArgumentParser) -> None:
