@@ -34,6 +34,11 @@ ap.add_argument("--swing", default="right", choices=["left", "right"])
 ap.add_argument("--out", required=True)
 ap.add_argument("--measure-only", action="store_true", help="dump ladder geometry and stop")
 ap.add_argument("--probe-views", action="store_true", help="render candidate camera views and stop")
+ap.add_argument("--no-align", action="store_true",
+                help="clip root poses are ALREADY world-frame for this ladder; do not yaw/shift them")
+ap.add_argument("--cam-dist", type=float, default=1.25)
+ap.add_argument("--cam-lift", type=float, default=0.55)
+ap.add_argument("--cam-aim", type=float, default=None, help="world z to aim at (default: the tread)")
 ap.add_argument("--fps", type=int, default=50)
 ap.add_argument("--img-width", type=int, default=1280)
 ap.add_argument("--img-height", type=int, default=720, dest="img_h")
@@ -43,6 +48,8 @@ a.enable_cameras = True
 a.headless = True
 app = AppLauncher(a).app
 
+import sys
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import gymnasium as gym, numpy as np, torch, imageio.v2 as imageio
 import fiatlux_task.tasks  # noqa: F401
 import isaaclab_tasks  # noqa: F401
@@ -108,66 +115,8 @@ def mesh_inventory(stage, ladder_prim_path, scale):
     return out
 
 
-# Tread geometry in the LADDER'S OWN frame, measured off this asset's vertex cloud
-# (AlumStep_D D01, 41849-vert single body mesh -- treads are not prims and cannot be found by
-# name). The asset is fixed; only its POSE randomises, and the pose is read live every run.
-# verify_treads() re-derives this from the live mesh so a changed asset fails loudly instead
-# of silently aiming the foot at thin air.
-TREADS_LOCAL = [
-    {"top": 0.2360, "y_front": -0.4173, "y_back": -0.3435},
-    {"top": 0.4700, "y_front": -0.3367, "y_back": -0.2629},
-    {"top": 0.7060, "y_front": -0.2511, "y_back": -0.1774},
-    {"top": 0.9400, "y_front": -0.1656, "y_back": -0.0919},
-]
-TREAD_WIDTH = 0.4946
-TREAD_DEPTH = 0.0738
-ZBINS = 0.002   # top = highest 2 mm bin (anchored at 0) holding >=100 verts; ONE definition,
-                #       shared by the table above and verify_treads below
-TREAD_X_CENTRE = 0.0
-
-
-def to_ladder_frame(verts_world, ladder_pos, ladder_yaw):
-    c, s_ = math.cos(-ladder_yaw), math.sin(-ladder_yaw)
-    R = np.array([[c, -s_, 0.0], [s_, c, 0.0], [0.0, 0.0, 1.0]])
-    return (np.asarray(verts_world, float) - np.asarray(ladder_pos, float)) @ R.T
-
-
-def verify_treads(verts_world, ladder_pos, ladder_yaw, tol=0.006):
-    """Re-derive each tread's top from the live mesh and compare with TREADS_LOCAL."""
-    L = to_ladder_frame(verts_world, ladder_pos, ladder_yaw)
-    ok = True
-    for i, t in enumerate(TREADS_LOCAL, 1):
-        yc = (t["y_front"] + t["y_back"]) / 2
-        m = (np.abs(L[:, 1] - yc) < 0.055) & (np.abs(L[:, 2] - t["top"]) < 0.015)
-        sub = L[m]
-        if len(sub) < 50:
-            print(f"[VERIFY] tread {i}: only {len(sub)} verts near the expected surface", flush=True)
-            ok = False
-            continue
-        # Top = the highest 2 mm bin holding >=100 verts, on a grid ANCHORED AT ZERO so the
-        # answer does not drift with the data's own min. Each tread carries a sparse lip ~14 mm
-        # above its walking surface (12-18 verts); that lip is not what a foot stands on.
-        h, e = np.histogram(sub[:, 2], bins=np.arange(0.0, 1.4, ZBINS))
-        dense = [e[k + 1] for k, n in enumerate(h) if n >= 100]
-        if not dense:
-            print(f"[VERIFY] tread {i}: no dense top surface found", flush=True)
-            ok = False
-            continue
-        top = max(dense)
-        d = top - t["top"]
-        flag = "" if abs(d) <= tol else "   <-- MISMATCH"
-        print(f"[VERIFY] tread {i}: live top {top:.4f} vs table {t['top']:.4f}  ({d*1000:+.1f} mm){flag}", flush=True)
-        ok = ok and abs(d) <= tol
-    return ok
-
-
-def tread_world(t, ladder_pos, ladder_yaw):
-    """Tread centre and front-edge midpoint in WORLD coordinates."""
-    c, s_ = math.cos(ladder_yaw), math.sin(ladder_yaw)
-    R = np.array([[c, -s_, 0.0], [s_, c, 0.0], [0.0, 0.0, 1.0]])
-    ctr = R @ np.array([t["x_centre"], (t["y_front"] + t["y_back"]) / 2, t["top"]]) + ladder_pos
-    fr  = R @ np.array([t["x_centre"], t["y_front"], t["top"]]) + ladder_pos
-    return ctr, fr
+from ladder_treads import (TREADS_LOCAL, TREAD_WIDTH, TREAD_DEPTH, TREAD_X_CENTRE,  # noqa: E402
+                           to_ladder_frame, verify_treads, tread_world)
 
 
 def main() -> int:
@@ -258,6 +207,8 @@ def main() -> int:
     rrot = clip["root_rot"].astype(np.float64)       # wxyz
     rtra = clip["root_trans_offset"].astype(np.float64)
     idx = [list(robot.joint_names).index(n) for n in JOINT_ORDER]
+    if a.end < 0:
+        a.end = len(dof) - 1
     frames = list(range(a.start, a.end + 1))
     print(f"[CLIP  ] {a.clip}  frames {a.start}-{a.end} ({len(frames)}) of {len(dof)}", flush=True)
 
@@ -270,7 +221,7 @@ def main() -> int:
     thi = np.array([tread_ctr_w[0], tread_ctr_w[1], tread["top"]])
     face_w = quat_rot(lq, LADDER_STEP_FACE_LOCAL)             # outward normal of the step side
     desired_yaw = math.atan2(-face_w[1], -face_w[0])          # robot +x points INTO the ladder
-    dyaw = desired_yaw - quat_yaw(rrot[a.end])
+    dyaw = 0.0 if a.no_align else desired_yaw - quat_yaw(rrot[a.end])
     qy = yaw_quat(dyaw)
     print(f"[ALIGN ] tread {a.tread} top z {thi[2]:.4f}  centre ({target[0]:+.3f},{target[1]:+.3f})", flush=True)
     print(f"[ALIGN ] step face {np.round(face_w,3)}  desired yaw {math.degrees(desired_yaw):+.2f} deg  "
@@ -293,10 +244,11 @@ def main() -> int:
         base.scene.write_data_to_sim()
         base.sim.render()
 
-    # solve the shift with OUR FK: write the landing frame at zero shift, read the foot, correct
+    # solve the shift with OUR FK: write the landing frame at zero shift, read the foot, correct.
+    # --no-align skips this: the clip is already world-frame for THIS ladder (climb_sequence.py).
     write(a.end, np.zeros(3))
     foot0 = robot.data.body_pos_w[0, fid].detach().cpu().numpy().astype(float)
-    shift = target - foot0
+    shift = np.zeros(3) if a.no_align else target - foot0
     write(a.end, shift)
     foot1 = robot.data.body_pos_w[0, fid].detach().cpu().numpy().astype(float)
     print(f"[ALIGN ] landing-frame foot {np.round(foot0,4)} -> shift {np.round(shift,4)} -> "
@@ -309,8 +261,10 @@ def main() -> int:
     # 45 deg from the open climbing side: the -y side of this room is a wall (probe_views A/F
     # render flat 53,53,53 from inside it) and a pure +y side view looks through the ladder's
     # own rails, so neither pure axis works.
-    eye = target + face_w * 1.25 - along * 1.25 + np.array([0.0, 0.0, 0.55])
-    look = target + np.array([0.0, 0.0, -0.02])
+    aim_z = a.cam_aim if a.cam_aim is not None else target[2]
+    aim = np.array([target[0], target[1], aim_z])
+    eye = aim + face_w * a.cam_dist - along * a.cam_dist + np.array([0.0, 0.0, a.cam_lift])
+    look = aim + np.array([0.0, 0.0, -0.02])
     print(f"[CAM   ] eye {np.round(eye,3)} -> look {np.round(look,3)}", flush=True)
     vcam.set_world_poses_from_view(torch.tensor(eye, dtype=torch.float32, device=dev).expand(1, 3),
                                    torch.tensor(look, dtype=torch.float32, device=dev).expand(1, 3))
@@ -349,13 +303,17 @@ def main() -> int:
         bq = robot.data.body_quat_w[0].detach().cpu().numpy().astype(float)
         rec.append({"frame": int(i), "t": i / a.fps,
                     "swing_foot": bp[fid].tolist(), "swing_quat": bq[fid].tolist(),
-                    "stance_foot": bp[oid].tolist(), "root": bp[0].tolist()})
+                    "stance_foot": bp[oid].tolist(), "root": bp[0].tolist(),
+                    # every link, so a knee or shin through the ladder cannot pass unseen:
+                    # the foot-vs-tread gate alone does not check the rest of the robot
+                    "bodies": bp.tolist()})
         if k % 20 == 0:
             print(f"[REPLAY] {k}/{len(frames)}  swing foot z {bp[fid][2]:.4f}", flush=True)
 
     out_mp4 = os.path.join(a.out, "replay.mp4")
     imageio.mimwrite(out_mp4, vid, fps=max(1, a.fps // 2), codec="libx264", quality=8)
-    json.dump({"meta": meta, "target": target.tolist(), "shift": shift.tolist(),
+    json.dump({"meta": meta, "body_names": list(robot.body_names),
+               "target": target.tolist(), "shift": shift.tolist(),
                "tread_index": a.tread, "tread": tread, "swing": a.swing,
                "frames": rec}, open(os.path.join(a.out, "replay.json"), "w"), indent=2)
     print(f"[OK    ] wrote {out_mp4} ({len(vid)} frames) and replay.json", flush=True)

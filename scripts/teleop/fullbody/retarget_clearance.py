@@ -30,6 +30,17 @@ RIGHT_LEG = [
     ("right_ankle_pitch_joint", (0.0, 9.4445e-05, -0.30001),  (0.0,  0.0,    0.0), (0, 1, 0), (-0.87267, 0.5236)),
     ("right_ankle_roll_joint",  (0.0, 0.0,       -0.017558),  (0.0,  0.0,    0.0), (1, 0, 0), (-0.2618,  0.2618)),
 ]
+JOINT_ORDER = (
+    "left_hip_pitch_joint", "left_hip_roll_joint", "left_hip_yaw_joint",
+    "left_knee_joint", "left_ankle_pitch_joint", "left_ankle_roll_joint",
+    "right_hip_pitch_joint", "right_hip_roll_joint", "right_hip_yaw_joint",
+    "right_knee_joint", "right_ankle_pitch_joint", "right_ankle_roll_joint",
+    "waist_yaw_joint", "waist_roll_joint", "waist_pitch_joint",
+    "left_shoulder_pitch_joint", "left_shoulder_roll_joint", "left_shoulder_yaw_joint",
+    "left_elbow_joint", "left_wrist_roll_joint", "left_wrist_pitch_joint", "left_wrist_yaw_joint",
+    "right_shoulder_pitch_joint", "right_shoulder_roll_joint", "right_shoulder_yaw_joint",
+    "right_elbow_joint", "right_wrist_roll_joint", "right_wrist_pitch_joint", "right_wrist_yaw_joint",
+)
 LEG_COLS = [6, 7, 8, 9, 10, 11]          # indices of these joints in the clip's 29-dof JOINT_ORDER
 
 
@@ -84,8 +95,33 @@ def so3_err(R_cur, R_des):
     return w / s * ang if s > 1e-9 else np.zeros(3)
 
 
-def ik_leg(q0, p_des, R_des, chain=RIGHT_LEG, iters=120, lam=0.08, w_rot=0.45):
-    """Damped least squares onto a 6-DoF foot pose in the pelvis frame, limits respected."""
+DEFAULT_LEG = np.array([-0.312, 0.0, 0.0, 0.669, -0.363, 0.0])
+
+
+def ik_leg(q0, p_des, R_des, chain=RIGHT_LEG, iters=120, lam=0.08, w_rot=0.45, restarts=True):
+    """Damped least squares onto a 6-DoF foot pose in the pelvis frame, limits respected.
+
+    Warm-starting from the previous frame is fast but can pin the solve against a joint limit it
+    cannot climb back off (seen as a large POSITION error while the rotation error also stalls).
+    When the warm start does not converge, retry from fixed seeds -- the default stance and two
+    knee-bent poses -- and keep the best. Deterministic: no random restarts.
+    """
+    seeds = [np.array(q0, float)]
+    if restarts:
+        seeds += [DEFAULT_LEG.copy(),
+                  DEFAULT_LEG + np.array([-0.5, 0.0, 0.0, 1.0, -0.5, 0.0]),
+                  DEFAULT_LEG + np.array([0.4, 0.0, 0.0, 0.8, -1.0, 0.0])]
+    best = None
+    for seed in seeds:
+        q, ep, er = _ik_once(seed, p_des, R_des, chain, iters, lam, w_rot)
+        if best is None or (ep + 0.05 * er) < (best[1] + 0.05 * best[2]):
+            best = (q, ep, er)
+        if ep < 1e-3 and er < 0.05:
+            break
+    return best
+
+
+def _ik_once(q0, p_des, R_des, chain, iters, lam, w_rot):
     q = np.array(q0, float)
     lo = np.array([c[4][0] for c in chain]); hi = np.array([c[4][1] for c in chain])
     for _ in range(iters):
@@ -97,7 +133,7 @@ def ik_leg(q0, p_des, R_des, chain=RIGHT_LEG, iters=120, lam=0.08, w_rot=0.45):
         dq = JT @ np.linalg.solve(J @ JT + (lam ** 2) * np.eye(6), e)
         q = np.clip(q + np.clip(dq, -0.2, 0.2), lo, hi)
     J, R, p = leg_jacobian(q, chain)
-    return q, np.linalg.norm(p_des - p), np.linalg.norm(so3_err(R, R_des))
+    return q, float(np.linalg.norm(p_des - p)), float(np.linalg.norm(so3_err(R, R_des)))
 
 
 def smoothstep(t):
@@ -105,8 +141,13 @@ def smoothstep(t):
     return t * t * (3.0 - 2.0 * t)
 
 
-def arc_path(p0, p1, z_clear, n, f_lift=0.35, f_place=0.80):
-    """lift straight up -> traverse rearward at z_clear -> descend onto the landing point."""
+def arc_path(p0, p1, z_clear, n, f_lift=0.35, f_place=0.80, out_dir=None, out_bulge=0.0):
+    """lift straight up -> traverse rearward at z_clear -> descend onto the landing point.
+
+    ``out_bulge`` swings the foot OUT along ``out_dir`` through the middle of the swing and
+    back to zero at touchdown. Lifting straight up off the tread below tucks the knee under the
+    tread above; swinging out first is what gives the knee room, and is what a person does.
+    """
     out = np.zeros((n, 3))
     for k in range(n):
         s = k / max(n - 1, 1)
@@ -120,6 +161,8 @@ def arc_path(p0, p1, z_clear, n, f_lift=0.35, f_place=0.80):
             z = z_clear + (p1[2] - z_clear) * smoothstep((s - f_place) / (1.0 - f_place))
             xy = p1[:2]
         out[k] = (xy[0], xy[1], z)
+        if out_bulge and out_dir is not None:
+            out[k] = out[k] + np.asarray(out_dir, float) * out_bulge * math.sin(math.pi * min(1.0, s / f_place))
     out[-1] = p1
     return out
 
