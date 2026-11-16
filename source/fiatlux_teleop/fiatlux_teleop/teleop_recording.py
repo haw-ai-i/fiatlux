@@ -331,6 +331,14 @@ class TeleopTrajectoryRecorder(TrajectoryRecorder):
         robot = env.scene["robot"]
         done = terminated | truncated
         body_state = robot.data.body_state_w[:, self._ee_id, :7]  # (N, 7) pos+quat
+        # Feet (probe/climb-retarget): the bags carry no body positions below the wrist, so
+        # foot clearance -- the quantity every climbing question turns on -- is not derivable
+        # from a recorded take. Resolved lazily by name so a robot without these links still
+        # records; NEW COLUMN, nothing existing changes.
+        if not hasattr(self, "_foot_ids"):
+            ids, _ = robot.find_bodies(["left_ankle_roll_link", "right_ankle_roll_link"],
+                                       preserve_order=True)
+            self._foot_ids = ids if len(ids) == 2 else None
 
         step = {
             "actions": actions,
@@ -345,6 +353,11 @@ class TeleopTrajectoryRecorder(TrajectoryRecorder):
             **(
                 {"eef_pose_left": robot.data.body_state_w[:, self._left_ee_id, :7]}
                 if getattr(self, "_left_ee_id", None) is not None
+                else {}
+            ),
+            **(
+                {"foot_pose": robot.data.body_state_w[:, self._foot_ids, :7]}
+                if self._foot_ids is not None
                 else {}
             ),
             "policy_obs": obs["policy"] if isinstance(obs, dict) else obs,

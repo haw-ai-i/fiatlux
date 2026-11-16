@@ -2237,6 +2237,24 @@ def main():  # noqa: C901  (one long orchestration: env setup + settle/resettle 
                     # extras: the operator/policy signals that BYPASS the env action -- the walk
                     # command the human gives, the lean, and SONIC's raw leg action for this step.
                     # (joint_pos_target inside the recorder covers the full commanded joint vector.)
+                    # probe/climb-retarget: the raw controller poses the retargeters consume
+                    # and then discard. Recorded as a NEW column so a take can be replayed
+                    # against a different retargeter without re-flying it. VR only; the
+                    # keyboard path has no device poses.
+                    _raw_ctrl = None
+                    if args.input == "vr":
+                        try:
+                            _rd = teleop._get_raw_data()
+                            _raw_ctrl = np.stack(
+                                [
+                                    np.asarray(_rd[DeviceBase.TrackingTarget.CONTROLLER_LEFT],
+                                               dtype=np.float32).reshape(-1)[:7],
+                                    np.asarray(_rd[DeviceBase.TrackingTarget.CONTROLLER_RIGHT],
+                                               dtype=np.float32).reshape(-1)[:7],
+                                ]
+                            )[None]
+                        except Exception:  # noqa: BLE001  (device shape varies; never break a take)
+                            _raw_ctrl = None
                     _extras = {
                         "loco_cmd": np.asarray(loco_cmd, dtype=np.float32)[None],
                         "rpy_cmd": np.asarray(rpy_cmd, dtype=np.float32)[None],
@@ -2244,6 +2262,8 @@ def main():  # noqa: C901  (one long orchestration: env setup + settle/resettle 
                     }
                     if _rail is not None:
                         _extras["rail_contact_force"] = _rail_force().cpu().numpy().astype(np.float32)[None]
+                    if _raw_ctrl is not None:
+                        _extras["controller_pose_raw"] = _raw_ctrl
                     _extras.update(_probe_extras())
                     recorder.record_step(_obs_t, arm_action, _rew_t, _term_t, _trunc_t, extras=_extras)
                     if args.stop_on_success and getattr(recorder, "_gate_fired", False):
