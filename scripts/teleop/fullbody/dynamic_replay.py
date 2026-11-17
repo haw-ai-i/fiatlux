@@ -41,6 +41,8 @@ ap.add_argument("--gain-scale", type=float, default=1.0,
 ap.add_argument("--settle", type=int, default=60, help="physics steps to settle before playback")
 ap.add_argument("--speed", type=float, default=1.0, help="<1 plays the clip slower")
 ap.add_argument("--tilt-limit", type=float, default=40.0, help="deg of base tilt counted as a fall")
+ap.add_argument("--passive", default="",
+                help="comma-separated joint-name substrings to HOLD AT DEFAULT instead of\n                      commanding from the clip. LadderMan drives 23 of 29 joints and leaves\n                      the six wrists passive, so replaying its clip with --passive wrist is\n                      the apples-to-apples comparison; empty (default) keeps every joint\n                      commanded, which is the original behaviour.")
 ap.add_argument("--drop-limit", type=float, default=0.25, help="m of pelvis drop counted as a fall")
 AppLauncher.add_app_launcher_args(ap)
 a = ap.parse_args()
@@ -88,6 +90,13 @@ def main() -> int:
     from retarget_clearance import JOINT_ORDER as JO
     jn = list(robot.joint_names)
     idx = [jn.index(n) for n in JO]
+    subs = [s.strip() for s in a.passive.split(",") if s.strip()]
+    pas = [c for c, n in enumerate(JO) if any(s in n for s in subs)]
+    act = [c for c in range(len(JO)) if c not in pas]
+    idx_act = [idx[c] for c in act]
+    if pas:
+        print(f"[PASSIVE] holding {len(pas)} joints at default, commanding {len(act)}: "
+              f"{', '.join(JO[c] for c in pas)}", flush=True)
     nq = robot.num_joints
     sub = max(int(round((1.0 / fps) / dt / max(a.speed, 1e-6))), 1)
     print(f"[CLIP  ] {len(dof)} frames @ {fps:g} fps -> {sub} physics steps per frame "
@@ -98,7 +107,7 @@ def main() -> int:
 
     # --- start from the clip's first pose, then let go -----------------------------------------
     jp0 = robot.data.default_joint_pos[0].detach().cpu().numpy().copy()
-    jp0[idx] = dof[0]
+    jp0[idx_act] = dof[0][act]
     robot.write_root_pose_to_sim(torch.cat([t_(rtra[0]), t_(rrot[0])], dim=-1))
     robot.write_root_velocity_to_sim(torch.zeros((1, 6), device=dev))
     robot.write_joint_state_to_sim(t_(jp0), torch.zeros((1, nq), device=dev))
@@ -120,7 +129,7 @@ def main() -> int:
     eff_lim = robot.root_physx_view.get_dof_max_forces()[0].detach().cpu().numpy()[idx]
     for i in range(len(dof)):
         jp = robot.data.default_joint_pos[0].detach().cpu().numpy().copy()
-        jp[idx] = dof[i]
+        jp[idx_act] = dof[i][act]
         tgt = t_(jp)
         for _ in range(sub):
             robot.set_joint_position_target(tgt)
@@ -131,6 +140,10 @@ def main() -> int:
         tilt = math.degrees(math.acos(max(-1.0, min(1.0, up_z))))
         pz = float(robot.data.root_pos_w[0, 2])
         err = np.abs(robot.data.joint_pos[0].detach().cpu().numpy()[idx] - dof[i])
+        # A passive joint is not tracking the clip by choice, so scoring it against the clip
+        # reports a deviation we asked for as if it were a failure. Torque still counts: a
+        # held-at-default wrist can still saturate under the hand's own weight.
+        err[pas] = 0.0
         worst = np.maximum(worst, err)
         tq = np.abs(robot.data.applied_torque[0].detach().cpu().numpy()[idx])
         sat = np.maximum(sat, tq / np.maximum(eff_lim, 1e-6))
