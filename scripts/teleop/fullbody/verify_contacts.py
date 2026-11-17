@@ -10,6 +10,12 @@ This runs the same replay but STEPS PHYSICS each frame, with:
     dragged, and a reported force means geometry genuinely overlaps;
   * the pose rewritten before every step, so nothing accumulates and each frame is judged on its
     own written pose;
+  * the ladder held still. S02 ships a DYNAMIC ladder, and with gravity zeroed nothing holds it:
+    the first penetration shoves it away (measured with a probe sphere: 215 mm in 300 frames, and
+    still moving at 0.08 m/s), so every later frame is scored against a ladder that has left. The
+    same asset flipped to kinematic keeps the identical collider and cannot be pushed. Nothing is
+    filtered or disabled -- a limb inside a tread still reports its full force -- and the drift is
+    reported every run so this cannot go unnoticed again;
   * a contact sensor over EVERY robot body (not the feet-and-hands subset the task ships),
     filtered to the ladder, so a knee or a thigh is reported as readily as a foot.
 
@@ -29,6 +35,13 @@ ap.add_argument("--robot", default="dex3", choices=["inspire", "dex3"])
 ap.add_argument("--seed", type=int, default=0)
 ap.add_argument("--stride", type=int, default=2, help="check every Nth frame")
 ap.add_argument("--force-eps", type=float, default=1e-3, help="N, above which a contact counts")
+ap.add_argument("--expect", default="ankle_roll",
+                help="comma-separated substrings naming bodies that are SUPPOSED to touch the "
+                     "ladder. Feet always; add hand/wrist once the hands are on the rails, or "
+                     "their contact swamps the score and hides the legs.")
+ap.add_argument("--ladder", default="kinematic", choices=["kinematic", "dynamic"],
+                help="kinematic: same collider, immovable (correct for a clearance measurement). "
+                     "dynamic: S02's shipped ladder, which drifts under contact with gravity off.")
 AppLauncher.add_app_launcher_args(ap)
 a = ap.parse_args()
 a.enable_cameras = True   # S02 spawns the ego camera; the flag is required to build the scene even though we never render
@@ -57,6 +70,9 @@ def main() -> int:
     # Gravity off: the robot is posed by hand every frame, so the only thing we want PhysX to
     # produce is the reaction to geometry overlapping geometry.
     cfg.sim.gravity = (0.0, 0.0, 0.0)
+    # Hold the ladder still -- see the module docstring. Same USD, same convex decomposition.
+    if a.ladder == "kinematic":
+        cfg.scene.ladder.spawn.rigid_props.kinematic_enabled = True
     # Every body, not the shipped feet+hands subset.
     cfg.scene.ladder_contact = ContactSensorCfg(
         prim_path="{ENV_REGEX_NS}/Robot/.*",
@@ -68,9 +84,12 @@ def main() -> int:
     env = gym.make(a.task, cfg=cfg); base = env.unwrapped; dev = base.device
     env.reset(seed=a.seed)
     robot = base.scene["robot"]; sensor = base.scene["ladder_contact"]
+    ladder = base.scene["ladder"]
+    lad0 = ladder.data.root_pos_w[0].clone()
     names = list(sensor.body_names)
     print(f"[SENSOR] {len(names)} robot bodies filtered against the ladder", flush=True)
-    print(f"[SIM   ] gravity {tuple(cfg.sim.gravity)}  dt {base.sim.get_physics_dt()}", flush=True)
+    print(f"[SIM   ] gravity {tuple(cfg.sim.gravity)}  dt {base.sim.get_physics_dt()}  "
+          f"ladder={a.ladder}", flush=True)
 
     clip = np.load(a.clip)
     dof = clip["dof"].astype(np.float32)
@@ -89,6 +108,7 @@ def main() -> int:
     zeros6 = torch.zeros((1, 6), device=dev)
     nq = robot.num_joints
     checked = 0
+    drift = 0.0
     for i in range(0, n, a.stride):
         jp = robot.data.default_joint_pos[0].detach().cpu().numpy().copy()
         jp[idx] = dof[i]
@@ -105,6 +125,7 @@ def main() -> int:
         for b in np.flatnonzero(f > a.force_eps):
             frames_hit[int(b)].append(i)
             peak[b] = max(peak[b], float(f[b]))
+        drift = max(drift, float(torch.linalg.norm(ladder.data.root_pos_w[0] - lad0)))
         checked += 1
         if checked % 50 == 0:
             print(f"[CHECK ] {i}/{n}", flush=True)
@@ -112,6 +133,8 @@ def main() -> int:
     hits = [(names[b], len(v), peak[b], v[0], v[-1]) for b, v in frames_hit.items() if v]
     hits.sort(key=lambda r: -r[2])
     print(f"\n[RESULT] {checked} frames stepped through PhysX with the real collision meshes")
+    print(f"[LADDER] max drift during the check: {drift*1000:.2f} mm "
+          f"({'held' if drift < 1e-3 else 'MOVED -- contact counts below are a LOWER BOUND'})")
     if not hits:
         print("[RESULT] NO CONTACT: no robot body overlaps the ladder at any checked frame.")
     else:
@@ -119,17 +142,20 @@ def main() -> int:
         print(f"   {'body':34s} {'frames':>7} {'peak N':>10} {'t range':>16}")
         for nm, cnt, pk, f0, f1 in hits:
             print(f"   {nm:34s} {cnt:7d} {pk:10.1f}  {f0/50:6.2f}-{f1/50:6.2f}s")
-    FOOT = ("ankle_roll",)
+    FOOT = tuple(t.strip() for t in a.expect.split(",") if t.strip())
     nonfoot = [(nm, cnt, pk) for nm, cnt, pk, _, _ in hits if not any(f in nm for f in FOOT)]
     nf_frames = sum(c for _, c, _ in nonfoot)
     nf_peak = max([p for _, _, p in nonfoot], default=0.0)
     foot_frames = sum(c for nm, c, pk, _, _ in hits if any(f in nm for f in FOOT))
+    print(f"[EXPECT] bodies allowed to touch: {', '.join(FOOT)}")
     print(f"[SCORE ] nonfoot_contact_frames={nf_frames} nonfoot_peak_N={nf_peak:.1f} "
-          f"nonfoot_bodies={len(nonfoot)} foot_contact_frames={foot_frames} checked={checked}",
+          f"nonfoot_bodies={len(nonfoot)} foot_contact_frames={foot_frames} checked={checked} "
+          f"ladder_drift_mm={drift*1000:.2f}",
           flush=True)
     json.dump({"clip": a.clip, "stride": a.stride, "checked": checked,
                "nonfoot_contact_frames": nf_frames, "nonfoot_peak_N": nf_peak,
                "nonfoot_bodies": len(nonfoot), "foot_contact_frames": foot_frames,
+               "ladder_mode": a.ladder, "ladder_drift_mm": drift * 1000.0,
                "bodies": names, "peak_force_N": peak.tolist(),
                "frames": {names[b]: v for b, v in frames_hit.items() if v}},
               open(os.path.join(a.out, "contacts.json"), "w"), indent=2)
