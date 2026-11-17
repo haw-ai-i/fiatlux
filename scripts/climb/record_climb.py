@@ -38,6 +38,25 @@ ap.add_argument("--match_torque", action="store_true",
 ap.add_argument("--residual_scale", type=float, default=1.0,
                 help="scale the NETWORK's 23 outputs. 0 = pure open-loop replay of the reference "
                      "through the same action path, which isolates the conversion from the policy.")
+ap.add_argument("--layout_seed", type=int, default=0,
+                help="fix the Replace layout draw (ladder pose, fixture mount). MUST be set "
+                     "before the cfg is built or the layout comes from OS entropy and two runs "
+                     "are different scenes, not a repeat -- see scene_cfg.set_layout_seed. "
+                     "Default 0 = reproducible; pass -1 for OS entropy (varied bags).")
+ap.add_argument("--lm_gains", action="store_true",
+                help="run the robot on LADDERMAN's PD gains instead of fiatlux's. Not the same "
+                     "test as --match_torque: that solves for a target so OUR gains produce "
+                     "LadderMan's torque, whereas ImplicitActuator hands kp/kd to PhysX, which "
+                     "solves the PD inside the solver -- so a softer joint behaves differently "
+                     "from a stiff joint fed a converted target. Gains are a control-stack "
+                     "choice, not hardware; armature (the other mismatch) is hardware and is "
+                     "deliberately NOT touched here.")
+ap.add_argument("--standoff_delta", type=float, default=0.0,
+                help="metres to move the spawn TOWARD the ladder along the step-facing ray "
+                     "(positive = closer). The reference is anchored to the LADDER, not to the "
+                     "robot, so the spawn standoff sets the frame-0 tracking error the policy "
+                     "wakes up holding -- see the [ALIGN ] line, which measures it directly. "
+                     "Only meaningful for a floor stance; refused on a platform stance.")
 AppLauncher.add_app_launcher_args(ap)
 a = ap.parse_args()
 a.enable_cameras = True
@@ -54,7 +73,36 @@ from isaaclab_tasks.utils import parse_env_cfg  # noqa: E402
 from ladderman_policy import LadderManPolicy  # noqa: E402
 from ladderman_runtime import LadderManObs  # noqa: E402
 
+from fiatlux_task.tasks.manager_based.fiatlux_task.scene_cfg import set_layout_seed  # noqa: E402
+
+# Before parse_env_cfg, not after: the layout is drawn in __post_init__, which runs INSIDE
+# parse_env_cfg, so cfg.seed is far too late. Without this every run is a different ladder pose
+# and yaw, and a sweep compares scenes instead of whatever it meant to vary.
+set_layout_seed(None if a.layout_seed < 0 else a.layout_seed)
+print(f"[LAYOUT] seed {'OS entropy' if a.layout_seed < 0 else a.layout_seed}")
+
 cfg = parse_env_cfg(a.task, num_envs=1)
+
+# Move the spawn along the ladder->robot ray. balance.stand_robot_at_ladder_base already put the
+# robot on the ladder's step-facing ray and turned it to face the ladder, so sliding along that
+# same ray is exactly a standoff change and leaves the bearing alone. Recomputed from the two
+# poses rather than imported, so it stays correct if the layout reseeds.
+if a.standoff_delta != 0.0:
+    import math  # noqa: E402
+
+    rx, ry, rz = cfg.scene.robot.init_state.pos
+    lx, ly = cfg.scene.ladder.init_state.pos[:2]
+    d = math.hypot(rx - lx, ry - ly)
+    if d < 0.3:
+        raise SystemExit(
+            f"[STANCE] refusing --standoff_delta: the spawn is {d:.3f} m from the ladder root, "
+            "which is a platform stance (descent), not a floor stance. Sliding along this ray "
+            "would walk the robot off the top, not change a standoff."
+        )
+    new_d = d - a.standoff_delta
+    cfg.scene.robot.init_state.pos = (lx + (rx - lx) / d * new_d, ly + (ry - ly) / d * new_d, rz)
+    print(f"[STANCE] standoff {d:.3f} -> {new_d:.3f} m (delta {a.standoff_delta:+.3f} toward the ladder)")
+
 env = gym.make(a.task, cfg=cfg)
 base = env.unwrapped
 
@@ -73,6 +121,50 @@ recorder = (
 
 obs, _ = env.reset(seed=a.seed)
 obs_builder.reset()
+
+from isaaclab.utils.math import quat_apply_inverse  # noqa: E402
+
+
+def apply_lm_gains() -> None:
+    """Write LadderMan's kp/kd onto the 29 mapped joints. Re-applied after every reset.
+
+    Combining this with --match_torque is self-consistent, not double-applied: the conversion
+    reads the LIVE joint_stiffness, so once the gains ARE LadderMan's the conversion collapses
+    to the identity.
+    """
+    rob = base.scene["robot"]
+    n = base.num_envs
+    rob.write_joint_stiffness_to_sim(obs_builder.lm_kp[None].expand(n, -1), joint_ids=obs_builder.j_fx)
+    rob.write_joint_damping_to_sim(obs_builder.lm_kd[None].expand(n, -1), joint_ids=obs_builder.j_fx)
+
+
+if a.lm_gains:
+    apply_lm_gains()
+    _names = list(base.scene["robot"].joint_names)
+    _show = [n for n in ("left_hip_pitch_joint", "left_knee_joint", "waist_pitch_joint",
+                         "left_ankle_pitch_joint", "left_shoulder_pitch_joint") if n in _names]
+    print("[GAINS ] running LadderMan PD gains (armature unchanged):")
+    for n in _show:
+        i = _names.index(n)
+        j = (obs_builder.j_fx == i).nonzero()
+        if len(j):
+            print(f"         {n:28s} kp {float(obs_builder.lm_kp[int(j[0])]):7.2f}  "
+                  f"kd {float(obs_builder.lm_kd[int(j[0])]):6.3f}")
+
+# The frame-0 tracking error, measured rather than assumed. The reference is anchored to the
+# ladder (rung 0 in its local frame), so wherever the robot is staged, THIS is the offset the
+# policy wakes up holding -- and it is the quantity `priv.ref_root_pos_future_b` feeds the net.
+# Read without calling update(): update() pushes the current state into the history buffers, and
+# doing that twice at t=0 would double the first sample in `joint_pos_history`.
+_rob = base.scene["robot"].data
+_ref0 = obs_builder.ref_body_pos[obs_builder.t][:, obs_builder.root_mo]        # [N,3] world
+_d_b = quat_apply_inverse(_rob.root_quat_w, _ref0 - _rob.root_pos_w)[0]
+_lad = base.scene["ladder"].data.root_pos_w[0]
+print(f"[ALIGN ] robot root {[round(v, 3) for v in _rob.root_pos_w[0].tolist()]}, "
+      f"standoff {float(((_rob.root_pos_w[0, :2] - _lad[:2]) ** 2).sum().sqrt()):.3f} m")
+print(f"[ALIGN ] reference root at t=0 is {float(_d_b[0]):+.3f} m forward, "
+      f"{float(_d_b[1]):+.3f} m left, {float(_d_b[2]):+.3f} m up of the robot "
+      f"(forward > 0 means the robot is staged BEHIND where the clip starts)")
 
 gate_hits = 0
 best = {}
@@ -116,6 +208,8 @@ try:
                       f"(terminated={bool(terminated.any())}, truncated={bool(truncated.any())})"
                       f" reason={why or 'unknown'}")
                 obs_builder.reset(ids)
+                if a.lm_gains:
+                    apply_lm_gains()      # the env reset restores the cfg's gains
                 gate_hits += 1
                 if gate_hits >= a.episodes:
                     break

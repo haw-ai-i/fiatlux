@@ -37,7 +37,8 @@ run_one() {           # $1 = local ckpt, $2 = iter, $3 = "" or "--match_torque"
   pel=$(grep -oE 'highest pelvis [0-9.]+' "$log" | grep -oE '[0-9.]+' | head -1)
   reason=$(grep -oE "reason=\[[^]]*\]" "$log" | head -1 | sed "s/^reason=\[//; s/\]$//; s/'//g; s/, /+/g")
   steps="${steps:-0}"; pel="${pel:-nan}"; reason="${reason:-none}"
-  printf '%s,%s,%s,%.2f,%s,%s\n' "$2" "${3:+1}${3:-0}" "$steps" \
+  local mt=0; [ -n "$3" ] && mt=1
+  printf '%s,%s,%s,%.2f,%s,%s\n' "$2" "$mt" "$steps" \
       "$(awk "BEGIN{print $steps/50}")" "$pel" "$reason" >> "$CSV"
   echo "[probe] iter $2 $tag -> $steps steps ($(awk "BEGIN{printf \"%.2f\", $steps/50}")s), pelvis $pel, $reason"
 }
