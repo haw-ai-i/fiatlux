@@ -98,7 +98,8 @@ def so3_err(R_cur, R_des):
 DEFAULT_LEG = np.array([-0.312, 0.0, 0.0, 0.669, -0.363, 0.0])
 
 
-def ik_leg(q0, p_des, R_des, chain=RIGHT_LEG, iters=120, lam=0.08, w_rot=0.45, restarts=True):
+def ik_leg(q0, p_des, R_des, chain=RIGHT_LEG, iters=120, lam=0.08, w_rot=0.45, restarts=True,
+           alt_seeds=None):
     """Damped least squares onto a 6-DoF foot pose in the pelvis frame, limits respected.
 
     Warm-starting from the previous frame is fast but can pin the solve against a joint limit it
@@ -108,9 +109,9 @@ def ik_leg(q0, p_des, R_des, chain=RIGHT_LEG, iters=120, lam=0.08, w_rot=0.45, r
     """
     seeds = [np.array(q0, float)]
     if restarts:
-        seeds += [DEFAULT_LEG.copy(),
-                  DEFAULT_LEG + np.array([-0.5, 0.0, 0.0, 1.0, -0.5, 0.0]),
-                  DEFAULT_LEG + np.array([0.4, 0.0, 0.0, 0.8, -1.0, 0.0])]
+        seeds += [np.array(s, float) for s in (alt_seeds if alt_seeds is not None else
+                  (DEFAULT_LEG, DEFAULT_LEG + np.array([-0.5, 0.0, 0.0, 1.0, -0.5, 0.0]),
+                   DEFAULT_LEG + np.array([0.4, 0.0, 0.0, 0.8, -1.0, 0.0])))]
     best = None
     for seed in seeds:
         q, ep, er = _ik_once(seed, p_des, R_des, chain, iters, lam, w_rot)
@@ -268,3 +269,131 @@ def main() -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
+
+
+# ---------------------------------------------------------------------------------------------
+# Arms. Generated from Unitree's own g1_body29_hand14.urdf, not transcribed by hand.
+#
+# The shoulders hang off `torso_link`, which IS the child of waist_pitch_joint -- so the arm base
+# moves with the waist and the caller has to compose WAIST before the arm chain. Each arm carries
+# a trailing zero-range `hand_palm` entry so that leg_fk/leg_jacobian run FK all the way to the
+# palm: the solver gets a column it cannot move (limits 0..0), which costs nothing and means the
+# IK target is the palm rather than the wrist.
+#
+# The climb needs these because the feet alone cannot hold the robot. Measured: a knee-clearing
+# posture puts the CoM 331 mm behind the support edge and demands 125 N m from a 50 N m ankle.
+# Hands on the rails add support, which is how a person climbs a step ladder.
+# ---------------------------------------------------------------------------------------------
+LEFT_ARM = [
+    ('left_shoulder_pitch_joint', (0.0039563, 0.10022, 0.24778), (0.27931, 5.4949e-05, -0.00019159), (0, 1, 0), (-3.0892, 2.6704)),
+    ('left_shoulder_roll_joint', (0, 0.038, -0.013831), (-0.27925, 0, 0), (1, 0, 0), (-1.5882, 2.2515)),
+    ('left_shoulder_yaw_joint', (0, 0.00624, -0.1032), (0, 0, 0), (0, 0, 1), (-2.6180, 2.6180)),
+    ('left_elbow_joint', (0.015783, 0, -0.080518), (0, 0, 0), (0, 1, 0), (-1.0472, 2.0944)),
+    ('left_wrist_roll_joint', (0.1, 0.00188791, -0.01), (0, 0, 0), (1, 0, 0), (-1.9722, 1.9722)),
+    ('left_wrist_pitch_joint', (0.038, 0, 0), (0, 0, 0), (0, 1, 0), (-1.6144, 1.6144)),
+    ('left_wrist_yaw_joint', (0.046, 0, 0), (0, 0, 0), (0, 0, 1), (-1.6144, 1.6144)),
+    ('left_hand_palm_joint', (0.0415, 0.003, 0), (0, 0, 0), (0, 0, 1), (0.0, 0.0)),  # fixed: carries FK to the palm
+]
+RIGHT_ARM = [
+    ('right_shoulder_pitch_joint', (0.0039563, -0.10021, 0.24778), (-0.27931, 5.4949e-05, 0.00019159), (0, 1, 0), (-3.0892, 2.6704)),
+    ('right_shoulder_roll_joint', (0, -0.038, -0.013831), (0.27925, 0, 0), (1, 0, 0), (-2.2515, 1.5882)),
+    ('right_shoulder_yaw_joint', (0, -0.00624, -0.1032), (0, 0, 0), (0, 0, 1), (-2.6180, 2.6180)),
+    ('right_elbow_joint', (0.015783, 0, -0.080518), (0, 0, 0), (0, 1, 0), (-1.0472, 2.0944)),
+    ('right_wrist_roll_joint', (0.1, -0.00188791, -0.01), (0, 0, 0), (1, 0, 0), (-1.9722, 1.9722)),
+    ('right_wrist_pitch_joint', (0.038, 0, 0), (0, 0, 0), (0, 1, 0), (-1.6144, 1.6144)),
+    ('right_wrist_yaw_joint', (0.046, 0, 0), (0, 0, 0), (0, 0, 1), (-1.6144, 1.6144)),
+    ('right_hand_palm_joint', (0.0415, -0.003, 0), (0, 0, 0), (0, 0, 1), (0.0, 0.0)),  # fixed: carries FK to the palm
+]
+WAIST = [
+    ('waist_yaw_joint', (0, 0, 0), (0, 0, 0), (0, 0, 1), (-2.6180, 2.6180)),
+    ('waist_roll_joint', (-0.0039635, 0, 0.044), (0, 0, 0), (1, 0, 0), (-0.5200, 0.5200)),
+    ('waist_pitch_joint', (0, 0, 0), (0, 0, 0), (0, 1, 0), (-0.5200, 0.5200)),
+]
+
+ARM_CHAIN = {"left": LEFT_ARM, "right": RIGHT_ARM}
+
+# arm down and slightly forward -- the posture the climb used before the hands had a job
+DEFAULT_ARM = np.array([0.25, 0.22, 0.0, 0.45, 0.0, 0.0, 0.0, 0.0])
+ARM_SEEDS = (DEFAULT_ARM,
+             np.array([0.0, 0.35, 0.0, 1.2, 0.0, 0.0, 0.0, 0.0]),    # elbow up, reaching out
+             np.array([-0.6, 0.25, 0.0, 1.5, 0.0, 0.0, 0.0, 0.0]))   # reaching forward and high
+
+
+def mirror_arm_seed(q, side):
+    """Shoulder roll and the yaw joints flip sign on the right arm."""
+    q = np.array(q, float).copy()
+    if side == "right":
+        q[1] = -q[1]; q[2] = -q[2]; q[4] = -q[4]; q[6] = -q[6]
+    return q
+
+
+def torso_frame(waist_q):
+    """Pose of torso_link in the PELVIS frame, given (waist_yaw, waist_roll, waist_pitch)."""
+    R = np.eye(3); p = np.zeros(3)
+    for (_nm, xyz, rpy, ax, _lim), q in zip(WAIST, waist_q):
+        p = p + R @ np.asarray(xyz, float)
+        R = R @ rpy_mat(*rpy) @ axis_mat(ax, float(q))
+    return R, p
+
+
+def ik_arm(q0, p_des_torso, chain, iters=160, lam=0.10):
+    """Place the PALM at a point in the torso frame. Position only -- a hand closing on a round
+    rail does not care how the wrist is rolled, and spending the orientation DoF on a grip angle
+    we have not measured would only fight the reach."""
+    best = None
+    for seed in [np.array(q0, float)] + [mirror_arm_seed(s, "right" if chain is RIGHT_ARM else "left")
+                                         for s in ARM_SEEDS]:
+        q = np.array(seed, float)
+        lo = np.array([c[4][0] for c in chain]); hi = np.array([c[4][1] for c in chain])
+        for _ in range(iters):
+            J, R, p = leg_jacobian(q, chain)
+            e = p_des_torso - p
+            if np.linalg.norm(e) < 1e-4:
+                break
+            Jp = J[:3]
+            dq = Jp.T @ np.linalg.solve(Jp @ Jp.T + (lam ** 2) * np.eye(3), e)
+            q = np.clip(q + np.clip(dq, -0.25, 0.25), lo, hi)
+        _, _, p = leg_jacobian(q, chain)
+        ep = float(np.linalg.norm(p_des_torso - p))
+        if best is None or ep < best[1]:
+            best = (q, ep)
+        if ep < 1e-3:
+            break
+    return best
+
+
+# The grip line, fitted from the 55 mm collider maps themselves (the geometry physics actually
+# sees) rather than from render-mesh vertices -- that mesh carries vertices only at feature
+# corners, so sampling it by height finds rail where there is a corner and nothing in between.
+#
+# It is PIECEWISE. Below the platform the front rails slope with the tread stack: the fitted
+# 0.3694 matches the tread run/rise (0.0839/0.2347 = 0.357). Above it the guard posts carry on to
+# z = 1.85 at a shallower 0.3041, so a single line extrapolated from the lower rail misses the top
+# of the structure by 37 mm. The two fits agree to 9 mm where they meet.
+# Worst residual 51 mm, mean 14 mm, most of which is the 25-50 mm probe grid.
+RAIL_Z_KNEE = 1.15
+RAIL_LOW = (-0.4618, 0.3694, 0.220)      # y0, dy/dz, |x|
+RAIL_HIGH = (-0.3778, 0.3041, 0.225)
+RAIL_Z_MIN, RAIL_Z_MAX = 0.30, 1.80
+
+# kept for callers that want the single-line form
+RAIL_X, RAIL_Y0, RAIL_DYDZ = RAIL_LOW[2], RAIL_LOW[0], RAIL_LOW[1]
+
+
+def rail_point(z, side):
+    """Grip point on the ladder's front rail / guard post, in LADDER-local coordinates."""
+    y0, dydz, x = RAIL_LOW if z <= RAIL_Z_KNEE else RAIL_HIGH
+    return np.array([x if side == "right" else -x, y0 + dydz * z, z])
+
+
+def rail_nearest_z(p_local):
+    """Height on the grip line closest to a point, solved per segment and clamped to the rail."""
+    best = None
+    for y0, dydz, _x, lo, hi in ((*RAIL_LOW, RAIL_Z_MIN, RAIL_Z_KNEE),
+                                 (*RAIL_HIGH, RAIL_Z_KNEE, RAIL_Z_MAX)):
+        z = (p_local[2] + dydz * (p_local[1] - y0)) / (1.0 + dydz ** 2)
+        z = float(min(max(z, lo), hi))
+        d = math.hypot(y0 + dydz * z - p_local[1], z - p_local[2])
+        if best is None or d < best[1]:
+            best = (z, d)
+    return best[0]

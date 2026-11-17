@@ -20,7 +20,9 @@ import argparse, json, math, os, sys
 import numpy as np
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from retarget_clearance import (RIGHT_LEG, leg_fk, ik_leg, arc_path, quat_to_mat,  # noqa: E402
+from retarget_clearance import (ARM_CHAIN, DEFAULT_ARM, ik_arm, rail_nearest_z,  # noqa: E402
+                                mirror_arm_seed, rail_point, torso_frame,
+                                RIGHT_LEG, leg_fk, ik_leg, arc_path, quat_to_mat,  # noqa: E402
                                 quat_mul, yaw_quat, smoothstep)
 
 LEFT_LEG = [
@@ -75,6 +77,35 @@ def main() -> int:
                     help="override FOOT_HALF_STANCE (lateral half-separation on the tread)")
     ap.add_argument("--lean", type=float, default=None,
                     help="override PELVIS_INTO_LADDER (negative = stand further out)")
+    ap.add_argument("--rail-hands", action="store_true",
+                    help="grip the ladder's front rails. The feet alone cannot hold a posture "
+                         "that clears the knee: measured, that needs 125 N m from a 50 N m ankle. "
+                         "Hands on the rails put the ladder in the support set, which is how a "
+                         "person climbs one.")
+    ap.add_argument("--waist-yaw", type=float, default=0.0,
+                    help="degrees of torso rotation toward the GRIPPING hand, which is the one "
+                         "opposite the stepping foot -- how a person climbs. Yaw carries that "
+                         "shoulder forward by about 0.10*sin(yaw), which is what buys back the "
+                         "reach a knee-clearing lean costs.")
+    ap.add_argument("--grip-offset", type=float, default=0.120,
+                    help="m to stand the palm off the rail's AXIS, toward the robot. The grip "
+                         "line was fitted from the 55 mm occupancy centroid, which is the centre "
+                         "of the tube, not its surface -- commanding the palm there drives the "
+                         "hand through the rail (measured: 110 kN on the palm link).")
+    ap.add_argument("--rail-zmin", type=float, default=0.30)
+    ap.add_argument("--rail-zmax", type=float, default=1.80,
+                    help="highest grip on the front rail, ladder-local z")
+    ap.add_argument("--waist-pitch", type=float, default=None,
+                    help="rad of forward torso pitch (G1 waist_pitch limit +-0.52). Leaning the "
+                         "pelvis back buys knee clearance and spends balance one-for-one, because "
+                         "the torso rides along with it. Pitching the torso FORWARD puts the upper "
+                         "body's mass back over the feet, which is how a person climbs: hips back, "
+                         "chest forward, hands on the rails.")
+    ap.add_argument("--toe-out", type=float, default=0.0,
+                    help="degrees of toe-out per foot. The leg's ONLY yaw DOF is hip_yaw (the "
+                         "ankle has roll and pitch, no yaw), so commanding foot yaw forces the "
+                         "hip to rotate the whole leg plane -- which swings the knee's bow out "
+                         "of the ladder instead of into it. Costs nothing in balance.")
     ap.add_argument("--out-bulge", type=float, default=0.0,
                     help="swing the foot this far OUT from the ladder mid-step, m")
     ap.add_argument("--check", action="store_true", help="measure leg-link clearance offline")
@@ -87,7 +118,10 @@ def main() -> int:
     ap.add_argument("--no-platform", dest="platform", action="store_false")
     a = ap.parse_args()
 
-    global PELVIS_INTO_LADDER, FOOT_HALF_STANCE
+    global PELVIS_INTO_LADDER, FOOT_HALF_STANCE, POSTURE_WAIST_ARMS
+    if a.waist_pitch is not None:
+        POSTURE_WAIST_ARMS = list(POSTURE_WAIST_ARMS)
+        POSTURE_WAIST_ARMS[2] = a.waist_pitch          # waist_yaw, waist_roll, waist_PITCH
     if a.lean is not None:
         PELVIS_INTO_LADDER = a.lean
     if a.stance is not None:
@@ -152,18 +186,77 @@ def main() -> int:
 
     dof_rows, root_p_rows, root_q_rows, steps_meta = [], [], [], []
 
+    # The leg has ONE budget, and a lean spends it. Standing 0.18 m out while still asking for
+    # 0.740 m of height needs sqrt(0.180^2 + 0.740^2) = 0.762 m from a leg that spans 0.753: the
+    # solver cannot reach it, saturates, and returns the SAME residual whatever else is asked of
+    # it -- which is exactly what the first sweep produced (9.30 mm in every lean -0.18 row,
+    # identical across stance, margin and bulge). Those rows scored well only because a robot at
+    # full stretch barely touches the ladder. Lower the pelvis until both feet are inside the
+    # budget, so a lean costs height, which is real, instead of reachability, which is a lie.
+    REACH_USABLE = 0.98
+    clamp_mm = [0.0]
+
     def pelvis_for(fL, fR):
-        """Pelvis over the LOWEST foot; the higher leg simply bends more, which is always legal."""
+        """Pelvis over the LOWEST foot, then lowered until both feet are within leg reach."""
         low = min(fL[2], fR[2])
         mean_xy = (fL[:2] + fR[:2]) / 2.0
         p = np.array([mean_xy[0], mean_xy[1], low + PELVIS_ABOVE_FOOT])
-        return p + Rroot @ np.array([PELVIS_INTO_LADDER, 0.0, 0.0])
+        p = p + Rroot @ np.array([PELVIS_INTO_LADDER, 0.0, 0.0])
+        lim = PELVIS_MAX_ABOVE_FOOT * REACH_USABLE
+        z_want = p[2]
+        for f in (fL, fR):
+            dxy = float(np.linalg.norm(p[:2] - f[:2]))
+            p[2] = min(p[2], f[2] + math.sqrt(max(lim * lim - dxy * dxy, 1e-6)))
+        clamp_mm[0] = max(clamp_mm[0], (z_want - p[2]) * 1000.0)
+        return p
+
+    # ---- hands on the rails ------------------------------------------------------------------
+    # The torso is where the arms hang from, and it is the child of waist_pitch -- so pitching the
+    # chest forward both moves the CoM toward the feet AND carries the shoulders toward the rails.
+    waist_q = list(POSTURE_WAIST_ARMS[:3])     # mutated per frame; yaw alternates with the step
+    q_arm = {s_: mirror_arm_seed(DEFAULT_ARM, s_) for s_ in ("left", "right")}
+    hand_err = {"left": 0.0, "right": 0.0}
+    grip_ok = {"left": 0, "right": 0}
+    grip_n = {"left": 0, "right": 0}
+    grip_z = {"left": [], "right": []}
+
+    def place_hands(pelvis):
+        """Grip the nearest reachable point on each front rail.
+
+        The rail is a straight line in the ladder's (y, z) plane, so the best grip for a given
+        shoulder is the foot of the perpendicular from that shoulder onto the line -- solved in
+        closed form, then clamped to where the rail actually exists. Which rail is which is taken
+        from the sign of the shoulder's own ladder-local x, not from a hard-coded hand of the
+        ladder's yaw.
+        """
+        R_t_p, p_t_p = torso_frame(waist_q)
+        Rtw = Rroot @ R_t_p
+        ptw = pelvis + Rroot @ p_t_p
+        for side in ("left", "right"):
+            sh_w = ptw + Rtw @ np.asarray(ARM_CHAIN[side][0][1], float)
+            sh_l = Rl.T @ (sh_w - lp)
+            z = float(np.clip(rail_nearest_z(sh_l), a.rail_zmin, a.rail_zmax))
+            tgt_l = rail_point(z, "right" if sh_l[0] > 0 else "left")
+            tgt_l[1] -= a.grip_offset          # stand off the tube toward the climber
+            q, ep = ik_arm(q_arm[side], Rtw.T @ ((Rl @ tgt_l + lp) - ptw), ARM_CHAIN[side])
+            q_arm[side] = q
+            hand_err[side] = max(hand_err[side], ep)
+            if ep < 0.015:
+                grip_ok[side] += 1
+            grip_n[side] += 1
+            grip_z[side].append(z)
+        return q_arm
 
     def emit(pelvis, qL, qR):
         row = np.zeros(29)
         row[LEG_COLS["left"]] = qL
         row[LEG_COLS["right"]] = qR
         row[12:29] = POSTURE_WAIST_ARMS
+        row[12:15] = waist_q
+        if a.rail_hands:
+            arms = place_hands(pelvis)
+            row[15:22] = arms["left"][:7]
+            row[22:29] = arms["right"][:7]
         dof_rows.append(row); root_p_rows.append(pelvis); root_q_rows.append(qroot)
 
     # A foot standing on a tread wants to be LEVEL. Seeding the target orientation from the
@@ -173,9 +266,22 @@ def main() -> int:
     # matches the G1's default stance (hip -0.312 + knee 0.669 + ankle -0.363 = -0.006 rad).
     R_LEVEL = np.eye(3)
 
+    # Toe-out. The knee does not sit on the hip-ankle line, it bows off it -- 83 mm at the
+    # nominal stance, 152 mm on a bent swing leg -- and with the foot square that bow points
+    # straight at the tread. Yawing the foot rotates the bow out to the side instead, and it
+    # costs nothing in balance, which is the one currency a lean cannot spend (measured: at
+    # lean -0.42 the CoM sits 251 mm outside the support and the ankles are 2.5x over).
+    # A yaw about pelvis z keeps the sole level, so the foot is still flat on the tread.
+    TOE = math.radians(a.toe_out)
+
+    def R_foot(side):
+        t = TOE if side == "left" else -TOE      # toes away from the midline
+        c, sn = math.cos(t), math.sin(t)
+        return np.array([[c, -sn, 0.0], [sn, c, 0.0], [0.0, 0.0, 1.0]])
+
     def solve(pelvis, side, p_des, q_seed):
         p_pelvis = Rroot.T @ (p_des - pelvis)
-        q, ep, er = ik_leg(q_seed, p_pelvis, R_LEVEL, LEG_CHAIN[side])
+        q, ep, er = ik_leg(q_seed, p_pelvis, R_foot(side), LEG_CHAIN[side])
         return q, ep, er
 
     pel_now = pelvis_for(foot_now["left"], foot_now["right"])
@@ -187,6 +293,15 @@ def main() -> int:
         dof_rows[-1][LEG_COLS["right"]] = q_now["right"]
 
     worst_p = worst_r = 0.0
+    knee_fwd = {"left": -9.9, "right": -9.9}      # max +x (toward the ladder) in the pelvis frame
+    knee_lat = {"left": 0.0, "right": 0.0}
+
+    def track_knee(side):
+        _, _, orig, _ = leg_fk(q_now[side], LEG_CHAIN[side])
+        k = orig[3]                                # knee joint origin, pelvis frame
+        knee_fwd[side] = max(knee_fwd[side], float(k[0]))
+        knee_lat[side] = max(knee_lat[side], abs(float(k[1])))
+
     for side, ti in plan:
         p0 = foot_now[side].copy(); p1 = foot_target(ti, side)
         path = arc_path(p0, p1, clear_height(ti), a.step_frames,
@@ -199,7 +314,12 @@ def main() -> int:
         pel_end = pelvis_for(fL_end, fR_end)
         pel_start = pel_now.copy()
         step_worst = (0.0, "", "", -1, 0.0, 0.0)
+        yaw_t = math.radians(a.waist_yaw) * (1.0 if side == "left" else -1.0)
         for k in range(a.step_frames):
+            # ease in over the first third, hold, ease out over the last third
+            f = k / max(a.step_frames - 1, 1)
+            ramp = smoothstep(min(f / 0.33, 1.0)) * (1.0 - smoothstep(max((f - 0.67) / 0.33, 0.0)))
+            waist_q[0] = yaw_t * ramp
             fsw, fst = path[k], foot_now[stance]
             pel = pel_start + (pel_end - pel_start) * smoothstep(k / max(a.step_frames - 1, 1))
             emit(pel, q_now["left"], q_now["right"])
@@ -211,6 +331,8 @@ def main() -> int:
                 worst_p = max(worst_p, ep); worst_r = max(worst_r, er)
             dof_rows[-1][LEG_COLS["left"]] = q_now["left"]
             dof_rows[-1][LEG_COLS["right"]] = q_now["right"]
+            track_knee("left"); track_knee("right")
+        waist_q[0] = 0.0
         foot_now[side] = p1
         pel_now = pel_end
         steps_meta.append({"swing": side, "tread": ti, "f0": f0, "f1": len(dof_rows) - 1,
@@ -227,6 +349,22 @@ def main() -> int:
         dof_rows[-1][LEG_COLS["left"]] = q_now["left"]
         dof_rows[-1][LEG_COLS["right"]] = q_now["right"]
 
+    if a.rail_hands:
+        gl, gr = grip_z["left"], grip_z["right"]
+        fl = 100.0 * grip_ok["left"] / max(grip_n["left"], 1)
+        fr = 100.0 * grip_ok["right"] / max(grip_n["right"], 1)
+        both = 100.0 * max(grip_ok["left"], grip_ok["right"]) / max(grip_n["left"], 1)
+        print(f"[HANDS ] rail grip: worst palm residual {hand_err['left']*1000:.1f} mm (L) / "
+              f"{hand_err['right']*1000:.1f} mm (R); grip height {min(gl+gr):.3f}..{max(gl+gr):.3f} m")
+        print(f"[HANDS ] on the rail (within 15 mm): left {fl:.0f}%, right {fr:.0f}%, "
+              f"at least one hand {both:.0f}% of frames")
+    print(f"[POSE  ] waist pitch {POSTURE_WAIST_ARMS[2]:+.3f} rad "
+          f"({math.degrees(POSTURE_WAIST_ARMS[2]):+.1f} deg forward)")
+    print(f"[KNEE  ] toe-out {a.toe_out:.0f} deg -> knee reaches {knee_fwd['left']*1000:+.0f} mm "
+          f"(L) / {knee_fwd['right']*1000:+.0f} mm (R) toward the ladder, "
+          f"lateral {knee_lat['left']*1000:.0f}/{knee_lat['right']*1000:.0f} mm")
+    print(f"[PELVIS] reach clamp lowered the pelvis by at most {clamp_mm[0]:.1f} mm "
+          f"(lean {PELVIS_INTO_LADDER:+.3f} m costs height out of the same leg budget)")
     print(f"[IK    ] worst residual over the whole climb: position {worst_p*1000:.2f} mm, "
           f"rotation {math.degrees(worst_r):.2f} deg")
     dof = np.array(dof_rows, np.float32)
