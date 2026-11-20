@@ -246,3 +246,25 @@ Flags: rebuild 66's + `--no_sink`.
 - Static, with hands: no hold at steps 145-165, 565-580, 1155-1165 and 1340-1345 (weight 20-45 mm
   behind the single stance foot just after it lands), and in the brief windows where neither foot
   counts as planted.
+
+Tried after rebuild 67, on the legs alone: `--left_extra` (the leading foot a further 20 or 40 mm
+back, pelvis unchanged) left the shin graze at 1.8 s and 1.6 s, and at 40 mm the leg could not
+reach at the top-out. Not kept.
+
+## Rebuild 67 staged for training, not submitted (2026-11-20)
+
+- Trains for two iterations in a local 64-environment smoke test.
+- The clip and its anchors are on Koa next to rebuild 60's; job scripts
+  `ladderman_port/koa/lm_train_edge67.sbatch` (ece605) and `lm_train_edge67h.sbatch`
+  (kill-shared, H100/H200) are copies of the rebuild 60 scripts with the clip changed.
+- Resume checked locally on rebuild 67: a 5-iteration run saved `checkpoint_2`, `checkpoint_4`; a
+  second run given `checkpoint_4.pt` printed `[iter 4]` first and saved `checkpoint_5.pt`. The job
+  scripts' checkpoint glob skips `checkpoint_final.pt`.
+
+## Rebuild 60 training, first hours
+
+`lm-edge60` on ece605: 850 of 7,500 iterations after 2 h 38 min of training, about 11 s per
+iteration, checkpoints at 300 and 600. That pace needs about 23-24 h, so it may stop just short
+of 7,500 at the partition's 24 h cap; resubmitting the same script finishes it. ece605 allows one
+submitted job per user, so the follow-up cannot be queued in advance. `lm-edge60h` was still
+pending on priority.
