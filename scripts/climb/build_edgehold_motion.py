@@ -121,6 +121,8 @@ ap.add_argument("--level_pitch", type=float, default=0.0,
                 help="0..1: remove this much of each foot's TOE-DOWN pitch, with the ankle-pitch joint alone, "
                      "before the feet are grounded. Unlike --flat_feet this is applied to every frame, so "
                      "the grounding pass measures the soles as they will actually be")
+ap.add_argument("--release_up", type=float, nargs=3, default=[-0.03, 0.0, 0.15],
+                help="m: where the hand goes first when it lets go of the handrail, relative to its hold")
 ap.add_argument("--ground_back", type=float, default=0.0,
                 help="m: stand this much further from the ladder while on the GROUND (the start)")
 ap.add_argument("--swing_hip_back", type=float, default=0.0,
@@ -1323,8 +1325,8 @@ def plan_arm(side):
                 set_spec(A[2], side, i0)
                 cA = roll_contact(A[2], A[3], CUR["lam"]) if A[2] in ROLLED else A[3]
                 k1 = max(1, min(int(0.5 * fps), n - 2))
-                q_up = solve_palm(min(i0 + k1, T - 1), side, cA + np.array([-0.03, 0.0, 0.15]), Q[i0], iters=40)[0]
-                q_up = steer_n(min(i0 + k1, T - 1), side, cA + np.array([-0.03, 0.0, 0.15]), q_up)
+                q_up = solve_palm(min(i0 + k1, T - 1), side, cA + np.array(a.release_up), Q[i0], iters=40)[0]
+                q_up = steer_n(min(i0 + k1, T - 1), side, cA + np.array(a.release_up), q_up)
                 k2 = k1 + int(1.2 * fps)
                 f = PchipInterpolator([0, k1, k2], np.array([Q[i0], q_up, REST[side]]), axis=0)
                 Q[A[1]:] = f(np.minimum(np.arange(1, n + 1), k2))

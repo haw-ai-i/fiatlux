@@ -169,3 +169,33 @@ Flags: shared + `--tread_back 0.055 0.055 0.055 0.07 --ground_back 0.055 --level
   tread's edge; under load the foot rotates flat.
 - Static, with hands: no hold exists at steps 150-165, 565-595 and 1330-1345 (weight 24-33 mm
   behind the single stance foot just after it lands).
+
+## Rebuild 64: toes level too (all seven frozen poses hold)
+
+Flags: rebuild 63's + `--level_pitch 1.0`.
+
+- Builder: toe-down pitch removed on the right foot (was up to 44 deg in swing, 7-17 deg planted);
+  the left keeps up to 15 deg where its ankle-pitch joint reaches the limit (-0.85 of -0.87 rad).
+  The pelvis rides a median 46 mm lower, because a level sole puts the ankle closer to the tread.
+- Gate: REJECTED on one line, the torso (right forearm -10.5 mm at step 1384, the release).
+  Hands: clean.
+- Legs: right leg clean. Left shin grazes the next tread for about 0.5 s on each of the four left
+  steps (2.1 s in total, up to 26 mm); left thigh 0.4 s. Stance itself is clean.
+- Torso: right wrist-roll link up to 22 mm inside at steps 741-743 and 1375-1408.
+- Scan: a foot pushed as it lands or leaves at steps 150-160, 880 and 1410-1420 (4-14 kN); left
+  shin 2,328 N at step 960; right wrist against the torso at 1380-1400 (about 580 N).
+- Frozen: 7 of 7 hold 3 s, the first clip to do so with the stance legs clear of the ladder. Feet
+  settle 22-33 mm (rebuild 63: 41-49 mm) and the pelvis 8-36 mm. The standing start still leans
+  225 mm forward onto the ladder.
+- Static, with hands: no hold at steps 145-165, 565-580, 1155-1165, 1340-1345 (weight 20-45 mm
+  behind the single stance foot just after it lands).
+
+Where the shin graze comes from: the left foot lands on the next tread while the hip is still low
+and about 100 mm behind the ankle, which puts the knee 150 mm ahead of the ankle, at the nose of
+the tread above. It clears as the hip rises. Tried on the legs alone:
+
+| Variant | Left shin deeper than 3 mm | Notes |
+|---|---|---|
+| `--swing_hip_up 0.03` / `0.05` (option since removed) | 2.0 s / 1.9 s | trailing leg cannot reach by 70-137 mm |
+| 65/65/65/75 mm back | 1.4 s | none deeper than 20 mm; this is rebuild 65 |
+| 75/75/75/80 mm back | 0.7 s | only 51-71 mm of sole left on the tread |
