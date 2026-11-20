@@ -117,3 +117,34 @@ Two cold-start runs of the LadderMan teacher on Koa, job scripts in `ladderman_p
 Both: 4,096 environments, 7,500 iterations, checkpoint every 300. On a resume the script reads the
 newest `checkpoint_N.pt` of its own run family and trains only the remaining 7,500 - N iterations.
 Rebuild 60's known weak points (three frozen poses fall, little sole on tread 4) apply.
+
+## Rebuild 62: rejected (toe levelling, release out to the side)
+
+Flags: shared + `--tread_back 0.045 0.045 0.045 0.05 --ground_back 0.045 --flat_feet 1.0`, with a
+release path that went out to the side before coming down to rest.
+
+- Gate: REJECTED (arm speed 6.20 rad/s, torso -21 mm, moving hand 19 mm from the ladder).
+- Hands: 4 grazes (thumbs at the release, a finger on a side rail at step 219).
+- Legs: worse than 61. Left shin 3.2 s deeper than 3 mm (up to 30 mm), left thigh 0.5 s. Levelling
+  the toes lowers the body and the shin leans further.
+- Scan: a foot pushed with 0.6-12.5 kN at 30 of 148 poses. Levelling during landing and lift-off
+  puts the sole inside the tread.
+- Frozen: the same three poses fall as in rebuild 60.
+- Outcome: `--flat_feet` stays as an option but is not used; the release change is reverted.
+
+## Why the frozen poses fall: sideways, onto the left foot
+
+Read from the recordings of the frozen test on rebuilds 52 and 60:
+
+- The three poses that fall in rebuild 60 all fall to the robot's LEFT (pelvis +255 to +704 mm in y).
+  Rebuild 52 drifted the same way by 50-64 mm and was stopped by the shins in the treads.
+- The feet are only 95-105 mm apart, and the body's weight sits at y +37..+52 mm, over the left
+  foot (left ankle +44..+54, right -40..-60). The base clip has the same.
+- Both ankle-roll joints are pinned at their +-0.26 rad limit for 88% of the clip and the soles are
+  tilted sideways (left 4-6 deg, right 11-14 deg): the feet stand on their edges.
+
+Two builder options follow from this: `--level_roll` (remove the sideways tilt with the ankle-roll
+joint; ankle roll falls to +0.22 / -0.14 rad) and `--centre_weight` (move the pelvis sideways to
+the midpoint of the feet while both are planted, feet held; backs off where ankle roll would pass
+its limit). Asking for the weight over the single stance foot as well needs 100 mm of pelvis
+travel and ankle roll past its limit, so that is not done.

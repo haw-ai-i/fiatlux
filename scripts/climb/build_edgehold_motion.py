@@ -109,6 +109,14 @@ ap.add_argument("--tread_back", type=float, nargs=4, default=[0.0, 0.0, 0.0, 0.0
 ap.add_argument("--flat_feet", type=float, default=0.0,
                 help="0..1: how far a PLANTED foot is levelled. The base clip stands toe-down by 7-17 deg "
                      "(a human foot on a rung), which on a flat tread is a line contact along the nose")
+ap.add_argument("--centre_weight", type=float, default=0.0,
+                help="0..1: move the pelvis SIDEWAYS so the body's weight is midway between two planted "
+                     "feet and over the stance foot when only one is planted (feet stay where they are)")
+ap.add_argument("--centre_cap", type=float, default=0.06, help="m: largest sideways pelvis move")
+ap.add_argument("--level_roll", type=float, default=0.0,
+                help="0..1: remove this much of each foot's SIDEWAYS tilt, with the ankle-roll joint alone. "
+                     "The base clip has both ankle rolls pinned at their +-0.26 rad limit for 88% of the "
+                     "climb and the soles tilted 4-14 deg sideways: the feet stand on their edges")
 ap.add_argument("--ground_back", type=float, default=0.0,
                 help="m: stand this much further from the ladder while on the GROUND (the start)")
 ap.add_argument("--swing_hip_back", type=float, default=0.0,
@@ -263,6 +271,26 @@ def planted_mask(fp, fl):
     return m, runs(m)
 
 
+if a.level_roll > 0:
+    _lat = np.array([0.0, 1.0, 0.0])
+    for sd in SIDES:
+        col = jn.index(f"{sd}_ankle_roll_joint")
+        foot = f"{sd}_ankle_roll_link"
+        jp = d["joint_pos"]
+        t0 = K.qrot(K.fk_all(PP, PQ, jp, jn)[foot][1], _lat)[:, 2]
+        want = (1.0 - a.level_roll) * t0
+        r_before = jp[:, col].copy()
+        for _ in range(12):                                # one joint, one number per frame: Newton
+            t1 = K.qrot(K.fk_all(PP, PQ, jp, jn)[foot][1], _lat)[:, 2]
+            jq = jp.copy(); jq[:, col] += 1e-4
+            g = (K.qrot(K.fk_all(PP, PQ, jq, jn)[foot][1], _lat)[:, 2] - t1) / 1e-4
+            jp[:, col] += np.clip((want - t1) / np.where(np.abs(g) < 1e-3, 1e-3, g), -0.1, 0.1)
+        t2 = K.qrot(K.fk_all(PP, PQ, jp, jn)[foot][1], _lat)[:, 2]
+        lo_, hi_ = K.limits(f"{sd}_ankle_roll_joint")
+        print(f"[level] {sd} foot sideways tilt {np.degrees(np.arcsin(t0)).min():+.1f}..{np.degrees(np.arcsin(t0)).max():+.1f} deg -> "
+              f"{np.degrees(np.arcsin(t2)).min():+.1f}..{np.degrees(np.arcsin(t2)).max():+.1f}; ankle roll {r_before.min():+.2f}..{r_before.max():+.2f} -> "
+              f"{jp[:, col].min():+.2f}..{jp[:, col].max():+.2f} rad (limits {lo_:+.2f}..{hi_:+.2f})")
+
 for _gpass in range(3 if a.ground_feet else 0):          # re-measure and correct again: converges to < 1 mm
     _ref = K.fk_all(PP, PQ, d["joint_pos"], jn)
     _cf, _pm = {}, {}
@@ -403,6 +431,97 @@ for _gpass in range(3 if a.ground_feet else 0):          # re-measure and correc
         print(f"[feet ] {sd}: leg re-solved to {np.abs(resid(jp)[:, :2]).max()*1000:.2f} mm; knee {kn.min():.2f}..{kn.max():.2f} rad "
               f"(limits {lo_k:.2f}..{hi_k:.2f})")
     print(f"[feet ] pelvis lowered by {(-cp).min()*1000:.0f}..{(-cp).max()*1000:.0f} mm (median {np.median(-cp)*1000:.0f})")
+
+# ---- centre the weight sideways ----------------------------------------------------------------
+# The base clip is a human's dynamic climb: the feet are only ~100 mm apart and the body's weight
+# rides over the LEFT foot nearly the whole way up (centre of mass at y +37..+52 mm, left ankle at
+# +44..+54, right at -40..-60). Every pause freezes that pose. Measured in the simulator on rebuild
+# 60: the three frozen poses that fall all fall SIDEWAYS, to the left (pelvis +255..+704 mm in y).
+if a.centre_weight > 0 and a.ground_feet:
+    _mass = json.loads((pathlib.Path(__file__).parent / "g1_dex3_mass.json").read_text())
+    _ref0 = K.fk_all(PP, PQ, d["joint_pos"], jn)
+    _mb = [n for n in _ref0 if n in _mass]
+    _mw = np.array([_mass[n]["mass"] for n in _mb])
+
+    def _com_y():
+        o = K.fk_all(PP, PQ, d["joint_pos"], jn)
+        return sum(w_ * o[n][0][:, 1] for n, w_ in zip(_mb, _mw)) / _mw.sum()
+
+    _ft = {sd: (_ref0[f"{sd}_ankle_roll_link"][0].copy(), _ref0[f"{sd}_ankle_roll_link"][1].copy()) for sd in SIDES}
+    pl, pr = _pm["left"], _pm["right"]
+    ly, ry = _ft["left"][0][:, 1], _ft["right"][0][:, 1]
+    # Only while BOTH feet are planted. Asking for the weight over the single stance foot as well
+    # needs the pelvis 100 mm sideways and ankle roll past its 0.26 rad limit (tried); a step is
+    # dynamic anyway, the long two-footed holds are where a centred pose matters.
+    _kc = np.hanning(int(0.50 * fps) | 1); _kc /= _kc.sum()
+    _sm = lambda x: np.convolve(np.pad(x, len(_kc) // 2, mode="edge"), _kc, mode="valid")
+    _c0 = _com_y()
+    _wd = _sm((pl & pr).astype(float))
+    tgt = _c0 + _wd * (0.5 * (ly + ry) - _c0)
+    _fwd, _lat = np.array([1.0, 0.0, 0.0]), np.array([0.0, 1.0, 0.0])
+    _PP0, _JP0 = PP.copy(), d["joint_pos"].copy()
+
+    def _centre(_C, say):
+        """Shift the pelvis (at most _C[t] sideways), feet held. -> (moved, ankle-roll excess [T])."""
+        PP[:] = _PP0; d["joint_pos"][:] = _JP0
+        _moved = np.zeros(T)
+        over = np.zeros(T)
+        for _it in range(3):
+            dy = np.clip(_sm(a.centre_weight * (tgt - _com_y())), -_C - _moved, _C - _moved)
+            PP[:, 1] += dy; _moved += dy
+            for sd in SIDES:
+                cols = [jn.index(f"{sd}_{t}_joint") for t in ("hip_roll", "hip_pitch", "knee", "ankle_pitch", "ankle_roll")]
+                foot = f"{sd}_ankle_roll_link"
+                tp, tq = _ft[sd]
+                tf, tl = K.qrot(tq, _fwd)[:, 2], K.qrot(tq, _lat)[:, 2]
+
+                def resid(jp):
+                    o = K.fk_all(PP, PQ, jp, jn)[foot]
+                    return np.concatenate([o[0] - tp, (K.qrot(o[1], _fwd)[:, 2] - tf)[:, None],
+                                           (K.qrot(o[1], _lat)[:, 2] - tl)[:, None]], 1)
+
+                jp = d["joint_pos"]
+                for _ in range(30):
+                    r0 = resid(jp)
+                    if np.abs(r0).max() < 2e-5:
+                        break
+                    J = np.zeros((T, 5, 5))
+                    for c_, col in enumerate(cols):
+                        jq = jp.copy(); jq[:, col] += 1e-4
+                        J[:, :, c_] = (resid(jq) - r0) / 1e-4
+                    dq = np.linalg.solve(J + 1e-6 * np.eye(5), -r0[:, :, None])[:, :, 0]
+                    jp[:, cols] += np.clip(dq, -0.15, 0.15)
+                if _it == 2:
+                    lo_a, hi_a = K.limits(f"{sd}_ankle_roll_joint")
+                    over = np.maximum(over, np.maximum(jp[:, cols[4]] - hi_a, lo_a - jp[:, cols[4]]) + 0.01)
+                if _it == 2 and say:
+                    rs = np.abs(resid(jp)[:, :3]).max()
+                    msg = []
+                    for t_, col in zip(("hip_roll", "ankle_roll"), (cols[0], cols[4])):
+                        lo_, hi_ = K.limits(f"{sd}_{t_}_joint")
+                        msg.append(f"{t_} {jp[:, col].min():+.2f}..{jp[:, col].max():+.2f} (limits {lo_:+.2f}..{hi_:+.2f})")
+                    print(f"[weight] {sd}: foot held to {rs*1000:.2f} mm; " + "; ".join(msg))
+        return _moved, np.maximum(over, 0.0)
+
+    _moved, _over = _centre(np.full(T, a.centre_cap), False)
+    if _over.max() > 0:
+        # Ankle roll is the limit: the base clip already stands at +-0.26 rad in places. Give back
+        # shift where it ran over (about 1.8 rad of roll per metre of shift), as a lower envelope.
+        _cap = np.clip(a.centre_cap - 1.4 * _over / 1.8, 0.0, a.centre_cap)
+        _raw = _cap.copy()
+        for _ in range(8):
+            _cap = np.minimum(_sm(_cap), _raw)
+        print(f"[weight] ankle roll ran {_over.max():.2f} rad over its limit at full shift; shift capped down to "
+              f"{_cap.min()*1000:.0f} mm on {(_cap < a.centre_cap - 1e-4).mean()*100:.0f}% of frames")
+        _moved, _over = _centre(_cap, True)
+    else:
+        _moved, _over = _centre(np.full(T, a.centre_cap), True)
+    _c1 = _com_y()
+    _dbl = pl & pr
+    _mid = 0.5 * (ly + ry)
+    print(f"[weight] pelvis moved sideways {_moved.min()*1000:+.0f}..{_moved.max()*1000:+.0f} mm; weight off the midpoint of "
+          f"the feet (both planted): was median {np.median(np.abs(_c0 - _mid)[_dbl])*1000:.0f} mm, max {np.abs(_c0 - _mid)[_dbl].max()*1000:.0f}; "
+          f"now median {np.median(np.abs(_c1 - _mid)[_dbl])*1000:.0f} mm, max {np.abs(_c1 - _mid)[_dbl].max()*1000:.0f}")
 
 # ---- crouch: lower the pelvis, keep the feet -----------------------------------------------
 if a.crouch > 0:
@@ -1200,15 +1319,7 @@ def plan_arm(side):
                 q_up = solve_palm(min(i0 + k1, T - 1), side, cA + np.array([-0.03, 0.0, 0.15]), Q[i0], iters=40)[0]
                 q_up = steer_n(min(i0 + k1, T - 1), side, cA + np.array([-0.03, 0.0, 0.15]), q_up)
                 k2 = k1 + int(1.2 * fps)
-                # ... then out to the side before coming down to rest: straight from above the
-                # handrail to the rest pose the wrist passes through the chest's collision hull
-                # (10-19 mm inside for 0.5 s, left arm).
-                km = k1 + int(0.6 * fps)
-                im = min(i0 + km, T - 1)
-                sg_ = 1.0 if side == "left" else -1.0
-                q_mid = solve_seeded(im, side, TORSO_P[im] + K.qrot(TORSO_Q[im], np.array([0.30, 0.22 * sg_, 0.12])),
-                                     np.zeros(3), extra=[q_up])[0]
-                f = PchipInterpolator([0, k1, km, k2], np.array([Q[i0], q_up, q_mid, REST[side]]), axis=0)
+                f = PchipInterpolator([0, k1, k2], np.array([Q[i0], q_up, REST[side]]), axis=0)
                 Q[A[1]:] = f(np.minimum(np.arange(1, n + 1), k2))
             continue
         keep = int(a.min_hold * fps)
