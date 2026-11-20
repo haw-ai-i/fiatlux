@@ -331,3 +331,42 @@ The H100/H200 nodes (`gn-09-19-00`, `gn-09-21-00` tried) hang this job at simula
 thread at 100% CPU, GPU idle, no log line after the `omni.graph.visualization` warning; three
 attempts, one left for 2 h 12 min. Rebuild 67 now runs as `lm-edge67h` on kill-shared with those
 nodes excluded and `no_mig` required.
+
+## Why the reference drops in the trainer: the hand was one convex wedge (2026-11-20)
+
+`ladderman_port/play_probe_drop.py` plays the reference open-loop from the training reset and prints
+support, pelvis error and per-hold hand forces step by step. Rebuild 67, 1,024 random phases.
+
+Ruled out, each by switching it off: reset noise, action delay, the zero action buffer at reset
+(the PD target is the default standing pose for the first 2-6 substeps), ankle stiffness (5x stiffer:
+vertical sag 44 -> 11 mm at step 10, backward drift unchanged at 59 mm), and any kinematic mismatch
+(robot bodies equal the clip's at the reset frame, median 0.0 mm).
+
+Found: on the first step each hand on tread 4 or the platform takes about 100 N pointing back and
+up (x -62, z +76 N median) and is thrown 47 mm back and 19 mm up within four steps; on the handrail
+10% of resets see over 4,000 N. Cause: the URDF importer puts all of a link's collision meshes under
+one `collisions` prim with `PhysxMeshMergeCollisionAPI`, so the rigid open Dex3 (wrist, palm, two
+fingers, thumb hanging 100 mm below the palm) is ONE convex hull -- PhysX reports a single shape,
+235 x 143 x 87 mm. The clip's holds sit 37 mm inside that hull; with one hull per hand part, as in
+the benchmark, they clear it by about 3 mm.
+
+Fix: `ladderman_port/g1_fiatlux.py` now spawns through a wrapper that, after URDF conversion, gives
+each collision mesh of the two hand links its own convex hull (9 shapes per hand link, 48 on the
+robot, was 32).
+
+Reference only, no noise / delay, rebuild 67, medians:
+
+| Step | Hands carry (% weight) before -> after | Pelvis back (mm) before -> after | Pelvis low (mm) before -> after |
+|---|---|---|---|
+| 4 | 1 -> 11 | 13 -> 2 | 14 -> 15 |
+| 10 | 2 -> 11 | 49 -> 6 | 31 -> 29 |
+| 25 | 0 -> 9 | 127 -> 5 | 44 -> 27 |
+
+Hand rule under reference playback at 20 steps (as shipped, with noise): counting toward
+termination in 63% of robots, was 89%; hands pressing over 5 N on tread 4 and platform 65-71%, was
+10-41%; on the handrail 34-39%, was 17-35%.
+
+Every teacher trained so far on the open Dex3 (rebuild 60, and the rebuild 67 / 69 runs started
+before this) trained against the wedge. An earlier version of the probe commanded a stale pose on
+the first step after reset; `cmd.update()` after `env.reset()` fixes it, and the numbers above are
+from the fixed probe.
