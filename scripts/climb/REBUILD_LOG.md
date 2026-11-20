@@ -91,3 +91,29 @@ Other things tried on the legs alone (no full clip):
 | same + `--swing_hip_back 0.02` | 1.1 s | easing the hips back does nothing |
 | 55/55/55/70 mm | 0.3 s | only the first step off the ground |
 | same + `--ground_back 0.055` | 0 s | this is rebuild 60 |
+
+## Rebuild 61: middle setting
+
+Flags: shared + `--tread_back 0.045 0.045 0.045 0.05 --ground_back 0.045`.
+
+- Gate: fails only the torso line by 0.9 mm (left forearm at step 1384, the release). Hands: clean.
+- Legs: right leg clean; left shin grazes the next tread mid-swing on each left step (0.1-0.5 s
+  each, up to 12 mm).
+- Torso: elbows clear; left wrist-roll link up to 19 mm inside at steps 218-231, 635-652, 1372-1402.
+- Static: 55-75 mm of sole on treads 1-3 and 39-53 mm on tread 4 (rebuild 60: 19-29 mm on tread 4).
+  With hands, no hold exists at steps 565-595 and 1330-1345 (weight 11-15 mm behind the single
+  stance foot) and in the short windows where neither foot counts as planted.
+- Not run in the simulator; superseded by rebuild 62.
+
+## Teacher training started on rebuild 60 (2026-11-20)
+
+Two cold-start runs of the LadderMan teacher on Koa, job scripts in `ladderman_port/koa/`:
+
+| Job | Partition | Seed | Notes |
+|---|---|---|---|
+| `lm-edge60` | ece605 (RTX A4000) | 0 | 24 h wall cap; resubmit to resume |
+| `lm-edge60h` | kill-shared, H100/H200 nodes | 1 | preemptible; `--requeue` resumes it |
+
+Both: 4,096 environments, 7,500 iterations, checkpoint every 300. On a resume the script reads the
+newest `checkpoint_N.pt` of its own run family and trains only the remaining 7,500 - N iterations.
+Rebuild 60's known weak points (three frozen poses fall, little sole on tread 4) apply.

@@ -106,6 +106,9 @@ ap.add_argument("--open_lift", type=float, default=0.006, help="m added to the o
 ap.add_argument("--tread_back", type=float, nargs=4, default=[0.0, 0.0, 0.0, 0.0],
                 help="m, per tread 1-4: stand this much further BACK on the tread (feet and pelvis "
                      "together), so the shin clears the nose of the tread above")
+ap.add_argument("--flat_feet", type=float, default=0.0,
+                help="0..1: how far a PLANTED foot is levelled. The base clip stands toe-down by 7-17 deg "
+                     "(a human foot on a rung), which on a flat tread is a line contact along the nose")
 ap.add_argument("--ground_back", type=float, default=0.0,
                 help="m: stand this much further from the ladder while on the GROUND (the start)")
 ap.add_argument("--swing_hip_back", type=float, default=0.0,
@@ -354,6 +357,12 @@ for _gpass in range(3 if a.ground_feet else 0):          # re-measure and correc
         tp, tq = _ref[foot]
         tz = tp[:, 2] + _cf[sd]
         tf = K.qrot(tq, fwd)
+        if _gpass == 0 and a.flat_feet > 0:
+            _kf = np.hanning(int(0.35 * fps) | 1); _kf /= _kf.sum()
+            _wf = np.convolve(np.pad(_pm[sd].astype(float), len(_kf) // 2, mode="edge"), _kf, mode="valid")
+            tf = tf.copy(); tf[:, 2] *= 1.0 - a.flat_feet * _wf
+            print(f"[feet ] {sd}: planted pitch was {np.degrees(np.arcsin(K.qrot(tq, fwd)[_pm[sd], 2])).min():+.0f}.."
+                  f"{np.degrees(np.arcsin(K.qrot(tq, fwd)[_pm[sd], 2])).max():+.0f} deg, levelled by {a.flat_feet:.0%}")
         # Swing the foot a little further BACK from the ladder. In the base clip the stepping leg
         # comes up knee-first into the tread it is about to stand on: the sim pushes the left shin
         # and thigh with 1-23 kN at every left step (base steps 80-100, 240-250, 420-440, 590-620).
@@ -558,7 +567,7 @@ ARM_R = 0.038                                              # forearm / elbow lin
 def torso_clear(i, e, w):
     """Free space between the forearm (elbow e to wrist w, as three balls) and the torso hull.
     Negative = overlapping. A lower bound when clear, exact enough near contact."""
-    P = np.stack([e, e + 0.35 * (w - e), e + 0.70 * (w - e)])
+    P = np.stack([e, e + 0.3 * (w - e), e + 0.6 * (w - e), e + 0.85 * (w - e)])   # the last is the wrist-roll link
     L = K.qrot(K.qconj(TORSO_Q[i]), P - TORSO_P[i])
     return float((L @ _TEQ[:, :3].T + _TEQ[:, 3]).max(1).min()) - ARM_R
 
@@ -1191,7 +1200,15 @@ def plan_arm(side):
                 q_up = solve_palm(min(i0 + k1, T - 1), side, cA + np.array([-0.03, 0.0, 0.15]), Q[i0], iters=40)[0]
                 q_up = steer_n(min(i0 + k1, T - 1), side, cA + np.array([-0.03, 0.0, 0.15]), q_up)
                 k2 = k1 + int(1.2 * fps)
-                f = PchipInterpolator([0, k1, k2], np.array([Q[i0], q_up, REST[side]]), axis=0)
+                # ... then out to the side before coming down to rest: straight from above the
+                # handrail to the rest pose the wrist passes through the chest's collision hull
+                # (10-19 mm inside for 0.5 s, left arm).
+                km = k1 + int(0.6 * fps)
+                im = min(i0 + km, T - 1)
+                sg_ = 1.0 if side == "left" else -1.0
+                q_mid = solve_seeded(im, side, TORSO_P[im] + K.qrot(TORSO_Q[im], np.array([0.30, 0.22 * sg_, 0.12])),
+                                     np.zeros(3), extra=[q_up])[0]
+                f = PchipInterpolator([0, k1, km, k2], np.array([Q[i0], q_up, q_mid, REST[side]]), axis=0)
                 Q[A[1]:] = f(np.minimum(np.arange(1, n + 1), k2))
             continue
         keep = int(a.min_hold * fps)
