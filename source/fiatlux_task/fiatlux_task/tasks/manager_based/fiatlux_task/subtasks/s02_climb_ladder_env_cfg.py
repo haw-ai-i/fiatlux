@@ -23,6 +23,7 @@ from ..subtask_tiers.balance import (
     LADDER_TOP_HEIGHT_SLACK,
     ClimbSubtaskCfg,
 )
+from fiatlux_task.robots.g1 import add_foot_sole, fix_sensor_frame_mass
 
 # The success gate, as reviewable data (mdp.all_of) rather than a hand-written conjunction --
 # an omitted conjunct here is a gate that passes vacuously.
@@ -52,3 +53,9 @@ class S02ClimbLadderEnvCfg(ClimbSubtaskCfg):
 
     def __post_init__(self) -> None:
         super().__post_init__()
+        # A tread is 76 mm deep and the stock foot only collides at its four corners: without the
+        # sole the robot has nothing to stand on here (see robots/g1.py).
+        add_foot_sole(self)
+        # ... and without the 4 kg PhysX adds for four massless sensor frames (climb tasks only
+        # for now; see robots/g1.py).
+        fix_sensor_frame_mass(self)

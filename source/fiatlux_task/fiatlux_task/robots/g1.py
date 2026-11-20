@@ -55,7 +55,112 @@ _G1_DEX3_FILTERED_PAIRS = {
 INSPIRE_HAND_UNIT_MASS_KG = 0.790
 
 
-def _make_filtered_hand_mount_spawner(pairs: dict[str, tuple[str, ...]], hand_unit_mass_kg: float | None = None):
+# The Dex3's wrist camera housing (``{side}_hand_camera_base_link``) is removed at spawn (#201).
+# It is not on the robot this benchmark deploys to, and in the sim it does two things the real
+# hand does not: it sits 28 mm below the palm face, so a palm cannot lie on a surface; and its
+# hull presses the faceted hull of ``{side}_wrist_pitch_link`` in bands across about a third of
+# the wrist-yaw range (measured: 1.5-10.7 kN between the pair, e.g. right hand at -92..-84,
+# -56..-44, -16..-8, +16..+28, +56..+64 deg). The link itself has to stay -- it is a body of the
+# articulation -- so its shapes are switched off and its 0.11 kg taken out.
+# FIATLUX_DEX3_KEEP_CAMERA_HOUSING=1 restores the stock asset.
+_DEX3_CAMERA_HOUSING = "{side}_hand_camera_base_link"
+
+# The G1 USD collides each foot with four 5 mm spheres at the sole's corners (x -0.05 / +0.12,
+# y +-0.03) and nothing under the mid-foot. On flat ground that is a fine stand-in; on the ladder
+# a tread is 76 mm deep and the pads are 170 mm apart, so a foot centred on a tread has no
+# collider on it at all and the robot drops through its own footing. The real foot has a
+# continuous rubber sole there (the visual mesh is flat at z -0.035 over x -0.066..+0.142,
+# y +-0.038). ``add_foot_sole`` adds that missing surface -- one thin box per foot, inside the
+# visual sole's outline and flush with the bottoms of the spheres, so standing on flat ground is
+# unchanged. It adds contact and filters none; the link's authored mass is untouched.
+FOOT_SOLE_X = (-0.060, 0.135)
+FOOT_SOLE_HALF_Y = 0.033
+FOOT_SOLE_Z = (-0.035, -0.025)
+
+
+def _author_foot_soles(stage, prim_path: str) -> None:
+    from pxr import Gf, UsdGeom, UsdPhysics
+
+    for side in ("left", "right"):
+        link = stage.GetPrimAtPath(f"{prim_path}/{side}_ankle_roll_link")
+        if not link.IsValid():
+            raise RuntimeError(f"no {side}_ankle_roll_link under {prim_path}")
+        cube = UsdGeom.Cube.Define(stage, f"{link.GetPath()}/sole_collider")
+        cube.CreateSizeAttr(1.0)
+        xf = UsdGeom.Xformable(cube.GetPrim())
+        xf.AddTranslateOp().Set(
+            Gf.Vec3d(0.5 * (FOOT_SOLE_X[0] + FOOT_SOLE_X[1]), 0.0, 0.5 * (FOOT_SOLE_Z[0] + FOOT_SOLE_Z[1]))
+        )
+        xf.AddScaleOp().Set(
+            Gf.Vec3f(FOOT_SOLE_X[1] - FOOT_SOLE_X[0], 2 * FOOT_SOLE_HALF_Y, FOOT_SOLE_Z[1] - FOOT_SOLE_Z[0])
+        )
+        cube.CreatePurposeAttr(UsdGeom.Tokens.guide)  # collide, do not render
+        UsdPhysics.CollisionAPI.Apply(cube.GetPrim())
+
+
+# Four sensor frames in the G1 USD -- ``imu_in_pelvis``, ``imu_in_torso``, ``mid360_link``,
+# ``d435_link`` -- are rigid bodies with no authored mass and no collider. PhysX gives such a body
+# its 1 kg default, so the robot simulates at 38.4 kg where the file lists 34.4 kg and the real
+# G1 is about 35 kg: 4 kg that does not exist, 3 of it high on the torso. ``fix_sensor_frame_mass``
+# authors a nominal gram on each (the sensors' real weight is already in the links they are
+# bolted to). Per env cfg and climb-only for now -- every existing demo and result was recorded
+# on the 38.4 kg robot, so switching the other tasks is a decision, not a side effect.
+SENSOR_FRAMES = ("imu_in_pelvis", "imu_in_torso", "mid360_link", "d435_link")
+SENSOR_FRAME_MASS_KG = 1.0e-3
+
+
+def _author_sensor_frame_mass(stage, prim_path: str) -> None:
+    from pxr import Gf, UsdPhysics
+
+    for name in SENSOR_FRAMES:
+        body = stage.GetPrimAtPath(f"{prim_path}/{name}")
+        if not body.IsValid():
+            raise RuntimeError(f"no {name} under {prim_path}")
+        api = UsdPhysics.MassAPI.Apply(body)
+        api.CreateMassAttr().Set(SENSOR_FRAME_MASS_KG)
+        api.CreateDiagonalInertiaAttr().Set(Gf.Vec3f(1.0e-7, 1.0e-7, 1.0e-7))
+
+
+def _wrap_robot_spawn(env_cfg, marker: str, author) -> None:
+    """Run ``author(stage, prim_path)`` after this env's robot is spawned. Idempotent per marker;
+    markers already on the spawn function are kept, and ``swap_robot_variant`` re-applies them."""
+    func = env_cfg.scene.robot.spawn.func
+    marks = dict(getattr(func, "_fiatlux_marks", {}))
+    if marker in marks:
+        return
+    marks[marker] = author
+    inner = getattr(func, "_fiatlux_inner", None) or getattr(func, "__wrapped__", func)
+
+    @clone
+    def _spawn(prim_path, cfg, translation=None, orientation=None):
+        prim = inner(prim_path, cfg, translation, orientation)
+        for fn in marks.values():
+            fn(prim.GetStage(), prim_path)
+        return prim
+
+    _spawn._fiatlux_marks = marks
+    _spawn._fiatlux_inner = inner
+    env_cfg.scene.robot.spawn = env_cfg.scene.robot.spawn.replace(func=_spawn)
+
+
+def fix_sensor_frame_mass(env_cfg) -> None:
+    """Take the 4 kg of default mass off this env's robot (see ``SENSOR_FRAMES``). Idempotent."""
+    _wrap_robot_spawn(env_cfg, "sensor_frame_mass", _author_sensor_frame_mass)
+
+
+def add_foot_sole(env_cfg) -> None:
+    """Give this env's robot the flat sole (see ``FOOT_SOLE_X``). Idempotent.
+
+    Per env cfg rather than global: the climb subtasks need it, and every other task keeps the
+    stock foot until the sole has been checked against walking. ``swap_robot_variant`` carries
+    the choice over to the hand variant it swaps in.
+    """
+    _wrap_robot_spawn(env_cfg, "foot_sole", _author_foot_soles)
+
+
+def _make_filtered_hand_mount_spawner(
+    pairs: dict[str, tuple[str, ...]], hand_unit_mass_kg: float | None = None, drop_body: str | None = None
+):
     """Build a spawner that filters ``pairs`` (formatted per side) after loading the USD.
 
     If ``hand_unit_mass_kg`` is given, each hand unit (base link + finger links; the camera
@@ -89,6 +194,22 @@ def _make_filtered_hand_mount_spawner(pairs: dict[str, tuple[str, ...]], hand_un
                         if name == f"{side}_hand_base_link":
                             base_attr = attr
                 base_attr.Set(base_attr.Get() + hand_unit_mass_kg - unit_total)
+            if drop_body is not None and _os.environ.get("FIATLUX_DEX3_KEEP_CAMERA_HOUSING", "0") != "1":
+                body = stage.GetPrimAtPath(f"{prim_path}/{drop_body.format(**fmt)}")
+                if not body.IsValid():
+                    raise RuntimeError(f"no {drop_body.format(**fmt)} under {prim_path}")
+                for child in ("collisions", "visuals"):
+                    sub = body.GetChild(child)
+                    if sub.IsValid():
+                        sub.SetActive(False)
+                mass_api = UsdPhysics.MassAPI(body)
+                m0 = mass_api.GetMassAttr().Get() or 0.0
+                if m0 > 1e-3:  # a link cannot be massless; leave a gram
+                    k = 1e-3 / m0
+                    mass_api.GetMassAttr().Set(1e-3)
+                    inertia = mass_api.GetDiagonalInertiaAttr().Get()
+                    if inertia is not None:
+                        mass_api.GetDiagonalInertiaAttr().Set(type(inertia)(*[float(v) * k for v in inertia]))
         return prim
 
     return _spawn
@@ -97,7 +218,9 @@ def _make_filtered_hand_mount_spawner(pairs: dict[str, tuple[str, ...]], hand_un
 _spawn_g1_with_filtered_hand_mounts = _make_filtered_hand_mount_spawner(
     _G1_INSPIRE_FILTERED_PAIRS, hand_unit_mass_kg=INSPIRE_HAND_UNIT_MASS_KG
 )
-_spawn_g1_dex3_with_filtered_hand_mounts = _make_filtered_hand_mount_spawner(_G1_DEX3_FILTERED_PAIRS)
+_spawn_g1_dex3_with_filtered_hand_mounts = _make_filtered_hand_mount_spawner(
+    _G1_DEX3_FILTERED_PAIRS, drop_body=_DEX3_CAMERA_HOUSING
+)
 
 
 # ---------------------------------------------------------------------------
@@ -611,7 +734,10 @@ def swap_robot_variant(env_cfg, variant: str) -> None:
     init_state = robot.init_state.replace(
         joint_pos=_drop_foreign_hand_joint_pos(dict(robot.init_state.joint_pos), variant)
     )
+    marks = dict(getattr(robot.spawn.func, "_fiatlux_marks", {}))
     env_cfg.scene.robot = G1_VARIANTS[variant].replace(prim_path=robot.prim_path, init_state=init_state)
+    for marker, author in marks.items():                   # the sole, the sensor-frame mass
+        _wrap_robot_spawn(env_cfg, marker, author)
 
     remap_table = _HAND_REMAPS[variant]
 

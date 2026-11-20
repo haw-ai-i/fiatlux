@@ -36,6 +36,7 @@ from ..subtask_tiers.balance import (
     DescendRewardsCfg,
     DescendSubtaskCfg,
 )
+from fiatlux_task.robots.g1 import add_foot_sole, fix_sensor_frame_mass
 
 _SEATING = {"pos_threshold": SEAT_POS_THRESHOLD, "ori_threshold": SEAT_ORI_THRESHOLD}
 
@@ -82,6 +83,12 @@ class S12ClimbDownEnvCfg(DescendSubtaskCfg):
 
     def __post_init__(self) -> None:
         super().__post_init__()
+        # A tread is 76 mm deep and the stock foot only collides at its four corners: without the
+        # sole the robot has nothing to stand on here (see robots/g1.py).
+        add_foot_sole(self)
+        # ... and without the 4 kg PhysX adds for four massless sensor frames (climb tasks only
+        # for now; see robots/g1.py).
+        fix_sensor_frame_mass(self)
         # S11's end state: the job is done -- fresh bulb in the fixture, old one thrown away.
         park_old_bulb_in_crate(self.scene)
         seat_bulb_in_fixture(self.scene)

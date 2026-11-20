@@ -23,6 +23,7 @@ from isaaclab.utils import configclass
 
 from fiatlux_task.grasp_poses import BULB_IN_ROOT_ON_LADDER
 from fiatlux_task.poses import ARM_CRADLE, HAND_CUP
+from fiatlux_task.robots.g1 import add_foot_sole, fix_sensor_frame_mass
 
 from .. import mdp
 from ..mdp import balance_terms, grasp_terms, place_terms
@@ -130,6 +131,12 @@ class S04DescendWithBulbEnvCfg(DescendSubtaskCfg):
 
     def __post_init__(self) -> None:
         super().__post_init__()
+        # A tread is 76 mm deep and the stock foot only collides at its four corners: without the
+        # sole the robot has nothing to stand on here (see robots/g1.py).
+        add_foot_sole(self)
+        # ... and without the 4 kg PhysX adds for four massless sensor frames (climb tasks only
+        # for now; see robots/g1.py).
+        fix_sensor_frame_mass(self)
         # S03's end state: the old bulb is out of the fixture and in the hand, at the carry offset
         # from the robot's own (now-final) on-ladder root pose.
         self.scene.old_bulb.init_state.pos, self.scene.old_bulb.init_state.rot = compose_carried_pose(
