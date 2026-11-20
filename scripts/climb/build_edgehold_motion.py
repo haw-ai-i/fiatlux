@@ -126,6 +126,9 @@ ap.add_argument("--release_up", type=float, nargs=3, default=[-0.03, 0.0, 0.15],
 ap.add_argument("--no_sink", action=argparse.BooleanOptionalAction, default=False,
                 help="after grounding, lift a foot wherever its sole is still below the surface under it "
                      "(the edges of stances, where the foot is landing or peeling off)")
+ap.add_argument("--press", type=float, default=0.0,
+                help="m: a holding hand's reference is lowered this far INTO its hold, applied after the gates; "
+                     "the trainer's hand rule needs downward load, and a hand resting at the surface gives none")
 ap.add_argument("--ground_back", type=float, default=0.0,
                 help="m: stand this much further from the ladder while on the GROUND (the start)")
 ap.add_argument("--swing_hip_back", type=float, default=0.0,
@@ -1625,6 +1628,40 @@ print(f"[gate] info  hands on holds: at least one hand holding {held.any(1).mean
 herr = max(float(plan[s][2][plan[s][1] > 0].max()) for s in SIDES)
 print(f"[gate] info  worst held-hand position error {herr*1000:.1f} mm; "
       f"hold counts " + ", ".join(f"{n} {int(sum((plan[s][1] == LABEL[n]).sum() for s in SIDES))}" for n in ORDER[3:]))
+
+if a.press > 0.0:
+    # The gates above judged the hands AT their holds. What is written asks for them a.press lower, eased
+    # in and out over 0.15 s, so tracking the reference means leaning on the hold.
+    _k = max(int(0.15 * fps), 1) | 1          # odd, so the two windows below are centred
+    for s in SIDES:
+        aq = plan[s][0].copy()
+        _m = (plan[s][1] > 0).astype(float)
+        _e = (np.convolve(_m, np.ones(_k), mode="same") > _k - 0.5).astype(float)   # frames with a full window of hold
+        w_ = np.convolve(_e, np.ones(_k) / _k, mode="same")          # ramps inside the hold, zero at its edges
+        w_ = w_ * _m
+        _worst = 0.0
+        for i in np.where(w_ > 0)[0]:
+            tg = wrist_of(i, s, aq[i]) + np.array([0.0, 0.0, -a.press * w_[i]])
+            q = aq[i].copy()                 # minimum-norm steps only: solve()'s pull toward the rest pose
+            for _ in range(4):               # differs frame to frame and shows up as joint-speed spikes
+                w0 = wrist_of(i, s, q); J = np.zeros((3, 4))
+                for c in range(4):
+                    qp = q.copy(); qp[c] += 1e-4
+                    J[:, c] = (wrist_of(i, s, qp) - w0) / 1e-4
+                q[:4] += J.T @ np.linalg.solve(J @ J.T + 1e-6 * np.eye(3), tg - w0)
+            aq[i] = _clip(s, q); _worst = max(_worst, float(np.linalg.norm(tg - wrist_of(i, s, aq[i]))))
+        print(f"[press] {s}: {int((w_ > 0).sum())} frames lowered up to {a.press*1000:.0f} mm, worst miss {_worst*1000:.1f} mm; "
+              f"peak arm speed now {np.abs(np.gradient(aq, 1.0 / fps, axis=0)).max():.2f} rad/s")
+        for k, t in enumerate(K.ARM):
+            q_out[:, jn.index(t.format(s=s))] = aq[:, k]
+    _all = K.fk_all(PP, PQ, q_out, jn)
+    for i, b in enumerate(bn):
+        bp[:, i], bq[:, i] = _all[b]
+    bv = np.gradient(bp, 1.0 / fps, axis=0)
+    jv = np.gradient(q_out, 1.0 / fps, axis=0)
+    dq_ = K.qmul(np.roll(bq, -1, axis=0), K.qconj(bq)); dq_[-1] = dq_[-2]
+    dq_ = dq_ * np.sign(dq_[..., :1] + 1e-12)
+    bw = 2.0 * dq_[..., 1:] * fps
 
 out = pathlib.Path(a.out); out.mkdir(parents=True, exist_ok=True)
 n50 = int(np.ceil(T / fps * 50 - 1e-9))        # LadderMan resamples the clip to this many 50 Hz rows; one short indexes off the end

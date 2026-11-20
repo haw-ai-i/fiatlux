@@ -17,6 +17,8 @@ ap = argparse.ArgumentParser()
 ap.add_argument("--clip", required=True)
 ap.add_argument("--pad_u", type=float, default=0.17)
 ap.add_argument("--palm_pt", type=float, default=0.115)
+ap.add_argument("--drop", type=float, default=0.0,
+                help="m: every anchor this much lower still, so a few cm of body sag is not read as 'hand below its hold'")
 a = ap.parse_args()
 clip = pathlib.Path(a.clip)
 h = json.loads((clip / "holds.json").read_text())
@@ -31,7 +33,7 @@ half = 0.5 * (max(ys) - min(ys))
 order = ["step1", "step2", "step3", "step4", "platform", "handrail"]
 anchors = []
 for n in order:
-    hz = holds[n]["z"]
+    hz = holds[n]["z"] - a.drop
     if n not in by:                                        # never held by a hand in this clip
         anchors.append([0.5 * (holds[n]["x"][0] + holds[n]["x"][1]), yc, hz - 0.02]); continue
     cx = by[n]["left"][0]
@@ -43,7 +45,7 @@ for n in order:
         anchors.append([0.5 * (nose + flat_pad), yc, hz - 0.02])
     else:                                                  # handrail: pivot (as stored), then flat
         flat_pad = (-0.042 + 0.0235) + (a.pad_u - a.palm_pt)
-        anchors.append([0.5 * (cx + flat_pad), yc, holds[n]["z"] - 0.03])
+        anchors.append([0.5 * (cx + flat_pad), yc, hz - 0.03])
 (clip / "anchors.json").write_text(json.dumps(dict(anchors=anchors, hand_y_centre=yc, hand_half_spacing=half,
                                                    pad_u=a.pad_u), indent=1))
 print("anchors:", [[round(v, 4) for v in x] for x in anchors])

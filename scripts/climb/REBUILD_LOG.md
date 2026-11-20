@@ -268,3 +268,66 @@ iteration, checkpoints at 300 and 600. That pace needs about 23-24 h, so it may 
 of 7,500 at the partition's 24 h cap; resubmitting the same script finishes it. ece605 allows one
 submitted job per user, so the follow-up cannot be queued in advance. `lm-edge60h` was still
 pending on priority.
+
+## Rebuild 60 teacher: what it learned and why it fails (2026-11-20)
+
+`lm-edge60` was cancelled at iteration ~3,700. Its training log:
+
+| Iteration | Success | Episode length | Old topout cold start: success | length |
+|---|---|---|---|---|
+| 950 | 5.5% | 41 | 10% | 83 |
+| 1,900 | 6.1% | 50 | 14% | 110 |
+| 2,850 | 6.2% | 54 | 70% | 362 |
+
+Played back locally at iteration 3,000 with two new probe scripts (`ladderman_port/play_probe_rsi.py`,
+`play_probe_hand.py`; both go in LadderMan's `scripts/`):
+
+- From the ground (8 robots): best pelvis gain 43 mm; all terminated by step 173 with the pelvis
+  23-28 cm below the reference.
+- Random start phase (5,183 episodes): 6.7% reach the clip end, all of them starts after step
+  1,300. Median episode 30 steps. `cum_ladder_lost_contact_steps` (30-step limit) ends 90% of
+  failed episodes.
+- With that rule switched off at playback: median 60 steps; `cum_body_z_error` 77%,
+  `cum_foot_any_lost_contact` 18%. The policy never saw episodes past 30 steps, so this is
+  partly out of distribution.
+- `cum_foot_any_lost_contact` ends an episode after 60 steps with either foot unsupported,
+  whatever the reference says. Rebuild 60's right-foot swings last 70, 79 and 65 steps; rebuild
+  67's swings last 56-59.
+
+Hand rule, per condition (share of labelled hands passing):
+
+| | Topout teacher | Rebuild 60 teacher |
+|---|---|---|
+| Force up > 5 N, 2 steps after reset | 4-18% | 28-47% |
+| Force up > 5 N, 20 steps in | 76-87% | 21-61% |
+| Hand point above target, 20 steps in | 83-98% | 35-79% |
+| Reference only, 20 steps: rule counting | 77% | 90% (rebuild 67: 89%) |
+
+The topout reference also sags and trips the rule when played alone; its policy learned to load
+the hands within 20 steps (median 13-30 N). Ours does not: on the handrail the hand point is a
+median 4.5 cm below its target and 11 cm back after 20 steps. The topout run used LadderMan's
+stock G1 hooked over rungs; ours has flat open palms and reference-driven wrists. Which
+difference is the blocker is not established.
+
+## Rebuild 68: hands pressed into their holds -- rejected
+
+`--press 0.015` (new): after the gates, a holding hand's wrist is lowered 15 mm, ramped inside
+the hold. Clip gate accepted, peak arm speed 6.01 rad/s. In the trainer it is worse than rebuild
+67: the wrists keep their angles, so the finger-pad point ends 24 mm inside the tread in the
+clip, and a reset that starts there is kicked by the simulator -- two steps later that point is
+67 mm below the tread top, and hands loaded on the platform fall from 44-57% to 29-33%. The
+policy's arm targets are also `default + action`, not offsets from the reference, so a pressed
+reference does not make the controller push. Not trained.
+
+## Rebuild 69: rebuild 67 with lower hold anchors -- training
+
+The rebuild 67 motion unchanged, anchors 40 mm lower (`make_anchors.py --drop 0.04`). Under
+reference playback at 20 steps the hand point is above its target for 24-45% of hands, against
+14-31% with the original anchors. Submitted as `lm-edge69` on ece605.
+
+## Koa nodes
+
+The H100/H200 nodes (`gn-09-19-00`, `gn-09-21-00` tried) hang this job at simulator startup: one
+thread at 100% CPU, GPU idle, no log line after the `omni.graph.visualization` warning; three
+attempts, one left for 2 h 12 min. Rebuild 67 now runs as `lm-edge67h` on kill-shared with those
+nodes excluded and `no_mig` required.
