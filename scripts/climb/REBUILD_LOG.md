@@ -199,3 +199,17 @@ the tread above. It clears as the hip rises. Tried on the legs alone:
 | `--swing_hip_up 0.03` / `0.05` (option since removed) | 2.0 s / 1.9 s | trailing leg cannot reach by 70-137 mm |
 | 65/65/65/75 mm back | 1.4 s | none deeper than 20 mm; this is rebuild 65 |
 | 75/75/75/80 mm back | 0.7 s | only 51-71 mm of sole left on the tread |
+
+## Rebuild 65: rejected (65 mm back is too far)
+
+Flags: rebuild 64's with `--tread_back 0.065 0.065 0.065 0.075 --ground_back 0.065` and
+`--release_up 0.0 0.0 0.13` (let go of the handrail straight up).
+
+- Gate: REJECTED. The left hand leaves its handrail hold for 0.01 s during the third foot step.
+- Hands: two finger links dip 3-4 mm below the handrail's top face at step 975.
+- Legs: left shin graze down to 1.4 s (up to 18 mm), left thigh 0.3 s.
+- Torso: the release is clean now; one frame at step 743 with the right wrist 3 mm inside.
+- Frozen: 6 of 7. Step 2 to 3 falls again at 2.2 s.
+- Static: weight up to 53 mm behind the single stance foot (rebuild 64: 45 mm).
+- Outcome: the extra 10 mm of stand-back costs the handrail reach and the step 2 to 3 hold. The
+  release change is kept; the stand-back goes back to 55/55/55/70.
