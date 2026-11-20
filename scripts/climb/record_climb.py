@@ -51,6 +51,16 @@ ap.add_argument("--lm_gains", action="store_true",
                      "from a stiff joint fed a converted target. Gains are a control-stack "
                      "choice, not hardware; armature (the other mismatch) is hardware and is "
                      "deliberately NOT touched here.")
+ap.add_argument("--rsi", action="store_true",
+                help="DIAGNOSTIC: stage the robot in the REFERENCE's frame-0 state at every "
+                     "reset -- root pose, root velocity and the 29 joint positions -- which is "
+                     "what LadderMan's `sample_init` does on every training episode. Their "
+                     "teacher only ever sees initial states drawn from the reference pose "
+                     "+/-0.1 rad per joint and +/-0.02 m of root, whereas the benchmark spawn "
+                     "is 0.600 rad off at the elbows and 0.252 m behind. A bag recorded with "
+                     "this flag is NOT a valid S02 demo -- the benchmark's spawn pose is part "
+                     "of what S02 measures. It answers one question: does the teacher fail "
+                     "because it cannot climb, or because it wakes up out of distribution?")
 ap.add_argument("--standoff_delta", type=float, default=0.0,
                 help="metres to move the spawn TOWARD the ladder along the step-facing ray "
                      "(positive = closer). The reference is anchored to the LADDER, not to the "
@@ -138,6 +148,37 @@ def apply_lm_gains() -> None:
     rob.write_joint_damping_to_sim(obs_builder.lm_kd[None].expand(n, -1), joint_ids=obs_builder.j_fx)
 
 
+def apply_rsi() -> None:
+    """Write the reference's frame-0 state onto the robot (LadderMan's reference state init).
+
+    Mirrors `RobotTracking.sample_init`: root link pose, root com velocity, and the 29 mapped
+    joint positions. Joint velocity is the clip's own forward difference at 50 Hz rather than
+    zero, so the robot is handed the reference's motion as well as its pose. The hand joints are
+    left at their spawn values -- they are not in the clip, and j_fx addresses only the 29.
+
+    Must run AFTER env.reset() (which stages the benchmark spawn) and BEFORE
+    obs_builder.reset() (which seeds the history buffers from the live state).
+    """
+    rob = base.scene["robot"]
+    ob = obs_builder
+    t0 = ob.t
+    root_p = ob.ref_body_pos[t0][:, ob.root_mo]
+    root_q = ob.ref_body_quat[t0][:, ob.root_mo]
+    lin = ob.ref_body_linvel[t0][:, ob.root_mo]
+    ang = ob.ref_body_angvel[t0][:, ob.root_mo]
+    rob.write_root_link_pose_to_sim(torch.cat([root_p, root_q], dim=-1))
+    rob.write_root_com_velocity_to_sim(torch.cat([lin, ang], dim=-1))
+    q = ob.ref_joint_pos[t0]
+    q_next = ob.ref_joint_pos[torch.clamp(t0 + 1, max=ob.motion_len - 1)]
+    qd = (q_next - q) * 50.0
+    rob.write_joint_state_to_sim(q, qd, joint_ids=ob.j_fx)
+
+
+if a.rsi:
+    apply_rsi()
+    print("[RSI   ] staged in the reference frame-0 state (root pose+vel, 29 joints). "
+          "The [ALIGN ] line below should now read ~0 -- that is the check this flag worked.")
+
 if a.lm_gains:
     apply_lm_gains()
     _names = list(base.scene["robot"].joint_names)
@@ -207,6 +248,9 @@ try:
                 print(f"[RESET ] step {steps}: {len(ids)} env(s) done "
                       f"(terminated={bool(terminated.any())}, truncated={bool(truncated.any())})"
                       f" reason={why or 'unknown'}")
+                if a.rsi:
+                    obs_builder.t[ids] = 0    # apply_rsi reads t; reset() would zero it after
+                    apply_rsi()               # the env reset restores the benchmark spawn pose
                 obs_builder.reset(ids)
                 if a.lm_gains:
                     apply_lm_gains()      # the env reset restores the cfg's gains

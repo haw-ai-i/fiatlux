@@ -1,0 +1,278 @@
+"""Play segments of a reference clip under REAL physics, to test whether a hand hold bears load.
+
+Why a new script
+----------------
+The authoring gate is kinematic: it proves a hand reaches its hold and clears the ladder, not
+that the hold supports anything. This drops the robot into the clip's own pose at the start of a
+segment (free base, real contacts, gravity) and then either freezes the joint targets ("hold")
+or lets them follow the clip ("track"), and records what the hands, the feet and the ladder do.
+
+There is NO balance controller here: the joints are plain PD on the clip's joint angles. So a
+fall does not by itself condemn a hold -- run the same test on a segment whose hold is trusted
+(a flat palm) and compare. What the test can show directly is the hand load, whether a hand
+slides off its hold, and whether the open fingers get bent back.
+
+measure_clip_clearance.py and trace_climb.py stay runnable; this is a variant, not an edit.
+"""
+import argparse
+import pathlib
+import sys
+
+from isaaclab.app import AppLauncher
+
+ap = argparse.ArgumentParser(description="Physics playback of clip segments.")
+ap.add_argument("--task", default="FIATLUX-S02-ClimbLadder-v0")
+ap.add_argument("--motion", required=True)
+ap.add_argument("--out", required=True)
+ap.add_argument("--robot", default="dex3", choices=["dex3", "inspire"])
+ap.add_argument("--layout_seed", type=int, default=0)
+ap.add_argument("--segment", action="append", required=True,
+                help="NAME:START:END in 50 Hz clip steps; repeatable")
+ap.add_argument("--hold_steps", type=int, default=100,
+                help="length of the frozen-target test at each segment's start pose")
+ap.add_argument("--lift", type=float, action="append", default=None,
+                help="stage the robot this many mm above the clip pose and let it settle onto its "
+                     "holds; repeatable. The clip puts palms and soles AT the surface, and the "
+                     "collision hulls are fatter than the visual mesh, so lift 0 starts in "
+                     "interpenetration and the solver throws the robot off.")
+ap.add_argument("--fingers", default="open", choices=["open", "spawn"],
+                help="open = every finger joint at 0, the pose the clip was authored for")
+ap.add_argument("--foot_sole", action="store_true",
+                help="add the flat sole collider the real foot has (see foot_sole.py)")
+ap.add_argument("--yaw_sweep", action="store_true",
+                help="no playback: robot in the clip's first pose (hands in free air), sweep both wrist "
+                     "yaw joints across their range and print what the solver pushes on. Only the yaw "
+                     "joint lies between the camera housing and the wrist_pitch link, so this shows at "
+                     "which angles the asset collides with itself.")
+ap.add_argument("--body_scan", type=int, default=0,
+                help="no playback: every N clip steps, stage the pose, take ONE physics step and list "
+                     "EVERY robot body the solver pushes on (a contact sensor over the whole robot is "
+                     "added for this). Finds parts that start inside the ladder -- shins, thighs, "
+                     "elbows -- which the hand and foot sensors cannot see.")
+ap.add_argument("--probe", action="store_true",
+                help="no playback: stage each segment's start pose at a ladder of lifts, take ONE "
+                     "physics step, and print which bodies the solver pushes on. The lift at which "
+                     "the push vanishes is how deep the collision shapes overlap at the clip pose.")
+ap.add_argument("--modes", default="hold,track")
+ap.add_argument("--lm_gains", action="store_true", help="LadderMan's kp/kd instead of fiatlux's")
+AppLauncher.add_app_launcher_args(ap)
+a = ap.parse_args()
+a.headless = True
+a.enable_cameras = True
+app = AppLauncher(a).app
+
+import gymnasium as gym  # noqa: E402
+import numpy as np  # noqa: E402
+import torch  # noqa: E402
+import fiatlux_task.tasks  # noqa: E402,F401
+from fiatlux_task.tasks.manager_based.fiatlux_task.scene_cfg import set_layout_seed  # noqa: E402
+from isaaclab_tasks.utils import parse_env_cfg  # noqa: E402
+
+sys.path.insert(0, str(pathlib.Path(__file__).parent))
+from ladderman_runtime import LadderManObs  # noqa: E402
+
+set_layout_seed(a.layout_seed)
+cfg = parse_env_cfg(a.task, num_envs=1)
+if a.robot != "inspire":
+    from fiatlux_task.robots.g1 import swap_robot_variant
+    swap_robot_variant(cfg, a.robot)
+if a.foot_sole:
+    from foot_sole import add_foot_sole
+    add_foot_sole(cfg)
+    print("[foot] full-sole collider added to both feet")
+if a.body_scan:
+    from isaaclab.sensors import ContactSensorCfg
+    cfg.scene.whole_body_contact = ContactSensorCfg(prim_path="{ENV_REGEX_NS}/Robot/.*", history_length=1)
+env = gym.make(a.task, cfg=cfg).unwrapped
+env.reset()
+base, dev = env, env.device
+robot, ladder = base.scene["robot"], base.scene["ladder"]
+ob = LadderManObs(base, a.motion)
+DT, DEC = float(base.physics_dt), int(base.cfg.decimation)
+print(f"[sim] physics dt {DT:.5f} s x decimation {DEC} = {DT*DEC:.3f} s per clip step")
+if a.lm_gains:
+    robot.write_joint_stiffness_to_sim(ob.lm_kp[None], joint_ids=ob.j_fx)
+    robot.write_joint_damping_to_sim(ob.lm_kd[None], joint_ids=ob.j_fx)
+
+MASS = float(robot.root_physx_view.get_masses().sum())
+WEIGHT = MASS * 9.81
+print(f"[robot] {a.robot}  mass {MASS:.2f} kg  weight {WEIGHT:.0f} N")
+lad0 = ladder.data.root_state_w.clone()
+q_all0 = robot.data.joint_pos.clone()                 # spawn pose: source of the finger angles
+jn = list(robot.joint_names)
+fx29 = set(ob.j_fx.tolist())
+fing = [i for i in range(len(jn)) if i not in fx29]
+fL = [i for i in fing if "left" in jn[i].lower() or jn[i].startswith("L_")]
+fR = [i for i in fing if i not in fL]
+print("[fingers] spawn angles (deg): " + ", ".join(f"{jn[i]} {float(torch.rad2deg(q_all0[0, i])):.0f}" for i in fing))
+if a.fingers == "open":
+    q_all0[:, fing] = 0.0
+print(f"[fingers] {len(fL)} left + {len(fR)} right joints outside the clip, held at {a.fingers} angles")
+bn = list(robot.body_names)
+B = {n: bn.index(n) for n in ("pelvis", "left_wrist_yaw_link", "right_wrist_yaw_link",
+                              "left_ankle_roll_link", "right_ankle_roll_link")}
+M = {n: ob.lm_body_names.index(n) for n in B}
+sens = {"L": base.scene.sensors.get("left_hand_contact"), "R": base.scene.sensors.get("hand_contact")}
+eff = robot.data.joint_effort_limits[0] if hasattr(robot.data, "joint_effort_limits") \
+    else robot.root_physx_view.get_dof_max_forces()[0].to(dev)
+
+
+def stage(t, lift=0.0):
+    tt = torch.tensor([t], device=dev, dtype=torch.long)
+    ladder.write_root_state_to_sim(lad0)
+    rp = ob.ref_body_pos[tt][:, ob.root_mo].clone()
+    rp[:, 2] += lift / 1000.0
+    robot.write_root_link_pose_to_sim(torch.cat([rp, ob.ref_body_quat[tt][:, ob.root_mo]], -1))
+    robot.write_root_com_velocity_to_sim(torch.zeros(1, 6, device=dev))
+    q = q_all0.clone()
+    q[:, ob.j_fx] = ob.ref_joint_pos[tt]
+    robot.write_joint_state_to_sim(q, torch.zeros_like(q))
+    robot.set_joint_position_target(q)
+    base.scene.write_data_to_sim()
+    base.sim.forward()
+    base.scene.update(0.0)
+
+
+def run(name, mode, t0, t1, lift=0.0):
+    stage(t0, lift)
+    rows, fell = [], None
+    n = (t1 - t0) if mode == "track" else a.hold_steps
+    for k in range(n):
+        t = t0 + k if mode == "track" else t0
+        tt = torch.tensor([t], device=dev, dtype=torch.long)
+        tgt = q_all0.clone()
+        tgt[:, ob.j_fx] = ob.ref_joint_pos[tt]
+        robot.set_joint_position_target(tgt)
+        for _ in range(DEC):
+            base.scene.write_data_to_sim()
+            base.sim.step(render=False)
+            base.scene.update(DT)
+        d = robot.data
+        r = {"t": t}
+        for nme in B:
+            r[nme] = (d.body_pos_w[0, B[nme]] - ob.ref_body_pos[tt][0, M[nme]]).cpu().numpy()
+        g = d.projected_gravity_b[0]
+        r["tilt"] = float(torch.atan2(g[:2].norm(), -g[2]))
+        for s in ("L", "R"):
+            f = sens[s].data.net_forces_w[0].sum(0).cpu().numpy() if sens[s] is not None else np.zeros(3)
+            r["F" + s] = f
+        r["tau"] = float((d.applied_torque[0, ob.j_fx].abs() / eff[ob.j_fx]).max())
+        r["tau_j"] = jn[int(ob.j_fx[(d.applied_torque[0, ob.j_fx].abs() / eff[ob.j_fx]).argmax()])]
+        r["fingL"] = float((d.joint_pos[0, fL] - q_all0[0, fL]).abs().max()) if fL else 0.0
+        r["fingR"] = float((d.joint_pos[0, fR] - q_all0[0, fR]).abs().max()) if fR else 0.0
+        r["lad"] = float((ladder.data.root_pos_w[0] - lad0[0, :3]).norm())
+        if k == 0:
+            for sd in ("L", "R"):
+                if sens[sd] is not None:
+                    fb = sens[sd].data.net_forces_w[0].norm(dim=-1)
+                    top = torch.argsort(fb, descending=True)[:3].tolist()
+                    print(f"    first step, {sd} hand bodies in contact: "
+                          + ", ".join(f"{sens[sd].body_names[j]} {float(fb[j]):.0f} N" for j in top if fb[j] > 1))
+        rows.append(r)
+        if fell is None and (r["pelvis"][2] < -0.25 or r["tilt"] > 1.0):
+            fell = k
+            break
+    return rows, fell
+
+
+def report(name, mode, rows, fell, t0):
+    A = lambda k: np.array([r[k] for r in rows])
+    pe = np.linalg.norm(A("pelvis"), axis=1) * 1000
+    wl = np.linalg.norm(A("left_wrist_yaw_link"), axis=1) * 1000
+    wr = np.linalg.norm(A("right_wrist_yaw_link"), axis=1) * 1000
+    fl = np.linalg.norm(A("left_ankle_roll_link"), axis=1) * 1000
+    fr = np.linalg.norm(A("right_ankle_roll_link"), axis=1) * 1000
+    FL, FR = A("FL"), A("FR")
+    up = (FL[:, 2] + FR[:, 2]) / WEIGHT * 100
+    i = int(np.argmax(A("tau")))
+    out = "FELL at +%.2f s (clip step %d)" % (fell * DT * DEC, rows[fell]["t"]) if fell is not None \
+        else "stayed up for %.2f s" % (len(rows) * DT * DEC)
+    print(f"[{name:>14s} {mode:5s}] {out}")
+    print(f"    pelvis off reference: median {np.median(pe):.0f} mm, max {pe.max():.0f} mm; tilt max {np.degrees(A('tilt').max()):.0f} deg")
+    print(f"    wrist off reference:  L median {np.median(wl):.0f} max {wl.max():.0f} mm;  R median {np.median(wr):.0f} max {wr.max():.0f} mm")
+    print(f"    foot off reference:   L median {np.median(fl):.0f} max {fl.max():.0f} mm;  R median {np.median(fr):.0f} max {fr.max():.0f} mm")
+    print(f"    hand contact force:   L median {np.median(np.linalg.norm(FL,axis=1)):.0f} max {np.linalg.norm(FL,axis=1).max():.0f} N;  R median {np.median(np.linalg.norm(FR,axis=1)):.0f} max {np.linalg.norm(FR,axis=1).max():.0f} N")
+    print(f"    hands carry (vertical): median {np.median(up):.0f}% of body weight, range {up.min():.0f}..{up.max():.0f}%")
+    print(f"    finger joints pushed off their open pose: L max {np.degrees(A('fingL').max()):.0f} deg, R max {np.degrees(A('fingR').max()):.0f} deg")
+    print(f"    peak joint torque {A('tau')[i]*100:.0f}% of limit ({rows[i]['tau_j']} at step {rows[i]['t']}); ladder moved {A('lad').max()*1000:.0f} mm")
+    return {f"{name}_{mode}_{k}": A(k) for k in ("t", "pelvis", "left_wrist_yaw_link", "right_wrist_yaw_link",
+            "left_ankle_roll_link", "right_ankle_roll_link", "FL", "FR", "tilt", "tau", "fingL", "fingR", "lad")}
+
+
+print("[sensors] " + ", ".join(base.scene.sensors.keys()))
+if a.yaw_sweep:
+    with torch.inference_mode():
+        jy = {sd: jn.index(f"{sd}_wrist_yaw_joint") for sd in ("left", "right")}
+        lim = robot.data.soft_joint_pos_limits[0] if hasattr(robot.data, "soft_joint_pos_limits") else None
+        print("[yaw] limits (deg): " + ", ".join(f"{sd} {float(torch.rad2deg(robot.data.joint_pos_limits[0, jy[sd], 0])):.1f}..{float(torch.rad2deg(robot.data.joint_pos_limits[0, jy[sd], 1])):.1f}" for sd in jy))
+        for deg in range(-92, 93, 4):
+            stage(0, 0.0)
+            q = robot.data.joint_pos.clone()
+            for sd in jy:
+                q[:, jy[sd]] = float(np.radians(deg))
+            robot.write_joint_state_to_sim(q, torch.zeros_like(q))
+            robot.set_joint_position_target(q)
+            base.scene.write_data_to_sim(); base.sim.step(render=False); base.scene.update(DT)
+            out = []
+            for key in ("left_hand_contact", "hand_contact"):
+                sn = base.scene.sensors[key]
+                fb = sn.data.net_forces_w[0].norm(dim=-1)
+                top = [f"{sn.body_names[j]} {float(fb[j]):.0f}" for j in torch.argsort(fb, descending=True)[:3].tolist() if fb[j] > 5]
+                out.append(("L: " if key.startswith("left") else "R: ") + (", ".join(top) or "none"))
+            print(f"[yaw {deg:+4d} deg] " + " | ".join(out), flush=True)
+    import os
+    os._exit(0)
+if a.body_scan:
+    with torch.inference_mode():
+        sn = base.scene.sensors["whole_body_contact"]
+        T_ = int(ob.motion_len)
+        tally = {}
+        for t in range(0, T_, a.body_scan):
+            stage(t, 0.0)
+            base.scene.write_data_to_sim(); base.sim.step(render=False); base.scene.update(DT)
+            fb = sn.data.net_forces_w[0].norm(dim=-1)
+            hit = [(sn.body_names[j], float(fb[j])) for j in torch.argsort(fb, descending=True).tolist() if fb[j] > 400.0]
+            v = float(robot.data.root_lin_vel_w[0].norm())
+            for n_, f_ in hit:
+                tally.setdefault(n_, []).append((t, f_))
+            print(f"[scan {t:5d}] pelvis speed {v:.2f} m/s | " + ("; ".join(f"{n_} {f_:.0f}" for n_, f_ in hit[:6]) or "nothing over 400 N"), flush=True)
+        print("[scan] ---- bodies pushed with more than 400 N on the first step (a foot settling reads under ~350 N) ----")
+        for n_, lst in sorted(tally.items(), key=lambda kv: -len(kv[1])):
+            print(f"[scan] {n_:28s} at {len(lst)} of {len(range(0, T_, a.body_scan))} poses, up to {max(f for _, f in lst):.0f} N; steps {[t for t, _ in lst][:24]}")
+    import os
+    os._exit(0)
+if a.probe:
+    with torch.inference_mode():
+        for spec in a.segment:
+            name, t0, _ = spec.split(":")
+            for lift in range(0, 85, 5):
+                stage(int(t0), float(lift))
+                base.scene.write_data_to_sim(); base.sim.step(render=False); base.scene.update(DT)
+                out = []
+                for key, sn in base.scene.sensors.items():
+                    if not hasattr(sn.data, "net_forces_w") or sn.data.net_forces_w is None:
+                        continue
+                    fb = sn.data.net_forces_w[0].norm(dim=-1)
+                    for j in torch.argsort(fb, descending=True)[:4].tolist():
+                        if fb[j] > 5:
+                            out.append(f"{sn.body_names[j]} {float(fb[j]):.0f}")
+                v = float(robot.data.root_lin_vel_w[0].norm())
+                print(f"[probe {name} +{lift:2d} mm] pelvis speed after one step {v:.2f} m/s | " + ("; ".join(dict.fromkeys(out)) or "no contact force"), flush=True)
+    import os
+    os._exit(0)
+save = {}
+with torch.inference_mode():
+    for spec in a.segment:
+        name, t0, t1 = spec.split(":")
+        t0, t1 = int(t0), int(t1)
+        for lift in (a.lift or [0.0]):
+            for mode in a.modes.split(","):
+                rows, fell = run(name, mode, t0, t1, lift)
+                save.update(report(f"{name}+{lift:.0f}mm", mode, rows, fell, t0))
+                sys.stdout.flush()
+o = pathlib.Path(a.out)
+o.parent.mkdir(parents=True, exist_ok=True)
+np.savez(o, **save)
+print(f"[done] -> {o}", flush=True)
+import os  # noqa: E402
+os._exit(0)   # Kit hangs on shutdown after the results are written

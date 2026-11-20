@@ -19,8 +19,8 @@ Three things here are the difference between working and silently wrong:
   for the teacher is LADDERMAN's default pose -- a deep crouch that differs from ours by up to
   27 deg at the knee. Using our default shifts every leg column with nothing raised.
 * **The ladder frame.** LadderMan's rungs are at ``base_position + i*spacing*[cos,0,sin]`` with
-  their orientations never written, so ``ladder_heading_b`` measures the angle to the CLIMB
-  DIRECTION (world +x there), not to a rung's long axis. In the benchmark the climb direction is
+  their orientations WRITTEN with a -90 deg z yaw, so ``ladder_heading_b`` measures the angle
+  to a rung's LONG AXIS, not to the climb direction. See RUNG_YAW_OFFSET below. In the benchmark the climb direction is
   the ladder's local +y, and rung 0 is the first tread's centre -- both measured, see
   ``scripts/teleop/fullbody/ladder_treads.py`` and ``scripts/climb/measure_climb_geometry.py``.
 
@@ -35,6 +35,7 @@ from __future__ import annotations
 
 import json
 import math
+import os
 import pathlib
 
 import numpy as np
@@ -57,6 +58,19 @@ from ladderman_contract import ACTION_SCALING, UNACTUATED  # noqa: E402
 # applied_torque, the tracking-joint slice, the 23-wide action -- speaks Isaac order. Rebuilding
 # the default pose from regex patterns instead (an earlier version of this file) also silently
 # dropped the joints whose default is 0.
+# LadderMan's ladder_heading_b reads the RUNG's OWN quaternion
+# (observations.py: object_quat_w[:, rung_id]), not the climb direction, and ladder_env.py
+# builds every rung through `z_rot = (cos(-pi/4), 0, 0, sin(-pi/4))` -- a half-angle, so a -90
+# deg yaw -- with the comment "rotate about z so that the rungs run along the world y axis".
+# The rung's reported yaw is therefore its LONG AXIS, 90 deg off the climb direction.
+#
+# This file previously asserted the opposite ("their orientations never written, so
+# ladder_heading_b measures the angle to the CLIMB DIRECTION"). That was wrong, and it fed the
+# policy cos(dyaw)=+1.000 where every training sample had cos ~ 0: the checkpoint's own VecNorm
+# running mean for that element is -0.0499 +/- 0.1223, putting our value at z = +8.58.
+# Overridable only so the fix can be A/B'd against the old (wrong) 0.0 without editing code.
+RUNG_YAW_OFFSET = float(os.environ.get("FX_RUNG_YAW_OFFSET", -math.pi / 2))
+
 ASSET_META = pathlib.Path(__file__).with_name("ladderman_asset_meta.json")
 
 # LadderMan cfg/task/base/ladder.yaml
@@ -342,7 +356,7 @@ class LadderManObs:
             2 * (rq[:, 0] * rq[:, 3] + rq[:, 1] * rq[:, 2]),
             1 - 2 * (rq[:, 2] ** 2 + rq[:, 3] ** 2),
         )
-        dyaw = wrap_to_pi(self.climb_yaw.expand(self.N) - robot_yaw)[:, None]
+        dyaw = wrap_to_pi(self.climb_yaw.expand(self.N) + RUNG_YAW_OFFSET - robot_yaw)[:, None]
         return torch.cat([xy, torch.cos(dyaw), torch.sin(dyaw)], -1)
 
     def priv(self) -> torch.Tensor:

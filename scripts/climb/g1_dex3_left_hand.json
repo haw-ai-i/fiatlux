@@ -1,0 +1,266 @@
+{
+ "left_hand_camera_base_joint": {
+  "type": "PhysicsFixedJoint",
+  "b0": "left_wrist_yaw_link",
+  "b1": "left_hand_camera_base_link",
+  "p0": [
+   0.0415,
+   0.003,
+   0.0
+  ],
+  "r0": [
+   1.0,
+   0.0,
+   0.0,
+   0.0
+  ],
+  "p1": [
+   0.0,
+   0.0,
+   0.0
+  ],
+  "r1": [
+   1.0,
+   0.0,
+   0.0,
+   0.0
+  ]
+ },
+ "left_hand_palm_joint": {
+  "type": "PhysicsFixedJoint",
+  "b0": "left_wrist_yaw_link",
+  "b1": "left_hand_palm_link",
+  "p0": [
+   0.0415,
+   0.003,
+   0.0
+  ],
+  "r0": [
+   1.0,
+   0.0,
+   0.0,
+   0.0
+  ],
+  "p1": [
+   0.0,
+   0.0,
+   0.0
+  ],
+  "r1": [
+   1.0,
+   0.0,
+   0.0,
+   0.0
+  ]
+ },
+ "left_hand_index_0_joint": {
+  "type": "PhysicsRevoluteJoint",
+  "b0": "left_hand_palm_link",
+  "b1": "left_hand_index_0_link",
+  "p0": [
+   0.0777,
+   0.0016,
+   0.0285
+  ],
+  "r0": [
+   1.0,
+   0.0,
+   0.0,
+   0.0
+  ],
+  "p1": [
+   0.0,
+   0.0,
+   0.0
+  ],
+  "r1": [
+   1.0,
+   0.0,
+   0.0,
+   0.0
+  ],
+  "axis": "Z",
+  "lo": -90.0,
+  "hi": 0.0
+ },
+ "left_hand_index_1_joint": {
+  "type": "PhysicsRevoluteJoint",
+  "b0": "left_hand_index_0_link",
+  "b1": "left_hand_index_1_link",
+  "p0": [
+   0.0458,
+   0.0,
+   0.0
+  ],
+  "r0": [
+   1.0,
+   0.0,
+   0.0,
+   0.0
+  ],
+  "p1": [
+   0.0,
+   0.0,
+   0.0
+  ],
+  "r1": [
+   1.0,
+   0.0,
+   0.0,
+   0.0
+  ],
+  "axis": "Z",
+  "lo": -100.0,
+  "hi": 0.0
+ },
+ "left_hand_middle_0_joint": {
+  "type": "PhysicsRevoluteJoint",
+  "b0": "left_hand_palm_link",
+  "b1": "left_hand_middle_0_link",
+  "p0": [
+   0.0777,
+   0.0016,
+   -0.0285
+  ],
+  "r0": [
+   1.0,
+   0.0,
+   0.0,
+   0.0
+  ],
+  "p1": [
+   0.0,
+   0.0,
+   0.0
+  ],
+  "r1": [
+   1.0,
+   0.0,
+   0.0,
+   0.0
+  ],
+  "axis": "Z",
+  "lo": -90.0,
+  "hi": 0.0
+ },
+ "left_hand_middle_1_joint": {
+  "type": "PhysicsRevoluteJoint",
+  "b0": "left_hand_middle_0_link",
+  "b1": "left_hand_middle_1_link",
+  "p0": [
+   0.0458,
+   0.0,
+   0.0
+  ],
+  "r0": [
+   1.0,
+   0.0,
+   0.0,
+   0.0
+  ],
+  "p1": [
+   0.0,
+   0.0,
+   0.0
+  ],
+  "r1": [
+   1.0,
+   0.0,
+   0.0,
+   0.0
+  ],
+  "axis": "Z",
+  "lo": -100.0,
+  "hi": 0.0
+ },
+ "left_hand_thumb_0_joint": {
+  "type": "PhysicsRevoluteJoint",
+  "b0": "left_hand_palm_link",
+  "b1": "left_hand_thumb_0_link",
+  "p0": [
+   0.0255,
+   0.0,
+   0.0
+  ],
+  "r0": [
+   1.0,
+   0.0,
+   0.0,
+   0.0
+  ],
+  "p1": [
+   0.0,
+   0.0,
+   0.0
+  ],
+  "r1": [
+   1.0,
+   0.0,
+   0.0,
+   0.0
+  ],
+  "axis": "Y",
+  "lo": -60.0,
+  "hi": 60.0
+ },
+ "left_hand_thumb_1_joint": {
+  "type": "PhysicsRevoluteJoint",
+  "b0": "left_hand_thumb_0_link",
+  "b1": "left_hand_thumb_1_link",
+  "p0": [
+   -0.0025,
+   -0.0193,
+   0.0
+  ],
+  "r0": [
+   1.0,
+   0.0,
+   0.0,
+   0.0
+  ],
+  "p1": [
+   0.0,
+   0.0,
+   0.0
+  ],
+  "r1": [
+   1.0,
+   0.0,
+   0.0,
+   0.0
+  ],
+  "axis": "Z",
+  "lo": -35.0,
+  "hi": 60.0
+ },
+ "left_hand_thumb_2_joint": {
+  "type": "PhysicsRevoluteJoint",
+  "b0": "left_hand_thumb_1_link",
+  "b1": "left_hand_thumb_2_link",
+  "p0": [
+   0.0,
+   -0.0458,
+   0.0
+  ],
+  "r0": [
+   1.0,
+   0.0,
+   0.0,
+   0.0
+  ],
+  "p1": [
+   0.0,
+   0.0,
+   0.0
+  ],
+  "r1": [
+   1.0,
+   0.0,
+   0.0,
+   0.0
+  ],
+  "axis": "Z",
+  "lo": 0.0,
+  "hi": 100.0
+ }
+}
