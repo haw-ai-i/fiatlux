@@ -389,3 +389,14 @@ hand) and `teacher/matlimit/` (the 33-iteration run above).
 Startup hang: also seen on a Quadro RTX 5000 node (`gn-16-22-00`, 76 min, flagged by the cluster's
 0% GPU email). The job has only ever started on A4000 cards, so the kill-shared copy is pinned
 to `gres/gpu:nv-rtx-a4000`.
+
+## Baseline: LadderMan as published (2026-11-20)
+
+Replayed the 17 Nov teacher (their reference clip and stock G1, rung ladder at our 70.3 deg /
+249 mm, cancelled at iteration 2,750) from the ground in their env: 15 of 16 robots follow the
+clip to its end at step 710, pelvis gain 460-519 mm against the reference's 539 mm.
+
+`lm-stock` (`ladderman_port/koa/lm_train_stock.sbatch`) trains the fully stock case: a
+`git archive` of upstream commit 9a8d5ed unpacked as `LadderMan_stock/` on Koa (103 files, none
+of ours), no task or algo overrides, their default 7,500 iterations, kill-shared A4000. The job
+refuses to run unless `active_adaptation` imports from that tree.
