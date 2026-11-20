@@ -65,6 +65,8 @@ ap.add_argument("--min_transit", type=float, default=0.90)
 ap.add_argument("--hold_tol", type=float, default=0.015)
 ap.add_argument("--gate_speed", type=float, default=6.0)
 ap.add_argument("--gate_clear", type=float, default=0.020)
+ap.add_argument("--torso_want", type=float, default=0.010,
+                help="free space the planner keeps between the forearm and the robot's own torso")
 ap.add_argument("--start_blend", type=float, default=0.40,
                 help="seconds over which the opening is re-timed. The base clip holds a standing "
                      "stub for 12 frames and then JUMPS to the climb pose in one frame (pelvis "
@@ -101,6 +103,14 @@ ap.add_argument("--roll_t", type=float, default=0.6, help="s: the timed roll ont
 ap.add_argument("--ground_feet", action=argparse.BooleanOptionalAction, default=True,
                 help="lower each planted foot onto the surface under it and re-solve the legs")
 ap.add_argument("--open_lift", type=float, default=0.006, help="m added to the opening reach's mid-path height")
+ap.add_argument("--tread_back", type=float, nargs=4, default=[0.0, 0.0, 0.0, 0.0],
+                help="m, per tread 1-4: stand this much further BACK on the tread (feet and pelvis "
+                     "together), so the shin clears the nose of the tread above")
+ap.add_argument("--ground_back", type=float, default=0.0,
+                help="m: stand this much further from the ladder while on the GROUND (the start)")
+ap.add_argument("--swing_hip_back", type=float, default=0.0,
+                help="m: ease the pelvis this much further back while the LEFT (leading) foot swings; "
+                     "the knee follows the hip, and it is the knee end of the shin that meets the next nose")
 ap.add_argument("--swing_back", type=float, default=0.0, help="m: a swinging foot is pulled this far back from the ladder at mid-swing")
 ap.add_argument("--hand_yc", type=float, default=0.02, help="centre of the two hand bands, m")
 ap.add_argument("--edge_in2", type=float, default=0.0235,
@@ -294,6 +304,37 @@ for _gpass in range(3 if a.ground_feet else 0):          # re-measure and correc
     for _ in range(8):
         cp = np.minimum(np.convolve(np.pad(cp, len(_k) // 2, mode="edge"), _k, mode="valid"), _raw)
     PP[:, 2] += cp
+    # Stand further back on each tread. The base clip stands toe-deep, ankle over the tread's front
+    # edge; the next tread is only 86 mm further in, and a shin leaning 12-20 deg sits 5-20 mm
+    # inside its nose for most of the climb (36 mm at each step-up). Feet and pelvis move back
+    # together, so the legs keep their shape and the weight stays over the feet.
+    _tb = {sd: np.zeros(T) for sd in SIDES}
+    if _gpass == 0 and max(a.tread_back) > 0:
+        _tops = [s_[2] for s_ in SURF[:5]]
+        for sd in SIDES:
+            fz = _ref[f"{sd}_ankle_roll_link"][0][:, 2]
+            rr = _RR[sd]
+            val = []
+            for a_, b_ in rr:
+                k_ = int(np.argmin([abs(np.median(fz[a_:b_]) - 0.04 - t_) for t_ in _tops]))
+                val.append(a.ground_back if k_ == 0 else a.tread_back[k_ - 1])
+                _tb[sd][a_:b_] = val[-1]
+            for (a0, b0), (a1, b1), v0, v1 in zip(rr[:-1], rr[1:], val[:-1], val[1:]):
+                # be all the way back by 40% of the swing: the shin passes the next nose mid-swing
+                u = np.clip((np.arange(b0, a1) - b0) / max(1, a1 - b0) / 0.4, 0, 1)
+                _tb[sd][b0:a1] = v0 + (v1 - v0) * (0.5 - 0.5 * np.cos(np.pi * u))
+            if rr:
+                _tb[sd][rr[-1][1]:] = val[-1]; _tb[sd][:rr[0][0]] = val[0]
+            print(f"[feet ] {sd}: stands back by (mm per stance) " + " ".join(f"{v*1000:.0f}" for v in val))
+        _kb = np.hanning(int(0.40 * fps) | 1); _kb /= _kb.sum()
+        _pb = 0.5 * (_tb["left"] + _tb["right"])
+        PP[:, 0] -= np.convolve(np.pad(_pb, len(_kb) // 2, mode="edge"), _kb, mode="valid")
+    if _gpass == 0 and a.swing_hip_back > 0:
+        for (a0, b0), (a1, b1) in zip(_RR["left"][:-1], _RR["left"][1:]):
+            if a1 - b0 < int(0.5 * fps):
+                continue
+            u = (np.arange(b0, a1) - b0) / max(1, a1 - b0)
+            PP[b0:a1, 0] -= a.swing_hip_back * np.sin(np.pi * u) ** 2
     # Each foot relative to the pelvis: in stance, what is left of its own drop (>= 0: it only
     # ever bends more); through a swing, eased between the stances either side -- so a trailing
     # leg leaves the ground exactly as extended as the clip had it.
@@ -317,7 +358,7 @@ for _gpass in range(3 if a.ground_feet else 0):          # re-measure and correc
         # comes up knee-first into the tread it is about to stand on: the sim pushes the left shin
         # and thigh with 1-23 kN at every left step (base steps 80-100, 240-250, 420-440, 590-620).
         # Pulling the foot back mid-swing folds the knee up and away; stance is untouched.
-        tx = tp[:, 0].copy()
+        tx = tp[:, 0] - _tb[sd]
         if _gpass == 0 and a.swing_back > 0 and sd == "left":   # the leading leg; the trailing one leaves the tread straight and cannot be drawn back
             for (a0, b0), (a1, b1) in zip(_RR[sd][:-1], _RR[sd][1:]):
                 u = (np.arange(b0, a1) - b0) / max(1, a1 - b0)
@@ -502,6 +543,24 @@ TORSO_P, TORSO_Q = _TQ["torso_p"], _TQ["torso_q"]
 def chest_x(i, p):
     """How far in front of the chest plane a world point is, at frame i."""
     return float(K.qrot(K.qconj(TORSO_Q[i]), p - TORSO_P[i])[0])
+
+
+# The arm against the robot's OWN torso. The simulator collides each link as the convex hull of
+# its collision mesh, and the torso's hull spans both shoulder housings: an elbow tucked in beside
+# the ribs is inside it. Measured in rebuild 52: the left elbow 23 mm inside the torso hull at the
+# standing start and through the platform reach, pushed out with 400-770 N.
+from scipy.spatial import ConvexHull as _CH
+_TV = np.load(pathlib.Path(__file__).parent / "g1_body_hulls.npz")["torso_link"].astype(float)
+_TEQ = _CH(_TV).equations
+ARM_R = 0.038                                              # forearm / elbow link radius
+
+
+def torso_clear(i, e, w):
+    """Free space between the forearm (elbow e to wrist w, as three balls) and the torso hull.
+    Negative = overlapping. A lower bound when clear, exact enough near contact."""
+    P = np.stack([e, e + 0.35 * (w - e), e + 0.70 * (w - e)])
+    L = K.qrot(K.qconj(TORSO_Q[i]), P - TORSO_P[i])
+    return float((L @ _TEQ[:, :3].T + _TEQ[:, 3]).max(1).min()) - ARM_R
 
 
 def front_of_body(i, p, side):
@@ -825,7 +884,17 @@ def solve_palm(i, side, contact, q0, iters=25, dq_cap=None):
 
 def arm_clear(i, side, q):
     w, _, _, _, e = hand_of(i, side, q)
-    return min(mesh_dist(e), mesh_dist(0.5 * (e + w)))
+    # the torso term is shifted so that steer_clear's 50 mm target means `torso_want` of free space
+    return min(mesh_dist(e), mesh_dist(0.5 * (e + w)), torso_clear(i, e, w) + 0.05 - a.torso_want)
+
+
+def steer_n(i, side, contact, q, n=8):
+    for _ in range(n):
+        q2 = steer_clear(i, side, contact, q)
+        if q2 is q:
+            break
+        q = q2
+    return q
 
 
 def steer_clear(i, side, contact, q, want=0.05):
@@ -1006,7 +1075,8 @@ def plan_arm(side):
 
     def all_clear(i_, q_):
         w_, pc_, _, tip_, e_ = hand_of(i_, side, q_)
-        return min(mesh_dist(w_), mesh_dist(pc_), mesh_dist(tip_), mesh_dist(e_), mesh_dist(0.5 * (e_ + w_)))
+        return min(mesh_dist(w_), mesh_dist(pc_), mesh_dist(tip_), mesh_dist(e_), mesh_dist(0.5 * (e_ + w_)),
+                   torso_clear(i_, e_, w_) + 0.034 - a.torso_want)
 
     def repair(seg, lo_, want=0.034):
         """Push every too-close pose of a chosen move along the joint direction that opens its
@@ -1041,10 +1111,11 @@ def plan_arm(side):
         bad = max(0.0, v - a.vcap) / a.vcap
         if bad > 1.0:
             return bad + 10.0                              # hopeless: skip the mesh queries
-        cmin, xmin, xtra = 1e9, 1e9, 1e9
+        cmin, xmin, xtra, tmin = 1e9, 1e9, 1e9, 1e9
         for k in range(0, len(seg), 8):
             i_ = lo_ + k
             w_, pc_, _, tip_, e_ = hand_of(i_, side, seg[k])
+            tmin = min(tmin, torso_clear(i_, e_, w_))
             xmin = min(xmin, front_of_body(i_, w_, side))
             if int(0.21 * fps) < k < len(seg) - int(0.21 * fps):   # the ends rest ON a face by design
                 cmin = min(cmin, mesh_dist(w_), mesh_dist(0.5 * (e_ + w_)), mesh_dist(e_),
@@ -1052,7 +1123,7 @@ def plan_arm(side):
             if int(0.45 * fps) < k < len(seg) - int(0.45 * fps):   # away from both holds' edges
                 xtra = min(xtra, min(mesh_dist(p_) for p_ in hand_extra(i_, side, seg[k])))
         return (bad + 2.0 * max(0.0, 0.028 - cmin) / 0.028 + 20.0 * max(0.0, 0.03 - xmin)
-                + 2.0 * max(0.0, 0.012 - xtra) / 0.012)
+                + 2.0 * max(0.0, 0.012 - xtra) / 0.012 + 2.0 * max(0.0, a.torso_want - tmin) / 0.01)
 
     # transits: joint-space monotone spline, widened until under the speed cap
     edges = [(None, holds[0])] + list(zip(holds[:-1], holds[1:])) + [(holds[-1], None)]
@@ -1082,7 +1153,24 @@ def plan_arm(side):
                     u_ = knots_t[kk] / b
                     seed = solve_palm(knots_t[kk], side, B[3] + np.array([np.interp(u_, fr, dx), 0.0, np.interp(u_, fr, dz)]),
                                       seed, iters=60)[0]
+                    seed = steer_n(knots_t[kk], side, B[3] + np.array([np.interp(u_, fr, dx), 0.0, np.interp(u_, fr, dz)]), seed)
                     knots_q.insert(0, seed)
+                # The chain above keeps the hold's arm branch, which at the standing start tucks the
+                # elbow in beside the ribs -- inside the torso's collision hull. For the first two
+                # waypoints take a freshly chosen pose instead when it is the clearer one.
+                for kk in (0, 1):
+                    u_ = knots_t[kk] / b
+                    tg_ = B[3] + np.array([np.interp(u_, fr, dx), 0.0, np.interp(u_, fr, dz)])
+                    w_, _, _, _, e_ = hand_of(knots_t[kk], side, knots_q[kk])
+                    c_old = torso_clear(knots_t[kk], e_, w_)
+                    if c_old >= a.torso_want:
+                        continue
+                    qn, en, tn = solve_palm_seeded(knots_t[kk], side, tg_)
+                    w_, _, _, _, e_ = hand_of(knots_t[kk], side, qn)
+                    c_new = torso_clear(knots_t[kk], e_, w_)
+                    if en < 0.005 and tn < 4.0 and c_new > c_old + 0.01:
+                        print(f"[open ] {side[0].upper()} waypoint {kk}: torso clearance {c_old*1000:+.0f} -> {c_new*1000:+.0f} mm", flush=True)
+                        knots_q[kk] = qn
                 f = PchipInterpolator(knots_t, np.array(knots_q), axis=0)
                 seg = f(np.arange(0, b + 1))
                 if np.abs(np.diff(seg, axis=0)).max() * fps <= a.vcap or b >= B[1] - 2:
@@ -1101,6 +1189,7 @@ def plan_arm(side):
                 cA = roll_contact(A[2], A[3], CUR["lam"]) if A[2] in ROLLED else A[3]
                 k1 = max(1, min(int(0.5 * fps), n - 2))
                 q_up = solve_palm(min(i0 + k1, T - 1), side, cA + np.array([-0.03, 0.0, 0.15]), Q[i0], iters=40)[0]
+                q_up = steer_n(min(i0 + k1, T - 1), side, cA + np.array([-0.03, 0.0, 0.15]), q_up)
                 k2 = k1 + int(1.2 * fps)
                 f = PchipInterpolator([0, k1, k2], np.array([Q[i0], q_up, REST[side]]), axis=0)
                 Q[A[1]:] = f(np.minimum(np.arange(1, n + 1), k2))
@@ -1143,6 +1232,49 @@ def plan_arm(side):
     return Q, lab, err, holds, tilt
 
 
+import os as _os
+if _os.environ.get("EDGE_LEGDUMP"):
+    # legs only, no arm planning:  EDGE_LEGDUMP=<dir>  -> a clip-shaped dump the leg checkers can read
+    _o = K.fk_all(PP, PQ, d["joint_pos"], jn)
+    _nm = [n for n in _o if any(k in n for k in ("pelvis", "hip", "knee", "ankle", "torso"))]
+    _dd = pathlib.Path(_os.environ["EDGE_LEGDUMP"]); _dd.mkdir(parents=True, exist_ok=True)
+    np.savez(_dd / "motion.npz", body_pos_w=np.stack([_o[n][0] for n in _nm], 1), body_quat_w=np.stack([_o[n][1] for n in _nm], 1))
+    (_dd / "meta.json").write_text(json.dumps({"body_names": _nm, "fps": fps}))
+    sys.exit(0)
+if _os.environ.get("EDGE_PROBE"):
+    # feasibility probe, no clip written:  EDGE_PROBE="left:platform:322,340 right:platform:540"
+    for item in _os.environ["EDGE_PROBE"].split():
+        sd, nm, sts = item.split(":")
+        seg = [x for x in SCHED[sd] if x[2] == nm][0]
+        ct0 = fixed_contact(nm, sd, seg[0], seg[1] if nm != "hook" else min(seg[1], seg[0] + int(2 * fps)))[0]
+        sg = 1.0 if sd == "left" else -1.0
+        for st in sts.split(","):
+            i = int(float(st) / 50 * fps)
+            set_spec(nm, sd, i)
+            ct = roll_contact(nm, ct0, CUR["lam"]) if nm in ROLLED else ct0
+            rows = []
+            for a4 in _seeds(sd) + [np.array([-0.5, 0.6 * sg, 0.4 * sg, 1.2]), np.array([-0.2, 0.9 * sg, 0.8 * sg, 1.4]), np.array([0.2, 0.5 * sg, 0.0, 1.5])]:
+                for wr in [np.zeros(3), np.array([1.4 * sg, 0, 0]), np.array([1.4 * sg, 0.8, 0]), np.array([1.4 * sg, -0.8, 0]), np.array([0.7 * sg, 0.5, 1.0 * sg]), np.array([0.7 * sg, 0.5, -1.0 * sg])]:
+                    q, e, tl = solve_palm(i, sd, ct, np.concatenate([a4, wr]), iters=80)
+                    if e > 0.004 or tl > 4:
+                        continue
+                    for _ in range(40):
+                        w_, _, _, _, e_ = hand_of(i, sd, q)
+                        rows.append((torso_clear(i, e_, w_), min(mesh_dist(e_), mesh_dist(0.5 * (e_ + w_))), np.round(q, 2)))
+                        q2 = steer_clear(i, sd, ct, q, want=0.09)
+                        if q2 is q:
+                            break
+                        q = q2
+            rows.sort(key=lambda r: -r[0])
+            sp_ = K.qrot(K.qconj(TORSO_Q[i]), ct - TORSO_P[i])
+            print(f"[probe] {sd} {nm} step {st}: contact in torso frame {np.round(sp_, 3)}; {len(rows)} poses; best torso clearance:")
+            seen = []
+            for r in rows:
+                if all(np.abs(r[2] - x).max() > 0.25 for x in seen):
+                    seen.append(r[2]); print(f"    torso {r[0]*1000:+6.1f} mm  ladder {r[1]*1000:5.0f} mm  q {r[2]}")
+                if len(seen) >= 6:
+                    break
+    sys.exit(0)
 plan = {s: plan_arm(s) for s in SIDES}
 for s in SIDES:
     e_ = plan[s][2]; big = np.where(e_ > a.hold_tol)[0]
@@ -1222,6 +1354,14 @@ for s in SIDES:
     behind += int(sum(front_of_body(i, FKO[s][f"{s}_wrist_yaw_link"][i], s) < 0.0 for i in range(T)))
     wsp = max(wsp, float(np.linalg.norm(np.gradient(FKO[s][f"{s}_wrist_yaw_link"], 1 / fps, axis=0), axis=1).max()))
 check("wrist in front of the body", behind == 0, f"{behind} frames with the wrist behind both the chest plane and the shoulder")
+_tc, _tw = 1e9, None
+for s in SIDES:
+    W_, E_ = FKO[s][f"{s}_wrist_yaw_link"], FKO[s][f"{s}_elbow_link"]
+    for i in range(0, T, 3):
+        c_ = torso_clear(i, E_[i], W_[i])
+        if c_ < _tc:
+            _tc, _tw = c_, f"{s} forearm at step {step50[i]:.0f}"
+check("arm clear of the torso", _tc >= 0.0, f"forearm closest {_tc*1000:+.1f} mm ({_tw})")
 check("wrist speed", wsp <= 2.0, f"peak {wsp:.2f} m/s")
 cl_min, cl_where, hd_min, hd_where, below, tilt_max = 1e9, None, 1e9, None, 0, 0.0
 wr_min, wr_where = 1e9, None
