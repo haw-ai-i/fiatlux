@@ -213,3 +213,20 @@ Flags: rebuild 64's with `--tread_back 0.065 0.065 0.065 0.075 --ground_back 0.0
 - Static: weight up to 53 mm behind the single stance foot (rebuild 64: 45 mm).
 - Outcome: the extra 10 mm of stand-back costs the handrail reach and the step 2 to 3 hold. The
   release change is kept; the stand-back goes back to 55/55/55/70.
+
+## Rebuild 66: rebuild 64 with the clean release (accepted)
+
+Flags: shared + `--tread_back 0.055 0.055 0.055 0.07 --ground_back 0.055 --level_roll 1.0
+--level_pitch 1.0 --centre_weight 1.0 --release_up 0.0 0.0 0.13`.
+
+- Gate: all pass, ACCEPTED. Hands: clean.
+- Torso: clean at the release. Right wrist-roll link 3 mm inside for steps 741-743.
+- Legs: as rebuild 64. Left shin 2.1 s (up to 26 mm) and left thigh 0.4 s, all as the left foot
+  lands; right leg clean.
+- Scan: a foot pushed at steps 150-160 (4-7 kN), 880 (10 kN) and 1410 (4.8 kN); left shin 2,328 N
+  at step 960. No arm or torso contact.
+- Frozen: 7 of 7 hold 3 s. Hands carry 12-13% of body weight on the flat-palm holds and 3% on the
+  step 2 to 3 finger-pad hold. Feet settle 22-33 mm. The standing start leans 225 mm forward.
+- Static: as rebuild 64.
+- Planted soles sit between -6.5 and +4.4 mm of their surface; the negative end is at the edges of
+  stances and matches the scan's foot pushes.

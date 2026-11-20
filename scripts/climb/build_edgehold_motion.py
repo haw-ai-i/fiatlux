@@ -123,6 +123,9 @@ ap.add_argument("--level_pitch", type=float, default=0.0,
                      "the grounding pass measures the soles as they will actually be")
 ap.add_argument("--release_up", type=float, nargs=3, default=[-0.03, 0.0, 0.15],
                 help="m: where the hand goes first when it lets go of the handrail, relative to its hold")
+ap.add_argument("--no_sink", action=argparse.BooleanOptionalAction, default=False,
+                help="after grounding, lift a foot wherever its sole is still below the surface under it "
+                     "(the edges of stances, where the foot is landing or peeling off)")
 ap.add_argument("--ground_back", type=float, default=0.0,
                 help="m: stand this much further from the ladder while on the GROUND (the start)")
 ap.add_argument("--swing_hip_back", type=float, default=0.0,
@@ -440,6 +443,49 @@ for _gpass in range(3 if a.ground_feet else 0):          # re-measure and correc
         print(f"[feet ] {sd}: leg re-solved to {np.abs(resid(jp)[:, :2]).max()*1000:.2f} mm; knee {kn.min():.2f}..{kn.max():.2f} rad "
               f"(limits {lo_k:.2f}..{hi_k:.2f})")
     print(f"[feet ] pelvis lowered by {(-cp).min()*1000:.0f}..{(-cp).max()*1000:.0f} mm (median {np.median(-cp)*1000:.0f})")
+
+# ---- never below the surface ----------------------------------------------------------------------
+# Grounding follows the CORE of each stance and holds its edge values outward, so in the first and
+# last 0.2 s of a stance the sole can sit a few millimetres inside the tread (measured on rebuild
+# 66: left sole down to -6.5 mm; the sim pushes the foot with 4-10 kN at steps 150-160, 880, 1410).
+# Lift-only correction, as an upper envelope, legs re-solved in their sagittal plane.
+if a.no_sink and a.ground_feet:
+    _kn = np.hanning(int(0.12 * fps) | 1); _kn /= _kn.sum()
+    for _np in range(2):
+        _ref = K.fk_all(PP, PQ, d["joint_pos"], jn)
+        for sd in SIDES:
+            foot = f"{sd}_ankle_roll_link"
+            tp, tq = _ref[foot]
+            fl = sole_float(tp, tq) + 0.001                # sole_float aims 1 mm proud; undo that here
+            up = np.maximum(-fl, 0.0)
+            up = np.where(up > 0, up + 0.0005, 0.0)
+            raw = up.copy()
+            for _ in range(6):
+                up = np.maximum(np.convolve(np.pad(up, len(_kn) // 2, mode="edge"), _kn, mode="valid"), raw)
+            if up.max() <= 0:
+                continue
+            cols = [jn.index(f"{sd}_{t}_joint") for t in ("hip_pitch", "knee", "ankle_pitch")]
+            fwd = np.array([1.0, 0.0, 0.0])
+            tx, tz, tf = tp[:, 0], tp[:, 2] + up, K.qrot(tq, fwd)
+
+            def resid(jp):
+                o = K.fk_all(PP, PQ, jp, jn)[foot]
+                return np.stack([o[0][:, 0] - tx, o[0][:, 2] - tz, K.qrot(o[1], fwd)[:, 2] - tf[:, 2]], 1)
+
+            jp = d["joint_pos"]
+            for _ in range(25):
+                r0 = resid(jp)
+                if np.abs(r0).max() < 2e-5:
+                    break
+                J = np.zeros((T, 3, 3))
+                for c_, col in enumerate(cols):
+                    jq = jp.copy(); jq[:, col] += 1e-4
+                    J[:, :, c_] = (resid(jq) - r0) / 1e-4
+                dq = np.linalg.solve(J + 1e-6 * np.eye(3), -r0[:, :, None])[:, :, 0]
+                jp[:, cols] += np.clip(dq, -0.2, 0.2)
+            if _np == 0:
+                print(f"[sink ] {sd}: sole was up to {raw.max()*1000:.1f} mm below its surface on {(raw > 0).mean()*100:.0f}% of frames; "
+                      f"lifted, leg re-solved to {np.abs(resid(jp)[:, :2]).max()*1000:.2f} mm")
 
 # ---- centre the weight sideways ----------------------------------------------------------------
 # The base clip is a human's dynamic climb: the feet are only ~100 mm apart and the body's weight
