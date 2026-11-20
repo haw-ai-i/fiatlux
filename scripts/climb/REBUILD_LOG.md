@@ -230,3 +230,19 @@ Flags: shared + `--tread_back 0.055 0.055 0.055 0.07 --ground_back 0.055 --level
 - Static: as rebuild 64.
 - Planted soles sit between -6.5 and +4.4 mm of their surface; the negative end is at the edges of
   stances and matches the scan's foot pushes.
+
+## Rebuild 67: soles never below the tread (best so far)
+
+Flags: rebuild 66's + `--no_sink`.
+
+- Builder: soles were up to 10.3 mm (left) and 5.1 mm (right) below their surface on 9-12% of
+  frames, at the edges of stances; lifted. Planted soles now sit between -0.9 and +6.5 mm.
+- Gate: all pass, ACCEPTED. Hands: clean.
+- Torso: right wrist-roll link 3 mm inside for steps 741-743; nothing else.
+- Legs: unchanged. Left shin 2.1 s (up to 26 mm) and left thigh 0.4 s as the left foot lands.
+- Scan: ONE entry in 148 poses: left shin 2,328 N and left thigh 1,011 N at step 960. All the foot
+  pushes of rebuild 66 are gone.
+- Frozen: 7 of 7 hold 3 s.
+- Static, with hands: no hold at steps 145-165, 565-580, 1155-1165 and 1340-1345 (weight 20-45 mm
+  behind the single stance foot just after it lands), and in the brief windows where neither foot
+  counts as planted.
