@@ -370,3 +370,22 @@ Every teacher trained so far on the open Dex3 (rebuild 60, and the rebuild 67 / 
 before this) trained against the wedge. An earlier version of the probe commanded a stale pose on
 the first step after reset; `cmd.update()` after `env.reset()` fixes it, and the numbers above are
 from the fixed probe.
+
+## Restart on the fixed hand; friction randomisation limit (2026-11-20)
+
+The first restart with one hull per hand part logged 41,787 `PxPhysics::createMaterial: limit of
+64K materials reached` errors at startup. LadderMan's `perturb_body_materials` draws friction per
+SHAPE of the ankle-roll and wrist-yaw links; those links went from 6 shapes to 22, and
+22 x 4,096 environments is past PhysX's 65,536 materials, so about a quarter of the randomised
+shapes kept the default material. Cancelled at iteration 33.
+
+The job scripts now pass `+task.randomization.perturb_body_materials.homogeneous=true` (an option
+the class already has): one friction draw per robot, shared by its feet and hands, at most 4,096
+materials. Ranges unchanged.
+
+Runs on Koa set aside, not deleted: `teacher/wedge_hand/` (everything trained on the one-hull
+hand) and `teacher/matlimit/` (the 33-iteration run above).
+
+Startup hang: also seen on a Quadro RTX 5000 node (`gn-16-22-00`, 76 min, flagged by the cluster's
+0% GPU email). The job has only ever started on A4000 cards, so the kill-shared copy is pinned
+to `gres/gpu:nv-rtx-a4000`.

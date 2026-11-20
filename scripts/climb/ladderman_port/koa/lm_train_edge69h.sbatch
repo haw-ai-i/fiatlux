@@ -83,6 +83,7 @@ exec python scripts/train.py algo=teacher task=teacher "${RESUME[@]}" \
     '+task.command.contact_target_pos_offset=[[0.0,0.115,0.0],[0.0,-0.115,0.0]]' \
     'task.command.contact_eef_pos_offset=[[0.17,-0.017,0.0],[0.17,0.017,0.0]]' \
     task.randomization.ladder_geometry_randomization.enabled=false \
+    +task.randomization.perturb_body_materials.homogeneous=true \
     task.action._target_=active_adaptation.envs.mdp.action_refwrist.JointPositionRefWrist \
     task.num_envs="$ENVS" algo.max_iters="$ITERS" \
     seed=1 \
