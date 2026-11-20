@@ -148,3 +148,24 @@ joint; ankle roll falls to +0.22 / -0.14 rad) and `--centre_weight` (move the pe
 the midpoint of the feet while both are planted, feet held; backs off where ankle roll would pass
 its limit). Asking for the weight over the single stance foot as well needs 100 mm of pelvis
 travel and ankle roll past its limit, so that is not done.
+
+## Rebuild 63: feet level sideways, weight centred (best so far)
+
+Flags: shared + `--tread_back 0.055 0.055 0.055 0.07 --ground_back 0.055 --level_roll 1.0
+--centre_weight 1.0` (rebuild 60 plus the two new options).
+
+- Builder: sideways foot tilt 0 (was up to 12.8 deg left, 15.8 deg right); ankle roll +0.22 / -0.14
+  rad at most (was pinned at +-0.26); pelvis moved up to 60 mm sideways; weight off the midpoint of
+  two planted feet: median 0 mm (was 40), max 33.
+- Gate: all pass, ACCEPTED. Hands: clean. Legs: clean.
+- Torso: left arm clear. Right wrist-roll link up to 9 mm inside at steps 745-758 and 1379-1400.
+- Scan: a foot pushed at steps 160 (5,231 N) and 1020 (1,456 N); right wrist against the torso at
+  1380-1390 (about 470 N). Nothing else.
+- Frozen: 6 of 7 hold 3 s (rebuild 60: 4 of 7). Standing on step 2 with one hand and standing on
+  step 4 now hold. Step 2 to 3 (finger pads on the handrail edge) still falls, at 2.1 s, sideways.
+  The standing start stays up but leans 231 mm forward onto the ladder.
+- In every on-tread pose the ankles sink 40-59 mm and slide 16-20 mm back in the first 0.25 s, then
+  stay. The clip plants the feet toe-down (7-17 deg) on flat treads with the ankle ahead of the
+  tread's edge; under load the foot rotates flat.
+- Static, with hands: no hold exists at steps 150-165, 565-595 and 1330-1345 (weight 24-33 mm
+  behind the single stance foot just after it lands).

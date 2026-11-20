@@ -117,6 +117,10 @@ ap.add_argument("--level_roll", type=float, default=0.0,
                 help="0..1: remove this much of each foot's SIDEWAYS tilt, with the ankle-roll joint alone. "
                      "The base clip has both ankle rolls pinned at their +-0.26 rad limit for 88% of the "
                      "climb and the soles tilted 4-14 deg sideways: the feet stand on their edges")
+ap.add_argument("--level_pitch", type=float, default=0.0,
+                help="0..1: remove this much of each foot's TOE-DOWN pitch, with the ankle-pitch joint alone, "
+                     "before the feet are grounded. Unlike --flat_feet this is applied to every frame, so "
+                     "the grounding pass measures the soles as they will actually be")
 ap.add_argument("--ground_back", type=float, default=0.0,
                 help="m: stand this much further from the ladder while on the GROUND (the start)")
 ap.add_argument("--swing_hip_back", type=float, default=0.0,
@@ -271,24 +275,27 @@ def planted_mask(fp, fl):
     return m, runs(m)
 
 
-if a.level_roll > 0:
-    _lat = np.array([0.0, 1.0, 0.0])
+for _axis, _gain, _jt, _what in ((np.array([1.0, 0.0, 0.0]), a.level_pitch, "ankle_pitch", "toe-up pitch"),
+                                  (np.array([0.0, 1.0, 0.0]), a.level_roll, "ankle_roll", "sideways tilt")):
+    if _gain <= 0:
+        continue
     for sd in SIDES:
-        col = jn.index(f"{sd}_ankle_roll_joint")
+        col = jn.index(f"{sd}_{_jt}_joint")
         foot = f"{sd}_ankle_roll_link"
         jp = d["joint_pos"]
-        t0 = K.qrot(K.fk_all(PP, PQ, jp, jn)[foot][1], _lat)[:, 2]
-        want = (1.0 - a.level_roll) * t0
+        t0 = K.qrot(K.fk_all(PP, PQ, jp, jn)[foot][1], _axis)[:, 2]
+        want = (1.0 - _gain) * t0
         r_before = jp[:, col].copy()
         for _ in range(12):                                # one joint, one number per frame: Newton
-            t1 = K.qrot(K.fk_all(PP, PQ, jp, jn)[foot][1], _lat)[:, 2]
+            t1 = K.qrot(K.fk_all(PP, PQ, jp, jn)[foot][1], _axis)[:, 2]
             jq = jp.copy(); jq[:, col] += 1e-4
-            g = (K.qrot(K.fk_all(PP, PQ, jq, jn)[foot][1], _lat)[:, 2] - t1) / 1e-4
+            g = (K.qrot(K.fk_all(PP, PQ, jq, jn)[foot][1], _axis)[:, 2] - t1) / 1e-4
             jp[:, col] += np.clip((want - t1) / np.where(np.abs(g) < 1e-3, 1e-3, g), -0.1, 0.1)
-        t2 = K.qrot(K.fk_all(PP, PQ, jp, jn)[foot][1], _lat)[:, 2]
-        lo_, hi_ = K.limits(f"{sd}_ankle_roll_joint")
-        print(f"[level] {sd} foot sideways tilt {np.degrees(np.arcsin(t0)).min():+.1f}..{np.degrees(np.arcsin(t0)).max():+.1f} deg -> "
-              f"{np.degrees(np.arcsin(t2)).min():+.1f}..{np.degrees(np.arcsin(t2)).max():+.1f}; ankle roll {r_before.min():+.2f}..{r_before.max():+.2f} -> "
+        lo_, hi_ = K.limits(f"{sd}_{_jt}_joint")
+        jp[:, col] = np.clip(jp[:, col], lo_ + 0.02, hi_ - 0.02)
+        t2 = K.qrot(K.fk_all(PP, PQ, jp, jn)[foot][1], _axis)[:, 2]
+        print(f"[level] {sd} foot {_what} {np.degrees(np.arcsin(t0)).min():+.1f}..{np.degrees(np.arcsin(t0)).max():+.1f} deg -> "
+              f"{np.degrees(np.arcsin(t2)).min():+.1f}..{np.degrees(np.arcsin(t2)).max():+.1f}; {_jt} {r_before.min():+.2f}..{r_before.max():+.2f} -> "
               f"{jp[:, col].min():+.2f}..{jp[:, col].max():+.2f} rad (limits {lo_:+.2f}..{hi_:+.2f})")
 
 for _gpass in range(3 if a.ground_feet else 0):          # re-measure and correct again: converges to < 1 mm
