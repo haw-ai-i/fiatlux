@@ -1010,3 +1010,13 @@ often than in one-process batches. Still a diagnostic start: S02's own spawn pos
 From S02's OWN spawn pose (no staging), Dex3, free-standing ladder, three fresh runs: all down within
 61-64 steps. The spawn stands the robot 0.199-0.229 m behind the clip's start (and 17-58 mm to the
 side, 40 mm higher), varying run to run. Nothing bridges the spawn pose to the clip's first frame yet.
+
+## Bulb teacher (`lm-bulb15`), checkpoints from the ground, 64 robots (2026-11-21)
+
+| Iteration (on the bulb clip) | Full climbs | Lost at steps 0-199 | Lost at steps 300-349 (wrist move tread 4 -> platform) | Lost at steps 850-999 |
+|---|---|---|---|---|
+| 5,100 (300) | 3 | 9 | 34 | 8 |
+| 5,400 (600) | 7 | 9 | 25 | 12 |
+| 5,700 (900) | 10 | 14 | 23 | 10 |
+| 6,000 (1,200) | 12 | 29 | 5 | 9 |
+| 6,300 (1,500) | 12 | 21 | 10 | 9 |
