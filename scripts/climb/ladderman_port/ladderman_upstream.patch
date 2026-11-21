@@ -1,0 +1,55 @@
+diff --git a/active_adaptation/assets/__init__.py b/active_adaptation/assets/__init__.py
+index 8ba1d51..c149d48 100644
+--- a/active_adaptation/assets/__init__.py
++++ b/active_adaptation/assets/__init__.py
+@@ -3,11 +3,13 @@ import os
+ from isaaclab.assets import Articulation
+ 
+ from .g1 import G1_CYLINDER_CFG
++from .g1_fiatlux import G1_FIATLUX_CFG
+ 
+ ASSET_PATH = os.path.dirname(__file__)
+ 
+ ROBOTS = {
+     "g1": G1_CYLINDER_CFG,
++    "g1_fiatlux": G1_FIATLUX_CFG,
+ }
+ 
+ 
+diff --git a/active_adaptation/envs/ladder_env.py b/active_adaptation/envs/ladder_env.py
+index 7c73110..63eb12b 100644
+--- a/active_adaptation/envs/ladder_env.py
++++ b/active_adaptation/envs/ladder_env.py
+@@ -165,7 +165,10 @@ class LadderEnv(_Env):
+             if spawn_cfg.articulation_props is not None:
+                 spawn_cfg.articulation_props.enabled_self_collisions = enable_self_collision
+ 
+-        scene_cfg.ladder = create_ladder_cfg(**self.cfg.command.ladder_config)
++        # ONE-LINE CHANGE (fiatlux). create_ladder_cfg is untouched and still used: the dispatcher
++        # falls through to it (via ladder_rails, if present) unless ladder_config.kind is set.
++        from .ladder_fiatlux import create_ladder_cfg_dispatch as _mk_ladder
++        scene_cfg.ladder = _mk_ladder(**self.cfg.command.ladder_config)
+ 
+         scene_cfg.terrain = TERRAINS[self.cfg.terrain]
+         scene_cfg.contact_forces = ContactSensorCfg(
+@@ -179,9 +182,17 @@ class LadderEnv(_Env):
+             render=sim_utils.RenderCfg(rendering_mode="quality"),
+             device=f"cuda:{active_adaptation.get_local_rank()}"
+         )
+-        sim_cfg.physx.gpu_found_lost_pairs_capacity = 2538320
+-        sim_cfg.physx.gpu_found_lost_aggregate_pairs_capacity = 61999079
+-        sim_cfg.physx.gpu_total_aggregate_pairs_capacity = 2**23
++        # LadderMan sizes these GPU broadphase buffers for its own robot (32 collision shapes) and rung
++        # ladder. The open Dex3 with one hull per hand part has 48, and once most robots are up on the
++        # step ladder the pair count passes them: at iteration 1,196 PhysX asked for 65.7M aggregate
++        # pairs against 62.0M and 2.63M pairs against 2.54M, and the simulation stopped advancing.
++        # `+task.sim.physx_capacity_scale=2.0` scales all three; the default leaves them as shipped.
++        _cap = float(self.cfg.sim.get("physx_capacity_scale", 1.0))
++        sim_cfg.physx.gpu_found_lost_pairs_capacity = int(2538320 * _cap)
++        sim_cfg.physx.gpu_found_lost_aggregate_pairs_capacity = int(61999079 * _cap)
++        sim_cfg.physx.gpu_total_aggregate_pairs_capacity = int(2**23 * _cap)
++        if _cap != 1.0:
++            print(f"[ladder_env] PhysX GPU pair buffers scaled x{_cap}")
+         sim_cfg.physx.enable_stabilization = False
+ 
+         self.sim, self.scene = scene.create_isaaclab_sim_and_scene(sim_cfg, scene_cfg)

@@ -400,3 +400,19 @@ clip to its end at step 710, pelvis gain 460-519 mm against the reference's 539 
 `git archive` of upstream commit 9a8d5ed unpacked as `LadderMan_stock/` on Koa (103 files, none
 of ours), no task or algo overrides, their default 7,500 iterations, kill-shared A4000. The job
 refuses to run unless `active_adaptation` imports from that tree.
+
+## First climbing on the step ladder; PhysX pair buffers (2026-11-21)
+
+`lm-edge69` (rebuild 67 motion, anchors 40 mm lower, one hull per hand part) at iteration 950:
+success 10.4%, episode length 143 (rebuild 60 on the wedge hand: 5.5%, 41). Played from the
+ground at iteration 900, 16 robots: 11 reach tread 1, 8 reach tread 2, best pelvis gain 621 mm.
+Nearly every termination is `cum_ladder_lost_contact_steps` at a hand change: steps 81-87
+(tread 4), 316 and 438 (platform), 779-821 and 1,008-1,011 (handrail).
+
+The run then stopped advancing at iteration 1,196: `PxGpuDynamicsMemoryConfig::
+foundLostAggregatePairsCapacity` and `foundLostPairsCapacity` errors every 12 s, GPU idle.
+LadderMan hard-codes these buffers for its own robot (2,538,320 pairs, 61,999,079 aggregate
+pairs); PhysX asked for 2.63M and 65.7M once most robots were up on the ladder with 48-shape
+robots. `ladderman_port/ladderman_upstream.patch` (our changes to LadderMan's own files) adds
+`task.sim.physx_capacity_scale`, default 1.0; the edge job scripts pass 2.0. Resumed from
+checkpoint 900.
