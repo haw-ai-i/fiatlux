@@ -626,3 +626,13 @@ over it; when the body dips at the start of the step to tread 2 the palm lands o
 Held carried poses (steps 400, 1,060, 1,100, 1,450) show why the bulb can leave the hand: under the
 benchmark's wrist gains the palm sags 13-33 deg fingers-DOWN from a level reference. The bulb
 stayed in these four runs (45-132 mm off seat) but the margin is run-to-run.
+
+### bulb09 (three variants): carried higher on tread 1, fingers pitched up -- rejected
+`--carry_z_early 0.24..0.30 --carry_pitch 15..18` with carry x 0.16-0.18. The arm cannot hold a
+pitched-up palm that high in front of the chest: carry misses of 44-210 mm, joint speeds 10-88
+rad/s. S10 scans: hand against the robot's own head, shoulder and torso (thousands of N) at steps
+350-490 in two of them; bulb against the ladder up to 355 N and squeezed up to 126 N. The best of
+the three (x 0.18, y -0.09, early z 0.24, pitch 15) clears steps 520-530 and keeps the bulb off
+the ladder (0 N, squeeze max 38 N) but drives the thumb into the shoulder and the wrist 28 mm
+into the torso at steps 350-360. The space between the chest and the ladder on tread 1 is too
+small for a carried hand; the next variants keep the wrist resting through that phase instead.
