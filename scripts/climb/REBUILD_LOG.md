@@ -972,3 +972,24 @@ the clip's first pose with +-0.05 rad joint noise (`--rsi --rsi_noise 0.05 --sto
 
 Trainer, same teacher: 76% from the ground. New diagnostics in `record_climb.py`: `--trace N`
 (root error, tilt, joints, contact forces by limb), `--mass_to`, `--rsi_noise`, `--stop_at_clip_end`.
+
+## S02 episode counts are not yet trustworthy across episodes in one process (2026-11-21)
+
+Dex3, ladder pinned, started in the clip's first pose, iteration-4,800 teacher:
+
+| Run | Result |
+|---|---|
+| fresh process, no start noise, stopped at step 640 | passes the tread 1 -> 2 step, tracking the trainer's trace within 10-20 mm and a few degrees |
+| 10 episodes in one process, +-0.05 rad, seed 0 | 4 success; 4 fall at steps 602-612; 2 down at steps 57, 81 |
+| 20 episodes in one process, +-0.05 rad, seed 1 | 2 success (episodes 17, 19); 13 fall at steps 554-619; 5 elsewhere |
+| 4 episodes in one process, NO noise | episode 1 success (step 1,341); episodes 2-4 fall at steps 620, 603, 621 |
+
+The last row is the finding: identical starts, and only the first episode climbs. Either the
+multi-episode reset in `record_climb.py` leaves something behind, or the simulation's own
+non-repeatability decides a knife-edge step; the first-episode pattern points at the reset. Until
+that is settled the multi-episode counts above understate the teacher, and only fresh-process runs
+are reported as results. Ruled out for the pinned-ladder gap: robot mass (34.40 vs 34.39 kg),
+finger pose (open), observation layout (no term over 4 sd at the start), friction (the trainer
+randomises 0.3-7.2).
+
+Benchmark ladder: a free rigid body of 10.9 kg (`LADDER_MASS_KG`); the trainer's is fixed boxes.
