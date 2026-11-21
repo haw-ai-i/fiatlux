@@ -636,3 +636,16 @@ the three (x 0.18, y -0.09, early z 0.24, pitch 15) clears steps 520-530 and kee
 the ladder (0 N, squeeze max 38 N) but drives the thumb into the shoulder and the wrist 28 mm
 into the torso at steps 350-360. The space between the chest and the ladder on tread 1 is too
 small for a carried hand; the next variants keep the wrist resting through that phase instead.
+
+### bulb10 (three variants): wrist resting from the start to tread 2 -- the hand contacts are gone
+`--rests 52 300 330 890 0 0 --carry 0.16 -0.11 0.14`: wrist on tread 4 for steps 52-300, then
+straight onto the platform for 330-890; carried only in the top half. Variants: carry pitch 0,
+carry pitch 12, platform inset 65 mm.
+
+S10 scan, all three: the only push over 400 N in 148 poses is the inherited left knee at step 960
+(2,346-2,459 N). Bulb against the ladder 0 N at every pose; squeeze max 7 N.
+
+The tool's box-model proxy still reports the forearm 23-26 mm inside the platform's edge while on
+tread 1 (steps 330-570); the simulator shows no contact over 400 N there. Left to fix: right
+wrist_roll 3-7 mm inside the torso (steps 312, 950-958, 1,356-1,366), and 11.9 rad/s with a 59 mm
+miss in the 30-step move from tread 4 to the platform.
