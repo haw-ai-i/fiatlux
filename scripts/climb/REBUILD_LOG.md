@@ -540,3 +540,34 @@ From the ground, 64 robots each, episode limit 1,600 (`play_probe_window.py`):
 Checkpoints swing widely (3 to 35 of 64); 3,300 is the best so far at 55%. Pinned copies of 1,800
 and 3,300 are in `teacher/keep/` on Koa. The trainer's own success number has not printed since the switch.
 The iteration-1,800 checkpoint is kept in the protected copy.
+
+## Bulb variant, second design: the bulb arm supports on its wrist (2026-11-21)
+
+Asked for: bring the bulb arm to the front and use it as support, on the wrist, not the palm, with
+the bulb touching nothing. Tools: `measure_bulb_in_hand.py` (benchmark sim), `make_bulb_wristrest_clip.py`,
+`render_reference_bulb.py` (draws the bulb).
+
+- Measured at an S10 start: the bulb LIES ACROSS the right palm, axis along the wrist frame's +z,
+  root at (0.119, 0.054, -0.131), glass centre 0.117 ahead of the wrist and 0.058 to the palm
+  side. On a level palm-up hand it stands about 130 mm above a surface the wrist rests on, so it
+  fits under the platform at tread 4 (165 mm) and in the tread gaps (199 mm). My first proxy
+  (bulb upright, 180 mm) was wrong and had ruled tread 4 out.
+- Reach with the rebuild 72 body motion (straight arm 0.382 m): the right wrist reaches tread 4
+  from the ground and through the mount, and the platform from treads 1 and 2. Lower treads are
+  0.42-1.0 m away at every phase, and the handrail 0.55 m from tread 2. Palm-up on the handrail
+  from tread 3 is at the edge of the arm's range (45 mm off, 6.5 deg).
+- From tread 1 the forearm cuts 17-24 mm into the platform's edge, so the platform rest starts on
+  tread 2.
+- Carrying beside the hip (outside the right stringer) makes every move thread round the stringer:
+  misses up to 94 mm, bulb 14 mm inside it, 16 rad/s. Carried in FRONT of the chest it never
+  crosses that line. Too close to the chest (wrist 130 mm ahead of the pelvis) puts the elbow
+  113 mm inside the torso; a pull of the elbow outward in the solver's free direction is what
+  keeps it off the torso at all.
+
+`bulb07` (carry at pelvis-frame (0.16, -0.11, 0.14) m, palm up throughout): wrist on tread 4 for
+steps 52-300 (within 2.0 mm, 3.6 deg), on the platform for 620-890 (1.4 mm, 2.1 deg). Closest
+approaches: bulb 4 mm from the right stringer (step 45), back of hand 12 mm, forearm 16 mm, own legs
+115 mm, own torso 0 mm (step 954, with oversize proxies). Peak arm speed 6.06 rad/s. Not trained;
+the static check has not been adapted to a wrist contact; the 50 N limit is covered by geometry only.
+Training it needs `contact_eef_pos_offset` for the right hand set to the wrist's contact point
+(0.005, -0.030, 0.0).
