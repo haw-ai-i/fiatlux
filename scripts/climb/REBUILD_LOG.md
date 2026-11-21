@@ -695,3 +695,22 @@ teacher from a pinned copy of its iteration-4,800 checkpoint; NOT submitted.
 Open: right wrist_roll 7.0 mm inside the torso at steps 950-958 and 1,356-1,366; 11.9 rad/s in the
 0.6 s move from tread 4 to the platform; the bulb leaving the hand on tread 3; left-knee contact
 inherited from rebuild 67.
+
+## Two-handed run corrupted at about iteration 5,560; link speed cap (2026-11-21)
+
+`lm-edge72` at 11:54 UTC: PhysX asked for 834,139,447 aggregate pairs (then negative numbers), a
+minute later `CUDA error, code 2` (out of GPU memory, 15.6 of 16 GB in use) and `Scene state is
+corrupted. Simulation cannot continue!`, 5,892 times, while the trainer kept iterating at 3.7 s
+per iteration on a dead simulation. Cancelled at 11:58. `checkpoint_5400.pt` was saved at 11:39,
+before the first error, and nothing was saved after it.
+
+This is the same event as the stall at iteration 1,196 (1,006,951,763 pairs asked for): one
+robot's state blows up and its links cross the whole grid of environments. Doubling the buffers
+only changed how it failed. Changes:
+
+- `ladderman_port/g1_fiatlux.py`: `max_linear_velocity` 30 m/s for every link (LadderMan: 1000).
+- job scripts: `physx_capacity_scale` 2.0 -> 1.5. Steady demand was 1.07x LadderMan's sizes; at
+  2.0 the run sat at 13.5 GB of 16 from the start.
+
+Resubmitted; it resumes from iteration 5,400 with 2,100 to go. What makes a robot blow up is not
+found; the reset probe saw several thousand newtons on a hand in about 10% of noisy resets.

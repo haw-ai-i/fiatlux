@@ -230,3 +230,13 @@ def _make_spawn_split_hands():
 
 
 G1_FIATLUX_CFG.spawn.func = _make_spawn_split_hands()
+
+
+# ---- a sane top speed for every link ----------------------------------------------------------------
+# LadderMan leaves max_linear_velocity at 1000 m/s. Twice in the rebuild 72 run (iterations 1,196 and
+# about 5,560) one robot's state blew up, its links crossed the whole grid of environments, and PhysX asked
+# for 0.8-1.0 BILLION broadphase pairs: the first time the simulation stopped advancing, the second it ran
+# out of GPU memory ("CUDA error, code 2") and reported "Scene state is corrupted" while training went on.
+# No G1 link moves at 30 m/s; capping there keeps a blown-up robot inside its own neighbourhood until its
+# episode is terminated.
+G1_FIATLUX_CFG.spawn.rigid_props.max_linear_velocity = 30.0
