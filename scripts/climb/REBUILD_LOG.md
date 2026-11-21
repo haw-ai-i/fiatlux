@@ -545,8 +545,16 @@ From the ground, 64 robots each, episode limit 1,600 (`play_probe_window.py`):
 | 5,700 | 28 | 16 | 4 | 16 |
 | 6,000 | 18 | 12 | 1 | 33 |
 | 6,300 | 41 | 12 | 0 | 11 |
+| 6,600 | 20 | 17 | 4 | 23 |
+| 6,900 | 34 | 8 | 1 | 21 |
+| 7,200 | 29 | 10 | 7 | 14 |
+| final (7,500) | 27 | 12 | 8 | 16 |
 
-Checkpoints swing widely (3 to 35 of 64); 3,300 is the best so far at 55%. Pinned copies of 1,800
+The run finished all 7,500 iterations (job 15557924, no physics errors after the restart with the
+30 m/s speed cap). Checkpoints swing widely (3 to 48 of 64) and the last ones are not the best:
+4,800 is the best at 75%, then 6,300 at 64%; the final checkpoint is 42%. From 6,000 on, the largest
+single loss is at steps 850-950, where the handrail hold starts counting.
+Earlier note: 3,300 was the best at 55% when first written. Pinned copies of 1,800
 and 3,300 are in `teacher/keep/` on Koa. The trainer's own success number has not printed since the switch.
 The iteration-1,800 checkpoint is kept in the protected copy.
 
