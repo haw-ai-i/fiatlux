@@ -469,3 +469,14 @@ checkpoint replayed on it, never trained on it: terminations at steps 750-800 go
 
 Side rails for this step were considered: an open flat hand cannot grip a rail, and a palm on
 an inclined rail pushes sideways, which is the same failure of the hold rule as the rim edge.
+
+## Rebuild 72 in training (2026-11-21)
+
+Iteration-1,200 teacher replayed from the ground, 64 robots each: on rebuild 72, 3 reach the
+1,200-step episode limit still climbing (one filmed onto tread 4, pelvis +964 mm) against 1 on
+rebuild 69; both lose about half at the mount and a third at the tread 4 -> platform hand change.
+
+`lm-edge72` on ece605 continues the rebuild 69 teacher from its iteration-1,500 checkpoint (the
+motion is the same). It also sets `task.max_episode_length=1600`: LadderMan's 1,200 is longer
+than its own 710-step clip but shorter than ours (1,479), so an episode from the ground was cut
+before the top-out. The limit is only used for truncation.

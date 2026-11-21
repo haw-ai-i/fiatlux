@@ -87,6 +87,7 @@ exec python scripts/train.py algo=teacher task=teacher "${RESUME[@]}" \
     task.randomization.ladder_geometry_randomization.enabled=false \
     +task.randomization.perturb_body_materials.homogeneous=true \
     +task.sim.physx_capacity_scale=2.0 \
+    task.max_episode_length=1600 \
     task.action._target_=active_adaptation.envs.mdp.action_refwrist.JointPositionRefWrist \
     task.num_envs="$ENVS" algo.max_iters="$ITERS" \
     hydra.run.dir="$OUT" \
