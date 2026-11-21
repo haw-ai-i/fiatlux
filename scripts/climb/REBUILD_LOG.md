@@ -493,3 +493,31 @@ trainer, episode limit 1,600 steps:
 
 A from-zero rebuild 72 run (`lm_train_e72fresh.sbatch`, seed 1) is queued on kill-shared as the
 clean comparison; it had not started.
+
+## Bulb variant for S10: one-handed climb, clip `bulb01` (2026-11-21)
+
+S10 climbs with the fresh 35 g bulb in the RIGHT hand, so that arm takes no hold. Working state
+before starting: tags `climb-first-full-climb` (this repo) and `fiatlux-first-full-climb`
+(LadderMan); `bulb01` is a new clip and none of the two-handed clips, scripts or runs change.
+
+- The S10 spawn pose (ARM_CRADLE, hand 37 cm ahead of the pelvis) cannot be kept: over the
+  rebuild 72 motion the hand-plus-bulb sphere is within 30 mm of the ladder in 517 of 592 sampled
+  frames, up to 105 mm inside the tray, and already 41 mm inside tread 3 at step 26.
+- `scan_carry_grid.py`: 2,046 of the fixed right-arm poses tried clear the ladder by 60 mm and
+  the body at every frame. Three were built with `make_bulb_carry_clip.py` (right arm only; all
+  other bodies rebuilt to 0.00 mm) and put through the static check with the left hand as the
+  only hold (two-handed rebuild 72: 12 rows with no balance):
+
+  | Carry pose | Rows with no balance | Feet alone during the left hand's moves |
+  |---|---|---|
+  | out wide to the right, forward | 16 | cannot balance (steps 200-285, 620-720) |
+  | beside the right hip | 13 | balances, effort 32-40% |
+  | behind the back | 19 | balances |
+
+- `bulb01` = beside the right hip (shoulder pitch 0.80, roll -0.50, elbow 0.60, wrist roll 1.57),
+  from the first frame. Bulb hand clears the ladder by at least 130 mm, forearm 101 mm; arm vs
+  torso and hands vs ladder CLEAN. A hand is on a hold for 74% of the clip (two-handed: more).
+- The two-handed teacher (iteration 1,800) played on it untrained: 0 of 64 past step 400;
+  33 terminated on `foot_any_lost_contact` during the mount. It needs training.
+- Trainer robot unchanged for now (right hand open, no bulb body): 35 g is negligible and the
+  hand touches nothing. `ladderman_port/koa/lm_train_bulb01.sbatch` is written, NOT submitted.
