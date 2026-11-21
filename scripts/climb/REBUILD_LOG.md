@@ -649,3 +649,21 @@ The tool's box-model proxy still reports the forearm 23-26 mm inside the platfor
 tread 1 (steps 330-570); the simulator shows no contact over 400 N there. Left to fix: right
 wrist_roll 3-7 mm inside the torso (steps 312, 950-958, 1,356-1,366), and 11.9 rad/s with a 59 mm
 miss in the 30-step move from tread 4 to the platform.
+
+### bulb11: 1.5 s for the tread 4 -> platform move, fingers pitched up 12 deg when carried -- no better
+`--rests 52 275 350 890 0 0 --carry 0.16 -0.11 0.14 --carry_pitch 12`. A hand or wrist is on a
+hold for 87.6% of the clip (left 66.7%, right wrist 48.9%).
+
+- S10 scan: bulb against the ladder 0 N at every pose, squeeze max 8 N. New 405 N between the
+  torso and the right wrist at step 310, in the move from tread 4 to the platform by way of the
+  chest. Left knee 403-717 N at 140-150, 550-560, 970 and 2,252 N at 960.
+- S10 frozen holds: 7 of 7 stay up; pelvis off the reference 2-41 mm, ground 187 mm, tread-2 pause
+  106 mm, tread 3->4 pose 93 mm. Bulb squeezed at most 6 N. The bulb stays in the hand in six
+  poses (42-110 mm off its seat) and leaves it at once (+0.06 s) in the tread 3->4 pose, then
+  reads 39 N on the ladder as it falls.
+- The longer move did not lower the speed (9.7 rad/s, 58 mm miss) and added the torso contact.
+  Right wrist_roll 7.8 mm inside the torso (steps 304-312, 950-958, 1,354-1,389).
+
+Pitching the fingers up is the wrong direction: the cupped fingers close the front of the hand,
+the wrist side is open, and the benchmark's own spawn pose already lets the bulb slide 110 mm
+toward the wrist in 3 s. bulb10 (level carry) remains the candidate.
