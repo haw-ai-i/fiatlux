@@ -595,3 +595,34 @@ than the cupped S10 hand.
 Not clean: carried in front of the chest, the hand meets the platform's nose on tread 1 and the
 tray at the top-out, and the wrist brushes the chest. The box-model clearances reported by
 `make_bulb_wristrest_clip.py` (bulb +4, hand +12 mm) missed these.
+
+## Bulb clips tested in the bulb task itself (2026-11-21, overnight)
+
+`physics_segment_test_bulb.py` (a sibling of the physics test): runs in S10 with the right hand's
+cupped grip and the bulb placed in it at every staged pose; reports the bulb-against-ladder force,
+the hardest squeeze on the bulb by a hand link, the bulb's distance from its seat, and the palm's
+tilt. `helpers/bulb_eval.sh` is not in the repo; the commands are scan (`--body_scan 10`) and the
+seven `--modes hold --hold_steps 150` segments used for the two-handed clip.
+
+Benchmark baseline: S10's own spawn pose held with zero action for 3 s moves the bulb 110 mm along
+the hand and turns it about 33 deg, without dropping it. Up to ~110 mm "off seat" is therefore normal.
+
+### bulb07 in S10
+Scan, 148 poses: bulb against the ladder 0 N at every pose; squeeze max 9 N. The open-hand
+contacts at steps 360 and 1,320-1,330 are gone with the fingers curled. Still there: right palm
+596-1,956 N at steps 520-530. Left knee 403-518 N at 140-150, 550, 970, 1,150 and 2,459 N at 960.
+
+### bulb08: hand rises before moving in over a hold -- no gain
+Same as bulb07 plus an up-first waypoint. Scan: right palm 772-2,131 N at 520-530 (unchanged);
+new right thumb against right shoulder 658 N at step 350; bulb against the ladder 0 N; squeeze max
+11 N. Frozen holds 7 of 7; squeeze at most 6 N; bulb at most 3 N on the ladder; bulb off its seat
+29-99 mm, but 521 mm in the tread 3->4 pose: it left the hand. Right wrist_roll 7.0 mm inside the
+torso (steps 362-368, 950-958, 1,356-1,366). Peak arm speed 9.3 rad/s.
+
+Cause of the 520-530 contact: nothing to do with the approach. The carried hand sits 140 mm above
+the pelvis, which on tread 1 is only about 60 mm above the platform's top, with the hand reaching
+over it; when the body dips at the start of the step to tread 2 the palm lands on the platform.
+
+Held carried poses (steps 400, 1,060, 1,100, 1,450) show why the bulb can leave the hand: under the
+benchmark's wrist gains the palm sags 13-33 deg fingers-DOWN from a level reference. The bulb
+stayed in these four runs (45-132 mm off seat) but the margin is run-to-run.

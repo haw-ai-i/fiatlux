@@ -31,6 +31,10 @@ ap.add_argument("--carry", type=float, nargs=3, default=[-0.03, -0.31, 0.06], he
 ap.add_argument("--chest", type=float, nargs=3, default=[0.20, -0.13, 0.24], help="waypoint in front of the chest, pelvis frame, m")
 ap.add_argument("--elbow_out", type=float, default=-0.9, help="shoulder roll the arm leans toward where the task leaves it free, rad")
 ap.add_argument("--elbow_w", type=float, default=0.15)
+ap.add_argument("--carry_pitch", type=float, default=0.0, help="fingers-up pitch of the hand while carried, deg. In physics the wrist sags "
+                "13-33 deg fingers-DOWN under the benchmark's wrist gains and the bulb can roll off the fingers.")
+ap.add_argument("--carry_z_early", type=float, default=None, help="carry height (pelvis frame, m) before --carry_switch; default: the same as --carry")
+ap.add_argument("--carry_switch", type=float, default=920.0, help="clip step around which the carry height changes")
 ap.add_argument("--move", type=float, default=2.4, help="s for the arm to go between its carry pose and a rest")
 ap.add_argument("--settle", type=float, default=0.4, help="s after arriving before a rest is labelled a hold")
 ap.add_argument("--lift", type=float, default=0.07, help="m the wrist rises mid-way through a move between rests")
@@ -137,9 +141,14 @@ def contact_at(i, q):
 # The palm faces UP for the whole clip (the bulb stands on it). The arm is CARRIED with the wrist at a point
 # fixed in the pelvis frame, beside the right hip, and every move is a path of the wrist's contact point.
 ap_carry = np.array(a.carry)
-def carry_pt(i): return PP[i] + K.qrot(PQ[i], ap_carry)
-def chest_pt(i): return PP[i] + K.qrot(PQ[i], np.array(a.chest))
-set_pitch(0.0)
+def carry_pt(i):
+    c = ap_carry.copy()
+    if a.carry_z_early is not None:
+        u = np.clip((i * 50.0 / fps - (a.carry_switch - 30.0)) / 60.0, 0.0, 1.0); w_ = 10 * u**3 - 15 * u**4 + 6 * u**5
+        c[2] = (1 - w_) * a.carry_z_early + w_ * ap_carry[2]
+    return PP[i] + K.qrot(PQ[i], c)
+def chest_pt(i): return carry_pt(i)                       # the carry IS in front of the chest; no separate waypoint
+set_pitch(a.carry_pitch)
 q = min((solve(0, carry_pt(0), sd, iters=200) for sd in [np.array([0.3, -0.3, 0.0, 0.9, 1.57, 0.0, 0.0]), np.array([0.0, -0.4, 0.3, 1.2, 1.5, 0.0, 0.0]),
                                                       np.array([0.6, -0.5, -0.3, 0.8, 1.6, 0.0, 0.0])]), key=lambda x: x[1] + 0.002 * x[2])[0]
 ce = 0.0; QC = np.zeros((T, 7))
@@ -150,6 +159,12 @@ print(f"[carry] wrist held at {np.round(ap_carry*1000)} mm in the pelvis frame, 
 nmv = fr(a.move * 50)
 PRE = {"step4": np.array([-0.23, 0.0, 0.05]),      # the platform overhangs tread 4: slide in and out level, from behind
        "platform": np.array([-0.10, 0.0, 0.14]), "handrail": np.array([-0.10, 0.0, 0.10])}
+def up_first(c, pre):
+    """A point over the chest waypoint at the height of the point above the hold: the hand rises before it
+    goes in over an edge (a straight line from chest height clipped the platform's nose in the S10 scan)."""
+    return np.array([c[0], c[1], max(c[2], pre[2])]) if pre[2] > c[2] else np.array([pre[0], pre[1], c[2]])
+
+
 def rest_frames(nm, s0, s1, k):
     set_pitch(a.pitch[k]); q = Q[s0 - 1].copy(); es, ts = [], []
     for i in range(s0, s1):
@@ -165,13 +180,13 @@ for n_, (nm, s0, s1, k) in enumerate(active):
         i_a = prev[2] + int(0.20 * g); i_b = prev[2] + int(0.45 * g); i_c2 = prev[2] + int(0.80 * g)
         set_pitch(a.pitch[prev[3]])
         seg[f"out of {prev[0]}"] = path(prev[2], i_a, [ptg, ppre], Q[prev[2] - 1])
-        seg["->chest"] = path(i_a, i_b, [ppre, chest_pt(i_b)], Q[i_a - 1])
+        seg["->chest"] = path(i_a, i_b, [ppre, up_first(chest_pt(i_b), ppre), chest_pt(i_b)], Q[i_a - 1])
         set_pitch(a.pitch[k])
-        seg["chest->pre"] = path(i_b, i_c2, [chest_pt(i_b), pre], Q[i_b - 1])
+        seg["chest->pre"] = path(i_b, i_c2, [chest_pt(i_b), up_first(chest_pt(i_b), pre), pre], Q[i_b - 1])
         seg["in"] = path(i_c2, s0, [pre, tg], Q[i_c2 - 1])
     else:                                                             # from the carry, in front of the chest, then in
         i0 = max(s0 - fr(20) - nmv, 0); i_c = i0 + (s0 - fr(20) - i0) // 2
-        set_pitch(0.0)
+        set_pitch(a.carry_pitch)
         if s0 - fr(20) - nmv < 0:
             # no time to come round from the hip before the first rest: the clip STARTS with the hand in front
             # of the chest, palm up (S10 spawns with the bulb cradled in front of the body anyway)
@@ -183,15 +198,15 @@ for n_, (nm, s0, s1, k) in enumerate(active):
         else:
             seg["carry->chest"] = path(i0, i_c, [carry_pt(i0), chest_pt(i_c)], QC[i0])
         set_pitch(a.pitch[k])
-        seg["chest->pre"] = path(i_c, s0 - fr(20), [chest_pt(i_c), pre], Q[i_c - 1])
+        seg["chest->pre"] = path(i_c, s0 - fr(20), [chest_pt(i_c), up_first(chest_pt(i_c), pre), pre], Q[i_c - 1])
         seg["in"] = path(s0 - fr(20), s0, [pre, tg], Q[s0 - fr(20) - 1])
     rest_frames(nm, s0, s1, k)
     nxt = active[n_ + 1] if n_ + 1 < len(active) else None
     if nxt is None or nxt[1] - s1 >= 2 * nmv:                         # back to the carry
         seg["out"] = path(s1, s1 + fr(20), [tg, pre], Q[s1 - 1])
         i_d = s1 + fr(20) + nmv // 2; i1 = s1 + fr(20) + nmv
-        seg["pre->chest"] = path(s1 + fr(20), i_d, [pre, chest_pt(i_d)], Q[s1 + fr(20) - 1])
-        set_pitch(0.0)
+        seg["pre->chest"] = path(s1 + fr(20), i_d, [pre, up_first(chest_pt(i_d), pre), chest_pt(i_d)], Q[s1 + fr(20) - 1])
+        set_pitch(a.carry_pitch)
         seg["chest->carry"] = path(i_d, i1, [chest_pt(i_d), carry_pt(i1)], Q[i_d - 1])
         nb = fr(15)
         for j in range(nb):
