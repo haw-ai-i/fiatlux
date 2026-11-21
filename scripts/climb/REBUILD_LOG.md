@@ -771,3 +771,16 @@ of the elbow at steps 492 and 579. `--carry_roll -10` raises the carry miss from
   an 18 N squeeze.
 - With the wrist lifted 14 mm the forearm no longer presses on the platform's edge on tread 1
   (bulb10: 57-279 N); the tool's proxy still says -9..-11 mm there.
+
+### bulb15: longer move, hand higher at the top-out
+bulb14 with `--rests 52 262 372 890 0 0 --carry_z_keys 0:0.14 1230:0.14 1290:0.19`.
+
+- Speed 6.28 rad/s, 8 frames over 6 (steps 297-300). Torso CLEAN (wrist_roll +14.5, elbow +39.5 mm).
+- S10 scan, 20 N threshold: over 400 N only the left knee at step 960 (2,354 N). Right arm: only
+  139-156 N between wrist_roll and wrist_yaw at steps 1,420-1,430; the tray brush at 1,310-1,330 is
+  gone. Bulb against the ladder 0 N; squeeze max 3 N.
+- S10 frozen holds: 10 of 10 stay up; pelvis numbers as bulb14. Bulb off its seat 41-85 mm in
+  nine poses, including the top pose (73 mm; bulb14 lost it there), and 206 mm at tread 3->4.
+  On tread 3 the bulb reads 18-29 N against the ladder and a 16-22 N squeeze during the hold: the
+  carried bulb is close to the right stringer there (the proxy has said -9 mm at step 1,096 since
+  bulb13) and the sagging robot brings it into contact.
