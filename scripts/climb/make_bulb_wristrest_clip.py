@@ -49,6 +49,8 @@ ap.add_argument("--platform_lift_until", type=float, default=610.0, help="clip s
 ap.add_argument("--carry_pitch", type=float, default=0.0, help="fingers-up pitch of the hand while carried, deg. In physics the wrist sags "
                 "13-33 deg fingers-DOWN under the benchmark's wrist gains and the bulb can roll off the fingers.")
 ap.add_argument("--carry_z_early", type=float, default=None, help="carry height (pelvis frame, m) before --carry_switch; default: the same as --carry")
+ap.add_argument("--carry_z_keys", nargs="+", default=None, help="STEP:Z ... carry height (pelvis frame, m) at clip steps, linear between; "
+                "overrides --carry's z and --carry_z_early. E.g. the hand has to ride higher over the tray's rim at the top-out")
 ap.add_argument("--carry_switch", type=float, default=920.0, help="clip step around which the carry height changes")
 ap.add_argument("--move", type=float, default=2.4, help="s for the arm to go between its carry pose and a rest")
 ap.add_argument("--settle", type=float, default=0.4, help="s after arriving before a rest is labelled a hold")
@@ -158,8 +160,12 @@ def contact_at(i, q):
 # The palm faces UP for the whole clip (the bulb stands on it). The arm is CARRIED with the wrist at a point
 # fixed in the pelvis frame, beside the right hip, and every move is a path of the wrist's contact point.
 ap_carry = np.array(a.carry)
+_ZK = sorted((float(x.split(":")[0]), float(x.split(":")[1])) for x in a.carry_z_keys) if a.carry_z_keys else None
 def carry_pt(i):
     c = ap_carry.copy()
+    if _ZK is not None:
+        c[2] = float(np.interp(i * 50.0 / fps, [k_[0] for k_ in _ZK], [k_[1] for k_ in _ZK]))
+        return PP[i] + K.qrot(PQ[i], c)
     if a.carry_z_early is not None:
         u = np.clip((i * 50.0 / fps - (a.carry_switch - 30.0)) / 60.0, 0.0, 1.0); w_ = 10 * u**3 - 15 * u**4 + 6 * u**5
         c[2] = (1 - w_) * a.carry_z_early + w_ * ap_carry[2]

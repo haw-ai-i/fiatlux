@@ -753,6 +753,21 @@ within 4 mm. Torso: wrist_roll +15.2..15.8 mm, elbow +39.3 mm. Speed 9.0-10.4 ra
 wrist yaw during the tread 4 -> platform move (steps 302-316), plus single-step 7.0 rad/s blips
 of the elbow at steps 492 and 579. `--carry_roll -10` raises the carry miss from 1.9 to 11.1 mm.
 
-### bulb14: building
+### bulb14: all four fixes together
 `--rests 52 270 360 890 0 0 --carry 0.18 -0.13 0.14 --carry_roll -10 --platform_lift 0.014
---platform_lift_until 610`, plus a light final smoothing of the joints (sigma 0.03 s).
+--platform_lift_until 610`, plus a light final smoothing of the joints (sigma 0.03 s). Labels: left
+66.7%, right wrist 28.9% (tread 4 198 steps, platform 230), neither 15.5%.
+
+- Torso: `check_arm_torso.py` CLEAN (right wrist_roll +15.0 mm, elbow +39.5 mm).
+- Speed: 7.11 rad/s, 14 frames over 6, all in steps 297-303 (was 11.9).
+- S10 scan at a 20 N threshold: over 400 N only the left knee (431-507 N at 140-150, 550, 970-980;
+  2,433 N at 960). Right arm over 20 N: nothing during either rest or the carry on treads 1-3;
+  palm and fingers 35-149 N at steps 1,310-1,330 (the hand brushing the tray at the top-out).
+  Bulb against the ladder 0 N at every pose; squeeze max 6 N.
+- S10 frozen holds, ten poses: 10 of 10 stay up. Pelvis off the reference: ground 184 mm, mount 2,
+  tread 1 30, tread 1->2 30, tread-2 pause 106, tread 2->3 39, tread 3->4 35, tread 3 29, tread 4
+  38, top 120 mm. Bulb off its seat: 38-68 mm in eight poses, 156 mm at tread 3->4, 2,024 mm at
+  the top pose (it left the hand). In the tread-3 pose it stayed but read 21 N on the ladder and
+  an 18 N squeeze.
+- With the wrist lifted 14 mm the forearm no longer presses on the platform's edge on tread 1
+  (bulb10: 57-279 N); the tool's proxy still says -9..-11 mm there.
