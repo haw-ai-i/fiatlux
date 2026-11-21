@@ -446,3 +446,26 @@ No pelvis height reaches both. More waist lean does nothing: the waist is at 0.5
   on the handrail.
 
 Not trained. Making it work needs the body trajectory of the left-foot swing reshaped, not a flag.
+
+## Why tread 2 -> 3 is the weak point, and rebuild 72 (2026-11-21)
+
+`ladderman_port/play_probe_window.py`: from the ground, iteration-900 teacher, 64 robots, what
+each hand satisfies of the hold rule step by step.
+
+- Steps 750-800: 17 of 28 surviving robots terminated. The left hand has been on the handrail
+  since step 723 and is within range and above its target in 100% of robots, but its force passes
+  the rule in only 7-50%: it pushes on the rim sideways, median (-18, +2) N. The feet carry 100%
+  of the weight and the pelvis is within 1 cm of the reference. The right hand is in transit for
+  104 steps; the rule allows 30. Once both hands are on (step 850+) the left passes in 75-100%.
+- Mount, steps 82-90: 19 of 64 terminated; the right hand on tread 4 passes the force test in
+  25% at step 60, 53% at 70, 67% at 80. That one is learning speed, not structure.
+- The other hand changes load within 10-20 steps.
+
+Rebuild 72 = rebuild 69 with labels only changed (`relabel_handrail.py`): a hand's handrail label
+starts when the second hand's does, plus 0.4 s (left 723 -> 851, right 831 -> 851). Same
+checkpoint replayed on it, never trained on it: terminations at steps 750-800 go from 17 to 0;
+23 robots reach step 900 (was 8). They then fail in the step itself: 6 at 900-950 and 13 at
+1,000-1,050, pelvis 88 mm low at step 1,000.
+
+Side rails for this step were considered: an open flat hand cannot grip a rail, and a palm on
+an inclined rail pushes sideways, which is the same failure of the hold rule as the rim edge.
