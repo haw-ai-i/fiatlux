@@ -96,6 +96,9 @@ try:
     cfg.scene.fresh_bulb.spawn.activate_contact_sensors = True
 except Exception as _e:
     print("[bulb] could not enable contact reporting on the bulb:", _e)
+cfg.scene.bulb_any = _CSC(prim_path=cfg.scene.fresh_bulb.prim_path, history_length=1)          # everything touching the bulb
+if not a.body_scan:
+    cfg.scene.whole_body_contact = _CSC(prim_path="{ENV_REGEX_NS}/Robot/.*", history_length=1)
 cfg.scene.bulb_vs_ladder = _CSC(prim_path=cfg.scene.fresh_bulb.prim_path, filter_prim_paths_expr=[cfg.scene.ladder.prim_path], history_length=1)
 env = gym.make(a.task, cfg=cfg).unwrapped
 env.reset()
@@ -211,6 +214,12 @@ def run(name, mode, t0, t1, lift=0.0):
         _f = _qa(robot.data.body_link_quat_w[0:1, _i], torch.tensor([[1.0, 0.0, 0.0]], device=dev))[0]
         r["palm_tilt"] = float(torch.rad2deg(torch.acos(_n[2].clamp(-1, 1)))); r["finger_pitch"] = float(torch.rad2deg(torch.asin(_f[2].clamp(-1, 1))))
         r["fingR_each"] = (d.joint_pos[0, fR] - q_all0[0, fR]).cpu().numpy()
+        if k < 4:                                          # what is touching what in the first moments
+            _wb = base.scene.sensors["whole_body_contact"]; _fb = _wb.data.net_forces_w[0].norm(dim=-1)
+            _top = [f"{_wb.body_names[j]} {float(_fb[j]):.0f}" for j in torch.argsort(_fb, descending=True)[:7].tolist()
+                    if _fb[j] > 2.0 and "ankle" not in _wb.body_names[j]]
+            _ba = float(base.scene.sensors["bulb_any"].data.net_forces_w[0].norm(dim=-1).max())
+            print(f"    step {k}: bulb net contact {_ba:.1f} N, off seat {bulb_off_seat()*1000:.0f} mm; robot bodies pushed: " + (", ".join(_top) or "none over 2 N"), flush=True)
         if k == 0:
             for sd in ("L", "R"):
                 if sens[sd] is not None:

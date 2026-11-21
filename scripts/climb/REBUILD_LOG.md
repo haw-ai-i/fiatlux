@@ -536,6 +536,11 @@ From the ground, 64 robots each, episode limit 1,600 (`play_probe_window.py`):
 | 3,000 | 14 | 29 | 1 | 20 |
 | 3,300 | 35 | 16 | 6 | 5 |
 | 3,600 | 39 | 20 | 0 | 3 |
+| 3,900 | 33 | 15 | 2 | 11 |
+| 4,200 | 30 | 17 | 12 | 5 |
+| 4,500 | 30 | 12 | 0 | 15 |
+| 4,800 | 48 | 10 | 0 | 6 |
+| 5,100 | 22 | 20 | 15 | 7 |
 
 Checkpoints swing widely (3 to 35 of 64); 3,300 is the best so far at 55%. Pinned copies of 1,800
 and 3,300 are in `teacher/keep/` on Koa. The trainer's own success number has not printed since the switch.
@@ -667,3 +672,26 @@ hold for 87.6% of the clip (left 66.7%, right wrist 48.9%).
 Pitching the fingers up is the wrong direction: the cupped fingers close the front of the hand,
 the wrist side is open, and the benchmark's own spawn pose already lets the bulb slide 110 mm
 toward the wrist in 3 s. bulb10 (level carry) remains the candidate.
+
+### bulb10 adopted as the bulb candidate (2026-11-21)
+`bulb10` = the first bulb10 variant (`--rests 52 300 330 890 0 0 --carry 0.16 -0.11 0.14`, carry
+pitch 0). A hand or wrist is labelled on a hold for most of the lower half; the right wrist's
+labels are tread 4 (228 steps) and platform (540 steps).
+
+S10 frozen holds, nine poses, 3 s: 9 of 9 stay up. Pelvis off the reference: ground 179 mm, mount
+2, tread 1 31, tread 1->2 30, tread-2 pause 109, tread 2->3 40, tread 3->4 34, tread 3 34, tread 4
+41 mm. Bulb against the ladder at most 4 N; squeezed at most 3 N. The bulb stays in the hand in
+seven poses (40-94 mm off its seat) and leaves it in both tread-3 carried poses (474 and 1,659 mm).
+A 0.6 s diagnostic at step 1,090 shows no initial ejection: the bulb settles from where the test
+places it (29 mm off at the first step) and creeps 20-35 mm per control step; nothing but the
+hand's own links touches it. Retention is the benchmark grasp's, not the clip's.
+
+Trainer: the two-handed teacher (iteration 4,800) played on bulb10 untrained, right contact point
+set to the wrist (`contact_eef_pos_offset` right = [0.005, -0.03, 0.0]): 0 of 64 past step 400, 58
+ended by the hold rule; but where robots are still up the right WRIST satisfies the rule (in range
+100%, above its target 100%, upward force ok 90%, 22-27 N). `lm_train_bulb10.sbatch` continues that
+teacher from a pinned copy of its iteration-4,800 checkpoint; NOT submitted.
+
+Open: right wrist_roll 7.0 mm inside the torso at steps 950-958 and 1,356-1,366; 11.9 rad/s in the
+0.6 s move from tread 4 to the platform; the bulb leaving the hand on tread 3; left-knee contact
+inherited from rebuild 67.
