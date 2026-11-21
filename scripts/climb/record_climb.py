@@ -76,6 +76,20 @@ ap.add_argument("--jpos_offset", default=None, choices=["default", "refwrist"],
 ap.add_argument("--pin_ladder", action="store_true",
                 help="DIAGNOSTIC: make the ladder kinematic (immovable), as it is in the LadderMan trainer. "
                      "Not a valid benchmark run -- it isolates the free-standing ladder from everything else.")
+ap.add_argument("--mass_to", type=float, default=0.0,
+                help="DIAGNOSTIC: scale every robot link's mass and inertia so the total is this many kg "
+                     "(the step-ladder trainer's robot is 34.39). Not a valid benchmark run.")
+ap.add_argument("--trace", type=int, default=0,
+                help="DIAGNOSTIC: every N steps print the root's error against the reference in the robot's "
+                     "yaw frame, its tilt, and the five joints furthest from the reference")
+ap.add_argument("--rsi_noise", type=float, default=0.0,
+                help="with --rsi: uniform noise (rad) added to the 29 staged joint angles, so repeated episodes "
+                     "differ. LadderMan trains with +-0.1.")
+ap.add_argument("--stop_at_clip_end", action="store_true",
+                help="end an episode when the reference clock reaches the clip's last frame and report where the "
+                     "robot is; with --episodes N this gives a success count")
+ap.add_argument("--robot", default="inspire", choices=["inspire", "dex3"],
+                help="hand variant. The step-ladder teachers were trained on the OPEN Dex3 hand: use dex3 with them.")
 ap.add_argument("--zscore", type=int, default=0,
                 help="DIAGNOSTIC: every N steps print, per observation term, the largest |z| against the "
                      "checkpoint's own running statistics. A phase-averaged oracle: a large value flags a term "
@@ -127,6 +141,14 @@ if a.standoff_delta != 0.0:
     cfg.scene.robot.init_state.pos = (lx + (rx - lx) / d * new_d, ly + (ry - ly) / d * new_d, rz)
     print(f"[STANCE] standoff {d:.3f} -> {new_d:.3f} m (delta {a.standoff_delta:+.3f} toward the ladder)")
 
+if a.robot != "inspire":
+    from fiatlux_task.robots.g1 import swap_robot_variant  # noqa: E402
+    swap_robot_variant(cfg, a.robot)
+    print(f"[ROBOT ] hand variant {a.robot}")
+if a.trace:
+    from isaaclab.sensors import ContactSensorCfg as _CSC  # noqa: E402
+    cfg.scene.robot.spawn.activate_contact_sensors = True
+    cfg.scene.whole_body_contact = _CSC(prim_path="{ENV_REGEX_NS}/Robot/.*", history_length=1)
 if a.pin_ladder:
     cfg.scene.ladder.spawn.rigid_props.kinematic_enabled = True
     print("[LADDER] DIAGNOSTIC: ladder is kinematic")
@@ -152,6 +174,17 @@ recorder = (
 obs, _ = env.reset(seed=a.seed)
 obs_builder.reset()
 _lad0 = base.scene["ladder"].data.root_pos_w[0].clone()
+_pv = base.scene["robot"].root_physx_view
+_m = _pv.get_masses().clone()
+_bn = list(base.scene["robot"].body_names)
+print(f"[MASS  ] robot total {float(_m.sum()):.2f} kg; heaviest: " + ", ".join(f"{_bn[i]} {float(_m[0, i]):.2f}" for i in torch.argsort(_m[0], descending=True)[:6].tolist()))
+print("[MASS  ] hands: " + ", ".join(f"{_bn[i]} {float(_m[0, i]):.3f}" for i in range(len(_bn)) if "hand" in _bn[i] or "wrist_yaw" in _bn[i]))
+if a.mass_to > 0:
+    _k = a.mass_to / float(_m.sum())
+    _idx = torch.arange(base.num_envs, device="cpu")
+    _pv.set_masses((_m * _k).cpu(), _idx)
+    _pv.set_inertias((_pv.get_inertias().clone() * _k).cpu(), _idx)
+    print(f"[MASS  ] DIAGNOSTIC: every link scaled by {_k:.4f} -> {float(_pv.get_masses().sum()):.2f} kg")
 
 from isaaclab.utils.math import quat_apply_inverse  # noqa: E402
 
@@ -190,9 +223,17 @@ def apply_rsi() -> None:
     rob.write_root_link_pose_to_sim(torch.cat([root_p, root_q], dim=-1))
     rob.write_root_com_velocity_to_sim(torch.cat([lin, ang], dim=-1))
     q = ob.ref_joint_pos[t0]
+    if a.rsi_noise > 0:
+        q = q + (torch.rand_like(q) * 2 - 1) * a.rsi_noise
     q_next = ob.ref_joint_pos[torch.clamp(t0 + 1, max=ob.motion_len - 1)]
     qd = (q_next - q) * 50.0
     rob.write_joint_state_to_sim(q, qd, joint_ids=ob.j_fx)
+    if a.step_ladder:
+        _a = torch.arange(len(rob.joint_names), device=base.device)
+        _f = _a[~torch.isin(_a, ob.j_fx)]
+        if _f.numel():
+            _z = torch.zeros(base.num_envs, _f.numel(), device=base.device)
+            rob.write_joint_state_to_sim(_z, _z, joint_ids=_f)
 
 
 if a.rsi:
@@ -229,6 +270,10 @@ print(f"[ALIGN ] reference root at t=0 is {float(_d_b[0]):+.3f} m forward, "
       f"{float(_d_b[1]):+.3f} m left, {float(_d_b[2]):+.3f} m up of the robot "
       f"(forward > 0 means the robot is staged BEHIND where the clip starts)")
 
+_all = torch.arange(len(base.scene["robot"].joint_names), device=base.device)
+_fing = _all[~torch.isin(_all, obs_builder.j_fx)]
+print(f"[HANDS ] {_fing.numel()} finger joints outside the clip; spawn angles (deg): "
+      + ", ".join(f"{float(torch.rad2deg(v)):.0f}" for v in base.scene["robot"].data.default_joint_pos[0, _fing]))
 gate_hits = 0
 best = {}
 steps = 0
@@ -252,6 +297,9 @@ try:
             if a.residual_scale != 1.0:
                 a_lm = groups["ref_joint_pos_"] + (a_lm - groups["ref_joint_pos_"]) * a.residual_scale
             action = net.to_fiatlux(a_lm, obs_builder, match_torque=a.match_torque, wrist_from_ref=a.step_ladder)
+            if a.step_ladder and _fing.numel():
+                # the clip's holds are authored for a flat, open hand: finger targets 0, not the spawn curl
+                action[:, _fing] = (0.0 - base.scene["robot"].data.default_joint_pos[:, _fing]) / 0.5
             obs_builder.step(a_lm)                     # record action, advance the clock
 
             obs, reward, terminated, truncated, extras = env.step(action)
@@ -268,8 +316,57 @@ try:
                       f"  ladder moved {float((base.scene['ladder'].data.root_pos_w[0] - _lad0).norm()) * 1000:5.0f} mm"
                       f"  root off ref {float((base.scene['robot'].data.root_pos_w[0] - obs_builder.ref_body_pos[obs_builder.t][0, obs_builder.root_mo]).norm()) * 1000:5.0f} mm")
 
+            if a.trace and steps % a.trace == 0:
+                _r = base.scene["robot"].data; _ob = obs_builder
+                from isaaclab.utils.math import yaw_quat as _yq  # noqa: E402
+                _e = quat_apply_inverse(_yq(_r.root_quat_w), _r.root_pos_w - _ob.ref_body_pos[_ob.t][:, _ob.root_mo])[0] * 1000
+                _g = _r.projected_gravity_b[0]
+                _je = (_r.joint_pos[0, _ob.j_fx] - _ob.ref_joint_pos[_ob.t][0])
+                _top = torch.argsort(_je.abs(), descending=True)[:5].tolist()
+                _tau = (_r.applied_torque[0, _ob.j_fx].abs() / _r.joint_effort_limits[0, _ob.j_fx])
+                _tt = torch.argsort(_tau, descending=True)[:3].tolist()
+                print(f"[TRACE ] {steps:4d} root err fwd {float(_e[0]):+5.0f} left {float(_e[1]):+5.0f} up {float(_e[2]):+5.0f} mm; "
+                      f"tilt fwd {float(torch.rad2deg(torch.atan2(_g[0], -_g[2]))):+5.1f} side {float(torch.rad2deg(torch.atan2(_g[1], -_g[2]))):+5.1f} deg; joints: "
+                      + ", ".join(f"{_ob.lm_joint_names[i].replace('_joint','')} {float(torch.rad2deg(_je[i])):+.0f}" for i in _top)
+                      + "; torque: " + ", ".join(f"{_ob.lm_joint_names[i].replace('_joint','')} {float(_tau[i])*100:.0f}%" for i in _tt))
+                _wb = base.scene.sensors["whole_body_contact"]; _F = _wb.data.net_forces_w[0]
+                _W = float(base.scene["robot"].root_physx_view.get_masses().sum()) * 9.81
+                _grp = {"L foot": "left_ankle", "R foot": "right_ankle", "L hand": "left_hand|left_wrist", "R hand": "right_hand|right_wrist"}
+                import re as _re  # noqa: E402
+                _o = []
+                for _k, _pat in _grp.items():
+                    _ids = [j for j, n in enumerate(_wb.body_names) if _re.search(_pat, n)]
+                    _f = _F[_ids].sum(0)
+                    _o.append(f"{_k} x {float(_f[0]):+.0f} y {float(_f[1]):+.0f} z {float(_f[2]):+.0f}")
+                _oth = [(n, float(_F[j].norm())) for j, n in enumerate(_wb.body_names) if not _re.search("ankle|hand|wrist", n) and float(_F[j].norm()) > 20]
+                print(f"[FORCE ] {steps:4d} (N, world; weight {_W:.0f}) " + "; ".join(_o) + ("; other: " + ", ".join(f"{n} {v:.0f}" for n, v in _oth) if _oth else ""))
+
             done = terminated | truncated
+            ep_steps = locals().get("ep_steps", 0) + 1
+            ep_best = max(locals().get("ep_best", -9e9), pel)
+            at_end = a.stop_at_clip_end and int(obs_builder.t[0]) >= obs_builder.motion_len - 1
+            if at_end and not bool(done.any()):
+                _ref_end = float(obs_builder.ref_body_pos[obs_builder.t][0, obs_builder.root_mo, 2])
+                print(f"[EPISODE] {gate_hits + 1}: reached the clip's end at step {ep_steps}; pelvis {pel:.3f} m "
+                      f"(reference {_ref_end:.3f}), highest {ep_best:.3f} -> {'CLIMBED' if pel > _ref_end - 0.10 else 'not on top'}")
+                ep_steps, ep_best = 0, -9e9
+                obs, _ = env.reset()
+                obs_builder.t[:] = 0
+                if a.rsi:
+                    apply_rsi()
+                obs_builder.reset()
+                if a.lm_gains:
+                    apply_lm_gains()
+                gate_hits += 1
+                if gate_hits >= a.episodes:
+                    break
+                continue
             if bool(done.any()):
+                _tm = getattr(base, "termination_manager", None)
+                _why = [t for t in (_tm.active_terms if _tm is not None else []) if bool(_tm.get_term(t)[0])]
+                print(f"[EPISODE] {gate_hits + 1}: ended at step {ep_steps}, highest pelvis {ep_best:.3f} m -> "
+                      + ("SUCCESS (the task's own gate)" if "success" in _why else f"FAILED {_why}"))
+                ep_steps, ep_best = 0, -9e9
                 ids = done.nonzero(as_tuple=False).squeeze(-1)
                 why = []
                 tm = getattr(base, "termination_manager", None)

@@ -949,3 +949,26 @@ same code, but are left as they were for them: untested there.
 
 Not yet matched to the trainer: the benchmark robot is 38.6 kg against the trainer's 34.4, has
 articulated fingers, and stands on the real ladder mesh, free-standing.
+
+## S02 with the Dex3 hand: first successes by the task's own gate (2026-11-21)
+
+Correction to the entry above: those first S02 trials ran the benchmark's DEFAULT robot, which is
+the Inspire hand (the contact trace showed `R_thumb_intermediate`). The teacher is trained on the
+open Dex3. `record_climb.py` now takes `--robot dex3`; with `--step_ladder` the finger targets are 0.
+Inspire, ladder pinned, 10 varied starts: 0 of 10, none past tread 2.
+
+Trainer-side twin of `--trace` (`ladderman_port/play_probe_trace.py`): through the mount the
+trainer shows the same forward lean (8-9 deg), the same root offset (+50-70 mm forward) and the
+same shoulder-roll offsets (-20 / +15 deg) as S02, so those are the teacher's own behaviour.
+
+Iteration-4,800 teacher, rebuild 72, S02, layout seed 0, Dex3 (34.40 kg, fingers open), started in
+the clip's first pose with +-0.05 rad joint noise (`--rsi --rsi_noise 0.05 --stop_at_clip_end
+--episodes 10`), which is a diagnostic start, not S02's:
+
+| Ladder | Success (task gate) | Lost on the ground | Lost in the mount (step ~215) | Lost at tread 1 -> 2 (step ~605) | Lost higher |
+|---|---|---|---|---|---|
+| pinned (`--pin_ladder`, diagnostic) | 4 of 10, at step 1,342-1,343 | 2 (`fell_below`, steps 57, 81) | 0 | 4 | 0 |
+| free-standing (the benchmark's) | 0 of 10 | 1 | 6 | 0 | 3 (steps 1,043, 1,046, 1,286; pelvis to 1.71 m) |
+
+Trainer, same teacher: 76% from the ground. New diagnostics in `record_climb.py`: `--trace N`
+(root error, tilt, joints, contact forces by limb), `--mass_to`, `--rsi_noise`, `--stop_at_clip_end`.
