@@ -522,3 +522,18 @@ before starting: tags `climb-first-full-climb` (this repo) and `fiatlux-first-fu
   33 terminated on `foot_any_lost_contact` during the mount. It needs training.
 - Trainer robot unchanged for now (right hand open, no bulb body): 35 g is negligible and the
   hand touches nothing. `ladderman_port/koa/lm_train_bulb01.sbatch` is written, NOT submitted.
+
+## Rebuild 72 teacher, checkpoints 1,800 to 2,700 (2026-11-21)
+
+From the ground, 64 robots each, episode limit 1,600 (`play_probe_window.py`):
+
+| Iteration | Full climbs | Lost in the mount (steps 0-200) | Lost at steps 300-450 (tread 4 -> platform) | Lost at steps 850-950 (handrail label starts at 851) |
+|---|---|---|---|---|
+| 1,800 | 22 | 5 | 31 | 1 |
+| 2,100 | 8 | 17 | 30 | 8 |
+| 2,400 | 13 | 17 | 14 | 15 |
+| 2,700 | 3 | 33 | 25 | 3 |
+
+Not improving from the ground; the mount is getting worse and a new loss appeared just after the
+handrail label starts. The trainer's own success number has not printed since the switch.
+The iteration-1,800 checkpoint is kept in the protected copy.
