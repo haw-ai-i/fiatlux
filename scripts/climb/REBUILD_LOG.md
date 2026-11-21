@@ -824,3 +824,61 @@ limit), the 0.28 rad/s over the speed gate, and bulb retention, which varies fro
 with small changes of the carry (bulb14 lost it at the top, bulb15 at tread 3->4, bulb16 in four
 poses). The corridor between the torso and the stringers on tread 3 is about as wide as the
 forearm, hand and bulb are long. The left-knee contacts are rebuild 67's leg motion and untouched.
+
+## Rebuild 72 teacher finished; why robots are lost when the handrail hold starts (2026-11-21)
+
+`play_probe_window.py`, iteration 6,900, steps 800-1,000 on rebuild 72: 26 of 56 surviving robots
+are terminated at steps 870-880 by the hold rule. Both hands are in range and above their targets
+in 100% from step 850; the force test passes in 0-60% at steps 850-870 (right hand median
+(-17, +3) N at 850, i.e. sideways on the rim), and in 100% of the survivors from step 880 at about
+(-16, +15) N. The right hand only arrives at about step 840; the label starts at 851 and the rule
+allows 30 steps, so a robot has until 881 to turn a sideways touch into an upward push.
+
+## Rebuild 73: handrail hold starts 1.0 s after both hands are on (2026-11-21)
+
+`relabel_handrail.py --clip <rebuild 69> --settle 1.0`: the handrail label starts at step 881
+(rebuild 72: 851). The motion arrays are identical to rebuild 72's; anchors unchanged.
+
+Existing teachers replayed on it from the ground, 64 robots, never trained on it:
+
+| Teacher | Full climbs, rebuild 72 | Full climbs, rebuild 73 | Lost at steps 850-950, 72 -> 73 |
+|---|---|---|---|
+| 4,800 | 48 | 53 | 6 -> 1 |
+| 6,900 | 34 | 40 | 21 -> 13 |
+
+Checks (motion unchanged, so these repeat rebuild 67's): hands CLEAN; torso right wrist_roll 3.2 mm
+inside at steps 741-743; legs left shin 2.1 s (deepest 26 mm), left thigh 0.4 s (16 mm).
+
+## Rebuild 74: rebuild 73 with the torso overlap removed (2026-11-21)
+
+`nudge_arm_joint.py --clip <rebuild 73> --joint right_shoulder_roll_joint --deg -6 --steps 730 758`
+(a new tool: a raised-cosine bump on one joint, that arm's bodies recomputed inside the window
+only; it refuses a window where the hand is on a hold). 66 of 3,549 frames change, all in the
+right hand's free move from the platform to the handrail; -3 deg also clears it. Shoulder roll
+peaks at 2.10 rad/s in the window (was 1.81).
+
+| Check | Result |
+|---|---|
+| Hands | CLEAN |
+| Torso | CLEAN; right wrist_roll closest +1.1 mm (step 1,389), right elbow +7.5 mm |
+| Legs | unchanged, FAIL: left shin 2.1 s (26 mm), left thigh 0.4 s (16 mm; steps 542-547, 955-960, 1,132-1,135) |
+| Scan, 148 poses | one entry over 400 N: left knee 2,328 N and left thigh 1,011 N at step 960 (as rebuild 67) |
+| Frozen, 3 s | 7 of 7 stay up; pelvis off the reference 7-37 mm (ground 187 mm) |
+| Static | as rebuild 67: no hold only where one foot has just landed or neither foot counts as planted |
+
+Not passing: the left-leg contact as the left foot lands, which is rebuild 67's leg motion.
+
+## Bulb training started (2026-11-21)
+
+`lm-bulb15`, job 15562958 on ece605 (`sbatch -A ece605 -p ece605 -t 24:00:00 --export=ALL,ITERS=12300
+lm_train_bulb15.sbatch`): continues the two-handed iteration-4,800 teacher for 7,500 more
+iterations on `bulb15`. About 9-10 s per iteration.
+
+## Bulb against the ladder, measured on the reference (2026-11-21)
+
+`check_bulb_clearance.py` (new): the bulb at its measured seat in the right hand, glass as a 40 mm
+sphere and cap as a 21 mm cylinder, against a 5 mm sampling of the ladder's collision triangles.
+`bulb15`: never closer than 17.3 mm (glass under the platform's front edge at step 45); 24-33 mm
+from the right stringer through the rests, 24.5 mm at steps 1,050-1,150 (tread 3), 28.6 mm from the
+tray at the top-out. The 18-29 N read on tread 3 in the frozen holds therefore needs the bulb to
+have moved about 25 mm from its seat, by sliding in the hand or with the sagging robot.

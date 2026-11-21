@@ -65,6 +65,11 @@ ap.add_argument("--scan_min", type=float, default=400.0, help="body scan: report
 ap.add_argument("--scan_only", default="", help="body scan: only bodies whose name contains this")
 ap.add_argument("--wrist_offset", type=float, nargs=3, default=[0.0, 0.0, 0.0],
                 help="DIAGNOSTIC: radians added to the right wrist roll, pitch, yaw at every staged pose and target")
+ap.add_argument("--pin_root", action="store_true",
+                help="test fixture: fix the robot's root at the reference pose, so the grip is tested without the body sagging or falling")
+ap.add_argument("--right_curl", type=float, default=None,
+                help="close the right hand's fingers to this curl (rad; the benchmark's cup is 0.667) AFTER the bulb is seated")
+ap.add_argument("--curl_ramp", type=int, default=15, help="control steps over which --right_curl is reached")
 ap.add_argument("--lm_gains", action="store_true", help="LadderMan's kp/kd instead of fiatlux's")
 AppLauncher.add_app_launcher_args(ap)
 a = ap.parse_args()
@@ -104,6 +109,8 @@ cfg.scene.bulb_any = _CSC(prim_path=cfg.scene.fresh_bulb.prim_path, history_leng
 if not a.body_scan:
     cfg.scene.whole_body_contact = _CSC(prim_path="{ENV_REGEX_NS}/Robot/.*", history_length=1)
 cfg.scene.bulb_vs_ladder = _CSC(prim_path=cfg.scene.fresh_bulb.prim_path, filter_prim_paths_expr=[cfg.scene.ladder.prim_path], history_length=1)
+if a.pin_root:
+    cfg.scene.robot.spawn.articulation_props.fix_root_link = True
 env = gym.make(a.task, cfg=cfg).unwrapped
 env.reset()
 base, dev = env, env.device
@@ -144,6 +151,13 @@ _WR = ob.lm_body_names.index("right_wrist_yaw_link")
 _BP = torch.tensor([[0.1192, 0.0540, -0.1310]], device=dev); _BQ = torch.tensor([[0.70710678, 0.0, 0.0, 0.70710678]], device=dev)
 
 
+_CURL = None
+if a.right_curl is not None:
+    from fiatlux_task.poses import hand_cup_dex3
+    _cup = hand_cup_dex3(a.right_curl)
+    _CI = [jn.index(k) for k in _cup]; _CV = torch.tensor([[_cup[k] for k in _cup]], device=dev)
+    _CURL = (_CI, _CV)
+    print(f"[fingers] right hand closes from the cup to curl {a.right_curl:.3f} over {a.curl_ramp} steps after seating")
 _WJ = [jn.index(f"right_wrist_{k}_joint") for k in ("roll", "pitch", "yaw")]
 _WOFF = torch.tensor([a.wrist_offset], device=dev)
 
@@ -203,6 +217,9 @@ def run(name, mode, t0, t1, lift=0.0):
         tgt = q_all0.clone()
         tgt[:, ob.j_fx] = ob.ref_joint_pos[tt]
         tgt[:, _WJ] += _WOFF
+        if _CURL is not None:
+            _w = min(1.0, (k + 1) / max(1, a.curl_ramp))
+            tgt[:, _CURL[0]] = (1 - _w) * q_all0[:, _CURL[0]] + _w * _CURL[1]
         robot.set_joint_position_target(tgt)
         for _ in range(DEC):
             base.scene.write_data_to_sim()
