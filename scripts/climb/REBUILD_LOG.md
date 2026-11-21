@@ -922,3 +922,30 @@ the hand holds its pose; the stringer contact needs the body more than about 25 
 reference. Neither can be closed on frozen poses; the test is a trained bulb teacher in S10.
 
 The pending kill-shared jobs (`lm-stock` x4, `lm-e72fresh` x4) were cancelled on request; none had started.
+
+## Bulb teacher, first checkpoint; two-handed teacher tried in S02 (2026-11-21)
+
+`lm-bulb15` iteration 5,100 (300 iterations on `bulb15`), from the ground, 64 robots, right contact
+point on the wrist: 3 full climbs; 34 lost at steps 300-350 (wrist move tread 4 -> platform), 12 in
+the mount, 8 at steps 850-950.
+
+Adapter (`record_climb.py --step_ladder --asset_meta ladderman_port/asset_meta_edge72.json`, all
+opt-in, the rung-ladder path unchanged). Iteration-4,800 teacher, rebuild 72, S02, layout seed 0,
+started in the clip's first pose (`--rsi`, a diagnostic: not a valid S02 start):
+
+| Adapter state | Result |
+|---|---|
+| wrists from the clip, tread-1 observation point | fell at step 79; `joint_pos_history` 54 sd from training |
+| + joint history as LadderMan computes it (`buffer - action offset`: 23 joints RAW, wrists as error against the clip); history seeded after staging | fell at step 323, pelvis +0.22 m; `prev_actions` 7-11 sd |
+| + `prev_actions` joint-major, as LadderMan's `action_buf[N, joint, history]` flattens | no term over 4 sd in the first 50 steps; fell at step 200-220 |
+| + ladder made kinematic (`--pin_ladder`, diagnostic) | on tread 1 from step 150 to 550, root 20-90 mm off the reference; fell at step 553 (the tread 1 -> 2 step) |
+
+With the ladder free it moved 17 mm at step 120, as the robot mounts, and the robot was down by
+step 200. `--zscore N` prints each observation term's largest |z| against the checkpoint's own
+statistics. The checkpoint's joint-history means confirm the reading for the wrists (mean within
+0.06 rad of zero, sd 0.03-0.10, where the clip's wrist angles average up to 1.3 rad). The same two
+layout points (raw joints, joint-major previous actions) apply to the rung-ladder teachers by the
+same code, but are left as they were for them: untested there.
+
+Not yet matched to the trainer: the benchmark robot is 38.6 kg against the trainer's 34.4, has
+articulated fingers, and stands on the real ladder mesh, free-standing.

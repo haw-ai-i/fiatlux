@@ -163,7 +163,8 @@ class LadderManObs:
 
     def __init__(self, env, motion_dir: str, ladder_asset: str = "ladder",
                  rung0_local=(0.0, -0.3804, 0.196), climb_dir_local=(0.0, 1.0, 0.0),
-                 asset_meta: str | None = None):
+                 asset_meta: str | None = None, rung0_obs_local=None,
+                 jpos_offset: str = "default"):
         self.env = env
         self.device = env.device
         self.N = env.num_envs
@@ -237,6 +238,26 @@ class LadderManObs:
 
         # ---- place the motion into this world ------------------------------------------------
         self._set_frame(rung0_local, climb_dir_local)
+        # The step-ladder trainer (ladder_fiatlux.py) reads the ladder observation off object 0,
+        # tread 1's box centre, which is not the point the motion is anchored on. Optional, so the
+        # rung-ladder teachers keep their single point.
+        self.rung0_obs_w = self.rung0_w
+        if rung0_obs_local is not None:
+            _lp = torch.as_tensor(self.ladder.data.root_pos_w, device=self.device)[:1]
+            _R = matrix_from_quat(torch.as_tensor(self.ladder.data.root_quat_w, device=self.device)[:1])
+            _r = torch.tensor(rung0_obs_local, device=self.device, dtype=torch.float32)[None]
+            self.rung0_obs_w = _lp + (_R @ _r[..., None]).squeeze(-1)
+        # What joint_pos_history is measured against. LadderMan's term is `buffer - action_manager.offset`
+        # (observations/common.py), and JointPosition.offset starts at ZERO, so the 23 policy joints are
+        # reported RAW; JointPositionRefWrist then writes `reference wrist - default` into the offset, so
+        # the six wrists are reported as their error against the clip. "default" keeps this file's
+        # earlier reading (everything minus LadderMan's default pose) for the older teachers.
+        if jpos_offset not in ("default", "refwrist"):
+            raise ValueError(jpos_offset)
+        self.jpos_offset = jpos_offset
+        # the six wrist joints, for teachers whose wrists follow the clip (action_refwrist.py)
+        self.wrist_mo = torch.tensor([i for i, n in enumerate(self.lm_joint_names) if any(u in n for u in UNACTUATED)],
+                                     device=self.device)
         t = torch.as_tensor
         self.ref_body_pos = self._to_world_p(t(m["body_pos_w"], dtype=torch.float32, device=self.device))
         self.ref_body_quat = self._to_world_q(t(m["body_quat_w"], dtype=torch.float32, device=self.device))
@@ -340,18 +361,29 @@ class LadderManObs:
         phase = (self.t.float() / self.motion_len)[:, None]
         return torch.cat([local.reshape(self.N, -1), rj.reshape(self.N, -1), phase], -1)
 
+    def _jpos_rel(self) -> torch.Tensor:
+        if self.jpos_offset == "default":
+            return self.buf_jpos - self.lm_default[None, None]
+        off = torch.zeros(self.N, self.buf_jpos.shape[-1], device=self.device)
+        off[:, self.wrist_mo] = (self.ref_joint_pos[self.t][:, self.wrist_mo]
+                                 - self.lm_default[self.wrist_mo][None])
+        return self.buf_jpos - off[:, None]
+
     def policy(self) -> torch.Tensor:
-        jp = (self.buf_jpos - self.lm_default[None, None])[:, list(POLICY_JOINT_HISTORY)]
+        jp = self._jpos_rel()[:, list(POLICY_JOINT_HISTORY)]
         return torch.cat([
             self.buf_angvel[:, [0]].reshape(self.N, -1),
             self.buf_gravity[:, [0]].reshape(self.N, -1),
             jp.reshape(self.N, -1),
-            self.buf_action.reshape(self.N, -1),
+            # LadderMan's action_buf is [N, joint, history] and prev_actions flattens it as is, so the
+            # layout is joint-major: (a0[t], a0[t-1], a0[t-2], a1[t], ...). "refwrist" mode uses that;
+            # "default" keeps this file's earlier history-major layout for the older teachers.
+            (self.buf_action.permute(0, 2, 1) if self.jpos_offset == "refwrist" else self.buf_action).reshape(self.N, -1),
         ], -1)
 
     def object(self) -> torch.Tensor:
         rq = yaw_quat(self.robot.data.root_quat_w)
-        xy = quat_apply_inverse(rq, self.rung0_w.expand(self.N, 3) - self.robot.data.root_pos_w)[:, :2]
+        xy = quat_apply_inverse(rq, self.rung0_obs_w.expand(self.N, 3) - self.robot.data.root_pos_w)[:, :2]
         robot_yaw = torch.atan2(
             2 * (rq[:, 0] * rq[:, 3] + rq[:, 1] * rq[:, 2]),
             1 - 2 * (rq[:, 2] ** 2 + rq[:, 3] ** 2),
@@ -400,7 +432,7 @@ class LadderManObs:
         hb_names = [n for n in self.track_bodies if n.endswith("ankle_roll_link")] + ["pelvis", "torso_link"]
         hb = torch.tensor([list(self.robot.body_names).index(n) for n in hb_names], device=self.device)
 
-        jp = (self.buf_jpos - self.lm_default[None, None])[:, list(PRIV_HISTORY)]
+        jp = self._jpos_rel()[:, list(PRIV_HISTORY)]
         return torch.cat([
             self.buf_angvel[:, list(PRIV_HISTORY)].reshape(self.N, -1),
             self.buf_gravity[:, list(PRIV_HISTORY)].reshape(self.N, -1),

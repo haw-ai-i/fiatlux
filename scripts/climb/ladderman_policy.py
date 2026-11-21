@@ -101,7 +101,8 @@ class LadderManPolicy(nn.Module):
         return groups["ref_joint_pos_"] + out          # RefJointPos: ref_jpos + action
 
     @torch.no_grad()
-    def to_fiatlux(self, action_lm: torch.Tensor, obs, match_torque: bool = False) -> torch.Tensor:
+    def to_fiatlux(self, action_lm: torch.Tensor, obs, match_torque: bool = False,
+                   wrist_from_ref: bool = False) -> torch.Tensor:
         """Re-express LadderMan's absolute joint target in our action units.
 
         theirs: pos_target = lm_default + applied_action * action_scaling   (23; wrists held)
@@ -113,6 +114,10 @@ class LadderManPolicy(nn.Module):
         lm_target = obs.lm_default[None].expand(action_lm.shape[0], -1).clone()
         lm_target[:, obs.act_mo] = (obs.lm_default[obs.act_mo][None]
                                     + action_lm * obs.act_scaling[None])
+        if wrist_from_ref:
+            # Teachers trained with JointPositionRefWrist: the wrists' PD target is the clip's
+            # wrist angle at the current phase, not the default pose.
+            lm_target[:, obs.wrist_mo] = obs.ref_joint_pos[obs.t][:, obs.wrist_mo]
         if match_torque:
             # Both sides run Isaac Lab's implicit PD: tau = kp*(q* - q) - kd*qd. The policy chose
             # q* for THEIR gains, so applying it under ours multiplies the torque. Solve for the

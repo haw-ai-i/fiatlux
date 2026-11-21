@@ -67,6 +67,20 @@ ap.add_argument("--standoff_delta", type=float, default=0.0,
                      "robot, so the spawn standoff sets the frame-0 tracking error the policy "
                      "wakes up holding -- see the [ALIGN ] line, which measures it directly. "
                      "Only meaningful for a floor stance; refused on a platform stance.")
+ap.add_argument("--step_ladder", action="store_true",
+                help="the teacher was trained on the fiatlux STEP ladder (ladder_port/ladder_fiatlux.py) with "
+                     "the wrists following the clip: wrist targets come from the reference, and the ladder "
+                     "observation reads tread 1's box centre as that trainer does")
+ap.add_argument("--jpos_offset", default=None, choices=["default", "refwrist"],
+                help="what joint_pos_history is measured against (see LadderManObs); default follows --step_ladder")
+ap.add_argument("--pin_ladder", action="store_true",
+                help="DIAGNOSTIC: make the ladder kinematic (immovable), as it is in the LadderMan trainer. "
+                     "Not a valid benchmark run -- it isolates the free-standing ladder from everything else.")
+ap.add_argument("--zscore", type=int, default=0,
+                help="DIAGNOSTIC: every N steps print, per observation term, the largest |z| against the "
+                     "checkpoint's own running statistics. A phase-averaged oracle: a large value flags a term "
+                     "to look at, it does not prove the term is wrong.")
+ap.add_argument("--asset_meta", default=None, help="the training run's own asset_meta.json (default: the rung-ladder teacher's)")
 AppLauncher.add_app_launcher_args(ap)
 a = ap.parse_args()
 a.enable_cameras = True
@@ -113,10 +127,16 @@ if a.standoff_delta != 0.0:
     cfg.scene.robot.init_state.pos = (lx + (rx - lx) / d * new_d, ly + (ry - ly) / d * new_d, rz)
     print(f"[STANCE] standoff {d:.3f} -> {new_d:.3f} m (delta {a.standoff_delta:+.3f} toward the ladder)")
 
+if a.pin_ladder:
+    cfg.scene.ladder.spawn.rigid_props.kinematic_enabled = True
+    print("[LADDER] DIAGNOSTIC: ladder is kinematic")
 env = gym.make(a.task, cfg=cfg)
 base = env.unwrapped
 
-obs_builder = LadderManObs(base, a.motion)
+# Tread 1's box centre in the ladder's own frame: clip x -0.58825 (ladder_fiatlux.py) -> ladder y +0.1996.
+obs_builder = LadderManObs(base, a.motion, asset_meta=a.asset_meta,
+                           rung0_obs_local=(0.0, -0.38865, 0.196) if a.step_ladder else None,
+                           jpos_offset=a.jpos_offset or ("refwrist" if a.step_ladder else "default"))
 net = LadderManPolicy(a.checkpoint, device=base.device)
 print(f"[POLICY] {a.checkpoint}")
 print(f"[MOTION] {obs_builder.motion_len} steps at 50 Hz = {obs_builder.motion_len / 50:.2f} s")
@@ -131,6 +151,7 @@ recorder = (
 
 obs, _ = env.reset(seed=a.seed)
 obs_builder.reset()
+_lad0 = base.scene["ladder"].data.root_pos_w[0].clone()
 
 from isaaclab.utils.math import quat_apply_inverse  # noqa: E402
 
@@ -176,6 +197,7 @@ def apply_rsi() -> None:
 
 if a.rsi:
     apply_rsi()
+    obs_builder.reset()       # the history buffers were seeded from the benchmark spawn pose above
     print("[RSI   ] staged in the reference frame-0 state (root pose+vel, 29 joints). "
           "The [ALIGN ] line below should now read ~0 -- that is the check this flag worked.")
 
@@ -216,9 +238,20 @@ try:
             obs_builder.update()                       # buffers see the CURRENT state
             groups = obs_builder.groups()
             a_lm = net.act(groups)
+            if a.zscore and steps % a.zscore == 0:
+                import ladderman_obs as _lo  # noqa: E402
+                _bits = []
+                for _g in _lo.VECNORM_GROUPS:
+                    _z = net._n(_g, groups[_g])[0].abs()
+                    for _nm, _s, _e in _lo.offsets(_g):
+                        _m = float(_z[_s:_e].max())
+                        if _m > 4.0:
+                            _bits.append(f"{_g}.{_nm} {_m:.1f}")
+                _res = (a_lm - groups["ref_joint_pos_"])[0]
+                print(f"[ZSCORE] step {steps:4d}: residual |max| {float(_res.abs().max()):.2f}; terms over 4: " + (", ".join(_bits) or "none"))
             if a.residual_scale != 1.0:
                 a_lm = groups["ref_joint_pos_"] + (a_lm - groups["ref_joint_pos_"]) * a.residual_scale
-            action = net.to_fiatlux(a_lm, obs_builder, match_torque=a.match_torque)
+            action = net.to_fiatlux(a_lm, obs_builder, match_torque=a.match_torque, wrist_from_ref=a.step_ladder)
             obs_builder.step(a_lm)                     # record action, advance the clock
 
             obs, reward, terminated, truncated, extras = env.step(action)
@@ -231,7 +264,9 @@ try:
             best["pelvis_max"] = max(best.get("pelvis_max", -9e9), pel)
             if steps % a.print_every == 0:
                 print(f"[STEP  ] {steps:5d}  phase {float(obs_builder.t[0]) / obs_builder.motion_len:5.2f}"
-                      f"  pelvis {pel:6.3f} m  action |max| {float(action.abs().max()):6.2f}")
+                      f"  pelvis {pel:6.3f} m  action |max| {float(action.abs().max()):6.2f}"
+                      f"  ladder moved {float((base.scene['ladder'].data.root_pos_w[0] - _lad0).norm()) * 1000:5.0f} mm"
+                      f"  root off ref {float((base.scene['robot'].data.root_pos_w[0] - obs_builder.ref_body_pos[obs_builder.t][0, obs_builder.root_mo]).norm()) * 1000:5.0f} mm")
 
             done = terminated | truncated
             if bool(done.any()):
