@@ -571,3 +571,27 @@ approaches: bulb 4 mm from the right stringer (step 45), back of hand 12 mm, for
 the static check has not been adapted to a wrist contact; the 50 N limit is covered by geometry only.
 Training it needs `contact_eef_pos_offset` for the right hand set to the wrist's contact point
 (0.005, -0.030, 0.0).
+
+### bulb07 through the full check suite (2026-11-21)
+
+Run in the plain climb task (S02): right hand OPEN and empty, so no bulb and fingers 5-8 cm longer
+than the cupped S10 hand.
+
+- Frozen poses, 3 s each: 7 of 7 hold. Pelvis off the reference 2-41 mm, except the ground pose
+  (200 mm, as in rebuild 67) and the tread-2 pause with the wrist on the platform (109 mm, tilt 12 deg).
+- Whole-body scan, pushes over 400 N (rebuild 67 had only the step-960 entry): step 360 torso and
+  right wrist_pitch 417 N; steps 520-530 right palm and fingers 657-2,744 N; step 960 left knee
+  2,301 N and left hip_yaw 984 N; steps 1,320-1,330 right fingers up to 1,826 N and right
+  wrist_roll / wrist_yaw 787 N.
+- `check_arm_torso.py`: right wrist_roll 5.8 mm inside the torso at step 952; also inside during
+  358-362 and 1,356-1,366. Right elbow +20 mm.
+- `check_hand_collision.py` flags the right hand at the platform's front face (steps 352-362,
+  533) and the tray rim (1,323-1,333). It still reads the right hand's holds from the two-handed
+  schedule, so its "while holding" labels for that hand are wrong; the locations agree with the scan.
+- Legs: unchanged from rebuild 67 (left knee 2.1 s deeper than 3 mm).
+- Static check: 11 rows with no balance, including 620-720 with the wrist on the platform; the
+  checker models palm holds and has not been adapted.
+
+Not clean: carried in front of the chest, the hand meets the platform's nose on tread 1 and the
+tray at the top-out, and the wrist brushes the chest. The box-model clearances reported by
+`make_bulb_wristrest_clip.py` (bulb +4, hand +12 mm) missed these.
