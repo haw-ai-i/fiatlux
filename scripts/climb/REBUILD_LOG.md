@@ -416,3 +416,33 @@ pairs); PhysX asked for 2.63M and 65.7M once most robots were up on the ladder w
 robots. `ladderman_port/ladderman_upstream.patch` (our changes to LadderMan's own files) adds
 `task.sim.physx_capacity_scale`, default 1.0; the edge job scripts pass 2.0. Resumed from
 checkpoint 900.
+
+## Rebuilds 70 and 71: hands stay on the platform for the tread 2 -> 3 step -- rejected (2026-11-21)
+
+Idea: keep both hands on the platform through the step from tread 2 to tread 3 and move them to
+the handrail afterwards, so the handrail reach (where the teacher is being terminated) is made
+from a higher stance. Only the third `--pause` moves; base-clip timing of that step: left foot
+lands on tread 3 near base step 432, right foot leaves tread 2 near 445 and lands near 480.
+
+Plan-only reach (limit 0.375 m), both feet on tread 3 (`--pause 535:4.4`):
+
+| Crouch | Platform needs | Handrail needs |
+|---|---|---|
+| 0 | 0.615 | 0.249 |
+| 0.20 | 0.461 | 0.303 |
+| 0.27 | 0.418 | 0.350 |
+
+No pelvis height reaches both. More waist lean does nothing: the waist is at 0.50 of 0.52 rad.
+
+- Rebuild 70 (`--pause 470:4.4 --crouch 0.24`, crouch 400-468 on, 472-540 off): REJECTED. The
+  pause fell while the right foot was in the air. Right forearm 13 mm and left wrist-roll 14 mm
+  inside the torso; left hand into a stringer during its move (steps 823-835); thighs 37 / 42 mm
+  inside the ladder for over 6 s (steps 720-1,067); right shin 36 mm into the tread above.
+- Rebuild 71 (`--pause 440:4.4`, no crouch; hands change in the split stance, left foot on tread
+  3 and right on tread 2): REJECTED. Reach in the stance itself is fine (platform 0.371 / 0.378,
+  handrail 0.351 / 0.325), but during the left foot's swing before it the right hand cannot stay
+  on the platform: 65 mm off its hold at steps 670-693 with the palm tilted 19 deg, right forearm
+  8.6 mm inside the torso at step 694. The body motion in that swing was authored with the hands
+  on the handrail.
+
+Not trained. Making it work needs the body trajectory of the left-foot swing reshaped, not a flag.
