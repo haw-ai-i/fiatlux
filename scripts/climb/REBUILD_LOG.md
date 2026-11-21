@@ -784,3 +784,31 @@ bulb14 with `--rests 52 262 372 890 0 0 --carry_z_keys 0:0.14 1230:0.14 1290:0.1
   On tread 3 the bulb reads 18-29 N against the ladder and a 16-22 N squeeze during the hold: the
   carried bulb is close to the right stringer there (the proxy has said -9 mm at step 1,096 since
   bulb13) and the sagging robot brings it into contact.
+
+### bulb16: hand carried 25 mm nearer the centre line -- worse; bulb15 stays the candidate
+bulb15 with `--carry 0.18 -0.105 0.14 --rests 52 256 380 890 0 0`. The bulb's contact with the
+stringer on tread 3 drops to 2-5 N, but: bulb off its seat 1,036 mm (tread 1->2), 473 (tread 3->4),
+269 (tread 3) and 2,135 mm (top), i.e. lost in 4 of 10 holds; right wrist_roll 3.3 mm inside the
+torso at steps 300-304 with a 309 N push between wrist and torso at step 300; speed 6.46 rad/s.
+Holds 10 of 10 stay up; scan otherwise as bulb15.
+
+The speed peak sits at clip steps 295-300 in bulb14, 15 and 16 whatever the move's timing (rest
+ending at 270, 262, 256), so it follows the body's motion there, not the length of the move.
+
+### State of the bulb clip
+`bulb15` is the candidate (`ladderman_port/koa/lm_train_bulb15.sbatch`, not submitted).
+
+| Issue | bulb10 | bulb15 |
+|---|---|---|
+| Right wrist_roll vs torso | 7.0 mm inside | +14.5 mm, CLEAN |
+| Peak right-arm speed | 11.9 rad/s | 6.28 rad/s (8 frames over 6) |
+| Forearm on the platform's edge, tread 1 | 57-279 N | nothing over 20 N |
+| Bulb leaves the hand in a 3 s hold | 2 of 9 poses | 1 of 10 |
+| Bulb against the ladder: scan / holds | 0 N / up to 4 N | 0 N / up to 29 N on tread 3 |
+| Squeeze on the bulb: scan / holds | 7 N / 3 N | 3 N / 22 N |
+
+Not closed: the bulb touching the right stringer in the tread-3 holds (18-29 N, under the 50 N
+limit), the 0.28 rad/s over the speed gate, and bulb retention, which varies from run to run and
+with small changes of the carry (bulb14 lost it at the top, bulb15 at tread 3->4, bulb16 in four
+poses). The corridor between the torso and the stringers on tread 3 is about as wide as the
+forearm, hand and bulb are long. The left-knee contacts are rebuild 67's leg motion and untouched.
