@@ -516,7 +516,8 @@ before starting: tags `climb-first-full-climb` (this repo) and `fiatlux-first-fu
 
 - `bulb01` = beside the right hip (shoulder pitch 0.80, roll -0.50, elbow 0.60, wrist roll 1.57),
   from the first frame. Bulb hand clears the ladder by at least 130 mm, forearm 101 mm; arm vs
-  torso and hands vs ladder CLEAN. A hand is on a hold for 74% of the clip (two-handed: more).
+  torso and hands vs ladder CLEAN. The left hand is labelled on a hold for 66.7% of the clip and no
+  hand for 33.3% (rebuild 72: two hands 60.6%, one 19.4%, none 19.9%).
 - The two-handed teacher (iteration 1,800) played on it untrained: 0 of 64 past step 400;
   33 terminated on `foot_any_lost_contact` during the mount. It needs training.
 - Trainer robot unchanged for now (right hand open, no bulb body): 35 g is negligible and the
