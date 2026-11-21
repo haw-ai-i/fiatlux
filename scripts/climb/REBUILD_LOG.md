@@ -533,7 +533,9 @@ From the ground, 64 robots each, episode limit 1,600 (`play_probe_window.py`):
 | 2,100 | 8 | 17 | 30 | 8 |
 | 2,400 | 13 | 17 | 14 | 15 |
 | 2,700 | 3 | 33 | 25 | 3 |
+| 3,000 | 14 | 29 | 1 | 20 |
+| 3,300 | 35 | 16 | 6 | 5 |
 
-Not improving from the ground; the mount is getting worse and a new loss appeared just after the
-handrail label starts. The trainer's own success number has not printed since the switch.
+Checkpoints swing widely (3 to 35 of 64); 3,300 is the best so far at 55%. Pinned copies of 1,800
+and 3,300 are in `teacher/keep/` on Koa. The trainer's own success number has not printed since the switch.
 The iteration-1,800 checkpoint is kept in the protected copy.
