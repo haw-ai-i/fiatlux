@@ -541,6 +541,10 @@ From the ground, 64 robots each, episode limit 1,600 (`play_probe_window.py`):
 | 4,500 | 30 | 12 | 0 | 15 |
 | 4,800 | 48 | 10 | 0 | 6 |
 | 5,100 | 22 | 20 | 15 | 7 |
+| 5,400 | 24 | 16 | 7 | 14 |
+| 5,700 | 28 | 16 | 4 | 16 |
+| 6,000 | 18 | 12 | 1 | 33 |
+| 6,300 | 41 | 12 | 0 | 11 |
 
 Checkpoints swing widely (3 to 35 of 64); 3,300 is the best so far at 55%. Pinned copies of 1,800
 and 3,300 are in `teacher/keep/` on Koa. The trainer's own success number has not printed since the switch.
