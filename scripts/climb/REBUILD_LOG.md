@@ -882,3 +882,43 @@ sphere and cap as a 21 mm cylinder, against a 5 mm sampling of the ladder's coll
 from the right stringer through the rests, 24.5 mm at steps 1,050-1,150 (tread 3), 28.6 mm from the
 tray at the top-out. The 18-29 N read on tread 3 in the frozen holds therefore needs the bulb to
 have moved about 25 mm from its seat, by sliding in the hand or with the sagging robot.
+
+## Rebuilds 72, 73, 74 compared on the iteration-4,800 teacher; bulb grip sweep (2026-11-21)
+
+From the ground, 64 robots, seeds 0 / 1 / 2, the teacher trained on rebuild 72 only:
+
+| Clip | Full climbs | Total of 192 | Lost at steps 850-999 |
+|---|---|---|---|
+| Rebuild 72 | 48, 50, 48 | 146 (76%) | 6, 5, 8 |
+| Rebuild 73 | 53, 46, 54 | 153 (80%) | 1, 7, 6 |
+| Rebuild 74 | 47, 52, 52 | 151 (79%) | 6, 2, 4 |
+
+The first single-seed comparison (48 -> 53, losses 6 -> 1) overstated it: over three seeds the
+longer settle is worth about 3 points untrained, and rebuilds 73 and 74 are indistinguishable.
+
+Bulb grip, `physics_segment_test_bulb.py --pin_root --right_curl C` on `bulb15` (root fixed at
+the reference, fingers closed from the benchmark's cup after seating, 10 s holds at steps 400,
+750, 1,090, 1,150, 1,250, 1,450):
+
+| Curl | Bulb stays | Hardest squeeze | Furthest off its seat | Bulb on the ladder |
+|---|---|---|---|---|
+| 0.667 (cup) | 4 of 6; lost at 1,090 (+0.56 s) and 1,150 (+0.92 s) | 1 N | - | 166 N falling |
+| 0.80 | 6 of 6 | 7 N | 114 mm | 8 N |
+| 0.95 | 6 of 6 | 8 N | 85 mm | 9 N |
+| 1.10 | 6 of 6 | 6 N | 43 mm | 5 N |
+| 1.25 | 6 of 6 | 9 N | 150 mm | 11 N |
+
+At 1.10 and 1.25 the fingers reach their commanded angles: they cage the bulb, they do not press on it.
+
+Same ten 3 s holds as before with the body free (no balance): cup 9 of 10 stay, squeeze up to 22 N,
+ladder 29 N; curl 0.80 9 of 10, 42 N, 58 N; curl 1.10 8 of 10, 49 N, 56 N. The 56-58 N is the
+step-1,090 pose: the body sags 30-40 mm toward the right stringer, further than the bulb's 24.5 mm
+clearance, and a firmly held bulb is wedged. At step 1,060 the bulb leaves within 0.1 s at every
+curl (the hand moves about 40 mm from it in the first control step, no contact force); not explained.
+In the carried poses the fingers pitch down 14-31 deg over the hold.
+
+Reading: the cup's retention is the benchmark's and a curl of 0.8-1.25 remedies it under 10 N when
+the hand holds its pose; the stringer contact needs the body more than about 25 mm off the
+reference. Neither can be closed on frozen poses; the test is a trained bulb teacher in S10.
+
+The pending kill-shared jobs (`lm-stock` x4, `lm-e72fresh` x4) were cancelled on request; none had started.
