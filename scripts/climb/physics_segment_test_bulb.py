@@ -61,6 +61,10 @@ ap.add_argument("--probe", action="store_true",
                      "physics step, and print which bodies the solver pushes on. The lift at which "
                      "the push vanishes is how deep the collision shapes overlap at the clip pose.")
 ap.add_argument("--modes", default="hold,track")
+ap.add_argument("--scan_min", type=float, default=400.0, help="body scan: report pushes over this many newtons")
+ap.add_argument("--scan_only", default="", help="body scan: only bodies whose name contains this")
+ap.add_argument("--wrist_offset", type=float, nargs=3, default=[0.0, 0.0, 0.0],
+                help="DIAGNOSTIC: radians added to the right wrist roll, pitch, yaw at every staged pose and target")
 ap.add_argument("--lm_gains", action="store_true", help="LadderMan's kp/kd instead of fiatlux's")
 AppLauncher.add_app_launcher_args(ap)
 a = ap.parse_args()
@@ -140,6 +144,10 @@ _WR = ob.lm_body_names.index("right_wrist_yaw_link")
 _BP = torch.tensor([[0.1192, 0.0540, -0.1310]], device=dev); _BQ = torch.tensor([[0.70710678, 0.0, 0.0, 0.70710678]], device=dev)
 
 
+_WJ = [jn.index(f"right_wrist_{k}_joint") for k in ("roll", "pitch", "yaw")]
+_WOFF = torch.tensor([a.wrist_offset], device=dev)
+
+
 def stage(t, lift=0.0):
     tt = torch.tensor([t], device=dev, dtype=torch.long)
     ladder.write_root_state_to_sim(lad0)
@@ -149,10 +157,15 @@ def stage(t, lift=0.0):
     robot.write_root_com_velocity_to_sim(torch.zeros(1, 6, device=dev))
     q = q_all0.clone()
     q[:, ob.j_fx] = ob.ref_joint_pos[tt]
+    q[:, _WJ] += _WOFF
     robot.write_joint_state_to_sim(q, torch.zeros_like(q))
     robot.set_joint_position_target(q)
     wp = ob.ref_body_pos[tt][:, _WR]; wq = ob.ref_body_quat[tt][:, _WR]
     wp = wp.clone(); wp[:, 2] += lift / 1000.0
+    if any(a.wrist_offset):                           # the reference pose no longer describes the hand: read it back
+        base.scene.write_data_to_sim(); base.sim.forward(); base.scene.update(0.0)
+        _i = robot.body_names.index("right_wrist_yaw_link")
+        wp, wq = robot.data.body_link_pos_w[0:1, _i].clone(), robot.data.body_link_quat_w[0:1, _i].clone()
     bulb.write_root_pose_to_sim(torch.cat([wp + _qa(wq, _BP), _qm(wq, _BQ)], dim=-1))
     bulb.write_root_velocity_to_sim(torch.zeros(1, 6, device=dev))
     base.scene.write_data_to_sim()
@@ -189,6 +202,7 @@ def run(name, mode, t0, t1, lift=0.0):
         tt = torch.tensor([t], device=dev, dtype=torch.long)
         tgt = q_all0.clone()
         tgt[:, ob.j_fx] = ob.ref_joint_pos[tt]
+        tgt[:, _WJ] += _WOFF
         robot.set_joint_position_target(tgt)
         for _ in range(DEC):
             base.scene.write_data_to_sim()
@@ -296,7 +310,7 @@ if a.body_scan:
             stage(t, 0.0)
             base.scene.write_data_to_sim(); base.sim.step(render=False); base.scene.update(DT)
             fb = sn.data.net_forces_w[0].norm(dim=-1)
-            hit = [(sn.body_names[j], float(fb[j])) for j in torch.argsort(fb, descending=True).tolist() if fb[j] > 400.0]
+            hit = [(sn.body_names[j], float(fb[j])) for j in torch.argsort(fb, descending=True).tolist() if fb[j] > a.scan_min and a.scan_only in sn.body_names[j]]
             v = float(robot.data.root_lin_vel_w[0].norm())
             for n_, f_ in hit:
                 tally.setdefault(n_, []).append((t, f_))

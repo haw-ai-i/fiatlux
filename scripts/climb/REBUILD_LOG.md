@@ -714,3 +714,45 @@ only changed how it failed. Changes:
 
 Resubmitted; it resumes from iteration 5,400 with 2,100 to go. What makes a robot blow up is not
 found; the reset probe saw several thousand newtons on a hand in about 10% of noisy resets.
+
+## Bulb clip fixes: torso overlap, fast move, bulb retention, forearm (2026-11-21)
+
+### Diagnostics on bulb10 (bulb task)
+- Right arm at a 20 N threshold (`--scan_min 20 --scan_only right_`): while the robot stands on
+  tread 1 with the wrist "on" the platform (steps 340-560) it is `right_wrist_roll_link`, the
+  forearm's end, that is pushed (57-279 N); `right_wrist_yaw_link` reads nothing. On tread 2
+  neither is over 20 N: the wrist sits 2 mm above the surface. Step 950: wrist_pitch 359 N
+  against the torso. Top half: 27-82 N between wrist_roll and wrist_yaw.
+- Bulb retention, 3 s holds at steps 1,060, 1,090, 1,250 with an offset on the right wrist joints
+  (`--wrist_offset roll pitch yaw`, rad). Bulb distance from its seat at the end, mm:
+
+  | Offset | 1,060 | 1,090 | 1,250 |
+  |---|---|---|---|
+  | none | 471 | 5,208 | 55 |
+  | roll +0.2 | 26 | 73 | 2,006 |
+  | roll -0.2 | 515 | 1,767 | 725 |
+  | pitch +0.15 | 15 | 224 | 76 |
+  | pitch -0.15 | 103 | 125 | 114 |
+  | pitch -0.30 | 56 | 131 | 72 |
+  | roll +0.2, pitch -0.15 | 1,720 | 127 | 104 |
+  | roll -0.2, pitch -0.15 | 90 | 1,775 | 868 |
+
+  Over about 150 mm the bulb has left the hand. In these arm poses the wrist PITCH joint mostly
+  rolls the hand about its finger axis (at -0.15 / -0.30 the hand's +z edge drops 7 / 14 deg at
+  steps 1,060 and 1,250). Small samples and erratic; kept as a lead.
+
+### bulb12 (four variants): direct tread 4 -> platform route -- rejected
+`--direct --back4 0.13..0.15`: "up and over" misses 71-108 mm, 13.8-17.9 rad/s; one variant
+(carry 0.17, -0.14, 0.15) lost the platform rest altogether (221 mm). What the round did show:
+carry (0.18, -0.13, 0.14) takes the right wrist_roll from 7.0 mm inside the torso to +12.0 mm,
+elbow +37.3 mm.
+
+### bulb13 (three variants): no detour waypoint, carry (0.18, -0.13, 0.14)
+The up-first waypoint added in bulb08 was the 58-59 mm miss; without it every path segment is
+within 4 mm. Torso: wrist_roll +15.2..15.8 mm, elbow +39.3 mm. Speed 9.0-10.4 rad/s, now only the
+wrist yaw during the tread 4 -> platform move (steps 302-316), plus single-step 7.0 rad/s blips
+of the elbow at steps 492 and 579. `--carry_roll -10` raises the carry miss from 1.9 to 11.1 mm.
+
+### bulb14: building
+`--rests 52 270 360 890 0 0 --carry 0.18 -0.13 0.14 --carry_roll -10 --platform_lift 0.014
+--platform_lift_until 610`, plus a light final smoothing of the joints (sigma 0.03 s).
