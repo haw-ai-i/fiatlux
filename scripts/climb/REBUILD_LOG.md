@@ -1006,3 +1006,7 @@ Dex3, iteration-4,800 teacher, rebuild 72, layout seed 0, started in the clip's 
 
 These replace the multi-episode counts above. The tread 1 -> 2 fall does occur in fresh runs, less
 often than in one-process batches. Still a diagnostic start: S02's own spawn pose is not used.
+
+From S02's OWN spawn pose (no staging), Dex3, free-standing ladder, three fresh runs: all down within
+61-64 steps. The spawn stands the robot 0.199-0.229 m behind the clip's start (and 17-58 mm to the
+side, 40 mm higher), varying run to run. Nothing bridges the spawn pose to the clip's first frame yet.
