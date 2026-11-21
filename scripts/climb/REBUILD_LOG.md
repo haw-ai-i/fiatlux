@@ -480,3 +480,16 @@ rebuild 69; both lose about half at the mount and a third at the tread 4 -> plat
 motion is the same). It also sets `task.max_episode_length=1600`: LadderMan's 1,200 is longer
 than its own 710-step clip but shorter than ours (1,479), so an episode from the ground was cut
 before the top-out. The limit is only used for truncation.
+
+## First full climbs: rebuild 72 at iteration 1,800 (2026-11-21)
+
+`lm-edge72`, 300 iterations after switching to rebuild 72 (1,800 in all). From the ground in the
+trainer, episode limit 1,600 steps:
+
+- 64 robots: 22 reach the end of the clip (step 1,479), standing on the platform with hands
+  released, pelvis on the reference. Lost: 5 in the mount, 31 at steps 300-450 (tread 4 ->
+  platform hand change), 6 between steps 600 and 1,050.
+- 16 robots (video batch): 9 full climbs, best pelvis gain 1,187 mm (reference 1,179).
+
+A from-zero rebuild 72 run (`lm_train_e72fresh.sbatch`, seed 1) is queued on kill-shared as the
+clean comparison; it had not started.
