@@ -993,3 +993,16 @@ finger pose (open), observation layout (no term over 4 sd at the start), frictio
 randomises 0.3-7.2).
 
 Benchmark ladder: a free rigid body of 10.9 kg (`LADDER_MASS_KG`); the trainer's is fixed boxes.
+
+## S02, fresh process per episode: first climbs of the FREE-STANDING ladder (2026-11-21)
+
+Dex3, iteration-4,800 teacher, rebuild 72, layout seed 0, started in the clip's first pose with
++-0.03 rad joint noise, seeds 1-8, one process per episode (`--episodes 1`):
+
+| Ladder | Success (task gate) | Lost in the mount (steps 207-231) | Lost at tread 1 -> 2 (606, 619) | Lost higher |
+|---|---|---|---|---|
+| pinned (diagnostic) | 4 of 8 (steps 1,341-1,343) | 0 | 2 | 2 (steps 1,059, 1,288) |
+| free-standing (the benchmark's) | 2 of 8 (steps 1,343, 1,348) | 4 | 0 | 2 (steps 1,280, 1,282) |
+
+These replace the multi-episode counts above. The tread 1 -> 2 fall does occur in fresh runs, less
+often than in one-process batches. Still a diagnostic start: S02's own spawn pose is not used.
