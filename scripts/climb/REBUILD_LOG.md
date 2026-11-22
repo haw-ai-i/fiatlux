@@ -1380,3 +1380,15 @@ replay's peak tilt against the bag's own next steps -- 2.46 / 2.41, 1.39 / 1.52,
 Peak tilt after release is the same or lower with 0.0 (e.g. 3.05 -> 1.56, 2.36 -> 0.50, 0.47 -> 0.16
 deg); none topples with either. In the recorded takes themselves the ladder is still tilted
 1.0-2.2 deg and moving at 80-390 mm/s in the last two seconds before success in nine of ten.
+
+## 2026-11-21 — ladder stabilization fix merged to main and brought here
+
+- The ladder fix (`LADDER_STABILIZATION_THRESHOLD = 0.0` on both ladder spawns) merged to main as PR #271
+  and is cherry-picked onto this branch as `ea5af32`. `record_climb.py --ladder_stab_threshold 0.0` is
+  no longer needed; the free-standing ladder now has this value by default.
+- Issue #121's evidence take (VR S01, seed 65) was re-simulated from its tilted states (5.85, 9.92,
+  10.25 degrees). The frozen tilt in that take was NOT reproduced, with the ladder's sleep threshold at
+  0.0 or at the pre-fix 0.005, at the recorded floor position or the layout's own. The stabilization
+  threshold only slows the return: 1.2 s to drop from 9.92 degrees at 0.001 against 0.4 s at 0.0.
+- `ladder_release_replay.py` gained `--release_step` (bags without `grip_force`), `--keep_xy` and
+  `--sleep_threshold`.
