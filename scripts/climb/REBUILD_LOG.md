@@ -1076,3 +1076,31 @@ forces `start_zero_prob` of training episodes to step 0 and gives starts inside 
 root range `floor_pose_range`. Mid-climb starts keep LadderMan's range (5 cm off a 68 mm tread is
 not a benchmark start). `lm_train_edge75.sbatch` uses 0.3, 265 and x/y +-0.05 m. Two-iteration
 local smoke test passes; NOT submitted.
+
+## A real S02 success on the free-standing ladder, saved (2026-11-21)
+
+`record_climb.py --video` (new: fixed camera, one frame per step). Dex3, free-standing ladder,
+layout seed 0, seed 16, fresh process, clip start pose: `success` at step 1,342. It was the 8th of
+8 attempts in that batch (seeds 2, 8, 11-16): 2 fell in the mount, 5 near the top (steps 1,277-1,359).
+Video, bag and a note saying it is not a valid S02 start were copied to the user's Desktop.
+Free-standing fresh runs so far: 4 of 28.
+
+## Free-standing ladder in the trainer, first version (2026-11-21)
+
+`+task.command.ladder_config.free=true` (`ladderman_port/ladder_fiatlux.py`, two hooks in
+`ladder_env.py`): the collection's boxes become collision-free markers; one dynamic body
+`{ENV_REGEX_NS}/LadderBody` carries the same boxes as colliders (stringers and rear legs stopped
+45 mm short of the floor, on four flat feet), 10.9 kg, centre of mass (-0.2116, 0, 0.826), inertia
+(3.57, 3.927, 1.318), friction 1.5 / 1.2, solver settings as the benchmark's; after every physics
+step each marker is written to the body's pose composed with its own offset; the body is put back
+at every reset.
+
+Iteration-4,800 teacher from the ground on rebuild 74, 64 robots, 400 steps (`play_probe_trace.py`):
+54 still up at step 400, about what the fixed ladder gives. The body moves a median 1.5-2.3 mm and
+tilts 0.00 deg (max 50 mm in single environments once robots are on it; one environment's ladder
+was 189 mm off in the first 20 steps, not explained).
+
+That is NOT how the benchmark's ladder behaves: there it tips 2.3 deg when a hand lands. So mass,
+centre of mass, inertia and friction do not account for the rocking; what is left is how it
+stands on the floor. The benchmark asset's colliders are three SDF meshes, two of them named
+WheelsFront and WheelsBack. Next: use that asset itself as the trainer's free body.

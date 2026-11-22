@@ -61,12 +61,164 @@ def _q_pitch(deg):
     return (math.cos(h), 0.0, math.sin(h), 0.0)
 
 
+# ---------------------------------------------------------------------------------------------
+# FREE-STANDING ladder (``ladder_config.free: true``)
+#
+# The benchmark's ladder is not fixed: it is one free rigid body of 10.9 kg standing on the floor
+# (fiatlux ``LADDER_MASS_KG``; friction 1.5 / 1.2; centre of mass and inertia as the simulator
+# reports them for that asset, measured 2026-11-21: com (0, -0.012, 0.826) in the ladder's own
+# frame = (-0.2116, 0, 0.826) here; inertia about the com 3.57 / 3.927 / 1.318 kg m^2 about the
+# climb, cross and vertical axes). A teacher trained on fixed boxes has never had a hold or a
+# tread move under load, and loses most benchmark episodes in the mount.
+#
+# How. LadderMan reads the ladder as a COLLECTION of objects (``env.ladder.data.object_pos_w``):
+# object 0 for the ladder observation, the anchor objects for the hand targets. That interface is
+# kept. With ``free`` the collection's boxes lose their collision and become markers; ONE dynamic
+# body carrying the same thirteen boxes as its colliders (``{ENV_REGEX_NS}/LadderBody``) is what
+# the robot touches, and after every physics step each marker is written to the body's pose
+# composed with its own offset (``install_free_ladder``). The stringers and rear legs stop 45 mm
+# short of the floor and stand on four flat feet, so the body rests where the fixed ladder was
+# drawn instead of starting 13 mm inside the ground on the tilted boxes' corners.
+# ---------------------------------------------------------------------------------------------
+FREE_MASS_KG = 10.9
+FREE_COM = (-0.2116, 0.0, 0.826)
+FREE_INERTIA = (3.57, 3.927, 1.318)
+FREE_FRICTION = (1.5, 1.2)
+FOOT = (0.10, 0.040, 0.030)             # x, y, z of each flat foot
+LEG_BOTTOM = 0.045                      # the tilted members' axes stop here
+
+
+def _members(z_bottom: float):
+    """(size, pos, rot) of the two stringers and two rear legs, with their axes starting at z_bottom."""
+    out = []
+    for ang, x_at_030, slope, half_x, thick, z_top in ((70.08, -0.598, 0.3623, 0.0405, (0.040, 0.0762), 1.83),
+                                                      (80.03, 0.165, -0.1755, 0.037, (0.026, 0.0729), 1.50)):
+        zc = 0.5 * (z_top + z_bottom)
+        xc = x_at_030 + (zc - 0.30) * slope + half_x
+        length = (z_top - z_bottom) / math.sin(math.radians(ang))
+        pitch = -ang if slope > 0 else -(180.0 - ang)
+        for sy in (1.0, -1.0):
+            out.append(((length, thick[0], thick[1]), (xc, 0.225 * sy, zc), _q_pitch(pitch)))
+    return out
+
+
+def _feet():
+    out = []
+    for x_at_030, slope, half_x in ((-0.598, 0.3623, 0.0405), (0.165, -0.1755, 0.037)):
+        xc = x_at_030 + (0.5 * FOOT[2] - 0.30) * slope + half_x
+        for sy in (1.0, -1.0):
+            out.append((FOOT, (xc, 0.225 * sy, 0.5 * FOOT[2]), (1.0, 0.0, 0.0, 0.0)))
+    return out
+
+
+def free_body_boxes():
+    """Every collider of the free ladder as (size, pos, rot) in the ladder's own (= the clip's) frame."""
+    boxes = []
+    for k, top in enumerate(TREAD_TOPS):
+        dx = -(3 - k) * TREAD_DX
+        x0, x1 = TREAD_X4[0] + dx, TREAD_X4[1] + dx
+        boxes.append(((2 * HALF_W, x1 - x0, TREAD_THICK), (0.5 * (x0 + x1), 0.0, top - 0.5 * TREAD_THICK), _q_yaw(-90.0)))
+    x0, x1 = PLATFORM["x"]
+    boxes.append(((2 * HALF_W, x1 - x0, PLATFORM["thick"]), (0.5 * (x0 + x1), 0.0, PLATFORM["top"] - 0.5 * PLATFORM["thick"]), _q_yaw(-90.0)))
+    t = TRAY
+    for x0, x1, top, bottom in ((t["x"][0], t["x"][1], t["floor"], t["bottom"]), (-0.0395, -0.0280, 1.8510, t["floor"]),
+                                (-0.0358, -0.0280, t["rim"], 1.8510), (0.0600, t["x"][1], t["rim"], t["floor"])):
+        boxes.append(((2 * t["half_w"], x1 - x0, top - bottom), (0.5 * (x0 + x1), 0.0, top - 0.5 * (top - bottom)), _q_yaw(-90.0)))
+    return boxes + _members(LEG_BOTTOM) + _feet()
+
+
+def _spawn_free_ladder(prim_path, cfg, translation=None, orientation=None, **kwargs):
+    import isaacsim.core.utils.prims as prim_utils
+    from isaaclab.sim import schemas
+    from isaaclab.sim.utils import bind_physics_material
+    from pxr import Gf, UsdPhysics
+
+    prim = prim_utils.create_prim(prim_path, prim_type="Xform", translation=translation, orientation=orientation)
+    mat_path = f"{prim_path}/physicsMaterial"
+    cfg.physics_material.func(mat_path, cfg.physics_material)
+    for i, (size, pos, rot) in enumerate(cfg.boxes):
+        path = f"{prim_path}/box_{i}"
+        prim_utils.create_prim(path, "Cube", translation=pos, orientation=rot, scale=tuple(0.5 * v for v in size),
+                               attributes={"size": 2.0})
+        schemas.define_collision_properties(path, cfg.collision_props)
+        bind_physics_material(path, mat_path)
+    schemas.define_mass_properties(prim_path, cfg.mass_props)
+    schemas.define_rigid_body_properties(prim_path, cfg.rigid_props)
+    m = UsdPhysics.MassAPI(prim)
+    m.CreateCenterOfMassAttr().Set(Gf.Vec3f(*cfg.com))
+    m.CreateDiagonalInertiaAttr().Set(Gf.Vec3f(*cfg.inertia))
+    m.CreatePrincipalAxesAttr().Set(Gf.Quatf(1.0, 0.0, 0.0, 0.0))
+    return prim
+
+
+def create_fiatlux_free_ladder_body_cfg(prim_path: str = "{ENV_REGEX_NS}/LadderBody"):
+    import isaaclab.sim as sim_utils
+    from isaaclab.assets import RigidObjectCfg
+    from isaaclab.sim.utils import clone
+    from isaaclab.utils import configclass
+
+    @configclass
+    class _FreeLadderSpawnCfg(sim_utils.RigidObjectSpawnerCfg):
+        func: callable = clone(_spawn_free_ladder)
+        boxes: list = None
+        com: tuple = FREE_COM
+        inertia: tuple = FREE_INERTIA
+        physics_material: sim_utils.RigidBodyMaterialCfg = None
+
+    spawn = _FreeLadderSpawnCfg(
+        boxes=free_body_boxes(),
+        physics_material=sim_utils.RigidBodyMaterialCfg(static_friction=FREE_FRICTION[0], dynamic_friction=FREE_FRICTION[1], restitution=0.0),
+        mass_props=sim_utils.MassPropertiesCfg(mass=FREE_MASS_KG),
+        # as the benchmark sets them on its ladder (scene_cfg.apply_position_preset)
+        rigid_props=sim_utils.RigidBodyPropertiesCfg(kinematic_enabled=False, rigid_body_enabled=True,
+                                                     solver_position_iteration_count=16, solver_velocity_iteration_count=1,
+                                                     max_depenetration_velocity=1.0, stabilization_threshold=0.001),
+        collision_props=sim_utils.CollisionPropertiesCfg(collision_enabled=True),
+        activate_contact_sensors=False,
+    )
+    return RigidObjectCfg(prim_path=prim_path, spawn=spawn, init_state=RigidObjectCfg.InitialStateCfg(pos=(0.0, 0.0, 0.0)))
+
+
+def install_free_ladder(env) -> None:
+    """Make the collection's markers follow the free body, and put the body back at every reset."""
+    import torch
+    from isaaclab.utils.math import quat_apply, quat_mul
+
+    body, coll = env.scene.rigid_objects["ladder_body"], env.ladder
+    n = coll.num_objects
+    # each marker's pose in the body's frame = where it was authored (the body starts at the env origin, unrotated)
+    loc_p = (coll.data.default_object_state[:, :, :3]).clone()                  # [N, n, 3], env-local
+    loc_q = (coll.data.default_object_state[:, :, 3:7]).clone()
+    keep = torch.zeros(n, dtype=torch.bool, device=env.device); keep[N_PHYS] = True      # the parked dummy stays parked
+
+    def sync(_substep=None):
+        bp, bq = body.data.root_link_pos_w, body.data.root_link_quat_w                  # [N, 3], [N, 4]
+        q = quat_mul(bq[:, None].expand(-1, n, -1).reshape(-1, 4), loc_q.reshape(-1, 4)).reshape(-1, n, 4)
+        p = bp[:, None] + quat_apply(bq[:, None].expand(-1, n, -1).reshape(-1, 4), loc_p.reshape(-1, 3)).reshape(-1, n, 3)
+        p[:, keep] = env.scene.env_origins[:, None] + loc_p[:, keep]
+        coll.write_object_link_pose_to_sim(torch.cat([p, q], dim=-1))
+
+    def reset(env_ids):
+        st = body.data.default_root_state[env_ids].clone()
+        st[:, :3] += env.scene.env_origins[env_ids]
+        st[:, 7:] = 0.0
+        body.write_root_state_to_sim(st, env_ids=env_ids)
+        sync()
+
+    env._reset_callbacks.insert(0, reset)
+    env._post_step_callbacks.append(sync)
+    env.ladder_body = body
+    print(f"[ladder] FREE-STANDING: one {FREE_MASS_KG} kg body with {len(free_body_boxes())} box colliders; "
+          f"{n} markers follow it after every physics step")
+
+
 def create_fiatlux_step_ladder_cfg(prim_path: str = "{ENV_REGEX_NS}/Ladder", anchors_file: str | None = None,
-                                   anchors=None, mass: float = 2.0, **_unused):
+                                   anchors=None, mass: float = 2.0, free: bool = False, **_unused):
     import isaaclab.sim as sim_utils
     from isaaclab.assets import RigidObjectCfg, RigidObjectCollectionCfg
 
     def cuboid(size, pos, rot, path, collide=True, color=(0.10, 0.10, 0.10)):
+        collide = collide and not free                 # free: the boxes are markers, the body collides
         return RigidObjectCfg(
             prim_path=path,
             spawn=sim_utils.CuboidCfg(

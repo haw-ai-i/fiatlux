@@ -59,6 +59,14 @@ def main(cfg):
                 print(f"[TRACE ] {i+1:4d} alive {int(m.sum()):3d} root err fwd {float(e[:,0].median()):+5.0f} left {float(e[:,1].median()):+5.0f} up {float(e[:,2].median()):+5.0f} mm; "
                       f"tilt fwd {float(torch.rad2deg(torch.atan2(g[:,0], -g[:,2])).median()):+5.1f} side {float(torch.rad2deg(torch.atan2(g[:,1], -g[:,2])).median()):+5.1f} deg; joints: "
                       + ", ".join(f"{jn[k].replace('_joint','')} {float(torch.rad2deg(je[k])):+.0f}" for k in top), flush=True)
+                lb = getattr(base, "ladder_body", None)
+                if lb is not None:
+                    dp = (lb.data.root_link_pos_w - base.scene.env_origins)[m] * 1000
+                    lg = lb.data.projected_gravity_b[m] if hasattr(lb.data, "projected_gravity_b") else None
+                    tilt = torch.rad2deg(torch.acos((-lg[:, 2]).clamp(-1, 1))) if lg is not None else torch.zeros(1, device=base.device)
+                    print(f"[LADDER] {i+1:4d} free body moved: median |xy| {float(dp[:, :2].norm(dim=-1).median()):.1f} mm, max {float(dp[:, :2].norm(dim=-1).max()):.0f} mm; "
+                          f"z median {float(dp[:, 2].median()):+.1f} mm; tilt median {float(tilt.median()):.2f} max {float(tilt.max()):.1f} deg; "
+                          f"object 0 at {[round(float(v), 3) for v in (base.ladder.data.object_pos_w[m][0, 0] - base.scene.env_origins[m][0]).tolist()]}", flush=True)
     sys.stdout.flush()
     os._exit(0)
 

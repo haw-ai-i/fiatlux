@@ -94,6 +94,9 @@ ap.add_argument("--robot", default="inspire", choices=["inspire", "dex3"],
 ap.add_argument("--dump_spawn", default=None,
                 help="write the task's spawn state (root pose in the CLIP's frame, the 29 joint angles) to this "
                      "json and exit; input for make_approach_prefix.py")
+ap.add_argument("--video", default=None, help="write an mp4 of the run from a fixed camera (one frame per 50 Hz step)")
+ap.add_argument("--cam_eye", type=float, nargs=3, default=[3.25, 2.2, 1.45], help="camera position, world (layout seed 0 default)")
+ap.add_argument("--cam_look_z", type=float, default=1.25, help="aim this far above the ladder's root")
 ap.add_argument("--zscore", type=int, default=0,
                 help="DIAGNOSTIC: every N steps print, per observation term, the largest |z| against the "
                      "checkpoint's own running statistics. A phase-averaged oracle: a large value flags a term "
@@ -149,6 +152,9 @@ if a.robot != "inspire":
     from fiatlux_task.robots.g1 import swap_robot_variant  # noqa: E402
     swap_robot_variant(cfg, a.robot)
     print(f"[ROBOT ] hand variant {a.robot}")
+if a.video:
+    from fiatlux_task.viz import make_video_camera_cfg  # noqa: E402
+    cfg.scene.video_cam = make_video_camera_cfg(1280, 720)
 if a.trace:
     from isaaclab.sensors import ContactSensorCfg as _CSC  # noqa: E402
     cfg.scene.robot.spawn.activate_contact_sensors = True
@@ -305,6 +311,14 @@ _all = torch.arange(len(base.scene["robot"].joint_names), device=base.device)
 _fing = _all[~torch.isin(_all, obs_builder.j_fx)]
 print(f"[HANDS ] {_fing.numel()} finger joints outside the clip; spawn angles (deg): "
       + ", ".join(f"{float(torch.rad2deg(v)):.0f}" for v in base.scene["robot"].data.default_joint_pos[0, _fing]))
+_vw = None
+if a.video:
+    import imageio.v2 as _imageio  # noqa: E402
+    _vc = base.scene["video_cam"]
+    _ll = base.scene["ladder"].data.root_pos_w[0]
+    _vc.set_world_poses_from_view(torch.tensor([a.cam_eye], dtype=torch.float32, device=base.device),
+                                  torch.tensor([[float(_ll[0]), float(_ll[1]), float(_ll[2]) + a.cam_look_z]], device=base.device))
+    _vw = _imageio.get_writer(a.video, fps=50, quality=7)
 gate_hits = 0
 best = {}
 steps = 0
@@ -334,6 +348,9 @@ try:
             obs_builder.step(a_lm)                     # record action, advance the clock
 
             obs, reward, terminated, truncated, extras = env.step(action)
+            if _vw is not None and not bool((terminated | truncated).any()):
+                base.sim.render(); _vc.update(0.0)
+                _vw.append_data(_vc.data.output["rgb"][0, ..., :3].detach().cpu().numpy().astype("uint8"))
             if recorder is not None:
                 recorder.record_step(obs, action, reward, terminated, truncated)
             steps += 1
@@ -436,6 +453,8 @@ try:
                     break
 finally:
     print(f"[RESULT] {steps} steps; highest pelvis {best.get('pelvis_max', float('nan')):.3f} m")
+    if _vw is not None:
+        _vw.close(); print(f"[RESULT] wrote video {a.video}")
     if recorder is not None:
         info = recorder.write(a.out, fmt=a.format)
         print(f"[RESULT] wrote bag {info['bag']} ({info['episodes']} episodes)")

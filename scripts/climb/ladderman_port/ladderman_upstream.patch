@@ -1,26 +1,16 @@
-diff --git a/active_adaptation/assets/__init__.py b/active_adaptation/assets/__init__.py
-index 8ba1d51..c149d48 100644
---- a/active_adaptation/assets/__init__.py
-+++ b/active_adaptation/assets/__init__.py
-@@ -3,11 +3,13 @@ import os
- from isaaclab.assets import Articulation
+--- active_adaptation/envs/ladder_env.py.orig.bak	2026-11-19 15:02:17.227078445 -1000
++++ active_adaptation/envs/ladder_env.py	2026-11-21 16:17:41.008058182 -1000
+@@ -107,6 +107,9 @@
+     def __init__(self, cfg):
+         super().__init__(cfg)
+         self.robot = self.scene.articulations["robot"]
++        if getattr(self, "_free_ladder", False):
++            from .ladder_fiatlux import install_free_ladder
++            install_free_ladder(self)
  
- from .g1 import G1_CYLINDER_CFG
-+from .g1_fiatlux import G1_FIATLUX_CFG
- 
- ASSET_PATH = os.path.dirname(__file__)
- 
- ROBOTS = {
-     "g1": G1_CYLINDER_CFG,
-+    "g1_fiatlux": G1_FIATLUX_CFG,
- }
- 
- 
-diff --git a/active_adaptation/envs/ladder_env.py b/active_adaptation/envs/ladder_env.py
-index 7c73110..63eb12b 100644
---- a/active_adaptation/envs/ladder_env.py
-+++ b/active_adaptation/envs/ladder_env.py
-@@ -165,7 +165,10 @@ class LadderEnv(_Env):
+         if self.sim.has_gui():
+             from isaaclab.envs.ui import BaseEnvWindow, ViewportCameraController
+@@ -165,7 +168,14 @@
              if spawn_cfg.articulation_props is not None:
                  spawn_cfg.articulation_props.enabled_self_collisions = enable_self_collision
  
@@ -29,10 +19,14 @@ index 7c73110..63eb12b 100644
 +        # falls through to it (via ladder_rails, if present) unless ladder_config.kind is set.
 +        from .ladder_fiatlux import create_ladder_cfg_dispatch as _mk_ladder
 +        scene_cfg.ladder = _mk_ladder(**self.cfg.command.ladder_config)
++        self._free_ladder = bool(self.cfg.command.ladder_config.get("free", False))
++        if self._free_ladder:                              # fiatlux: one free-standing body, see ladder_fiatlux.py
++            from .ladder_fiatlux import create_fiatlux_free_ladder_body_cfg
++            scene_cfg.ladder_body = create_fiatlux_free_ladder_body_cfg()
  
          scene_cfg.terrain = TERRAINS[self.cfg.terrain]
          scene_cfg.contact_forces = ContactSensorCfg(
-@@ -179,9 +182,17 @@ class LadderEnv(_Env):
+@@ -179,9 +189,17 @@
              render=sim_utils.RenderCfg(rendering_mode="quality"),
              device=f"cuda:{active_adaptation.get_local_rank()}"
          )
@@ -53,3 +47,19 @@ index 7c73110..63eb12b 100644
          sim_cfg.physx.enable_stabilization = False
  
          self.sim, self.scene = scene.create_isaaclab_sim_and_scene(sim_cfg, scene_cfg)
+--- active_adaptation/assets/__init__.py.orig.bak	2026-11-19 15:02:17.228608531 -1000
++++ active_adaptation/assets/__init__.py	2026-11-19 15:02:17.234454888 -1000
+@@ -3,11 +3,13 @@
+ from isaaclab.assets import Articulation
+ 
+ from .g1 import G1_CYLINDER_CFG
++from .g1_fiatlux import G1_FIATLUX_CFG
+ 
+ ASSET_PATH = os.path.dirname(__file__)
+ 
+ ROBOTS = {
+     "g1": G1_CYLINDER_CFG,
++    "g1_fiatlux": G1_FIATLUX_CFG,
+ }
+ 
+ 
