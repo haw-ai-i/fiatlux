@@ -624,6 +624,8 @@ class TrajectoryRecorder:
             "task_id": _gym_task_id(env),
             "gate_conjuncts": [getattr(fn, "__name__", "conjunct") for fn, _ in self._gate_conjuncts],
             "gate_sustain_seconds": self._gate_seconds,
+            # how long the episode runs on after the gate is satisfied (0 when the task has none)
+            "gate_linger_seconds": float((_term_params(cfg, "success") or {}).get("linger_seconds") or 0.0),
             "benchmark_version": _benchmark_version(),
             **_git_commit(),
             "recorder_version": RECORDER_VERSION,

@@ -40,7 +40,10 @@ from ..subtask_env_cfg import FALL_MIN_HEIGHT, FALL_TILT_LIMIT, SubtaskRewardsCf
 from ..subtask_tiers.balance import (
     LADDER_SUCCESS_MAX_SPEED,
     LADDER_SUCCESS_XY_RADIUS,
+    LADDER_TOP_FOOT_MAX_SPEED,
+    LADDER_TOP_FOOT_TOLERANCE,
     LADDER_TOP_HEIGHT_SLACK,
+    LADDER_TOP_SUSTAIN_SECONDS,
     LOADED_LADDER_CONTACT_BODIES,
     BalanceEventCfg,
     BalanceTerminationsCfg,
@@ -64,6 +67,11 @@ CLIMBED_WITH_BULB_CONJUNCTS = [
             "max_speed": LADDER_SUCCESS_MAX_SPEED,
         },
     ),
+    (
+        balance_terms.feet_on_ladder_top,
+        {"height_tolerance": LADDER_TOP_FOOT_TOLERANCE, "max_foot_speed": LADDER_TOP_FOOT_MAX_SPEED},
+    ),
+    (balance_terms.soles_within_ladder_top, {}),
     (payload_held, {"sensor_cfg": _GRIP, "other_sensor_cfg": _GRIP_LEFT, "force_threshold": GRIP_FORCE_THRESHOLD_N}),
     (grasp_terms.object_lifted, {"asset_cfg": _BULB, "min_height": FRESH_BULB_DROP_HEIGHT}),
     (place_terms.robot_standing, {"minimum_height": FALL_MIN_HEIGHT, "limit_angle": FALL_TILT_LIMIT}),
@@ -117,8 +125,12 @@ class S10ClimbWithBulbEnvCfg(ClimbSubtaskCfg):
 
     ladder_contact_bodies: list[str] | None = LOADED_LADDER_CONTACT_BODIES
 
-    success_predicate = mdp.all_of
-    success_params: dict | None = {"predicates": CLIMBED_WITH_BULB_CONJUNCTS}
+    success_predicate = mdp.sustained
+    success_params: dict | None = {
+        "predicate_fn": mdp.all_of,
+        "seconds": LADDER_TOP_SUSTAIN_SECONDS,
+        "predicate_params": {"predicates": CLIMBED_WITH_BULB_CONJUNCTS},
+    }
 
     events: S10EventCfg = S10EventCfg()
     rewards: SubtaskRewardsCfg = SubtaskRewardsCfg()

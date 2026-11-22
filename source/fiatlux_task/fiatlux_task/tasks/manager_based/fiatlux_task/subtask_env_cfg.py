@@ -62,6 +62,11 @@ ARRIVAL_STEP_SIDE_MARGIN = 0.10  # m
 # scores the leg, which is how a take passed on a single step at its very end. S05 and S07 still
 # gate on a single frame (#259).
 ARRIVAL_SUSTAIN_SECONDS = 0.5
+# Every subtask's episode runs on this long after its success gate is satisfied, so a recorded
+# episode shows the settled end state instead of stopping on the success frame (the decision is
+# latched; see ``mdp.sustained``). A failure termination in that time still ends the episode
+# first, and it is then not a success.
+SUCCESS_LINGER_SECONDS = 2.0
 
 
 @configclass
@@ -275,8 +280,15 @@ class SubtaskEnvCfg(ManagerBasedRLEnvCfg):
             raise ValueError(f"{type(self).__name__} must set success_predicate")
         # Only the termination carries the gate. success_bonus reads its result (see mdp/gates.py),
         # so there is one definition of success even when the gate is stateful.
-        self.terminations.success.func = self.success_predicate
-        self.terminations.success.params = dict(self.success_params or {})
+        predicate, params = self.success_predicate, dict(self.success_params or {})
+        if SUCCESS_LINGER_SECONDS > 0.0:
+            # The linger lives in ``sustained``. A stateless gate is wrapped with a zero hold, which
+            # is one step: the same decision it made bare.
+            if predicate is not mdp.sustained:
+                predicate, params = mdp.sustained, {"predicate_fn": predicate, "seconds": 0.0, "predicate_params": params}
+            params.setdefault("linger_seconds", SUCCESS_LINGER_SECONDS)
+        self.terminations.success.func = predicate
+        self.terminations.success.params = params
         # Partial credit reads the same gate, decomposed. A leaf whose gate is one opaque
         # predicate becomes a single conjunct, and its partial credit is then its success flag.
         self.rewards.gate_progress.params["predicates"] = mdp.conjuncts_of(self.success_predicate, self.success_params)

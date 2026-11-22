@@ -93,6 +93,11 @@ STEP_LADDER_RIGID_USD = os.path.join(
 # the ``_collision`` overlay. Without that box a robot placed here falls through the ladder.
 STEP_LADDER_TOP_OFFSET = (0.0, 0.10, 1.18)
 
+# The platform's standing surface as its COLLIDER has it, in the same base_link frame: (x min, x
+# max), (y min, y max). Measured off the collision mesh 2026-11-21 -- the box is a little smaller
+# than the 48 x 40 cm quoted above. y min is the open edge the steps come up to.
+STEP_LADDER_PLATFORM_FOOTPRINT = ((-0.206, 0.206), (-0.104, 0.276))
+
 # Fingertip height above the surface the feet are on, arm raised straight up.
 G1_OVERHEAD_REACH = 1.3738
 

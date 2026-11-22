@@ -42,14 +42,23 @@ class sustained(ManagerTermBase):
     Use ONLY in the termination manager; pair it with :func:`success_term_fired` on the reward side.
     A momentary dip resets the counter, so a state that is only stable while a hand steadies it does
     not pass.
+
+    ``linger_seconds`` (default 0: unchanged behaviour) delays the termination, not the decision.
+    Once the predicate has held for ``seconds`` the success is latched, and the term returns True
+    ``linger_seconds`` later whatever the predicate does in between. The episode, and so a recorded
+    demonstration, then carries on past the success frame for that long -- the robot settling on
+    the platform after a climb, for one. A fall in that window still ends the episode through the
+    fall terminations first, and is not a success.
     """
 
     def __init__(self, cfg: TerminationTermCfg, env: ManagerBasedRLEnv):
         super().__init__(cfg, env)
         self._held = torch.zeros(env.num_envs, dtype=torch.long, device=env.device)
+        self._latched = torch.full((env.num_envs,), -1, dtype=torch.long, device=env.device)
 
     def reset(self, env_ids: Sequence[int] | None = None) -> None:
         self._held[slice(None) if env_ids is None else env_ids] = 0
+        self._latched[slice(None) if env_ids is None else env_ids] = -1
 
     def __call__(
         self,
@@ -57,10 +66,17 @@ class sustained(ManagerTermBase):
         predicate_fn: Callable[..., torch.Tensor],
         seconds: float,
         predicate_params: dict | None = None,
+        linger_seconds: float = 0.0,
     ) -> torch.Tensor:
         now = predicate_fn(env, **(predicate_params or {}))
         self._held = torch.where(now, self._held + 1, torch.zeros_like(self._held))
-        return self._held >= max(1, round(seconds / env.step_dt))
+        passed = self._held >= max(1, round(seconds / env.step_dt))
+        if linger_seconds <= 0.0:
+            return passed
+        # steps since the success was first decided; -1 = not yet
+        self._latched = torch.where(self._latched >= 0, self._latched + 1,
+                                    torch.where(passed, torch.zeros_like(self._latched), self._latched))
+        return self._latched >= round(linger_seconds / env.step_dt)
 
 
 def success_term_fired(env: ManagerBasedRLEnv, term_name: str = "success") -> torch.Tensor:

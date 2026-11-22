@@ -77,6 +77,8 @@ robot = env.scene["robot"]
 zero_action = torch.zeros((1, env.action_space.shape[-1]), device=env.device)
 sustain_s = env_cfg.success_params["seconds"]
 sustain_steps = round(sustain_s / env.step_dt)
+# The success TERMINATION fires this long after the gate is satisfied (subtask_env_cfg).
+linger_steps = round(float(env_cfg.terminations.success.params.get("linger_seconds", 0.0)) / env.step_dt)
 
 
 def conjuncts() -> dict[str, bool]:
@@ -159,11 +161,11 @@ check(
 check("start:gate_open", not all(start.values()), "the episode does not begin already solved")
 
 print("\n[verify] (2) Gate fires on the deliverable")
-c, xy, success_at, _ = run_case(sustain_steps + 30, at_fixture=True)
+c, xy, success_at, _ = run_case(sustain_steps + linger_steps + 30, at_fixture=True)
 check(
     "gate:fires_at_chain_placement",
-    all(c.values()) and success_at == sustain_steps,
-    f"xy={xy:.3f} m, success at step {success_at} (sustain = {sustain_steps}); "
+    all(c.values()) and success_at == sustain_steps + linger_steps,
+    f"xy={xy:.3f} m, success at step {success_at} (sustain = {sustain_steps}, linger = {linger_steps}); "
     + " ".join(f"{k}={v}" for k, v in c.items()),
 )
 
@@ -180,7 +182,7 @@ check(
     success_at < 0 and tipped_at > 0,
     f"1.0 rad > LADDER_TILT_LIMIT: ladder_tipped terminated at step {tipped_at}",
 )
-c, xy, success_at, _ = run_case(sustain_steps + 30, at_fixture=False)
+c, xy, success_at, _ = run_case(sustain_steps + linger_steps + 30, at_fixture=False)
 check(
     "gate:rejects_left_where_drawn",
     success_at < 0 and not c["ladder_ready"],

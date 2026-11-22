@@ -20,7 +20,10 @@ from ..subtask_env_cfg import FALL_MIN_HEIGHT, FALL_TILT_LIMIT
 from ..subtask_tiers.balance import (
     LADDER_SUCCESS_MAX_SPEED,
     LADDER_SUCCESS_XY_RADIUS,
+    LADDER_TOP_FOOT_MAX_SPEED,
+    LADDER_TOP_FOOT_TOLERANCE,
     LADDER_TOP_HEIGHT_SLACK,
+    LADDER_TOP_SUSTAIN_SECONDS,
     ClimbSubtaskCfg,
 )
 from fiatlux_task.robots.g1 import add_foot_sole, fix_sensor_frame_mass
@@ -36,6 +39,11 @@ CLIMBED_CONJUNCTS = [
             "max_speed": LADDER_SUCCESS_MAX_SPEED,
         },
     ),
+    (
+        balance_terms.feet_on_ladder_top,
+        {"height_tolerance": LADDER_TOP_FOOT_TOLERANCE, "max_foot_speed": LADDER_TOP_FOOT_MAX_SPEED},
+    ),
+    (balance_terms.soles_within_ladder_top, {}),
     (place_terms.robot_standing, {"minimum_height": FALL_MIN_HEIGHT, "limit_angle": FALL_TILT_LIMIT}),
     (grasp_terms.ladder_near_vertical, {"tilt_limit": mdp.LADDER_TILT_LIMIT}),
 ]
@@ -45,8 +53,12 @@ CLIMBED_CONJUNCTS = [
 class S02ClimbLadderEnvCfg(ClimbSubtaskCfg):
     """Climb the placed ladder (randomized Replace layout, ladder dynamic, hands free)."""
 
-    success_predicate = mdp.all_of
-    success_params: dict | None = {"predicates": CLIMBED_CONJUNCTS}
+    success_predicate = mdp.sustained
+    success_params: dict | None = {
+        "predicate_fn": mdp.all_of,
+        "seconds": LADDER_TOP_SUSTAIN_SECONDS,
+        "predicate_params": {"predicates": CLIMBED_CONJUNCTS},
+    }
 
     # Both hands are free, so the contact bootstrap keeps its full feet-and-palms denominator.
     ladder_contact_bodies: list[str] | None = None

@@ -26,6 +26,9 @@ import torch
 from isaaclab.assets import Articulation
 from isaaclab.managers import SceneEntityCfg
 
+from fiatlux_task.assets import STEP_LADDER_PLATFORM_FOOTPRINT
+from fiatlux_task.robots.g1 import FOOT_SOLE_HALF_Y, FOOT_SOLE_X
+
 from ..scene_cfg import TOP_STANCE_PELVIS_OFFSET
 from .rewards import _ladder_top_point_w, _root_pos_env
 
@@ -64,6 +67,74 @@ def climbed_to_ladder_top(
     near = torch.norm((pos - top)[:, :2], dim=1) < xy_radius
     calm = asset.data.root_lin_vel_w.norm(dim=-1) < max_speed
     return high & near & calm
+
+
+def feet_on_ladder_top(
+    env: ManagerBasedRLEnv,
+    height_tolerance: float,
+    max_foot_speed: float,
+    foot_bodies: tuple[str, ...] = ("left_ankle_roll_link", "right_ankle_roll_link"),
+    asset_cfg: SceneEntityCfg = SceneEntityCfg("robot"),
+) -> torch.Tensor:
+    """True where BOTH feet are up at the ladder's top platform and neither is still moving.
+
+    ``climbed_to_ladder_top`` reads the pelvis alone, and a climbing pelvis passes its height bound
+    while the robot is still stepping up: measured on a two-handed climb, it fires with one foot on
+    the platform and the other 0.16 m below it in mid-swing, 0.8 s before that foot lands. The
+    episode ends there, so a recorded climb stops short of the stance the next subtask starts from.
+
+    The height is a band of ``height_tolerance`` either side of the ladder's live top point: an
+    ankle standing on the platform sits about 1 cm above that point, one on the tread below is
+    0.2 m under it, and the last foot up hovers 7 cm over it, nearly motionless, before it comes
+    down -- so the band needs its upper edge as much as its lower one. The speed bound rejects a
+    foot swinging through the band.
+    """
+    asset: Articulation = env.scene[asset_cfg.name]
+    ids = [asset.body_names.index(name) for name in foot_bodies]
+    top_z = (_ladder_top_point_w(env) - env.scene.env_origins)[:, 2:3]
+    foot_z = asset.data.body_pos_w[:, ids, 2] - env.scene.env_origins[:, 2:3]
+    up = ((foot_z - top_z).abs() < height_tolerance).all(dim=1)
+    still = (asset.data.body_lin_vel_w[:, ids].norm(dim=-1) < max_foot_speed).all(dim=1)
+    return up & still
+
+
+def soles_within_ladder_top(
+    env: ManagerBasedRLEnv,
+    footprint: tuple[tuple[float, float], tuple[float, float]] = STEP_LADDER_PLATFORM_FOOTPRINT,
+    foot_bodies: tuple[str, ...] = ("left_ankle_roll_link", "right_ankle_roll_link"),
+    asset_cfg: SceneEntityCfg = SceneEntityCfg("robot"),
+) -> torch.Tensor:
+    """True where every corner of both soles is over the ladder's platform.
+
+    A climb that ends with a heel hanging off the open edge has not arrived: the robot is one
+    weight shift from stepping back into air. The four corners of each sole (``FOOT_SOLE_X`` by
+    ``FOOT_SOLE_HALF_Y`` about the ankle link, the box ``add_foot_sole`` authors) are taken into
+    the ladder's LIVE frame and tested against the platform collider's footprint. No margin from
+    the edge is asked for: the on-ladder subtasks stage their own start stance on this platform,
+    and a margin chosen here could reject one of them.
+    """
+    from isaaclab.utils.math import quat_apply, quat_apply_inverse
+
+    asset: Articulation = env.scene[asset_cfg.name]
+    ladder = env.scene["ladder"]
+    ids = [asset.body_names.index(name) for name in foot_bodies]
+    corners = torch.tensor(
+        [(x, y, 0.0) for x in FOOT_SOLE_X for y in (-FOOT_SOLE_HALF_Y, FOOT_SOLE_HALF_Y)],
+        device=env.device,
+    )  # [4, 3] in the ankle link's frame
+    n, f, c = env.num_envs, len(ids), corners.shape[0]
+    foot_p = asset.data.body_pos_w[:, ids]  # [n, f, 3]
+    foot_q = asset.data.body_quat_w[:, ids]  # [n, f, 4]
+    world = foot_p[:, :, None] + quat_apply(
+        foot_q[:, :, None].expand(n, f, c, 4).reshape(-1, 4), corners.expand(n, f, c, 3).reshape(-1, 3)
+    ).reshape(n, f, c, 3)
+    local = quat_apply_inverse(
+        ladder.data.root_quat_w[:, None, None].expand(n, f, c, 4).reshape(-1, 4),
+        (world - ladder.data.root_pos_w[:, None, None]).reshape(-1, 3),
+    ).reshape(n, f, c, 3)
+    (x_lo, x_hi), (y_lo, y_hi) = footprint
+    inside = (local[..., 0] > x_lo) & (local[..., 0] < x_hi) & (local[..., 1] > y_lo) & (local[..., 1] < y_hi)
+    return inside.all(dim=2).all(dim=1)
 
 
 def descended_from_ladder(

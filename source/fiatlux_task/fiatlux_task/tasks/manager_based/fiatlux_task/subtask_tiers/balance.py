@@ -81,6 +81,14 @@ LADDER_SUCCESS_MAX_SPEED = 1.5  # m/s
 # How far below the tread a stance may leave the pelvis, and the pelvis height that reads as
 # back on the floor.
 LADDER_TOP_HEIGHT_SLACK = 0.15  # m
+
+# A climb is done with both feet standing on the platform, not when the pelvis first passes the
+# height bound (which happens mid-step, one foot still in the air). An ankle on the platform
+# sits about 1 cm above the ladder's top point, one on the tread below is 0.2 m under it, and the
+# last foot up hovers 7 cm over it before landing; a swinging foot moves at 1 m/s and more.
+LADDER_TOP_FOOT_TOLERANCE = 0.06  # m, either side of the top point
+LADDER_TOP_FOOT_MAX_SPEED = 0.2  # m/s
+LADDER_TOP_SUSTAIN_SECONDS = 0.5  # s
 LADDER_FLOOR_STANCE_HEIGHT = CLIMB_ROBOT_POSITION[2] + 0.15  # m
 
 # Offset along the ladder's step-facing direction from its root, rotated onto the sampled yaw.
