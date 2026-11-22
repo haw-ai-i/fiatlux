@@ -1185,3 +1185,27 @@ the front 7 cm of each sole on it.
   reach and the single-foot phases have no static solution -- the stance foot has 7 cm of sole on
   the platform. The landing itself has to change: the top-out step of the base builder must put
   the feet fully on the platform.
+
+## Repairing the top-out landing; the left ankle is past its limit on every left step (2026-11-21)
+
+`fix_topout_landing.py` (new): for each foot's last swing, from the moment the sole is clear of the
+platform the foot travels to the clip's FINAL foot pose in the air, touches down there and stays;
+only that leg is re-solved, the pelvis, waist and arms are the clip's. On rebuild 74: left foot
+340 mm in steps 1,310-1,325 (peak 2.0 m/s), down by 1,333; right foot 279 mm in steps 1,356-1,371
+(1.7 m/s), down by 1,379; foot error 0.00 mm; over the last 1.5 s the ankles move 0.00 mm (were 161
+and 132 mm). Landing nearer the open edge than the final stance is not reachable with the clip's
+straight-legged ending. NOT yet checked: static support with the new landing, legs against the
+ladder, and that the hands are still on the handrail while a foot is in the air (the clip releases
+them at about step 1,359, with the right foot up until 1,375).
+
+Found by that tool's joint-limit gate, and NOT caused by it: in rebuild 67's legs the LEFT ankle
+pitch is outside its -50 deg limit on every left step up -- steps 99-112 (-56.1 deg), 537-552
+(-54.1), 950-965 (-54.1), 1,127-1,142 (-55.3), 1,306-1,319 (-50.6). The builder's limit gate reads
+the arms only. Those are the windows of the left-shin contact every rebuild since 67 has failed on
+(542-547, 955-960, 1,132-1,135), and the first is in the mount.
+
+`clamp_leg_limits.py` (new): eases an offending leg joint onto `limit - margin` and recomputes that
+leg's bodies. On rebuild 74 (`--allow_planted`: 13 of the 174 frames are at toe-off, foot nearly
+still): ankle pitch now -49.0 deg at worst, the ankle link moves 2.2 mm at most, but the TOE comes
+down by up to 15 mm in the swing (step 104: 28 mm over tread 1's top becomes 14 mm). So clamping
+alone trades an impossible ankle for a thinner toe clearance; the swing needs lifting to match.
