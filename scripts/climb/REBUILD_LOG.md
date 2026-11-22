@@ -1392,3 +1392,22 @@ deg); none topples with either. In the recorded takes themselves the ladder is s
   threshold only slows the return: 1.2 s to drop from 9.92 degrees at 0.001 against 0.4 s at 0.0.
 - `ladder_release_replay.py` gained `--release_step` (bags without `grip_force`), `--keep_xy` and
   `--sleep_threshold`.
+
+## Rebuild 87: local checks and training script (2026-11-21) -- NOT submitted
+
+- Benchmark gate table in the S02 scene (`verify_climb_gate.py --old <rebuild 74> --new <rebuild 87>`):
+  12 of 12; the clip's last frame meets every conjunct and the termination fires at hold 25 + linger
+  100 steps.
+- Iteration-4,800 teacher on rebuild 87 in S02 (free ladder with the stabilization fix, Dex3, clip's
+  first pose): aligned to 0.000 m, fell at step 102. In the trainer, same clip, free asset ladder, 64
+  robots from step 0: 47 up at step 100, 10 at 200, 4 at 300. It never saw the 265 walk-in steps.
+  Not measured: the same teacher started after the walk-in.
+- Trainer smoke run, 64 environments: rebuild 87 + `ladder_config.free=asset` + `RobotTrackingSpawn`
+  (`start_zero_prob=0.3`, `floor_steps=265`) + episode limit 2,100 loads, iterates and writes a
+  checkpoint. 4,096 environments not run.
+- `ladderman_port/koa/lm_train_edge87.sbatch`: continues lm-edge72 iteration 4,800; `ITERS` is the
+  total (default 12,300 = 7,500 more); `FAMILY` separates a test run's folder and resume lineage from
+  the real one; refuses to start if the free-ladder trainer files are not installed; 120 G.
+- On Koa: clip, ladder asset, `command_spawn.py` and the script are uploaded (checksums match). The
+  two trainer files that differ (`ladder_env.py`, `ladder_fiatlux.py`) are STAGED beside the trainer,
+  not installed, because the running bulb job would pick them up if it were requeued.
