@@ -1062,3 +1062,17 @@ mass at (0, -0.012, 0.826) in its own frame, i.e. midway between front and rear 
 forces cannot hold a 107 N ladder tipped about either pair of feet (about 58 N m is needed), so the
 cause of the sustained tilt is NOT explained. A contact sensor on the ladder's root prim reads 12 N
 at rest and nothing from the robot, so it does not cover the ladder's colliders and settles nothing.
+
+## Start randomisation for the walk-in (2026-11-21)
+
+The benchmark's reset (`SubtaskEventCfg`): root x and y +-0.05 m and yaw +-0.1 rad about the spawn
+pose, every joint +-0.05 rad, zero velocity. LadderMan's own start: a random phase of the clip,
+root x/y +-0.02 m, z +-0.01, roll/pitch/yaw +-0.1 rad, joints +-0.1 rad. So yaw and joints are
+already covered; root x/y is not, and only 265 / 1,724 = 15% of episodes start in the walk-in at all.
+
+`ladderman_port/command_spawn.py` (deployed to LadderMan as
+`active_adaptation/envs/mdp/commands/hdmi/command_spawn.py`): `RobotTrackingSpawn`, a subclass that
+forces `start_zero_prob` of training episodes to step 0 and gives starts inside `floor_steps` the
+root range `floor_pose_range`. Mid-climb starts keep LadderMan's range (5 cm off a 68 mm tread is
+not a benchmark start). `lm_train_edge75.sbatch` uses 0.3, 265 and x/y +-0.05 m. Two-iteration
+local smoke test passes; NOT submitted.

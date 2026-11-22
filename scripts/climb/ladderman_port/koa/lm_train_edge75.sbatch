@@ -13,6 +13,10 @@
 #              at zero, 0.22 m behind the old first frame), crouches, takes three short steps (left half, right,
 #              left) and joins the old clip at its step 20. 265 walk-in steps; every old step number is +245.
 #              1,724 steps in all, so the episode limit is 1,800.
+#   starts   : RobotTrackingSpawn (ladderman_port/command_spawn.py). 30% of episodes start at step 0, as every
+#              benchmark episode does, and a start inside the 265 walk-in steps takes the benchmark's reset
+#              range for the root, x and y +-0.05 m (yaw +-0.1 rad and joints +-0.1 rad are LadderMan's already,
+#              and cover the benchmark's +-0.1 rad and +-0.05 rad). Mid-climb starts keep LadderMan's +-0.02 m.
 #
 # COLD start: ladder, hand, action term and clip all differ from every earlier teacher.
 # A requeue or a resubmission resumes from this run family's newest checkpoint.
@@ -89,6 +93,9 @@ exec python scripts/train.py algo=teacher task=teacher "${RESUME[@]}" \
     +task.sim.physx_capacity_scale=1.5 \
     task.max_episode_length=1800 \
     task.action._target_=active_adaptation.envs.mdp.action_refwrist.JointPositionRefWrist \
+    task.command._target_=active_adaptation.envs.mdp.commands.hdmi.command_spawn.RobotTrackingSpawn \
+    +task.command.start_zero_prob=0.3 +task.command.floor_steps=265 \
+    '+task.command.floor_pose_range={x:[-0.05,0.05],y:[-0.05,0.05]}' \
     task.num_envs="$ENVS" algo.max_iters="$ITERS" \
     hydra.run.dir="$OUT" \
     wandb.mode=disabled
