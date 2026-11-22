@@ -29,6 +29,9 @@ ap.add_argument("--settle", type=float, default=0.25, help="seconds to come down
 ap.add_argument("--travel", type=float, default=0.30, help="least seconds for the travel over the platform; the clip's own swing is used when it leaves more")
 ap.add_argument("--land_shift", type=float, nargs=2, default=[0.0, 0.0], metavar=("LEFT", "RIGHT"),
                 help="m added to each foot's landing x (negative = nearer the open edge than the clip's final stance)")
+ap.add_argument("--low_travel", action="store_true",
+                help="travel over the platform at the clearance height instead of at the clip's own swing height: with the "
+                     "foot far forward AND high, the thigh is driven into the pelvis (6.3 kN of self-contact at the left step)")
 ap.add_argument("--end_at", type=int, default=None, help="drop the clip after this 50 Hz step first (its straight-legged ending cannot reach a landing nearer the edge; a tail tool carries on from here)")
 ap.add_argument("--check_to", type=int, default=None, help="report joint limits only up to this 50 Hz step (when a later tool cuts the clip there)")
 a = ap.parse_args()
@@ -79,6 +82,8 @@ for side in ("left", "right"):
             w = sm((i - f_clear) / max(n_tr, 1))
             fp[i, :2] = p0[:2] + w * (p1[:2] - p0[:2])
             fp[i, 2] = max(z[i], air_z) if i < f_arrive else max(min(z[i], z[f_clear:f_arrive + 1].max()), air_z)
+            if a.low_travel:
+                fp[i, 2] = air_z
         elif i <= f_touch:
             w = sm((i - f_arrive) / max(n_set, 1))
             fp[i, :2] = p1[:2]

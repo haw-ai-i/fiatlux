@@ -1242,3 +1242,39 @@ Iteration-4,800 teacher from the ground, 64 robots: 44 up at step 400; the body 
 180). So the asset does not reproduce the 2.3 deg tip of the single traced S02 run either. Not yet
 compared: the floor, the solver settings (the benchmark runs with stabilisation on, the trainer
 off), and how typical that one S02 run was.
+
+## Rebuilds 82-84; the pelvis shift for the shin contact (2026-11-21)
+
+Scans are now every 5 steps (`--body_scan 5`); every 10 stepped over a contact.
+
+| Step (new numbering = old + 245) | Rebuild 74, the clip the teacher learned | Rebuild 82 | Rebuild 84 |
+|---|---|---|---|
+| 790 (left onto tread 2) | under 400 N | left thigh 689 | 689 |
+| 1,205 (left onto tread 3) | shin 2,328, thigh 1,011 | shin 3,315 | 3,315 |
+| 1,380 (left onto tread 4) | thigh 1,843, shin 1,449 | thigh 1,904, shin 1,476 | the same |
+| 1,565 (left onto the platform) | nothing | left_hip_roll against pelvis_contour 6,345 | nothing |
+
+- Rebuild 81: suite found three things of its own -- left thigh and shin 12 kN at step 1,380 (the
+  ankle repair's 19 mm lift under the platform's lip), the two hands 3.7 mm apart at step 27 of the
+  walk-in, right thigh 10 mm inside the ladder in the tail (steps 1,672-1,722).
+- Rebuild 82 = 81 with `clamp_leg_limits.py --skip_lift 1115 1155`, `make_approach_prefix.py
+  --arm_stagger 0.35`, `make_topout_suffix.py --over 0.8`. All three gone; frozen 8 of 8; torso
+  clean; right leg clean; hands: only the inherited 0.5 mm finger clearance on the handrail (step
+  1,169). But the every-5 scan shows the landing repair's own defect at step 1,565: carried
+  forward at the clip's swing height the left knee reaches 109 deg and the thigh meets the pelvis.
+- Rebuild 84 = 82 with `fix_topout_landing.py --low_travel` (the foot crosses the platform 3 cm
+  above it): knee 95 deg at most, the 1,565 entry gone. Remaining scan entries are the left-leg
+  contacts rebuild 67 has always had. Rest of the suite running.
+
+`shift_pelvis_windows.py` (new: pelvis moved in chosen windows, both ankles and both wrists held
+at their world poses by re-solving all four limbs). 2 cm back in the four left-landing windows on
+rebuild 82: limbs held to 0.00 mm, no joint outside limits, left arm changes up to 20 deg. Left
+shin inside a tread 26 -> 13 mm and 1.9 -> 0.8 s; left thigh 19 -> 9 mm. Static balance in the
+one-foot moments after each left landing: 51 -> 63 mm behind the foot (mount), 27 -> 40, 22 -> 37.
+NOT adopted: half the contact for a quarter more imbalance where most runs are lost.
+
+On-ladder start stances, zero action, ladder force on the robot: S03 with Dex3, left_hip_roll_link
+16.5-18.6 kN from the first step and the pelvis pushed up 2 cm; S03 with Inspire, S04 / S11 / S12
+with Dex3 and S12 with Inspire start clean, a hip resting on the handrail at 16-113 N. So the
+stance is not inside the ladder in general (an earlier entry said so); something specific to S03
+with Dex3 is. Not filed.

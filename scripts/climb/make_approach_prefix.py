@@ -32,6 +32,9 @@ ap.add_argument("--cut", type=int, default=20, help="clip steps (50 Hz) replaced
 ap.add_argument("--phases", type=float, nargs=4, default=[0.8, 0.6, 0.7, 0.6], help="seconds to settle, per weight shift, per swing, to home")
 ap.add_argument("--steps", nargs="+", default=["left:0.5", "right:1.0", "left:1.0"],
                 help="FOOT:FRACTION in order -- how far along its spawn->clip path each swing takes that foot")
+ap.add_argument("--arm_stagger", type=float, default=0.0,
+                help="0..0.6: the left arm does its move in the first (1 - this) of the settle and the right arm in the last "
+                     "(1 - this). Moved together from the spawn pose, the two hands pass 3.7 mm apart.")
 ap.add_argument("--ahead", type=float, default=0.03, help="pelvis this far ahead of the stance ankle, m")
 ap.add_argument("--walk_z", type=float, default=0.765, help="pelvis height while stepping, m")
 ap.add_argument("--lift", type=float, default=0.04, help="swing foot clearance, m")
@@ -105,6 +108,13 @@ pel_q = (1 - w_all)[:, None] * pq_start + w_all[:, None] * pq1; pel_q /= np.lina
 F = wH
 # every joint that is not a leg: spawn -> clip while settling (arms, waist); legs are solved below
 q = q_start[None] + wA[:, None] * (q_end - q_start)[None]
+if a.arm_stagger > 0:
+    span = (1.0 - a.arm_stagger) * n_seg[0]
+    for side, t0 in (("left", 0.0), ("right", a.arm_stagger * n_seg[0])):
+        w = sm(np.clip((np.arange(N) - t0) / span, 0, 1))
+        for i, n in enumerate(jn):
+            if n.startswith(side) and any(k in n for k in ("shoulder", "elbow", "wrist")):
+                q[:, i] = q_start[i] + w * (q_end[i] - q_start[i])
 print("[plan ] " + "; ".join(f"{'settle' if k == 0 else 'home' if k == len(segs) - 1 else ('swing ' + sg[3]) if sg[3] else 'shift'} {n / fps:.2f}s" for k, (sg, n) in enumerate(zip(segs, n_seg))))
 
 # ---- legs: damped least squares, all frames at once -----------------------------------------

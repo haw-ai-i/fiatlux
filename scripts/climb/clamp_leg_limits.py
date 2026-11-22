@@ -25,6 +25,9 @@ ap.add_argument("--allow_planted", action="store_true")
 ap.add_argument("--keep_toe", action="store_true",
                 help="after clamping, lift the foot by what the toe lost, so the swing clears what it cleared before "
                      "(the leg is re-solved for the clamped foot orientation at the raised position)")
+ap.add_argument("--skip_lift", type=int, nargs=2, action="append", default=None, metavar=("FROM", "TO"),
+                help="50 Hz step range in which --keep_toe does NOT lift the foot (the step onto tread 4 goes up under the "
+                     "platform's lip: lifting the foot there drives the knee and thigh into it)")
 ap.add_argument("--toe", type=float, nargs=3, default=[0.135, 0.0, -0.035], help="toe point in the ankle link's frame")
 a = ap.parse_args()
 src, dst = pathlib.Path(a.clip), pathlib.Path(a.out)
@@ -86,7 +89,8 @@ if a.keep_toe:
         dz = np.clip(toe0 - toe1, 0.0, None)
         w = int(0.08 * fps); ker = np.hanning(2 * w + 1); ker /= ker.sum()
         dz = np.maximum(np.convolve(dz, ker, mode="same"), dz * 0.0)       # smooth in and out
-        dz = np.maximum(dz, np.clip(toe0 - toe1, 0.0, None) * 0.0)
+        for s0_, s1_ in (a.skip_lift or []):
+            dz[int(s0_ * fps / 50):int(s1_ * fps / 50) + 1] = 0.0
         act = np.flatnonzero(dz > 1e-5)
         if not len(act):
             continue
