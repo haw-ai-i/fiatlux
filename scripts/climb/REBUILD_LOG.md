@@ -1020,6 +1020,10 @@ side, 40 mm higher), varying run to run. Nothing bridges the spawn pose to the c
 | 5,700 (900) | 10 | 14 | 23 | 10 |
 | 6,000 (1,200) | 12 | 29 | 5 | 9 |
 | 6,300 (1,500) | 12 | 21 | 10 | 9 |
+| 6,900 (2,100) | 11 | 30 | 5 | 11 |
+| 7,500 (2,700) | 20 | 25 | 3 | 12 |
+| 8,100 (3,300) | 21 | 32 | 5 | 4 |
+| 8,700 (3,900) | 20 | 21 | 9 | 4 |
 
 Free-standing ladder, four other layouts (layout seeds 1-4: climb yaw -88, -180, +37, -124 deg),
 seeds 1-3 each, fresh processes, clip start pose: 1 success of 12 (layout 2); 7 lost in the mount
@@ -1133,3 +1137,28 @@ platform's real surface (S03 stages against a 1.18 m top; the collider's is 1.15
   left ankle roll passes its limit. Stepping at pelvis 1.915 m with `--over 1.0` passes both.
 - Static: both single-foot phases hold on the feet alone (50% and 42% ankle effort).
 - Torso: CLEAN. `ladderman_port/koa/lm_train_edge76.sbatch` (episode limit 2,000), NOT submitted.
+
+## Benchmark gate change committed; what live S02 runs show at the top (2026-11-21)
+
+Commit `12d91be` (benchmark code, not climb tooling): the climb gate for S02 and S10 now needs both
+feet up at the platform and still, every corner of both soles over the platform's footprint, held
+0.5 s; and every subtask's episode runs 2.0 s past its success (`mdp.sustained(linger_seconds=)`,
+`SUCCESS_LINGER_SECONDS`). Checks are in the commit message. Issues filed for two things the checks
+found that predate it: #269 (S08's gate tests the bulb against the default bench position) and
+#270 (`verify_move_ladder.py`'s hands_free check).
+
+Live, Dex3, free-standing ladder, clip start pose, 17 fresh runs on the final gate, iteration-4,800
+teacher: 0 pass. 11 fell in the mount, 3 on the way up, 3 reached the top:
+
+| Seed | At the top | Heels against the platform's open edge (from the bag) | Then |
+|---|---|---|---|
+| 24 | pelvis 2.00 m | left 100-110 mm over (40-60 mm inside after step 1,483), right 130-190 mm over | fell at step 1,563 |
+| 25 | pelvis 1.93 m | left 104-124 mm over, right 170-196 mm over | fell at step 1,517 |
+| 29 | pelvis 1.94 m | no closed episode in the bag | stood to the 1,700-step limit; gate never met |
+
+`gate_soles_within_ladder_top` is false on every row of seeds 24 and 25. The reference itself ends
+with the heels 42-44 mm inside; the robot stands 10-19 cm behind it. The clip ends at step 1,479 and
+the teacher has never been trained to stand after that. For the next rebuild: end the clip with a
+held stance of about 3 s, and find out whether the lag at the top exists in the trainer too.
+On-ladder start stances of S03, S04, S11, S12 (layout seeds 0 and 3): all soles inside the
+footprint, heels 126-130 mm in, toes 31-35 mm in, sides 30-43 mm.
