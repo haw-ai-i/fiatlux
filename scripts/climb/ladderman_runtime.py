@@ -306,6 +306,13 @@ class LadderManObs:
         rot = quat_mul(rot, quat_conjugate(q))[:, 1:]
         return (rot + self.rung0_w).reshape(p.shape)
 
+    def to_clip(self, p_w: torch.Tensor, q_w: torch.Tensor):
+        """A world pose expressed in the clip's own frame: the inverse of _to_world_p / _to_world_q."""
+        qc = quat_conjugate(self.dq).expand(p_w.shape[0], 4)
+        flat = p_w - self.rung0_w
+        rot = quat_mul(quat_mul(qc, torch.cat([torch.zeros_like(flat[:, :1]), flat], -1)), quat_conjugate(qc))[:, 1:]
+        return rot + self.base, quat_mul(qc, q_w)
+
     def _to_world_q(self, q: torch.Tensor) -> torch.Tensor:
         flat = q.reshape(-1, 4)
         return quat_mul(self.dq.expand(flat.shape[0], 4), flat).reshape(q.shape)

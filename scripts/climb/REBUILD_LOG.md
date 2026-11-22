@@ -1020,3 +1020,8 @@ side, 40 mm higher), varying run to run. Nothing bridges the spawn pose to the c
 | 5,700 (900) | 10 | 14 | 23 | 10 |
 | 6,000 (1,200) | 12 | 29 | 5 | 9 |
 | 6,300 (1,500) | 12 | 21 | 10 | 9 |
+
+Free-standing ladder, four other layouts (layout seeds 1-4: climb yaw -88, -180, +37, -124 deg),
+seeds 1-3 each, fresh processes, clip start pose: 1 success of 12 (layout 2); 7 lost in the mount
+(steps 209-225); 4 lost higher (steps 669, 1,043, 1,329, 1,351). The adapter follows the ladder's
+pose and yaw. All free-standing fresh runs so far: 3 of 20; 11 of 20 lost in the mount.

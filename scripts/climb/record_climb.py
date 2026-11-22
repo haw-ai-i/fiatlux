@@ -18,6 +18,7 @@ Examples
 """
 
 import argparse
+import os
 import pathlib
 import sys
 
@@ -90,6 +91,9 @@ ap.add_argument("--stop_at_clip_end", action="store_true",
                      "robot is; with --episodes N this gives a success count")
 ap.add_argument("--robot", default="inspire", choices=["inspire", "dex3"],
                 help="hand variant. The step-ladder teachers were trained on the OPEN Dex3 hand: use dex3 with them.")
+ap.add_argument("--dump_spawn", default=None,
+                help="write the task's spawn state (root pose in the CLIP's frame, the 29 joint angles) to this "
+                     "json and exit; input for make_approach_prefix.py")
 ap.add_argument("--zscore", type=int, default=0,
                 help="DIAGNOSTIC: every N steps print, per observation term, the largest |z| against the "
                      "checkpoint's own running statistics. A phase-averaged oracle: a large value flags a term "
@@ -236,6 +240,20 @@ def apply_rsi() -> None:
             rob.write_joint_state_to_sim(_z, _z, joint_ids=_f)
 
 
+if a.dump_spawn:
+    import json as _json  # noqa: E402
+    _rb = base.scene["robot"]
+    for _ in range(int(os.environ.get("FX_SPAWN_SETTLE_STEPS", "0"))):
+        env.step(torch.zeros(base.num_envs, len(_rb.joint_names), device=base.device))
+    _p, _q = obs_builder.to_clip(_rb.data.root_pos_w[:1], _rb.data.root_quat_w[:1])
+    _jp = _rb.data.joint_pos[0, obs_builder.j_fx]
+    _out = {"task": a.task, "layout_seed": a.layout_seed, "seed": a.seed, "robot": a.robot,
+            "root_pos_clip": [round(float(v), 5) for v in _p[0]], "root_quat_clip": [round(float(v), 6) for v in _q[0]],
+            "joint_pos": {n: round(float(v), 5) for n, v in zip(obs_builder.lm_joint_names, _jp)}}
+    pathlib.Path(a.dump_spawn).write_text(_json.dumps(_out, indent=1))
+    print(f"[SPAWN ] root in the clip's frame {_out['root_pos_clip']} quat {_out['root_quat_clip']}")
+    print("[SPAWN ] nonzero joints (deg): " + ", ".join(f"{n.replace('_joint', '')} {float(torch.rad2deg(v)):.0f}" for n, v in zip(obs_builder.lm_joint_names, _jp) if abs(float(v)) > 0.01))
+    env.close(); app.close(); raise SystemExit(0)
 if a.rsi:
     apply_rsi()
     obs_builder.reset()       # the history buffers were seeded from the benchmark spawn pose above
