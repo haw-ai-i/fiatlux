@@ -97,6 +97,10 @@ ap.add_argument("--dump_spawn", default=None,
 ap.add_argument("--video", default=None, help="write an mp4 of the run from a fixed camera (one frame per 50 Hz step)")
 ap.add_argument("--cam_eye", type=float, nargs=3, default=[3.25, 2.2, 1.45], help="camera position, world (layout seed 0 default)")
 ap.add_argument("--cam_look_z", type=float, default=1.25, help="aim this far above the ladder's root")
+ap.add_argument("--past_success", action="store_true",
+                help="DIAGNOSTIC: do not end the episode when the task's success gate fires (S02's fires on tread 4, "
+                     "before the feet reach the platform), so the run can continue to the clip's end. The step at "
+                     "which the real gate would have fired is printed. Not a valid benchmark run.")
 ap.add_argument("--zscore", type=int, default=0,
                 help="DIAGNOSTIC: every N steps print, per observation term, the largest |z| against the "
                      "checkpoint's own running statistics. A phase-averaged oracle: a large value flags a term "
@@ -152,6 +156,15 @@ if a.robot != "inspire":
     from fiatlux_task.robots.g1 import swap_robot_variant  # noqa: E402
     swap_robot_variant(cfg, a.robot)
     print(f"[ROBOT ] hand variant {a.robot}")
+_real_gate = None
+if a.past_success:
+    _real_gate = (cfg.terminations.success.func, dict(cfg.terminations.success.params or {}))
+    def _never(env):
+        return torch.zeros(env.num_envs, dtype=torch.bool, device=env.device)
+
+    cfg.terminations.success.func = _never
+    cfg.terminations.success.params = {}
+    print("[GATE  ] DIAGNOSTIC: the success termination is disabled; the real gate is only evaluated and reported")
 if a.video:
     from fiatlux_task.viz import make_video_camera_cfg  # noqa: E402
     cfg.scene.video_cam = make_video_camera_cfg(1280, 720)
@@ -403,12 +416,19 @@ try:
                           f"from everything else (floor, fixture) x {float(_gnd[0]):+.0f} y {float(_gnd[1]):+.0f} z {float(_gnd[2]):+.0f}; ladder weight {float(_L_W):.0f}")
                 print(f"[FORCE ] {steps:4d} (N, world; weight {_W:.0f}) " + "; ".join(_o) + ("; other: " + ", ".join(f"{n} {v:.0f}" for n, v in _oth) if _oth else ""))
 
+            if _real_gate is not None and not best.get("gate_step"):
+                if bool(_real_gate[0](base, **_real_gate[1])[0]):
+                    best["gate_step"] = steps
+                    print(f"[GATE  ] the task's success gate is true at step {steps} (pelvis {pel:.3f} m); continuing")
             done = terminated | truncated
             ep_steps = locals().get("ep_steps", 0) + 1
             ep_best = max(locals().get("ep_best", -9e9), pel)
             at_end = a.stop_at_clip_end and int(obs_builder.t[0]) >= obs_builder.motion_len - 1
             if at_end and not bool(done.any()):
                 _ref_end = float(obs_builder.ref_body_pos[obs_builder.t][0, obs_builder.root_mo, 2])
+                _fz = [float(base.scene["robot"].data.body_pos_w[0, list(base.scene["robot"].body_names).index(n), 2]) for n in ("left_ankle_roll_link", "right_ankle_roll_link")]
+                _lz = float(base.scene["ladder"].data.root_pos_w[0, 2])
+                print(f"[EPISODE] ankles {_fz[0] - _lz:.3f} / {_fz[1] - _lz:.3f} m above the ladder's base (platform top 1.152, an ankle standing on it about 1.19)")
                 print(f"[EPISODE] {gate_hits + 1}: reached the clip's end at step {ep_steps}; pelvis {pel:.3f} m "
                       f"(reference {_ref_end:.3f}), highest {ep_best:.3f} -> {'CLIMBED' if pel > _ref_end - 0.10 else 'not on top'}")
                 ep_steps, ep_best = 0, -9e9

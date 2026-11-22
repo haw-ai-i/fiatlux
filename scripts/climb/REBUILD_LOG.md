@@ -1104,3 +1104,32 @@ That is NOT how the benchmark's ladder behaves: there it tips 2.3 deg when a han
 centre of mass, inertia and friction do not account for the rocking; what is left is how it
 stands on the floor. The benchmark asset's colliders are three SDF meshes, two of them named
 WheelsFront and WheelsBack. Next: use that asset itself as the trainer's free body.
+
+## S02's success gate fires before the feet are on the platform (2026-11-21)
+
+`climbed_to_ladder_top`: pelvis above `platform top (1.18) + TOP_STANCE_PELVIS_OFFSET (0.787) -
+LADDER_TOP_HEIGHT_SLACK (0.15)` = 1.817 m, within 0.6 m of the top point, under 1.5 m/s. The
+reference crosses 1.817 m at step 1,346; in S02 the gate fired at steps 1,341-1,348 in every
+success. At step 1,342 of the reference the left ankle is on the platform (1.188 m) and the right
+ankle is at 1.028 m, in the air between tread 4 and the platform; both feet are on the platform
+from about step 1,380. `success` is a termination, so the episode (and a recorded demo) ends there.
+`record_climb.py --past_success` (diagnostic) disables the termination, reports the step at which
+the real gate is true, and lets the run continue.
+
+## Rebuild 76: rebuild 75 plus a tail that ends in the next stage's start pose (2026-11-21) -- NOT trained
+
+S03's start, measured (`record_climb.py --task FIATLUX-S03-RemoveOldBulb-v0 --dump_spawn`, layout
+seed 0, Dex3): root at clip (-0.082, 0.013, 1.961), yaw -2.6 deg, legs in the default pose, arms at
+zero; the on-ladder tier resets with +-0.02 m, +-0.05 rad, joints +-0.02 rad. The clip ended at
+pelvis (-0.170, 0.037, 1.942) with the arms slightly forward: 9 cm short, off centre.
+
+`make_topout_suffix.py --clip <rebuild 75> --target spawn_s03_L0_measured.json --over 1.0 --ahead 0.0
+--walk_z 1.915` (new, the walk-in tool's machinery): shift, left foot 108 mm, shift, right foot
+86 mm, home 0.8 s with the arms lowered. The target is lowered 20 mm so the feet stay on the
+platform's real surface (S03 stages against a 1.18 m top; the collider's is 1.152).
+
+- 1,724 + 180 = 1,904 steps. Foot error 0.00 mm, no sliding, joint limits pass, 2.95 rad/s peak.
+- With the legs straight (the clip's final height) the legs cannot reach; at `--over 1.15` the
+  left ankle roll passes its limit. Stepping at pelvis 1.915 m with `--over 1.0` passes both.
+- Static: both single-foot phases hold on the feet alone (50% and 42% ankle effort).
+- Torso: CLEAN. `ladderman_port/koa/lm_train_edge76.sbatch` (episode limit 2,000), NOT submitted.

@@ -1,0 +1,48 @@
+{
+ "task": "FIATLUX-S03-RemoveOldBulb-v0",
+ "layout_seed": 0,
+ "seed": 0,
+ "robot": "dex3",
+ "root_pos_clip": [
+  -0.08231,
+  0.01281,
+  1.96086
+ ],
+ "root_quat_clip": [
+  0.99974,
+  0.0,
+  -0.0,
+  -0.022784
+ ],
+ "joint_pos": {
+  "left_hip_pitch_joint": -0.06922,
+  "right_hip_pitch_joint": -0.03907,
+  "waist_yaw_joint": 0.0146,
+  "left_hip_roll_joint": 0.01239,
+  "right_hip_roll_joint": 0.00666,
+  "waist_roll_joint": -0.00539,
+  "left_hip_yaw_joint": -0.00545,
+  "right_hip_yaw_joint": 0.00272,
+  "waist_pitch_joint": -0.00945,
+  "left_knee_joint": 0.20913,
+  "right_knee_joint": 0.18082,
+  "left_shoulder_pitch_joint": 0.01124,
+  "right_shoulder_pitch_joint": -0.01446,
+  "left_ankle_pitch_joint": -0.13408,
+  "right_ankle_pitch_joint": -0.16606,
+  "left_shoulder_roll_joint": -0.01888,
+  "right_shoulder_roll_joint": 0.01839,
+  "left_ankle_roll_joint": 0.01635,
+  "right_ankle_roll_joint": -0.01388,
+  "left_shoulder_yaw_joint": 0.00588,
+  "right_shoulder_yaw_joint": -0.00384,
+  "left_elbow_joint": 0.00903,
+  "right_elbow_joint": -0.00686,
+  "left_wrist_roll_joint": -0.0111,
+  "right_wrist_roll_joint": -0.00894,
+  "left_wrist_pitch_joint": -0.01696,
+  "right_wrist_pitch_joint": -0.00558,
+  "left_wrist_yaw_joint": -0.01059,
+  "right_wrist_yaw_joint": 0.00492
+ }
+}
