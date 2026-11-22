@@ -1162,3 +1162,26 @@ the teacher has never been trained to stand after that. For the next rebuild: en
 held stance of about 3 s, and find out whether the lag at the top exists in the trainer too.
 On-ladder start stances of S03, S04, S11, S12 (layout seeds 0 and 3): all soles inside the
 footprint, heels 126-130 mm in, toes 31-35 mm in, sides 30-43 mm.
+
+## Why the robot ends on the platform's edge: the reference slides its feet (2026-11-21)
+
+Trainer, iteration-4,800 teacher on rebuild 72, medians over 49 robots still up (`play_probe_trace.py`):
+the root is within 10 mm of the reference at step 1,380 and then falls behind steadily, -148 mm
+forward and -94 mm sideways at step 1,470. So the lag seen in S02 is the teacher's, not the
+benchmark's.
+
+The reference, steps 1,370-1,478: both ankles stay at 1.188 m (planted on the platform) while they
+travel from x -0.343 / -0.352 to -0.202 / -0.200 and the left one from y +0.039 to +0.156. The
+last 2 s of the clip SLIDE both planted feet 15 cm along the platform (a blend into the base
+clip's final pose, like the slide in its first 20 steps). A robot cannot follow that, so it stays
+where the feet landed: ankles about 5 cm OUTSIDE the platform's open edge (edge at x -0.304), only
+the front 7 cm of each sole on it.
+
+- Rebuild 77 = rebuild 76 + `--hold 3.0` (3 s standing still at the end): 2,054 steps. Built; it
+  still contains the slide, so it is superseded.
+- `make_topout_suffix.py --cut_at 1627 --steps left:0.5 right:1.0 left:1.0` (cut the clip before
+  the slide, step to the S03 stance from where the feet really land): NOT feasible as tried. With
+  the pelvis 9 cm ahead of the stance ankle the legs cannot reach; at 7 cm the right leg cannot
+  reach and the single-foot phases have no static solution -- the stance foot has 7 cm of sole on
+  the platform. The landing itself has to change: the top-out step of the base builder must put
+  the feet fully on the platform.

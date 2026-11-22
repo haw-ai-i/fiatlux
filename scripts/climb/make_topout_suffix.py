@@ -31,6 +31,8 @@ ap.add_argument("--steps", nargs="+", default=["left:1.0", "right:1.0"],
 ap.add_argument("--ahead", type=float, default=0.03, help="pelvis this far ahead of the stance ankle, m")
 ap.add_argument("--walk_z", type=float, default=None, help="pelvis height while stepping, m (default: the clip's last frame)")
 ap.add_argument("--lift", type=float, default=0.04, help="swing foot clearance, m")
+ap.add_argument("--cut_at", type=int, default=None, help="drop the clip from this 50 Hz step on before adding the tail (rebuild 72's last 2 s SLIDE both planted feet 15 cm along the platform, which no robot can follow)")
+ap.add_argument("--hold", type=float, default=0.0, help="seconds standing still in the target pose at the very end (the benchmark runs 2 s past success, and a teacher only learns to stand through what its clip shows)")
 ap.add_argument("--keep_yaw", action="store_true", help="keep the clip's final pelvis yaw instead of the target's")
 ap.add_argument("--over", type=float, default=0.85, help="how far the pelvis goes toward the stance foot's y (1 = over the ankle)")
 a = ap.parse_args()
@@ -39,6 +41,10 @@ src, dst = pathlib.Path(a.clip), pathlib.Path(a.out)
 d = dict(np.load(src / "motion.npz")); meta = json.loads((src / "meta.json").read_text())
 jn, bn, fps = list(meta["joint_names"]), list(meta["body_names"]), float(meta["fps"])
 sp = json.loads(pathlib.Path(a.target).read_text())
+if a.cut_at is not None:
+    _f = int(round(a.cut_at * fps / 50)) + 1
+    d = {k: (v[:a.cut_at + 1] if k == "object_contact" else v[:_f]) for k, v in d.items()}
+    print(f"[cut  ] clip truncated after step {a.cut_at}: {_f} frames kept")
 J = {n: i for i, n in enumerate(jn)}
 LEG = {s: [J[f"{s}_{k}_joint"] for k in ("hip_pitch", "hip_roll", "hip_yaw", "knee", "ankle_pitch", "ankle_roll")] for s in ("left", "right")}
 FOOT = {s: f"{s}_ankle_roll_link" for s in LEG}
@@ -147,6 +153,8 @@ for s in LEG:
     k = bn.index(FOOT[s]); pl = ~swing[s]
     both = pl[1:] & pl[:-1]
     print(f"[feet ] {s}: lowest ankle {bp[:, k, 2].min():.4f} m (floor stance {foot_start[s][0][2]:.4f}); slides while planted {np.abs(np.diff(bp[:, k, :2], axis=0))[both].max()*1000:.3f} mm/frame")
+n_hold = int(round(a.hold * fps / (fps / np.gcd(int(fps), 50)))) * int(fps / np.gcd(int(fps), 50))      # whole 50 Hz steps
+q = np.concatenate([q, np.repeat(q[-1:], n_hold, 0)]); bp = np.concatenate([bp, np.repeat(bp[-1:], n_hold, 0)]); bq = np.concatenate([bq, np.repeat(bq[-1:], n_hold, 0)])
 Q = np.concatenate([d["joint_pos"], q[1:]]); BP = np.concatenate([d["body_pos_w"], bp[1:]]); BQ = np.concatenate([d["body_quat_w"], bq[1:]])
 n_pre = (N - 1) * 50 / fps
 if abs(n_pre - round(n_pre)) > 1e-9:
@@ -162,5 +170,5 @@ np.savez(dst / "motion.npz", joint_pos=Q, joint_vel=np.gradient(Q, 1.0 / fps, ax
          body_lin_vel_w=np.gradient(BP, 1.0 / fps, axis=0), body_ang_vel_w=2.0 * dq_[..., 1:] * fps, object_contact=oc)
 hj = dst / "holds.json"
 if hj.exists():
-    h = json.loads(hj.read_text()); h["topout_suffix"] = dict(steps=n_pre, phases=a.phases, swings=a.steps, target=sp); hj.write_text(json.dumps(h, indent=1))
-print(f"[out  ] {dst}: {Q.shape[0]} frames = {len(oc)} steps ({len(d['object_contact'])} of the clip + {len(oc) - len(d['object_contact'])} tail)")
+    h = json.loads(hj.read_text()); h["topout_suffix"] = dict(steps=n_pre, hold_s=a.hold, phases=a.phases, swings=a.steps, target=sp); hj.write_text(json.dumps(h, indent=1))
+print(f"[out  ] {dst}: {Q.shape[0]} frames = {len(oc)} steps ({len(d['object_contact'])} of the clip + {len(oc) - len(d['object_contact'])} tail, of which {int(n_hold * 50 / fps)} standing still)")
