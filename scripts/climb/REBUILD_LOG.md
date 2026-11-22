@@ -1025,3 +1025,40 @@ Free-standing ladder, four other layouts (layout seeds 1-4: climb yaw -88, -180,
 seeds 1-3 each, fresh processes, clip start pose: 1 success of 12 (layout 2); 7 lost in the mount
 (steps 209-225); 4 lost higher (steps 669, 1,043, 1,329, 1,351). The adapter follows the ladder's
 pose and yaw. All free-standing fresh runs so far: 3 of 20; 11 of 20 lost in the mount.
+
+## Rebuild 75: a walk-in from S02's spawn pose (2026-11-21) -- built, NOT trained
+
+S02's spawn, measured (`record_climb.py --dump_spawn`, layout seeds 0 and 2, seeds 1 and 2, Dex3):
+root at clip x -1.036..-1.063, y +-0.016, z 0.790, yaw about -1 deg; legs in the default pose
+(hip -3, knee 11-13, ankle -8 deg), arms at zero, each joint +-1 deg. `ladderman_port/spawn_s02_nominal.json`.
+
+`make_approach_prefix.py --clip <rebuild 74> --spawn spawn_s02_nominal.json --over 1.15 --ahead 0.0`
+(new): drops the clip's first 20 steps, in which the feet slide on the floor out of LadderMan's
+default pose, and puts a walk-in in their place: settle 0.8 s (crouch to pelvis 0.765 m, arms to the
+clip's pose), then left foot half-way, right foot all the way, left foot the rest (0.6 s weight
+shift + 0.7 s swing each, 40 mm lift), home 0.6 s. Legs by damped least squares on `g1_arm_fk.fk_all`.
+A single 0.22 m step is out of reach for the trailing leg at that height.
+
+- 265 walk-in steps + 1,459 of the clip = 1,724 steps; every old step number is +245.
+- Tool gates: foot error 0.00 mm, no sliding while planted, joint limits pass, 4.15 rad/s peak,
+  joins the clip's frame exactly.
+- Static (`static_support_check.py`, friction 0.5): every walk-in window holds on the feet alone,
+  single-foot phases at 37-44% ankle effort. With the pelvis only 85% of the way over the stance
+  foot the three single-foot phases had no static solution; 1.3 is out of leg reach.
+- Torso: CLEAN (as rebuild 74).
+- Frozen holds in S02: uninformative on the floor, as before (a pose with no balance controller
+  leans within a second; the spawn pose itself drifts 291 mm in 3 s).
+- Trainer: loads and trains for two iterations locally from the iteration-4,800 checkpoint with
+  `task.max_episode_length=1800`. `ladderman_port/koa/lm_train_edge75.sbatch` written, NOT submitted.
+
+## What the free-standing ladder does during the mount (2026-11-21)
+
+`record_climb.py --trace 1`, Dex3, seed 1, clip start pose. The ladder is still (0.0 mm) until the
+left hand lands on tread 4 at step 37 with a two-step impact (84 N down, 46 N forward on the
+ladder). Over the next 17 steps it tips steadily to 2.27 deg about its cross axis, its origin
+18-19 mm up, while the hands read only 18-25 N down and about 10 N forward; it then rocks by 1-2 deg
+through the mount, and the robot is down by step 215. Ladder in the simulator: 10.90 kg, centre of
+mass at (0, -0.012, 0.826) in its own frame, i.e. midway between front and rear feet. Those hand
+forces cannot hold a 107 N ladder tipped about either pair of feet (about 58 N m is needed), so the
+cause of the sustained tilt is NOT explained. A contact sensor on the ladder's root prim reads 12 N
+at rest and nothing from the robot, so it does not cover the ladder's colliders and settles nothing.

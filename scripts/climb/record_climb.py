@@ -153,6 +153,12 @@ if a.trace:
     from isaaclab.sensors import ContactSensorCfg as _CSC  # noqa: E402
     cfg.scene.robot.spawn.activate_contact_sensors = True
     cfg.scene.whole_body_contact = _CSC(prim_path="{ENV_REGEX_NS}/Robot/.*", history_length=1)
+    try:                                               # what the LADDER feels, split into robot bodies and everything else
+        cfg.scene.ladder.spawn.activate_contact_sensors = True
+        cfg.scene.ladder_contact = _CSC(prim_path=cfg.scene.ladder.prim_path, history_length=1,
+                                        filter_prim_paths_expr=["{ENV_REGEX_NS}/Robot/.*"])
+    except Exception as _e:
+        print("[LADDER] no contact sensor on the ladder:", _e)
 if a.pin_ladder:
     cfg.scene.ladder.spawn.rigid_props.kinematic_enabled = True
     print("[LADDER] DIAGNOSTIC: ladder is kinematic")
@@ -178,6 +184,7 @@ recorder = (
 obs, _ = env.reset(seed=a.seed)
 obs_builder.reset()
 _lad0 = base.scene["ladder"].data.root_pos_w[0].clone()
+_L_W = float(base.scene["ladder"].root_physx_view.get_masses().sum()) * 9.81
 _pv = base.scene["robot"].root_physx_view
 _m = _pv.get_masses().clone()
 _bn = list(base.scene["robot"].body_names)
@@ -240,6 +247,12 @@ def apply_rsi() -> None:
             rob.write_joint_state_to_sim(_z, _z, joint_ids=_f)
 
 
+if os.environ.get("FX_LADDER_INFO"):
+    _L = base.scene["ladder"]; _v = _L.root_physx_view
+    _com = _v.get_coms()[0].flatten().tolist()
+    print(f"[LADINF] mass {float(_v.get_masses().sum()):.2f} kg; centre of mass in the ladder's own frame (x across, y climb direction, z up): "
+          f"{[round(v, 3) for v in _com[:3]]}; inertia diag {[round(float(v), 3) for v in _v.get_inertias()[0].flatten()[[0, 4, 8]].tolist()]}")
+    print(f"[LADINF] root at rest {[round(float(v), 3) for v in _L.data.root_pos_w[0].tolist()]}; clip-frame x of the frame origin {-0.1996:+.4f} (ladder y = clip x + 0.1996)")
 if a.dump_spawn:
     import json as _json  # noqa: E402
     _rb = base.scene["robot"]
@@ -357,6 +370,20 @@ try:
                     _f = _F[_ids].sum(0)
                     _o.append(f"{_k} x {float(_f[0]):+.0f} y {float(_f[1]):+.0f} z {float(_f[2]):+.0f}")
                 _oth = [(n, float(_F[j].norm())) for j, n in enumerate(_wb.body_names) if not _re.search("ankle|hand|wrist", n) and float(_F[j].norm()) > 20]
+                _ld = base.scene["ladder"].data
+                _dl = quat_apply_inverse(_yq(_ld.root_quat_w), _ld.root_pos_w - _lad0[None])[0] * 1000
+                _lg = quat_apply_inverse(_ld.root_quat_w, torch.tensor([[0.0, 0.0, -1.0]], device=base.device))[0]
+                print(f"[LADDER] {steps:4d} moved in its own frame x {float(_dl[0]):+5.1f} y(climb dir) {float(_dl[1]):+5.1f} z {float(_dl[2]):+5.1f} mm; "
+                      f"tilt about x {float(torch.rad2deg(torch.atan2(_lg[1], -_lg[2]))):+.2f} about y {float(torch.rad2deg(torch.atan2(_lg[0], -_lg[2]))):+.2f} deg; "
+                      f"speed {float(_ld.root_lin_vel_w[0].norm()) * 1000:.0f} mm/s")
+                _lc = base.scene.sensors.get("ladder_contact") if hasattr(base.scene.sensors, "get") else None
+                if _lc is not None:
+                    _net = _lc.data.net_forces_w[0].sum(0)
+                    _fm = _lc.data.force_matrix_w[0].sum(0) if _lc.data.force_matrix_w is not None else None      # [robot bodies, 3]
+                    _rob = _fm.sum(0) if _fm is not None else torch.zeros(3, device=base.device)
+                    _gnd = _net - _rob
+                    print(f"[LADFRC] {steps:4d} on the ladder, world N: from the robot x {float(_rob[0]):+.0f} y {float(_rob[1]):+.0f} z {float(_rob[2]):+.0f}; "
+                          f"from everything else (floor, fixture) x {float(_gnd[0]):+.0f} y {float(_gnd[1]):+.0f} z {float(_gnd[2]):+.0f}; ladder weight {float(_L_W):.0f}")
                 print(f"[FORCE ] {steps:4d} (N, world; weight {_W:.0f}) " + "; ".join(_o) + ("; other: " + ", ".join(f"{n} {v:.0f}" for n, v in _oth) if _oth else ""))
 
             done = terminated | truncated

@@ -158,5 +158,8 @@ np.savez(dst / "motion.npz", joint_pos=Q, joint_vel=np.gradient(Q, 1.0 / fps, ax
          body_lin_vel_w=np.gradient(BP, 1.0 / fps, axis=0), body_ang_vel_w=2.0 * dq_[..., 1:] * fps, object_contact=oc)
 hj = dst / "holds.json"
 if hj.exists():
-    h = json.loads(hj.read_text()); h["approach_prefix"] = dict(steps=n_pre, cut=a.cut, phases=a.phases, swings=a.steps, spawn=sp); hj.write_text(json.dumps(h, indent=1))
+    h = json.loads(hj.read_text()); h["approach_prefix"] = dict(steps=n_pre, cut=a.cut, phases=a.phases, swings=a.steps, spawn=sp)
+    for side, rows in h.get("schedule", {}).items():               # hold windows are in clip steps: move them with the clip
+        for r in rows:
+            r[0] += n_pre - a.cut; r[1] += n_pre - a.cut; hj.write_text(json.dumps(h, indent=1))
 print(f"[out  ] {dst}: {Q.shape[0]} frames = {len(oc)} steps ({n_pre} walk-in + {len(d['object_contact']) - a.cut} of the clip); every later step number is the old one + {n_pre - a.cut}")
