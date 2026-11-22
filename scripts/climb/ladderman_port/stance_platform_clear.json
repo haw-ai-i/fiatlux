@@ -1,0 +1,45 @@
+{
+ "note": "the two-handed climb's own final stance (rebuild 74, last frame): standing on the platform clear of the handrail; arms lowered to the spawn pose",
+ "root_pos_clip": [
+  -0.16961,
+  0.03701,
+  1.94196
+ ],
+ "root_quat_clip": [
+  0.999743,
+  -0.00164,
+  0.022227,
+  0.004169
+ ],
+ "joint_pos": {
+  "left_hip_pitch_joint": -0.08014,
+  "left_hip_roll_joint": 0.00484,
+  "left_hip_yaw_joint": 1e-05,
+  "left_knee_joint": 0.16407,
+  "left_ankle_pitch_joint": -0.1284,
+  "left_ankle_roll_joint": -0.00163,
+  "right_hip_pitch_joint": -0.06476,
+  "right_hip_roll_joint": 0.00482,
+  "right_hip_yaw_joint": 1e-05,
+  "right_knee_joint": 0.13133,
+  "right_ankle_pitch_joint": -0.11104,
+  "right_ankle_roll_joint": -0.00163,
+  "waist_yaw_joint": 0.0,
+  "waist_roll_joint": 0.0,
+  "waist_pitch_joint": 2e-05,
+  "left_shoulder_pitch_joint": 0.0,
+  "left_shoulder_roll_joint": 0.0,
+  "left_shoulder_yaw_joint": 0.0,
+  "left_elbow_joint": 0.0,
+  "left_wrist_roll_joint": 0.0,
+  "left_wrist_pitch_joint": 0.0,
+  "left_wrist_yaw_joint": 0.0,
+  "right_shoulder_pitch_joint": 0.0,
+  "right_shoulder_roll_joint": 0.0,
+  "right_shoulder_yaw_joint": 0.0,
+  "right_elbow_joint": 0.0,
+  "right_wrist_roll_joint": 0.0,
+  "right_wrist_pitch_joint": 0.0,
+  "right_wrist_yaw_joint": 0.0
+ }
+}

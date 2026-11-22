@@ -1209,3 +1209,36 @@ leg's bodies. On rebuild 74 (`--allow_planted`: 13 of the 174 frames are at toe-
 still): ankle pitch now -49.0 deg at worst, the ankle link moves 2.2 mm at most, but the TOE comes
 down by up to 15 mm in the swing (step 104: 28 mm over tread 1's top becomes 14 mm). So clamping
 alone trades an impossible ankle for a thinner toe clearance; the swing needs lifting to match.
+
+## Rebuilds 80 and 81; the benchmark's ladder asset in the trainer; S03's start stance is inside the ladder (2026-11-21)
+
+Chain, each step a tool in this folder:
+`fix_topout_landing.py --land_shift -0.04 0.0 --settle 0.16 --end_at 1400` (left foot lands with its
+heel just inside the platform's edge, right foot at the clip's final spot; the clip's straight-legged
+ending is dropped) -> `clamp_leg_limits.py --allow_planted --keep_toe --margin 3.0` (left ankle
+pitch inside its limit, swing lifted up to 19.4 mm, toe within 4.0 mm of where it was) ->
+`make_approach_prefix.py` (walk-in) -> `make_topout_suffix.py --hold 3.0` (tail and a 3 s stand).
+
+- With the landing at the clip's final spot for BOTH feet the one-foot phase is 64 mm off static
+  balance (the foot is ahead of the body); with the left foot 4 cm nearer the edge it is 26 mm, the
+  original was 20 mm. From both feet down it balances at 34% effort.
+- Rebuild 80 (tail to S03's start stance, 1,976 steps): all 29 joints inside their limits, soles
+  over the platform for the last 7.3 s -- but the S02 whole-body scan reads 6,000-21,000 N on the
+  hips, knees and pelvis from step 1,740 to the end. REJECTED.
+- Why: S03's own start stance is inside the ladder. `FIATLUX-S03-RemoveOldBulb-v0`, Dex3, layout
+  seed 0, zero action: the ladder presses on left_hip_roll_link with 16,500-18,600 N and on
+  left_hip_pitch_link with 5,000-13,600 N from the first step to the sixtieth, and the pelvis is
+  pushed up from 1.969 to 1.986 m.
+- Rebuild 81 (tail to the climb's own final stance, `ladderman_port/stance_platform_clear.json`:
+  pelvis (-0.170, 0.037, 1.942), arms lowered; one 40 mm step of the left foot; 3 s stand; 1,906
+  steps): all 29 joints inside limits; soles over the platform for the last 5.9 s, heels 42-44 mm
+  inside, toes 141-143 mm, sides 16 and 91 mm. Full suite running.
+
+Benchmark ladder asset as the trainer's free body (`+task.command.ladder_config.free=asset`,
+`assets_fiatlux/AlumStep_D/` = the `_collision_rigid` USD and its two layers, spawned as the
+benchmark spawns it): loads, 10.90 kg, 3 collision shapes, markers in place (object 0 at x -0.588).
+Iteration-4,800 teacher from the ground, 64 robots: 44 up at step 400; the body moves a median
+0.3 mm and tilts a median 0.00 deg (max 0.8 deg while hands land; one environment 15 deg at step
+180). So the asset does not reproduce the 2.3 deg tip of the single traced S02 run either. Not yet
+compared: the floor, the solver settings (the benchmark runs with stabilisation on, the trainer
+off), and how typical that one S02 run was.

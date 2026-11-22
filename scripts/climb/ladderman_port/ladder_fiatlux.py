@@ -179,6 +179,59 @@ def create_fiatlux_free_ladder_body_cfg(prim_path: str = "{ENV_REGEX_NS}/LadderB
     return RigidObjectCfg(prim_path=prim_path, spawn=spawn, init_state=RigidObjectCfg.InitialStateCfg(pos=(0.0, 0.0, 0.0)))
 
 
+# The benchmark's OWN ladder as the free body (``ladder_config.free: asset``). The box body above
+# has the benchmark's mass, centre of mass, inertia and friction and still does not move like it:
+# under the same teacher it shifts about 2 mm where the benchmark's tips 2.3 deg when a hand lands.
+# What differs is how it stands on the floor -- the asset's colliders are three SDF meshes, two of
+# them its wheels. So this spawns that asset itself, the way the benchmark does
+# (scene_cfg._spawn_usd_as_rigid_body_frictional + apply_position_preset): the `_collision_rigid`
+# USD at scale 0.01, mass stamped to 10.9 kg, friction 1.5 / 1.2, 16 position and 1 velocity
+# iteration, max depenetration 1 m/s. Its base_link frame has +y along the climb and the origin
+# 0.1996 m behind the clip's x origin, hence the pose below.
+ASSET_USD = "assets_fiatlux/AlumStep_D/AluminumStepLadder_D01_PR_NVD_01_collision_rigid.usd"
+ASSET_POS = (-0.1996, 0.0, 0.0)
+ASSET_ROT = (0.7071067811865476, 0.0, 0.0, -0.7071067811865476)      # -90 deg about z: ladder +y -> clip +x
+
+
+def _spawn_ladder_asset(prim_path, cfg, translation=None, orientation=None, **kwargs):
+    import isaaclab.sim as sim_utils
+    from isaaclab.sim import schemas
+    from isaaclab.sim.spawners.from_files.from_files import _spawn_from_usd_file
+    from isaaclab.sim.utils import bind_physics_material
+
+    prim = _spawn_from_usd_file(prim_path, cfg.usd_path, cfg, translation, orientation)
+    if cfg.rigid_props is not None:
+        schemas.modify_rigid_body_properties(prim.GetPath(), cfg.rigid_props)
+    if cfg.mass_props is not None:
+        schemas.modify_mass_properties(prim.GetPath(), cfg.mass_props)
+    grip = sim_utils.RigidBodyMaterialCfg(static_friction=FREE_FRICTION[0], dynamic_friction=FREE_FRICTION[1], restitution=0.0)
+    grip.func(f"{prim_path}/physicsMaterial", grip)
+    bind_physics_material(prim_path, f"{prim_path}/physicsMaterial")
+    return prim
+
+
+def create_fiatlux_asset_ladder_body_cfg(prim_path: str = "{ENV_REGEX_NS}/LadderBody", usd_path: str | None = None):
+    import pathlib
+
+    import isaaclab.sim as sim_utils
+    from isaaclab.assets import RigidObjectCfg
+    from isaaclab.sim.utils import clone
+
+    f = pathlib.Path(usd_path or ASSET_USD)
+    if not f.is_absolute():                                # hydra changes cwd: resolve against the repo
+        f = pathlib.Path(__file__).resolve().parents[2] / f
+    if not f.exists():
+        raise FileNotFoundError(f"the benchmark's ladder asset is not at {f} (with its two sibling layers)")
+    spawn = sim_utils.UsdFileCfg(
+        usd_path=str(f), func=clone(_spawn_ladder_asset), scale=(0.01, 0.01, 0.01),
+        rigid_props=sim_utils.RigidBodyPropertiesCfg(kinematic_enabled=False, solver_position_iteration_count=16,
+                                                     solver_velocity_iteration_count=1, max_depenetration_velocity=1.0,
+                                                     stabilization_threshold=0.001),
+        mass_props=sim_utils.MassPropertiesCfg(mass=FREE_MASS_KG),
+    )
+    return RigidObjectCfg(prim_path=prim_path, spawn=spawn, init_state=RigidObjectCfg.InitialStateCfg(pos=ASSET_POS, rot=ASSET_ROT))
+
+
 def install_free_ladder(env) -> None:
     """Make the collection's markers follow the free body, and put the body back at every reset."""
     import torch
@@ -186,16 +239,21 @@ def install_free_ladder(env) -> None:
 
     body, coll = env.scene.rigid_objects["ladder_body"], env.ladder
     n = coll.num_objects
-    # each marker's pose in the body's frame = where it was authored (the body starts at the env origin, unrotated)
-    loc_p = (coll.data.default_object_state[:, :, :3]).clone()                  # [N, n, 3], env-local
-    loc_q = (coll.data.default_object_state[:, :, 3:7]).clone()
+    # each marker's pose in the BODY's frame: where it was authored, seen from where the body is authored
+    from isaaclab.utils.math import quat_apply_inverse, quat_conjugate
+    b0p = body.data.default_root_state[:, None, :3].expand(-1, n, -1)
+    b0q = body.data.default_root_state[:, None, 3:7].expand(-1, n, -1)
+    m0p, m0q = coll.data.default_object_state[:, :, :3], coll.data.default_object_state[:, :, 3:7]
+    loc_p = quat_apply_inverse(b0q.reshape(-1, 4), (m0p - b0p).reshape(-1, 3)).reshape(-1, n, 3)
+    loc_q = quat_mul(quat_conjugate(b0q.reshape(-1, 4)), m0q.reshape(-1, 4)).reshape(-1, n, 4)
+    park_p = m0p.clone()                                    # env-local authored positions, for the parked dummy
     keep = torch.zeros(n, dtype=torch.bool, device=env.device); keep[N_PHYS] = True      # the parked dummy stays parked
 
     def sync(_substep=None):
         bp, bq = body.data.root_link_pos_w, body.data.root_link_quat_w                  # [N, 3], [N, 4]
         q = quat_mul(bq[:, None].expand(-1, n, -1).reshape(-1, 4), loc_q.reshape(-1, 4)).reshape(-1, n, 4)
         p = bp[:, None] + quat_apply(bq[:, None].expand(-1, n, -1).reshape(-1, 4), loc_p.reshape(-1, 3)).reshape(-1, n, 3)
-        p[:, keep] = env.scene.env_origins[:, None] + loc_p[:, keep]
+        p[:, keep] = env.scene.env_origins[:, None] + park_p[:, keep]
         coll.write_object_link_pose_to_sim(torch.cat([p, q], dim=-1))
 
     def reset(env_ids):
@@ -208,7 +266,8 @@ def install_free_ladder(env) -> None:
     env._reset_callbacks.insert(0, reset)
     env._post_step_callbacks.append(sync)
     env.ladder_body = body
-    print(f"[ladder] FREE-STANDING: one {FREE_MASS_KG} kg body with {len(free_body_boxes())} box colliders; "
+    print(f"[ladder] FREE-STANDING: one {float(body.root_physx_view.get_masses()[0].sum()):.2f} kg body "
+          f"({getattr(body.root_physx_view, 'max_shapes', '?')} collision shapes) at {[round(float(v), 4) for v in body.data.default_root_state[0, :3].tolist()]}; "
           f"{n} markers follow it after every physics step")
 
 

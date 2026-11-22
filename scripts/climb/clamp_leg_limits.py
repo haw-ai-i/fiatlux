@@ -22,6 +22,10 @@ ap.add_argument("--clip", required=True); ap.add_argument("--out", required=True
 ap.add_argument("--margin", type=float, default=1.0, help="deg inside the limit")
 ap.add_argument("--knee", type=float, default=3.0, help="deg over which the clamp eases in")
 ap.add_argument("--allow_planted", action="store_true")
+ap.add_argument("--keep_toe", action="store_true",
+                help="after clamping, lift the foot by what the toe lost, so the swing clears what it cleared before "
+                     "(the leg is re-solved for the clamped foot orientation at the raised position)")
+ap.add_argument("--toe", type=float, nargs=3, default=[0.135, 0.0, -0.035], help="toe point in the ankle link's frame")
 a = ap.parse_args()
 src, dst = pathlib.Path(a.clip), pathlib.Path(a.out)
 d = dict(np.load(src / "motion.npz")); meta = json.loads((src / "meta.json").read_text())
@@ -72,6 +76,51 @@ for i, n, side in changed:
     mv = np.linalg.norm(bp[:, foot] - d["body_pos_w"][:, foot], axis=1)
     print(f"[limit] {n}: now {np.degrees(q[:, i].min()):.1f}..{np.degrees(q[:, i].max()):.1f} deg; the {side} ankle link moves by at most {mv.max()*1000:.1f} mm; "
           f"joint speed peak {np.abs(np.gradient(q[:, i], 1.0 / fps)).max():.2f} rad/s (was {np.abs(d['joint_vel'][:, i]).max():.2f})")
+if a.keep_toe:
+    TOE = np.array(a.toe)
+    for i, n, side in changed:
+        leg = [jn.index(f"{side}_{k}_joint") for k in ("hip_pitch", "hip_roll", "hip_yaw", "knee", "ankle_pitch", "ankle_roll")]
+        fb = f"{side}_ankle_roll_link"; k = bn.index(fb)
+        toe0 = d["body_pos_w"][:, k, 2] + K.qrot(d["body_quat_w"][:, k], TOE[None])[:, 2]
+        toe1 = bp[:, k, 2] + K.qrot(bq[:, k], TOE[None])[:, 2]
+        dz = np.clip(toe0 - toe1, 0.0, None)
+        w = int(0.08 * fps); ker = np.hanning(2 * w + 1); ker /= ker.sum()
+        dz = np.maximum(np.convolve(dz, ker, mode="same"), dz * 0.0)       # smooth in and out
+        dz = np.maximum(dz, np.clip(toe0 - toe1, 0.0, None) * 0.0)
+        act = np.flatnonzero(dz > 1e-5)
+        if not len(act):
+            continue
+        sl = slice(max(act.min() - 2, 0), min(act.max() + 3, q.shape[0]))
+        tp = bp[sl, k].copy(); tp[:, 2] += dz[sl]; tq = bq[sl, k].copy()
+        pp, pq = bp[sl, PEL], bq[sl, PEL]
+
+        def err(qq):
+            o = K.fk_all(pp, pq, qq, jn)[fb]
+            e_ = K.qmul(tq, K.qconj(o[1])); e_ = e_ * np.sign(e_[:, :1] + 1e-12)
+            return np.concatenate([tp - o[0], 2.0 * e_[:, 1:]], 1)
+
+        qs = q[sl].copy()
+        for it in range(60):
+            e = err(qs)
+            if np.abs(e).max() < 1e-5:
+                break
+            Jm = np.zeros((qs.shape[0], 6, 6))
+            for c, j in enumerate(leg):
+                qp = qs.copy(); qp[:, j] += 1e-4
+                Jm[:, :, c] = -(err(qp) - e) / 1e-4
+            qs[:, leg] += np.clip(np.linalg.solve(np.einsum("nij,nik->njk", Jm, Jm) + 1e-6 * np.eye(6), np.einsum("nij,ni->nj", Jm, e)), -0.2, 0.2)
+        q[sl][:, leg] = qs[:, leg]; q[sl.start:sl.stop, leg] = qs[:, leg]
+        allb = K.fk_all(bp[:, PEL], bq[:, PEL], q, jn)
+        for kk, b in enumerate(bn):
+            if b.startswith(side + "_") and any(s_ in b for s_ in ("hip", "knee", "ankle")):
+                bp[:, kk], bq[:, kk] = allb[b]
+        toe2 = bp[:, k, 2] + K.qrot(bq[:, k], TOE[None])[:, 2]
+        lo, hi = K.limits(n)
+        worst = {m_: (float(np.degrees(q[:, jn.index(m_)].min())), float(np.degrees(q[:, jn.index(m_)].max()))) for m_ in [jn[j] for j in leg]
+                 if q[:, jn.index(m_)].min() < K.limits(m_)[0] - 1e-6 or q[:, jn.index(m_)].max() > K.limits(m_)[1] + 1e-6}
+        print(f"[toe  ] {side}: foot lifted by up to {dz.max()*1000:.1f} mm over {len(act)} frames, leg re-solved ({it + 1} iterations, error {np.abs(err(qs)[:, :3]).max()*1000:.2f} mm); "
+              f"toe now at most {np.clip(toe0 - toe2, 0, None).max()*1000:.1f} mm below where the clip had it (was {np.clip(toe0 - toe1, 0, None).max()*1000:.1f}); "
+              f"{n} {np.degrees(q[:, i].min()):.1f}..{np.degrees(q[:, i].max()):.1f} deg; leg joints outside limits: {worst or 'none'}")
 dq_ = K.qmul(np.roll(bq, -1, axis=0), K.qconj(bq)); dq_[-1] = dq_[-2]; dq_ = dq_ * np.sign(dq_[..., :1] + 1e-12)
 dst.mkdir(parents=True, exist_ok=True)
 for f in src.iterdir():

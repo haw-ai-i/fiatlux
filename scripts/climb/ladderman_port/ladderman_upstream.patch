@@ -1,5 +1,5 @@
 --- active_adaptation/envs/ladder_env.py.orig.bak	2026-11-19 15:02:17.227078445 -1000
-+++ active_adaptation/envs/ladder_env.py	2026-11-21 16:17:41.008058182 -1000
++++ active_adaptation/envs/ladder_env.py	2026-11-21 19:24:12.071458360 -1000
 @@ -107,6 +107,9 @@
      def __init__(self, cfg):
          super().__init__(cfg)
@@ -10,7 +10,7 @@
  
          if self.sim.has_gui():
              from isaaclab.envs.ui import BaseEnvWindow, ViewportCameraController
-@@ -165,7 +168,14 @@
+@@ -165,7 +168,18 @@
              if spawn_cfg.articulation_props is not None:
                  spawn_cfg.articulation_props.enabled_self_collisions = enable_self_collision
  
@@ -19,14 +19,18 @@
 +        # falls through to it (via ladder_rails, if present) unless ladder_config.kind is set.
 +        from .ladder_fiatlux import create_ladder_cfg_dispatch as _mk_ladder
 +        scene_cfg.ladder = _mk_ladder(**self.cfg.command.ladder_config)
-+        self._free_ladder = bool(self.cfg.command.ladder_config.get("free", False))
++        _free = self.cfg.command.ladder_config.get("free", False)
++        self._free_ladder = bool(_free)
 +        if self._free_ladder:                              # fiatlux: one free-standing body, see ladder_fiatlux.py
-+            from .ladder_fiatlux import create_fiatlux_free_ladder_body_cfg
-+            scene_cfg.ladder_body = create_fiatlux_free_ladder_body_cfg()
++            from .ladder_fiatlux import create_fiatlux_asset_ladder_body_cfg, create_fiatlux_free_ladder_body_cfg
++            if str(_free) == "asset":                      # the benchmark's own ladder asset
++                scene_cfg.ladder_body = create_fiatlux_asset_ladder_body_cfg(usd_path=self.cfg.command.ladder_config.get("asset_usd", None))
++            else:                                          # the same boxes as one body
++                scene_cfg.ladder_body = create_fiatlux_free_ladder_body_cfg()
  
          scene_cfg.terrain = TERRAINS[self.cfg.terrain]
          scene_cfg.contact_forces = ContactSensorCfg(
-@@ -179,9 +189,17 @@
+@@ -179,9 +193,17 @@
              render=sim_utils.RenderCfg(rendering_mode="quality"),
              device=f"cuda:{active_adaptation.get_local_rank()}"
          )

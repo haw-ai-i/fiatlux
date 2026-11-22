@@ -29,14 +29,21 @@ ap.add_argument("--settle", type=float, default=0.25, help="seconds to come down
 ap.add_argument("--travel", type=float, default=0.30, help="least seconds for the travel over the platform; the clip's own swing is used when it leaves more")
 ap.add_argument("--land_shift", type=float, nargs=2, default=[0.0, 0.0], metavar=("LEFT", "RIGHT"),
                 help="m added to each foot's landing x (negative = nearer the open edge than the clip's final stance)")
+ap.add_argument("--end_at", type=int, default=None, help="drop the clip after this 50 Hz step first (its straight-legged ending cannot reach a landing nearer the edge; a tail tool carries on from here)")
 ap.add_argument("--check_to", type=int, default=None, help="report joint limits only up to this 50 Hz step (when a later tool cuts the clip there)")
 a = ap.parse_args()
 src, dst = pathlib.Path(a.clip), pathlib.Path(a.out)
 d = dict(np.load(src / "motion.npz")); meta = json.loads((src / "meta.json").read_text())
 jn, bn, fps = list(meta["joint_names"]), list(meta["body_names"]), float(meta["fps"])
+if a.end_at is not None:
+    _f = int(round(a.end_at * fps / 50)) + 1
+    d = {k: (v[:a.end_at + 1] if k == "object_contact" else v[:_f]) for k, v in d.items()}
+    print(f"[cut  ] clip ends after step {a.end_at}")
 J = {n: i for i, n in enumerate(jn)}
 PEL = bn.index("pelvis")
 T = d["joint_pos"].shape[0]
+_full = np.load(src / "motion.npz")
+FINAL_P, FINAL_Q = _full["body_pos_w"][-1].copy(), _full["body_quat_w"][-1].copy()
 q = d["joint_pos"].copy(); bp, bq = d["body_pos_w"].copy(), d["body_quat_w"].copy()
 pel_p, pel_q = bp[:, PEL].copy(), bq[:, PEL].copy()
 sm = lambda u: u * u * u * (u * (6 * u - 15) + 10)
@@ -52,14 +59,14 @@ for side in ("left", "right"):
     f_up = int(below.max())
     f_clear = f_up + int(np.argmax(z[f_up:] >= air_z))       # sole first clear of the platform
     f_peak = f_clear + int(np.argmax(z[f_clear:f_clear + int(1.0 * fps)]))
-    f_down = f_peak + int(np.argmax(z[f_peak:] <= z[-1] + 0.006))       # the clip's own touchdown: first time back at standing height
+    f_down = f_peak + int(np.argmax(z[f_peak:] <= FINAL_P[k, 2] + 0.006))       # the clip's own touchdown: first time back at standing height
     n_set = int(round(a.settle * fps))
     f_arrive = max(f_down - n_set, f_clear + int(round(a.travel * fps)))
     f_touch = f_arrive + n_set
     p0, q0 = bp[f_clear, k].copy(), bq[f_clear, k].copy()
-    p1, q1 = bp[-1, k].copy(), bq[-1, k].copy()
+    p1, q1 = FINAL_P[k].copy(), FINAL_Q[k].copy()
     p1[0] += a.land_shift[0 if side == "left" else 1]
-    slid = np.linalg.norm((bp[-1, k] - bp[f_down, k])[:2])
+    slid = np.linalg.norm((FINAL_P[k] - bp[f_down, k])[:2])
     print(f"[{side:5s}] last swing: leaves tread 4 at step {step(f_up):.0f}, sole clear of the platform at {step(f_clear):.0f}, "
           f"the clip puts it down at {step(f_down):.0f} at ({bp[f_down, k, 0]:+.3f}, {bp[f_down, k, 1]:+.3f}) and then slides it "
           f"{slid*1000:.0f} mm to ({p1[0]:+.3f}, {p1[1]:+.3f})")
