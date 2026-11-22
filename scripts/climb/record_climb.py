@@ -105,6 +105,10 @@ ap.add_argument("--ladder_stab_threshold", type=float, default=None,
                 help="DIAGNOSTIC: override the ladder's PhysX stabilization_threshold (the benchmark ships 0.001; with "
                      "it the free-standing ladder starts to tip at 10-12 N of sideways push at tread-4 height, with 0 at "
                      "59 N, which is what its weight and foot spacing give). Not a valid benchmark run.")
+ap.add_argument("--right_curl", type=float, default=None,
+                help="bulb tasks (S10): the right hand holds the benchmark's cup at this finger curl (rad; the benchmark's "
+                     "own is 0.667) instead of opening flat, the fresh bulb is seated in it when the start pose is staged, "
+                     "and the run reports how far the bulb is from its seat and how hard the hand squeezes it")
 ap.add_argument("--zscore", type=int, default=0,
                 help="DIAGNOSTIC: every N steps print, per observation term, the largest |z| against the "
                      "checkpoint's own running statistics. A phase-averaged oracle: a large value flags a term "
@@ -223,7 +227,7 @@ if a.mass_to > 0:
     _pv.set_inertias((_pv.get_inertias().clone() * _k).cpu(), _idx)
     print(f"[MASS  ] DIAGNOSTIC: every link scaled by {_k:.4f} -> {float(_pv.get_masses().sum()):.2f} kg")
 
-from isaaclab.utils.math import quat_apply_inverse  # noqa: E402
+from isaaclab.utils.math import quat_apply, quat_apply_inverse, quat_mul  # noqa: E402
 
 
 def apply_lm_gains() -> None:
@@ -237,6 +241,25 @@ def apply_lm_gains() -> None:
     n = base.num_envs
     rob.write_joint_stiffness_to_sim(obs_builder.lm_kp[None].expand(n, -1), joint_ids=obs_builder.j_fx)
     rob.write_joint_damping_to_sim(obs_builder.lm_kd[None].expand(n, -1), joint_ids=obs_builder.j_fx)
+
+
+# the fresh bulb's seat in the right wrist_yaw_link frame (measure_bulb_in_hand.py; the same numbers
+# physics_segment_test_bulb.py and render_reference_bulb.py use)
+_BULB_P = torch.tensor([[0.1192, 0.0540, -0.1310]], device=base.device)
+_BULB_Q = torch.tensor([[0.70710678, 0.0, 0.0, 0.70710678]], device=base.device)
+
+
+def bulb_state():
+    """(mm the bulb is from its seat in the right hand, N hardest squeeze by a hand link)."""
+    from isaaclab.utils.math import quat_apply as _qa  # noqa: E402
+    _r = base.scene["robot"]; _i = _r.body_names.index("right_wrist_yaw_link")
+    _wp, _wq = _r.data.body_link_pos_w[0:1, _i], _r.data.body_link_quat_w[0:1, _i]
+    _off = float((base.scene["fresh_bulb"].data.root_link_pos_w[0:1] - (_wp + _qa(_wq, _BULB_P))).norm()) * 1000
+    try:
+        _g = float(base.scene.sensors["grip_contact"].data.force_matrix_w[0].norm(dim=-1).max())
+    except Exception:
+        _g = float("nan")
+    return _off, _g
 
 
 def apply_rsi() -> None:
@@ -260,10 +283,14 @@ def apply_rsi() -> None:
     rob.write_root_link_pose_to_sim(torch.cat([root_p, root_q], dim=-1))
     rob.write_root_com_velocity_to_sim(torch.cat([lin, ang], dim=-1))
     q = ob.ref_joint_pos[t0]
-    if a.rsi_noise > 0:
-        q = q + (torch.rand_like(q) * 2 - 1) * a.rsi_noise
+    # The velocity is the CLIP's, taken before the pose noise is added. Until 2026-11-22 it was taken after,
+    # as (next reference pose - noisy pose) * 50, which handed every joint a velocity of -noise * 50: up to
+    # 1.5 rad/s at --rsi_noise 0.03. Measured in S10: the right wrist moving at 1.6 m/s on the first step,
+    # which threw the bulb out of the hand within 5 steps. Every earlier --rsi_noise run carried that kick.
     q_next = ob.ref_joint_pos[torch.clamp(t0 + 1, max=ob.motion_len - 1)]
     qd = (q_next - q) * 50.0
+    if a.rsi_noise > 0:
+        q = q + (torch.rand_like(q) * 2 - 1) * a.rsi_noise
     rob.write_joint_state_to_sim(q, qd, joint_ids=ob.j_fx)
     if a.step_ladder:
         _a = torch.arange(len(rob.joint_names), device=base.device)
@@ -271,6 +298,22 @@ def apply_rsi() -> None:
         if _f.numel():
             _z = torch.zeros(base.num_envs, _f.numel(), device=base.device)
             rob.write_joint_state_to_sim(_z, _z, joint_ids=_f)
+        if a.right_curl is not None:
+            from fiatlux_task.poses import hand_cup_dex3  # noqa: E402
+            # Staged in the benchmark's OWN cup, and the bulb seated on the hand as it actually is after the
+            # staging noise -- not pre-curled tighter and not on the reference's wrist: either leaves the
+            # fingers inside the glass (first try: thrown out in 5 steps or squeezed past 100 N in 3). The
+            # tighter curl is reached over the first steps of the run, as physics_segment_test_bulb.py does.
+            _cup = hand_cup_dex3()
+            _ci = [rob.joint_names.index(k) for k in _cup]
+            _cv = torch.tensor([[_cup[k] for k in _cup]], device=base.device).repeat(base.num_envs, 1)
+            rob.write_joint_state_to_sim(_cv, torch.zeros_like(_cv), joint_ids=_ci)
+            base.sim.forward(); base.scene.update(0.0)
+            _wi = rob.body_names.index("right_wrist_yaw_link")
+            _wp, _wq = rob.data.body_link_pos_w[:, _wi], rob.data.body_link_quat_w[:, _wi]
+            _bulb = base.scene["fresh_bulb"]
+            _bulb.write_root_pose_to_sim(torch.cat([_wp + quat_apply(_wq, _BULB_P.expand_as(_wp)), quat_mul(_wq, _BULB_Q.expand_as(_wq))], dim=-1))
+            _bulb.write_root_velocity_to_sim(torch.zeros(base.num_envs, 6, device=base.device))
 
 
 if os.environ.get("FX_LADDER_INFO"):
@@ -339,6 +382,14 @@ if a.video:
     _vc.set_world_poses_from_view(torch.tensor([a.cam_eye], dtype=torch.float32, device=base.device),
                                   torch.tensor([[float(_ll[0]), float(_ll[1]), float(_ll[2]) + a.cam_look_z]], device=base.device))
     _vw = _imageio.get_writer(a.video, fps=50, quality=7)
+if a.right_curl is not None:
+    from fiatlux_task.poses import hand_cup_dex3  # noqa: E402
+    _cupd = hand_cup_dex3(a.right_curl)
+    _cup_i = [base.scene["robot"].joint_names.index(k) for k in _cupd]
+    _cup_v = torch.tensor([[_cupd[k] for k in _cupd]], device=base.device)
+    _cup_0 = torch.tensor([[hand_cup_dex3()[k] for k in _cupd]], device=base.device)
+    print(f"[BULB  ] right hand holds the cup at curl {a.right_curl:.3f} (benchmark's own 0.667); bulb seated in the hand at staging")
+_bulb_log = {"off_max": 0.0, "grip_max": 0.0, "off_last": 0.0, "lost_at": None}
 gate_hits = 0
 best = {}
 steps = 0
@@ -365,6 +416,9 @@ try:
             if a.step_ladder and _fing.numel():
                 # the clip's holds are authored for a flat, open hand: finger targets 0, not the spawn curl
                 action[:, _fing] = (0.0 - base.scene["robot"].data.default_joint_pos[:, _fing]) / 0.5
+                if a.right_curl is not None:
+                    _w = min(1.0, (steps + 1) / 15.0)
+                    action[:, _cup_i] = (_cup_0 + (_cup_v - _cup_0) * _w - base.scene["robot"].data.default_joint_pos[:, _cup_i]) / 0.5
             obs_builder.step(a_lm)                     # record action, advance the clock
 
             obs, reward, terminated, truncated, extras = env.step(action)
@@ -378,6 +432,28 @@ try:
             # the gate conjuncts, read live so a run that never scores still says how close
             pel = float(base.scene["robot"].data.root_pos_w[0, 2])
             best["pelvis_max"] = max(best.get("pelvis_max", -9e9), pel)
+            if a.right_curl is not None and not bool((terminated | truncated).any()):
+                _bo, _bg = bulb_state()
+                _bulb_log["off_last"] = _bo; _bulb_log["off_max"] = max(_bulb_log["off_max"], _bo)
+                if _bg == _bg: _bulb_log["grip_max"] = max(_bulb_log["grip_max"], _bg)
+                if _bo > 150.0 and _bulb_log["lost_at"] is None:
+                    _bulb_log["lost_at"] = steps
+                    print(f"[BULB  ] {steps:5d} the bulb is {_bo:.0f} mm from its seat: it has left the hand")
+                if os.environ.get("FX_BULB_DEBUG") and steps <= int(os.environ["FX_BULB_DEBUG"]):
+                    _rb = base.scene["robot"]; _bb = base.scene["fresh_bulb"]; _wi2 = _rb.body_names.index("right_wrist_yaw_link")
+                    _rel = quat_apply_inverse(_rb.data.body_link_quat_w[0:1, _wi2], _bb.data.root_link_pos_w[0:1] - _rb.data.body_link_pos_w[0:1, _wi2])[0]
+                    _fj = _rb.data.joint_pos[0, _cup_i]
+                    _ob2 = obs_builder
+                    _qe = _rb.data.joint_pos[0, _ob2.j_fx] - _ob2.ref_joint_pos[_ob2.t][0]
+                    _qv = _rb.data.joint_vel[0, _ob2.j_fx]
+                    _tg = _rb.data.joint_pos_target[0, _ob2.j_fx] - _rb.data.joint_pos[0, _ob2.j_fx]
+                    _k = torch.argsort(_qv.abs(), descending=True)[:5].tolist()
+                    print(f"[BULBDBG] {steps:3d} root speed {float(_rb.data.root_lin_vel_w[0].norm()):.2f} m/s, root ang {float(_rb.data.root_ang_vel_w[0].norm()):.2f} rad/s; fastest joints (rad/s | target-pos deg | pos-ref deg): "
+                          + ", ".join(f"{_ob2.lm_joint_names[i].replace('_joint','')} {float(_qv[i]):+.1f} | {float(torch.rad2deg(_tg[i])):+.0f} | {float(torch.rad2deg(_qe[i])):+.0f}" for i in _k))
+                    print(f"[BULBDBG] {steps:3d} bulb in the wrist frame {[round(float(v), 3) for v in _rel]} (seat {[0.119, 0.054, -0.131]}); bulb speed {float(_bb.data.root_lin_vel_w[0].norm()):.2f} m/s; "
+                          f"wrist speed {float(_rb.data.body_lin_vel_w[0, _wi2].norm()):.2f} m/s; squeeze {_bg:.1f} N; cup joints (deg) {[round(float(torch.rad2deg(v))) for v in _fj]}")
+                if steps % a.print_every == 0:
+                    print(f"[BULB  ] {steps:5d} off seat {_bo:4.0f} mm (max {_bulb_log['off_max']:.0f}); squeeze {_bg:4.1f} N (max {_bulb_log['grip_max']:.1f}, glass limit 50)")
             if steps % a.print_every == 0:
                 print(f"[STEP  ] {steps:5d}  phase {float(obs_builder.t[0]) / obs_builder.motion_len:5.2f}"
                       f"  pelvis {pel:6.3f} m  action |max| {float(action.abs().max()):6.2f}"
@@ -484,6 +560,10 @@ try:
                     break
 finally:
     print(f"[RESULT] {steps} steps; highest pelvis {best.get('pelvis_max', float('nan')):.3f} m")
+    if a.right_curl is not None:
+        print(f"[RESULT] bulb: curl {a.right_curl:.3f}; off seat at the last live step {_bulb_log['off_last']:.0f} mm, max {_bulb_log['off_max']:.0f} mm; "
+              f"hardest squeeze {_bulb_log['grip_max']:.1f} N (glass limit 50); "
+              + (f"LEFT THE HAND at step {_bulb_log['lost_at']}" if _bulb_log['lost_at'] is not None else "stayed in the hand"))
     if _vw is not None:
         _vw.close(); print(f"[RESULT] wrote video {a.video}")
     if recorder is not None:

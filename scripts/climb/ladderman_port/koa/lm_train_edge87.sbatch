@@ -26,6 +26,21 @@
 #       sbatch --export=ALL,FAMILY=edge87test,ITERS=4830 -t 1:00:00 lm_train_edge87.sbatch
 #   so it can never be resumed by, or resume, the real run.
 #
+#   Variants, all by environment so one script serves every run of a multi-GPU job:
+#       CLIPNAME  clip folder under data/motion/ladder_data (default edge87; edge87n = the same clip
+#                 without the toe raise)
+#       LADDER    free (default: the benchmark's asset as a free body) | fixed (collision boxes, as before)
+#       SEED      trainer seed (default 0)
+#       EEF_R     right hand's contact point in its wrist frame (default the gripping hand; the bulb clips
+#                 use [0.005,-0.03,0.0], the wrist the bulb arm rests on)
+#       SEEDCKPT  checkpoint in teacher/keep/ a new family starts from (default edge72_checkpoint_4800.pt;
+#                 the bulb run continues bulb15_checkpoint_11400.pt). ITERS counts from ITS iteration number.
+#
+#   MEMORY: one run at 4,096 environments takes about 80 GB of the NODE's memory, of which only ~50 GB shows
+#   as the process's own (the rest is shared memory and memory pinned by the GPU driver, which the job's
+#   --mem limit does not see). Three at once exhausted the 251 GB node twice: every process then sat in
+#   Lustre I/O wait (cl_sync_io_wait), paging its own libraries back in. Two fit.
+#
 # Continues the two-handed teacher (lm-edge72, iteration 4,800) on first start.
 # A requeue or a resubmission resumes from this run family's newest checkpoint.
 #SBATCH -J lm-edge87
@@ -67,16 +82,20 @@ if [ "${VRAM:-0}" -lt 15000 ]; then
   exit 0
 fi
 ITERS="${ITERS:-12300}"
-CLIP=data/motion/ladder_data/edge87
+CLIP=data/motion/ladder_data/${CLIPNAME:-edge87}
+LADDER="${LADDER:-free}"; SEED="${SEED:-0}"
+FREE=(); [ "$LADDER" = free ] && FREE=(+task.command.ladder_config.free=asset +task.sim.physx_collision_stack="${COLLISION_STACK:-268435456}")   # 256 MiB: the default 64 MiB dropped contacts
+[ "$LADDER" = free ] || [ "$LADDER" = fixed ] || { echo "[lm] LADDER must be free or fixed"; exit 1; }
 OUT="$ROOT/teacher/$FAMILY-$SLURM_JOB_ID"
 mkdir -p "$OUT"
 
 CKPT=$(ls -t "$ROOT"/teacher/"$FAMILY"-[0-9]*/checkpoints/checkpoint_[0-9]*.pt 2>/dev/null | head -1 || true)
 # First start: continue the two-handed teacher (lm-edge72, iteration 4,800: 48 of 64 full climbs) from a
 # pinned copy, so this job never depends on, or touches, the run that produced it.
-if [ -z "$CKPT" ] && [ -f "$ROOT/teacher/keep/edge72_checkpoint_4800.pt" ]; then
-  mkdir -p "$ROOT/teacher/$FAMILY-seed"; cp -n "$ROOT/teacher/keep/edge72_checkpoint_4800.pt" "$ROOT/teacher/$FAMILY-seed/checkpoint_4800.pt"
-  CKPT="$ROOT/teacher/$FAMILY-seed/checkpoint_4800.pt"; echo "[lm] no $FAMILY checkpoint yet: continuing the two-handed teacher"
+SEEDCKPT="${SEEDCKPT:-edge72_checkpoint_4800.pt}"; SEEDIT=$(echo "$SEEDCKPT" | sed -E "s/.*checkpoint_([0-9]+)\.pt/\1/")
+if [ -z "$CKPT" ] && [ -f "$ROOT/teacher/keep/$SEEDCKPT" ]; then
+  mkdir -p "$ROOT/teacher/$FAMILY-seed"; cp -n "$ROOT/teacher/keep/$SEEDCKPT" "$ROOT/teacher/$FAMILY-seed/checkpoint_$SEEDIT.pt"
+  CKPT="$ROOT/teacher/$FAMILY-seed/checkpoint_$SEEDIT.pt"; echo "[lm] no $FAMILY checkpoint yet: continuing $SEEDCKPT"
 fi
 RESUME=()
 if [ -n "$CKPT" ]; then
@@ -91,7 +110,7 @@ else
 fi
 
 md5sum active_adaptation/envs/ladder_fiatlux.py active_adaptation/envs/ladder_env.py active_adaptation/envs/mdp/commands/hdmi/command_spawn.py
-echo "[lm] family=$FAMILY node=$(hostname) vram=${VRAM}MiB envs=$ENVS iters=$ITERS clip=$CLIP $(date)"
+echo "[lm] family=$FAMILY ladder=$LADDER seed=$SEED node=$(hostname) vram=${VRAM}MiB envs=$ENVS iters=$ITERS clip=$CLIP $(date)"
 md5sum $CLIP/motion.npz $CLIP/anchors.json
 nvidia-smi --query-gpu=name,memory.total --format=csv,noheader
 free -g | awk '/^Mem:/{print "[lm] node RAM: "$2" G"}'
@@ -104,11 +123,11 @@ exec python scripts/train.py algo=teacher task=teacher "${RESUME[@]}" \
     +task.command.ladder_config.anchors_file=$CLIP/anchors.json \
     +task.command.ladder_config.contact_idx=13 \
     '+task.command.contact_target_pos_offset=[[0.0,0.115,0.0],[0.0,-0.115,0.0]]' \
-    'task.command.contact_eef_pos_offset=[[0.17,-0.017,0.0],[0.17,0.017,0.0]]' \
+    "task.command.contact_eef_pos_offset=[[0.17,-0.017,0.0],${EEF_R:-[0.17,0.017,0.0]}]" \
     task.randomization.ladder_geometry_randomization.enabled=false \
     +task.randomization.perturb_body_materials.homogeneous=true \
     +task.sim.physx_capacity_scale=1.5 \
-    +task.command.ladder_config.free=asset \
+    "${FREE[@]}" seed="$SEED" \
     task.max_episode_length=2100 \
     task.action._target_=active_adaptation.envs.mdp.action_refwrist.JointPositionRefWrist \
     task.command._target_=active_adaptation.envs.mdp.commands.hdmi.command_spawn.RobotTrackingSpawn \

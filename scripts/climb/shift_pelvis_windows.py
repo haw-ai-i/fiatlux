@@ -26,6 +26,10 @@ ap.add_argument("--heel_raise", nargs=2, default=None, metavar=("SIDE", "DEG"),
                      "where it is). With --dz this is how a person gets the hip higher on a ladder: the trailing leg is "
                      "already straight, so the only height left is in its ankle.")
 ap.add_argument("--toe", type=float, nargs=3, default=[0.135, 0.0, -0.035], help="front of the sole in the ankle link's frame")
+ap.add_argument("--avoid_limits", type=float, default=None, metavar="DEG",
+                help="keep each limb's joints this far inside their limits where the limb has a spare degree of freedom "
+                     "(the 7-joint arms): the pose is still held exactly, the arm's elbow swivel is used to stay inside. "
+                     "Off by default, so earlier rebuilds reproduce.")
 ap.add_argument("--ramp", type=float, default=0.5, help="seconds to ramp the shift in before FROM and out after TO")
 a = ap.parse_args()
 src, dst = pathlib.Path(a.clip), pathlib.Path(a.out)
@@ -61,17 +65,30 @@ for name, (body, js) in LIMBS.items():
         e_ = K.qmul(tq, K.qconj(o[1])); e_ = e_ * np.sign(e_[:, :1] + 1e-12)
         return np.concatenate([tp - o[0], 2.0 * e_[:, 1:]], 1)
 
-    qs = q[sl].copy(); n = len(js)
-    for it in range(80):
+    qs = q[sl].copy(); n = len(js); viol = 0.0
+    for it in range(400 if a.avoid_limits is not None else 80):
         e = err(qs)
-        if np.abs(e).max() < 1e-5:
+        if np.abs(e).max() < 1e-5 and (it > 0 and viol < 1e-4 or a.avoid_limits is None or n <= 6):
             break
         Jm = np.zeros((qs.shape[0], 6, n))
         for c, j in enumerate(js):
             qp = qs.copy(); qp[:, j] += 1e-4
             Jm[:, :, c] = -(err(qp) - e) / 1e-4
         JJt = np.einsum("nij,nkj->nik", Jm, Jm) + 1e-6 * np.eye(6)
-        qs[:, js] += np.clip(np.einsum("nji,nj->ni", Jm, np.linalg.solve(JJt, e)), -0.2, 0.2)
+        step = np.einsum("nji,nj->ni", Jm, np.linalg.solve(JJt, e))
+        if a.avoid_limits is not None and n > 6:
+            m_ = np.radians(a.avoid_limits)
+            # never ask for more room than the clip itself had on that frame: frames the shift does not touch stay as they are
+            q0 = d["joint_pos"][sl][:, js]
+            lo = np.minimum(np.array([K.limits(jn[j])[0] for j in js]) + m_, q0); hi = np.maximum(np.array([K.limits(jn[j])[1] for j in js]) - m_, q0)
+            z = np.where(qs[:, js] < lo, lo - qs[:, js], np.where(qs[:, js] > hi, hi - qs[:, js], 0.0))
+            Jp = np.einsum("nji,njk->nik", Jm, np.linalg.inv(JJt))                      # J^T (J J^T)^-1, [N, n, 6]
+            N_ = np.eye(n)[None] - np.einsum("nik,nkj->nij", Jp, Jm)                    # null-space projector
+            step = step + np.einsum("nij,nj->ni", N_, 0.5 * z)
+            viol = np.abs(z).max()
+        else:
+            viol = 0.0
+        qs[:, js] += np.clip(step, -0.2, 0.2)
     e = err(qs)
     q[sl.start:sl.stop, js] = qs[:, js]
     lim = [(jn[j], round(float(np.degrees(q[:, j].min())), 1), round(float(np.degrees(q[:, j].max())), 1)) for j in js

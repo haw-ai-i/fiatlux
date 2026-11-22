@@ -186,7 +186,7 @@ def create_fiatlux_free_ladder_body_cfg(prim_path: str = "{ENV_REGEX_NS}/LadderB
 # them its wheels. So this spawns that asset itself, the way the benchmark does
 # (scene_cfg._spawn_usd_as_rigid_body_frictional + apply_position_preset): the `_collision_rigid`
 # USD at scale 0.01, mass stamped to 10.9 kg, friction 1.5 / 1.2, 16 position and 1 velocity
-# iteration, max depenetration 1 m/s. Its base_link frame has +y along the climb and the origin
+# iteration, max depenetration 1 m/s, sleep and stabilization thresholds 0. Its base_link frame has +y along the climb and the origin
 # 0.1996 m behind the clip's x origin, hence the pose below.
 ASSET_USD = "assets_fiatlux/AlumStep_D/AluminumStepLadder_D01_PR_NVD_01_collision_rigid.usd"
 ASSET_POS = (-0.1996, 0.0, 0.0)
@@ -226,7 +226,8 @@ def create_fiatlux_asset_ladder_body_cfg(prim_path: str = "{ENV_REGEX_NS}/Ladder
         usd_path=str(f), func=clone(_spawn_ladder_asset), scale=(0.01, 0.01, 0.01),
         rigid_props=sim_utils.RigidBodyPropertiesCfg(kinematic_enabled=False, solver_position_iteration_count=16,
                                                      solver_velocity_iteration_count=1, max_depenetration_velocity=1.0,
-                                                     stabilization_threshold=0.001),
+                                                     # as the benchmark after its PR #271: never sleeps (#121), no stabilization
+                                                     sleep_threshold=0.0, stabilization_threshold=0.0),
         mass_props=sim_utils.MassPropertiesCfg(mass=FREE_MASS_KG),
     )
     return RigidObjectCfg(prim_path=prim_path, spawn=spawn, init_state=RigidObjectCfg.InitialStateCfg(pos=ASSET_POS, rot=ASSET_ROT))

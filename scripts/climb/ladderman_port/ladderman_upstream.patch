@@ -1,5 +1,5 @@
 --- active_adaptation/envs/ladder_env.py.orig.bak	2026-11-19 15:02:17.227078445 -1000
-+++ active_adaptation/envs/ladder_env.py	2026-11-21 19:24:12.071458360 -1000
++++ active_adaptation/envs/ladder_env.py	2026-11-22 00:29:58.311985960 -1000
 @@ -107,6 +107,9 @@
      def __init__(self, cfg):
          super().__init__(cfg)
@@ -30,7 +30,7 @@
  
          scene_cfg.terrain = TERRAINS[self.cfg.terrain]
          scene_cfg.contact_forces = ContactSensorCfg(
-@@ -179,9 +193,17 @@
+@@ -179,9 +193,24 @@
              render=sim_utils.RenderCfg(rendering_mode="quality"),
              device=f"cuda:{active_adaptation.get_local_rank()}"
          )
@@ -48,6 +48,13 @@
 +        sim_cfg.physx.gpu_total_aggregate_pairs_capacity = int(2**23 * _cap)
 +        if _cap != 1.0:
 +            print(f"[ladder_env] PhysX GPU pair buffers scaled x{_cap}")
++        # The free-standing ladder (the benchmark's asset: three SDF mesh colliders per environment) needs more
++        # narrow-phase scratch than the default 64 MiB: at 4,096 environments PhysX asked for 100 MB in the
++        # first 20 iterations and DROPPED CONTACTS. `+task.sim.physx_collision_stack=<bytes>` sets it.
++        _stk = self.cfg.sim.get("physx_collision_stack", None)
++        if _stk is not None:
++            sim_cfg.physx.gpu_collision_stack_size = int(_stk)
++            print(f"[ladder_env] PhysX GPU collision stack {int(_stk) / 2**20:.0f} MiB")
          sim_cfg.physx.enable_stabilization = False
  
          self.sim, self.scene = scene.create_isaaclab_sim_and_scene(sim_cfg, scene_cfg)

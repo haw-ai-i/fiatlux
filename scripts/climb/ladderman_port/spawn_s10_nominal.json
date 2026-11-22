@@ -1,0 +1,25 @@
+{
+ "note": "S10 spawn, Dex3, nominal: S02's nominal spawn (same floor spot, measured on layout seeds 0 and 2: root x -1.036..-1.060) with the right arm in the bulb-carry pose (measured shoulder_pitch -19.4/-20.5, elbow +20.3/+19.3, wrist_roll +89.8/+90.0 deg)",
+ "root_pos_clip": [
+  -1.05,
+  0.0,
+  0.79
+ ],
+ "root_quat_clip": [
+  1.0,
+  0.0,
+  0.0,
+  0.0
+ ],
+ "joint_pos": {
+  "left_hip_pitch_joint": -0.05,
+  "right_hip_pitch_joint": -0.05,
+  "left_knee_joint": 0.2,
+  "right_knee_joint": 0.2,
+  "left_ankle_pitch_joint": -0.15,
+  "right_ankle_pitch_joint": -0.15,
+  "right_shoulder_pitch_joint": -0.35,
+  "right_elbow_joint": 0.35,
+  "right_wrist_roll_joint": 1.5708
+ }
+}

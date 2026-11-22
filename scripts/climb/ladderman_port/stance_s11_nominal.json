@@ -1,0 +1,25 @@
+{
+ "note": "S11 start stance, Dex3, nominal: measured on layout seeds 0 and 2 (root x -0.110 / -0.086, z 1.961, yaw -1 deg; joints as the S10 spawn: legs +-1 deg about the default pose, right arm in the bulb-carry pose)",
+ "root_pos_clip": [
+  -0.098,
+  0.0,
+  1.961
+ ],
+ "root_quat_clip": [
+  1.0,
+  0.0,
+  0.0,
+  0.0
+ ],
+ "joint_pos": {
+  "left_hip_pitch_joint": -0.05,
+  "right_hip_pitch_joint": -0.05,
+  "left_knee_joint": 0.2,
+  "right_knee_joint": 0.2,
+  "left_ankle_pitch_joint": -0.15,
+  "right_ankle_pitch_joint": -0.15,
+  "right_shoulder_pitch_joint": -0.35,
+  "right_elbow_joint": 0.35,
+  "right_wrist_roll_joint": 1.5708
+ }
+}

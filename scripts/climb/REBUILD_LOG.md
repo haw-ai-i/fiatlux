@@ -1411,3 +1411,83 @@ deg); none topples with either. In the recorded takes themselves the ladder is s
 - On Koa: clip, ladder asset, `command_spawn.py` and the script are uploaded (checksums match). The
   two trainer files that differ (`ladder_env.py`, `ladder_fiatlux.py`) are STAGED beside the trainer,
   not installed, because the running bulb job would pick them up if it were requeued.
+
+## Bulb rebuild 17; the trainer on the free ladder at full scale; training started (2026-11-22)
+
+### Bulb clip `bulb17` (and `bulb18`, rejected)
+- `bulb15`, the clip `lm-bulb15` learned, is rebuild 74 with only the right arm's seven joints changed:
+  legs, pelvis, waist and left arm identical to 0.0 deg. So rebuild 87's chain applies unchanged.
+- Start and end poses measured in the benchmark (`record_climb.py --dump_spawn`, layout seeds 0 and 2):
+  S10 spawns on S02's floor spot (root x -1.036 / -1.060) with the right arm in the carry pose
+  (shoulder_pitch -19.4 / -20.5, elbow +20.3 / +19.3, wrist_roll +89.8 / +90.0 deg); S11's start stance
+  is root x -0.110 / -0.086, z 1.961, same joints. `ladderman_port/spawn_s10_nominal.json`,
+  `stance_s11_nominal.json`, `stance_platform_clear_bulb.json` (rebuild 87's end stance + the carry arm).
+- Chain on `bulb15`: `fix_topout_landing.py --land_shift -0.04 0.0 --settle 0.16 --end_at 1400
+  --low_travel` -> `clamp_leg_limits.py --allow_planted --keep_toe --margin 3.0 --skip_lift 1115 1155`
+  -> `make_approach_prefix.py --spawn spawn_s10_nominal.json --over 1.15 --ahead 0.0 --arm_stagger 0.35`
+  -> `make_topout_suffix.py --target stance_platform_clear_bulb.json --steps left:1.0 --over 0.95
+  --ahead 0.0 --walk_z 1.915 --hold 3.0` -> `shift_pelvis_windows.py --dx 0.0 --dz 0.04 --heel_raise
+  right 20 --ramp 0.3 --avoid_limits 3 --window 366 384 --window 797 807 --window 1209 1219 --window
+  1392 1400` = `bulb17`, 1,906 steps.
+- `shift_pelvis_windows.py --avoid_limits DEG` (new, off by default): the 4 cm pelvis rise drove the bulb
+  arm's wrist_roll to 122.7 deg (limit 113); a null-space term now uses the 7-joint arm's spare degree of
+  freedom to stay inside, the wrist pose still held to 0.00 mm / 0.00 deg. Wrist_roll peaks at 111.9.
+  Without the flag the tool reproduces rebuild 87 byte for byte.
+- `bulb17` against rebuild 87: every joint that is not the right arm identical, pelvis identical.
+- Suite: joint limits pass; frozen holds all stay up; torso clean (bulb forearm +14.5 mm at step 547);
+  bulb never touches the ladder (closest 17.3 mm, as `bulb15`); squeeze 3 N at most; legs as rebuild 87
+  (shin 21 / 4 / 5 / 4 mm, thigh up to 14 mm, right thigh 6 mm in the tail); scan (overlap indicator,
+  every 5 steps): left knee steps 395 and 1,380, left hip_yaw 1,380. Right-arm scan at 20 N: nothing
+  (`bulb15`: wrist_roll and wrist_yaw up to 156 N at steps 965, 1,405-1,435).
+- With the benchmark's cup (`--fingers spawn`) the bulb leaves the hand in the tread 3->4 and top holds,
+  as it did on earlier bulb clips.
+- NOT valid for the bulb hand: `check_hand_collision.py` (assumes an open gripping hand; 11 "contacts")
+  and `static_support_check.py` on the top-out rows (assumes the right hand holds the handrail).
+- `bulb18` = the same with the tail ending in S11's measured stance (`--steps left:1.0 right:1.0`,
+  1,976 steps): left knee up to 35 mm inside the ladder at steps 1,737-1,802, and the end stance itself
+  flags both hip_roll links and the right ankle for the whole stand. Rejected; S11's own stance rests a
+  hip on the handrail.
+- Videos (kinematic): four angles under the videos folder, `bulb17_ref/`. The ladder stands in a corner
+  in S10 layout 0: no front or left view.
+
+### Trainer at 4,096 environments with the free ladder (Koa, ece605)
+- Three runs in one job hung twice in start-up, every process in Lustre I/O wait (`cl_sync_io_wait`).
+  First blamed on the shared simulator caches (runs then started one at a time: the third still hung).
+  Cause: the node ran out of memory -- 2 GB of 251 available. One run takes about 80 GB of the node, of
+  which ~50 GB shows as the process's own (MaxRSS 52-54 GB); the rest is shared memory (20 GB) and memory
+  the job accounting does not see. Two runs fit (37 GB available with both training).
+- The free ladder overflows PhysX's collision stack at the default 64 MiB ("collisionStackSize buffer
+  overflow ... at least 100 MB ... Contacts have been dropped", 4,909 lines in 30 iterations); the fixed
+  ladder does not. `ladder_env.py` takes `+task.sim.physx_collision_stack=<bytes>`; free-ladder runs set
+  256 MiB. Zero overflow lines in the two-run test.
+- Trainer's free ladder: `sleep_threshold` was unset (PhysX default) and `stabilization_threshold` 0.001;
+  both now 0.0, as the benchmark after PR #271.
+- Speed: 13.5-14.7 s per iteration with the free ladder (fixed: 7-10 s). 7,500 iterations is about 29 h,
+  past the 24 h limit: one resubmission resumes each run from its newest checkpoint.
+- `koa/lm_train_edge87.sbatch` (one run; CLIPNAME, LADDER, SEED, EEF_R, SEEDCKPT, FAMILY from the
+  environment) and `koa/lm_train_edge87_multi.sbatch` (several runs as steps of one job, one GPU each).
+- SUBMITTED: job 15569375, two runs, 7,500 iterations each: `edge87free` (rebuild 87, free ladder, from
+  lm-edge72 iteration 4,800) and `bulb17free` (`bulb17`, free ladder, from lm-bulb15 iteration 11,400).
+  Not run: rebuild 87 on the fixed ladder, and rebuild 87 without the toe raise (clip `edge87n`).
+- `lm-bulb15` (job 15562958) cancelled at iteration 6,769 of 7,500. From the ground, 64 robots, fixed
+  ladder: 34 full climbs at checkpoint 9,600, 44 at 10,500, 45 at 11,400 (pinned in `teacher/keep/`).
+
+### `record_climb.py`: a start-pose bug, and the bulb in S10
+- BUG, fixed: with `--rsi_noise` the staged joint velocity was (next reference pose - NOISY pose) * 50,
+  i.e. every joint was handed -noise * 50, up to 1.5 rad/s at 0.03. Every earlier `--rsi_noise` run
+  (the free-ladder S02 counts included) started with that kick. Velocity is now the clip's own.
+- `--right_curl C` (new): right hand staged in the benchmark's cup, the bulb seated on the hand as it
+  actually is after staging, the curl ramped to C over 15 steps; reports the bulb's distance from its seat
+  and the hardest squeeze. Before this the recorder opened both hands flat on the step ladder.
+- First attempt (bulb seated on the REFERENCE wrist, hand pre-curled): thrown out in 5 steps or squeezed
+  past 100 N in 3. Staging error, not a result.
+- `lm-bulb15` checkpoint 11,400 in S10, free ladder, Dex3, clip's first pose, seeds 1-3, curls 0.667 /
+  1.0 / 1.25: the bulb leaves the hand at step 9-11 in all nine, squeeze 3-6 N. Same without start noise.
+  Curl makes no difference.
+- Cause: the teacher's own first move. Step 1: right elbow 11 rad/s, its target 39 deg past the clip,
+  right shoulder_roll 9.4 rad/s; the wrist moves at 0.9-1.0 m/s where the clip has 0.02. The trainer
+  shows the same teacher doing the same from step 0 (64 robots, median: right elbow +44 deg off the clip
+  by step 3, left elbow +37, torso pitched 11 deg). Not the adapter. `bulb15`'s first second is the
+  stretch already known to slide the feet.
+- So whether the benchmark's grip holds the bulb through the climb is still unmeasured: the bulb never
+  survives the start on this teacher. First check on `bulb17free` checkpoints: the first ten steps.
