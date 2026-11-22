@@ -1,0 +1,29 @@
+{
+ "note": "where the bulb descent (S04) ends: stance_floor_descent.json's stance and left arm; the right arm carries the bulb RETRACTED (shoulder_pitch +0.3, elbow -0.3, wrist_roll 90 deg: forearm level, elbow about 10 cm further back than the benchmark's carry pose, in which the bulb's glass is 28 mm inside tread 4 at this distance). Bulb 93 mm from the ladder.",
+ "root_pos_clip": [
+  -0.76,
+  0.0,
+  0.79
+ ],
+ "root_quat_clip": [
+  1.0,
+  0.0,
+  0.0,
+  0.0
+ ],
+ "joint_pos": {
+  "left_hip_pitch_joint": -0.05,
+  "right_hip_pitch_joint": -0.05,
+  "left_knee_joint": 0.2,
+  "right_knee_joint": 0.2,
+  "left_ankle_pitch_joint": -0.15,
+  "right_ankle_pitch_joint": -0.15,
+  "left_shoulder_pitch_joint": 0.3,
+  "left_elbow_joint": 1.0,
+  "right_shoulder_pitch_joint": 0.3,
+  "right_elbow_joint": -0.3,
+  "left_shoulder_roll_joint": 0.4,
+  "right_shoulder_roll_joint": 0.0,
+  "right_wrist_roll_joint": 1.5708
+ }
+}

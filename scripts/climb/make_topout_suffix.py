@@ -34,6 +34,13 @@ ap.add_argument("--lift", type=float, default=0.04, help="swing foot clearance, 
 ap.add_argument("--cut_at", type=int, default=None, help="drop the clip from this 50 Hz step on before adding the tail (rebuild 72's last 2 s SLIDE both planted feet 15 cm along the platform, which no robot can follow)")
 ap.add_argument("--hold", type=float, default=0.0, help="seconds standing still in the target pose at the very end (the benchmark runs 2 s past success, and a teacher only learns to stand through what its clip shows)")
 ap.add_argument("--keep_yaw", action="store_true", help="keep the clip's final pelvis yaw instead of the target's")
+ap.add_argument("--arms_first", type=float, default=None, metavar="SECONDS",
+                help="move the arms to the target pose over the FIRST this-many seconds of the tail instead of during the last "
+                     "segment. For a tail that steps TOWARD the ladder (the end of a descent): arms still reaching for the "
+                     "rails are carried into the treads by the steps.")
+ap.add_argument("--arm_stagger", type=float, default=0.0,
+                help="with --arms_first, 0..0.6: the left arm does its move in the first (1 - this) of that time and the right "
+                     "arm in the last (1 - this), so the two hands do not cross paths side by side")
 ap.add_argument("--over", type=float, default=0.85, help="how far the pelvis goes toward the stance foot's y (1 = over the ankle)")
 a = ap.parse_args()
 a_steps = [(x.split(":")[0], float(x.split(":")[1])) for x in a.steps]
@@ -113,6 +120,13 @@ pel_q = (1 - w_all)[:, None] * pq_start + w_all[:, None] * pq1; pel_q /= np.lina
 F = wH
 # every joint that is not a leg: clip -> target while coming home (arms, waist); legs are solved below
 q = q_start[None] + wH[:, None] * (q_end - q_start)[None]
+if a.arms_first is not None:
+    nA = max(2, int(round(a.arms_first * fps))); span = (1.0 - a.arm_stagger) * nA
+    for side, t0 in (("left", 0.0), ("right", a.arm_stagger * nA)):
+        w = sm(np.clip((np.arange(N) - t0) / span, 0, 1))
+        for i, n in enumerate(jn):
+            if n.startswith(side) and any(k in n for k in ("shoulder", "elbow", "wrist")):
+                q[:, i] = q_start[i] + w * (q_end[i] - q_start[i])
 print("[plan ] " + "; ".join(f"{'home' if k == len(segs) - 1 else ('swing ' + sg[3]) if sg[3] else 'shift'} {n / fps:.2f}s" for k, (sg, n) in enumerate(zip(segs, n_seg))))
 
 # ---- legs: damped least squares, all frames at once -----------------------------------------

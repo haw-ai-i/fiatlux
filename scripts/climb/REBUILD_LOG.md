@@ -1491,3 +1491,102 @@ deg); none topples with either. In the recorded takes themselves the ladder is s
   stretch already known to slide the feet.
 - So whether the benchmark's grip holds the bulb through the climb is still unmeasured: the bulb never
   survives the start on this teacher. First check on `bulb17free` checkpoints: the first ten steps.
+
+## Descent rebuild 1: `desc01` (S12, hands free) and `descbulb01` (S04, bulb) (2026-11-22) -- NOT trained
+
+A descent is a climb played backwards (`reverse_clip.py`, new: poses reversed, velocities reversed and
+negated, hold labels reversed), with its own start and its own ending.
+
+### What the benchmark fixes
+- Start (`record_climb.py --dump_spawn`, layout seeds 0 and 2): S12 and S04 both start in the stance S11
+  starts in, root x -0.110 / -0.086 in the clip's frame, legs at the default pose; S12 arms at zero, S04
+  right arm in the carry pose. Left to settle with zero action the robot comes to rest with its ankles
+  at 1.181 m (root 1.933, pitched 2.2 deg forward): there is no lip under the feet; the clip uses 1.188.
+  `ladderman_port/stance_s12_nominal.json`.
+- End: `descended_from_ladder` wants the pelvis under 0.94 m, within 0.6 m of the ladder's ROOT, slower
+  than 1.5 m/s. The climb's mount stance is 0.614 m out and S02's spawn spot 0.85 m. So the walk-in is
+  NOT reversed: the clip keeps the climb's steps 265 onward, and after stepping down takes two short
+  steps TOWARD the ladder to a stance with the pelvis 0.56 m out (`stance_floor_descent.json`).
+
+### Leaving the platform's front
+The start stance is 7.6 cm further forward than where rebuild 87 ends, where the ladder's top frame
+narrows. A full sideways weight shift over the forward foot puts the upper thigh (hip_yaw link, y 0.205)
+into the rail. Forward tail from rebuild 84's body to the S12 stance, `make_topout_suffix.py --steps
+left:1.0 right:1.0`, leg overlap in the tail (`check_leg_collision.py --stride 3`):
+
+| --over / --ahead / --walk_z | left thigh | left knee |
+|---|---|---|
+| 0.95 / 0.0 / 1.915 (as `bulb18`) | 35 mm | 9 mm |
+| 0.95 / 0.0 / 1.930 | 35 | 8 |
+| 0.95 / -0.03 / 1.915 | 36 | 7 |
+| 0.95 / -0.05 / 1.920 | 36 | 8 |
+| right foot first, 0.95 / -0.03 / 1.920 | 32 (right 34) | 34; right knee past its limit |
+| 0.7 / -0.04 / 1.925 | 10 | 0 |
+| 0.6 / -0.04 / 1.925; 0.6 / -0.02 / 1.930; 0.5 / -0.04 / 1.925 | 0 | 0 |
+
+It is the SIDEWAYS shift, not the crouch or the fore-aft position. Used: `--over 0.6 --ahead -0.02
+--walk_z 1.930 --phases 0 0.6 0.4 0.8` (swing shortened to 0.4 s: at 0.6 the body's centre is outside
+the stance sole, so the step is a dynamic one). The same forward tail would let a CLIMB end in the next
+stage's exact stance without the overlap that rejected `bulb18`; not built.
+
+### Chain
+Forward: `<rebuild 84's body, walk-in on>` (`edge84c`; bulb: `bulb_rebuild/b3_walkin`)
+-> `make_topout_suffix.py --target stance_s12_nominal.json` (bulb: `stance_s11_nominal.json`) with the
+step parameters above and `--hold 0.5` -> `shift_pelvis_windows.py` as rebuild 87 (bulb: `--avoid_limits
+3`) = a climb of 1,811 steps ending in the descent's start stance.
+Then `reverse_clip.py --keep 265 1811` (1,546 steps) -> `make_topout_suffix.py --target
+stance_floor_descent.json` (bulb: `stance_floor_descent_bulb.json`) `--steps left:1.0 right:1.0 --over
+0.95 --ahead 0.0 --walk_z 0.765 --hold 3.0 --arms_first 1.2 --arm_stagger 0.35` = 1,876 steps.
+`make_topout_suffix.py --arms_first / --arm_stagger` are new and off by default; without them the tool
+reproduces rebuild 87's tail byte for byte. `descbulb01` against `desc01`: every joint that is not the
+right arm identical.
+
+### The ending took four tries
+1. Arms lowered in the last segment: the steps toward the ladder carried the reaching hands into tread 4
+   (fingers 0.1 mm off, hands 3.7 mm apart). -> arms first, one after the other.
+2. Spawn arm pose (forearms forward) at 0.56 m: fingertips AT tread 4's front edge. The end pose is free
+   (S12 is terminal; S05 starts from its own spawn) -> arms hang at the sides.
+3. Hanging straight down: each hand inside the hip (simulator scan: thumb and fingers against the hip,
+   kN-scale overlap indicators). `check_hand_collision.py` does not test hand against hip and had passed
+   it. -> shoulder_roll 0.4 outward.
+4. Bulb arm: in the benchmark's carry pose the glass is 27.8 mm inside tread 4 at this distance. Retracted
+   with the forearm kept level (shoulder_pitch +0.3, elbow -0.3): 93 mm from the ladder.
+
+### Suite, final clips
+- Joint limits pass. Torso clean; right wrist_roll +1.1 mm at step 177 (hands-free), which is rebuild
+  87's own +1.1 mm at its step 1,633.
+- Legs: as rebuild 87 in the reversed body (left shin 21 mm at the dismount, steps 1,407-1,420; left
+  thigh up to 14 mm); the start steps and the ending are clean.
+- Scan (overlap indicator, every 5 steps): 365 of 376 poses clean. Flagged: the start stance itself, steps
+  0-35 and 60-65 (ankles 1.2-1.5 kN, hip_roll links 0.6-0.8 kN) -- the benchmark's own stance, whose hips
+  rest on the handrail (16-113 N measured in live S04/S11/S12); and step 430 (left thigh and knee), which
+  is rebuild 87's step 1,380.
+- Frozen holds, the poses rebuild 87 was tested at plus the start and the first step off the front: 9 of
+  9 stay up (both clips).
+- Hands (hands-free): 6 flags, all 0.8-2.3 mm clear, none inside, at steps 219, 581 and 1,412 where a hand
+  is arriving at or leaving a hold. The same poses are in rebuild 87; its run sampled other frames. Not
+  confirmed at full sampling.
+- Bulb: never touches the ladder (closest 17.3 mm offline, 0 N in the scan); squeeze 3 N at most. With the
+  benchmark's cup the bulb leaves the hand in two holds (top, and rebuild 87's step 1,305), as on every
+  bulb clip.
+- Static balance: row for row rebuild 87's (same poses; the check does not know the direction of time).
+  The end stance balances at 14-16% effort. This says nothing about the dynamics of stepping DOWN.
+
+### A test that does not apply
+`physics_segment_test.py --modes hold` on a pose standing free on the floor: the robot is a PD statue
+with no balance control and topples in about a second. The end stance "fell" at 0.5 s with the hands in
+the hips, then "stayed up" by toppling onto the ladder (pelvis 198 mm off the reference, tilt 15 deg,
+bulb squeezed to 49-56 N, bulb thrown out). Neither says anything about the stance. Floor poses are
+judged by the static check and the scan.
+
+### The gate (`verify_descent_gate.py`, new; S12 and S04, layout seed 0)
+- Last frame: `descended_from_ladder` true, pelvis 0.560 m from the root (limit 0.6), height 0.789 m;
+  robot_standing and ladder_near_vertical true.
+- `descended_from_ladder` is FIRST true at clip step 1,410 of 1,876, while the robot is stepping off tread
+  1 (pelvis under 0.94 m and 0.41-0.6 m out); false again at the mount stance (step 1,546, 0.614 m); true
+  from about step 1,700. The gate has no hold and no feet-on-the-floor condition, so with the 2 s linger an
+  episode would end around step 1,510 with the success latched mid-step.
+- S12's `bulb_seated` read true on the staged poses; this does not exercise the locked bulb of #143.
+  S04's `payload_held` read false only because the bulb is not staged.
+
+Videos (kinematic): `desc01_ref/` side and rear, `descbulb01_ref/` rear-right, under the videos folder.

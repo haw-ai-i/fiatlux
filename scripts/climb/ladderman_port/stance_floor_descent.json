@@ -1,0 +1,28 @@
+{
+ "note": "where a descent ends: standing on the floor at the ladder's base, pelvis 0.56 m from the ladder's root (clip x -0.1996), inside the descent gate's 0.6 m radius; ankles 0.80 m back, toes 4 cm short of tread 1's front edge. The climb's mount stance (pelvis 0.614 m) is outside the radius. Arms hang at the sides, out from the hips (shoulder_pitch +0.3, shoulder_roll 0.4 outward, elbow +1.0 rad): in the spawn arm pose (forearms forward) the fingertips are at tread 4's front edge at this distance, and hanging straight down the hand is inside the hip.",
+ "root_pos_clip": [
+  -0.76,
+  0.0,
+  0.79
+ ],
+ "root_quat_clip": [
+  1.0,
+  0.0,
+  0.0,
+  0.0
+ ],
+ "joint_pos": {
+  "left_hip_pitch_joint": -0.05,
+  "right_hip_pitch_joint": -0.05,
+  "left_knee_joint": 0.2,
+  "right_knee_joint": 0.2,
+  "left_ankle_pitch_joint": -0.15,
+  "right_ankle_pitch_joint": -0.15,
+  "left_shoulder_pitch_joint": 0.3,
+  "left_elbow_joint": 1.0,
+  "right_shoulder_pitch_joint": 0.3,
+  "right_elbow_joint": 1.0,
+  "left_shoulder_roll_joint": 0.4,
+  "right_shoulder_roll_joint": -0.4
+ }
+}
