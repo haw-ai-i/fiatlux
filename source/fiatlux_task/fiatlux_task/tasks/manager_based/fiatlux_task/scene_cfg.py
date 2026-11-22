@@ -186,6 +186,14 @@ PENDANT_RADIUS = 0.012  # the rod a ceiling fixture hangs from
 
 SCORED_BODY_SLEEP_THRESHOLD = 0.0  # #121
 
+# The ladder takes no PhysX stabilization. With the scene's ``enable_stabilization`` on, a body
+# under its own ``stabilization_threshold`` has its slow motion damped by the solver, and on the
+# free-standing ladder that damps the start of a tip as well as the end of a settle. MEASURED on
+# the pinned-robot push test at tread-4 height: at 0.001 the ladder tips under a 10-12 N sideways
+# push, at 0.0 under 59 N, which is what its mass and foot spacing give (57-59 N). It also drops
+# back from a 10 degree tilt in 0.4 s instead of 1.2 s, and rests as quietly either way.
+LADDER_STABILIZATION_THRESHOLD = 0.0
+
 TABLE_COLLISION_HALF_EXTENT = (1.24, 0.38)
 
 # Zone half-sizes (m): each occupant's "safe square" half-extent, footprint plus working
@@ -756,7 +764,7 @@ def apply_position_preset(scene: G1ReplaceSceneCfg) -> None:
             solver_velocity_iteration_count=1,
             max_depenetration_velocity=1.0,
             sleep_threshold=SCORED_BODY_SLEEP_THRESHOLD,
-            stabilization_threshold=0.001,
+            stabilization_threshold=LADDER_STABILIZATION_THRESHOLD,
         ),
         mass_props=sim_utils.MassPropertiesCfg(mass=LADDER_MASS_KG),
     )
@@ -1399,7 +1407,7 @@ def apply_replace_preset(
         solver_velocity_iteration_count=1,
         max_depenetration_velocity=1.0,
         sleep_threshold=SCORED_BODY_SLEEP_THRESHOLD,
-        stabilization_threshold=0.001,
+        stabilization_threshold=LADDER_STABILIZATION_THRESHOLD,
     )
     scene.ladder.spawn.mass_props = sim_utils.MassPropertiesCfg(mass=LADDER_MASS_KG)
 
