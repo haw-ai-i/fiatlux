@@ -101,6 +101,10 @@ ap.add_argument("--past_success", action="store_true",
                 help="DIAGNOSTIC: do not end the episode when the task's success gate fires (S02's fires on tread 4, "
                      "before the feet reach the platform), so the run can continue to the clip's end. The step at "
                      "which the real gate would have fired is printed. Not a valid benchmark run.")
+ap.add_argument("--ladder_stab_threshold", type=float, default=None,
+                help="DIAGNOSTIC: override the ladder's PhysX stabilization_threshold (the benchmark ships 0.001; with "
+                     "it the free-standing ladder starts to tip at 10-12 N of sideways push at tread-4 height, with 0 at "
+                     "59 N, which is what its weight and foot spacing give). Not a valid benchmark run.")
 ap.add_argument("--zscore", type=int, default=0,
                 help="DIAGNOSTIC: every N steps print, per observation term, the largest |z| against the "
                      "checkpoint's own running statistics. A phase-averaged oracle: a large value flags a term "
@@ -178,6 +182,9 @@ if a.trace:
                                         filter_prim_paths_expr=["{ENV_REGEX_NS}/Robot/.*"])
     except Exception as _e:
         print("[LADDER] no contact sensor on the ladder:", _e)
+if a.ladder_stab_threshold is not None:
+    cfg.scene.ladder.spawn.rigid_props.stabilization_threshold = a.ladder_stab_threshold
+    print(f"[LADDER] DIAGNOSTIC: ladder stabilization_threshold = {a.ladder_stab_threshold}")
 if a.pin_ladder:
     cfg.scene.ladder.spawn.rigid_props.kinematic_enabled = True
     print("[LADDER] DIAGNOSTIC: ladder is kinematic")
@@ -400,6 +407,10 @@ try:
                     _f = _F[_ids].sum(0)
                     _o.append(f"{_k} x {float(_f[0]):+.0f} y {float(_f[1]):+.0f} z {float(_f[2]):+.0f}")
                 _oth = [(n, float(_F[j].norm())) for j, n in enumerate(_wb.body_names) if not _re.search("ankle|hand|wrist", n) and float(_F[j].norm()) > 20]
+                if os.environ.get("FX_TRACE_HAND_LINKS"):
+                    _hl = [(n, _F[j]) for j, n in enumerate(_wb.body_names) if _re.search("hand|wrist", n) and float(_F[j].norm()) > 5]
+                    if _hl:
+                        print(f"[HANDLK] {steps:4d} " + "; ".join(f"{n.replace('_link', '')} ({float(v[0]):+.0f},{float(v[1]):+.0f},{float(v[2]):+.0f})" for n, v in _hl))
                 _ld = base.scene["ladder"].data
                 _dl = quat_apply_inverse(_yq(_ld.root_quat_w), _ld.root_pos_w - _lad0[None])[0] * 1000
                 _lg = quat_apply_inverse(_ld.root_quat_w, torch.tensor([[0.0, 0.0, -1.0]], device=base.device))[0]

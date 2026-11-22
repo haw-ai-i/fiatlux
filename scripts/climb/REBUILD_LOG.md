@@ -1278,3 +1278,70 @@ On-ladder start stances, zero action, ladder force on the robot: S03 with Dex3, 
 with Dex3 and S12 with Inspire start clean, a hip resting on the handrail at 16-113 N. So the
 stance is not inside the ladder in general (an earlier entry said so); something specific to S03
 with Dex3 is. Not filed.
+
+## Toe raise on the trailing foot; rebuilds 85-87 (2026-11-21)
+
+`shift_pelvis_windows.py --dz 0.04 --heel_raise right 20 --ramp 0.3` over the four left landings
+(windows 366-384, 797-807, 1,209-1,219, 1,392-1,400): the right foot goes up on its toes about the
+front of its sole (ankle +44 mm), the pelvis rises 40 mm, all four limbs re-solved (held to
+0.01 mm, no joint outside limits). Nothing moves backward.
+
+| | Rebuild 84 | With the toe raise |
+|---|---|---|
+| Left knee at landing: mount, treads 2, 3, 4 | 94, 94, 98, 90 deg | 85, 84, 88, 79 deg |
+| Left shin inside a tread: mount, 2, 3, 4 | 26, 23, 22, 21 mm | 21, 4, none, 4 mm |
+| Time more than 3 mm inside | 1.9 s | 0.6 s |
+| Left thigh, worst | 19 mm | 14 mm |
+| Scan (overlap indicator; every 5 steps) | steps 790, 1,205, 1,380 | step 1,380 only |
+| One-foot moment after each left landing, static | 51 / 27 / 22 mm behind the foot | 50 / 26 / 22 mm |
+| 0.3 s before each left landing (right foot on its toes, 30 mm of sole) | balances with the hands | does not, on 2 of 4 treads |
+
+The raise cannot start at touchdown: the right foot lifts 0.1-0.2 s after the left one lands.
+A stronger raise on the mount (60 mm, 28 deg; rebuild 86) left the mount's 21 mm unchanged: that
+contact is after the right foot has left the floor.
+
+Rebuild 87 = rebuild 84's body + tail `--over 0.95` (the 4 cm step balances at 47% ankle effort;
+0.8 and 0.9 do not) + the toe raise at 40 mm / 20 deg on all four landings. Suite: all 29 joints
+inside limits; frozen 8 of 8; torso clean; scan one entry (step 1,380, left thigh 1,922 and shin
+1,592); hands only the inherited 0.5 mm finger clearance (step 1,169); left shin 21 / 4 / 5 / 4 mm
+(0.6 s), left thigh up to 14 mm; right thigh up to 6 mm in the tail (steps 1,675-1,720, the price
+of the 0.95 shift; 10 mm at 1.0); static as rebuild 84 plus the pre-landing toe moments.
+Scan numbers are what the simulator reports one step after a pose is staged with an overlap:
+overlap indicators, not loads. In real S02 runs the left shin read 39-119 N.
+
+## Why the benchmark's ladder rocks: its stabilization threshold (2026-11-21)
+
+From 29 recorded S02 runs (free-standing ladder, iteration-4,800 teacher), ladder tilt from the
+bags: 0.1 deg before the hands touch it; 2.5 deg median (1.7-3.3) as they land, in every run;
+about 1.5 deg through the mount in runs that survive it, about 2.7 (to 4.8) in runs that fall there.
+Trainer, same ladder asset, same teacher: 0.0 deg median, 0.8 at most.
+
+`ladder_push_test.py` (benchmark, robot pinned) and `ladderman_port/play_probe_push.py` (trainer):
+
+| | Benchmark | Trainer, same asset |
+|---|---|---|
+| 84 N down + 46 N forward for 2 steps, then 20 + 10 N held | 0.00 deg | 0.00 deg |
+| 300 N forward for 1 step at tread 4 | 5.3 deg, peak 0.45 s later, 1 s to settle | 1.0 deg, peak 0.1 s later |
+| 500 N forward for 1 step | 10.0 deg | 3.2 deg |
+
+Rigid-body estimate with the feet where they are (0.54 m from the centre of mass): 1.1 deg, 0.1 s.
+(First version of the test left the robot free: with no policy it falls onto the ladder at step 32
+and tips it 5.9 deg. That was not the push.)
+
+Slow ramp, 0 to 80 N sideways at tread-4 height, robot pinned, layout seeds 0 and 2: the benchmark
+ladder starts to tip at 10-12 N in either direction (a support line 92-106 mm from the centre of
+mass). Expected from its weight and foot spacing: 57 N. One setting changed at a time:
+
+| Change | Tips at |
+|---|---|
+| as shipped | 12 N |
+| ladder `stabilization_threshold` 0.001 -> 0.0 | 59 N |
+| ladder `sleep_threshold` (already 0.0) | 12 N |
+| `sim.physx.enable_stabilization` False | 59 N |
+| min iterations 1/0, bounce threshold 0.5 (with stabilization off) | 59 N |
+| ladder spawned 10 mm higher; max depenetration 10 m/s | 12 N |
+
+At rest for 2 s the ladder is as quiet with the threshold at 0 (4.3 mm/s, 0.004 rad/s, 0.05 mm
+drift) as with 0.001 (4.2 mm/s, 0.0075 rad/s, 0.04 mm). The teacher's hands push forward with
+10-13 N on tread 4. `record_climb.py --ladder_stab_threshold 0.0` (diagnostic) applies the change
+to a run without touching the benchmark; twelve fresh S02 runs with it are in progress.

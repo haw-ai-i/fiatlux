@@ -21,6 +21,11 @@ ap.add_argument("--clip", required=True); ap.add_argument("--out", required=True
 ap.add_argument("--dx", type=float, default=-0.02)
 ap.add_argument("--dz", type=float, default=0.0)
 ap.add_argument("--window", type=int, nargs=2, action="append", required=True, metavar=("FROM", "TO"), help="50 Hz steps at full shift")
+ap.add_argument("--heel_raise", nargs=2, default=None, metavar=("SIDE", "DEG"),
+                help="that foot goes up on its toes by DEG over the windows (rotated about the front of its sole, which stays "
+                     "where it is). With --dz this is how a person gets the hip higher on a ladder: the trailing leg is "
+                     "already straight, so the only height left is in its ankle.")
+ap.add_argument("--toe", type=float, nargs=3, default=[0.135, 0.0, -0.035], help="front of the sole in the ankle link's frame")
 ap.add_argument("--ramp", type=float, default=0.5, help="seconds to ramp the shift in before FROM and out after TO")
 a = ap.parse_args()
 src, dst = pathlib.Path(a.clip), pathlib.Path(a.out)
@@ -42,6 +47,14 @@ for side in ("left", "right"):
     LIMBS[f"{side} arm"] = (f"{side}_wrist_yaw_link", [jn.index(f"{side}_{k}_joint") for k in ("shoulder_pitch", "shoulder_roll", "shoulder_yaw", "elbow", "wrist_roll", "wrist_pitch", "wrist_yaw")])
 for name, (body, js) in LIMBS.items():
     k = bn.index(body); tp, tq = bp[sl, k].copy(), bq[sl, k].copy()
+    if a.heel_raise is not None and name == f"{a.heel_raise[0]} leg":
+        th = np.radians(float(a.heel_raise[1])) * w[sl]
+        ry = np.stack([np.cos(th / 2), np.zeros_like(th), np.sin(th / 2), np.zeros_like(th)], 1)      # about the foot's own +y: nose down
+        c = np.array(a.toe)[None]
+        pivot = tp + K.qrot(tq, c)
+        tq = K.qmul(tq, ry)
+        tp = pivot - K.qrot(tq, c)
+        print(f"[{name:9s}] heel raised by up to {float(a.heel_raise[1]):.0f} deg about the front of the sole: ankle up {(tp[:, 2] - bp[sl, k, 2]).max()*1000:.0f} mm")
 
     def err(qq):
         o = K.fk_all(pp[sl], pq[sl], qq, jn)[body]
@@ -63,7 +76,7 @@ for name, (body, js) in LIMBS.items():
     q[sl.start:sl.stop, js] = qs[:, js]
     lim = [(jn[j], round(float(np.degrees(q[:, j].min())), 1), round(float(np.degrees(q[:, j].max())), 1)) for j in js
            if q[:, j].min() < K.limits(jn[j])[0] - 1e-6 or q[:, j].max() > K.limits(jn[j])[1] + 1e-6]
-    print(f"[{name:9s}] held at its original pose to {np.abs(e[:, :3]).max()*1000:.2f} mm / {np.degrees(np.abs(e[:, 3:]).max()):.2f} deg ({it + 1} iterations); "
+    print(f"[{name:9s}] held at its {'toe-raised' if a.heel_raise is not None and name == a.heel_raise[0] + ' leg' else 'original'} pose to {np.abs(e[:, :3]).max()*1000:.2f} mm / {np.degrees(np.abs(e[:, 3:]).max()):.2f} deg ({it + 1} iterations); "
           f"largest joint change {np.degrees(np.abs(q[sl][:, js] - d['joint_pos'][sl][:, js]).max()):.1f} deg; outside limits: {lim or 'none'}")
 allb = K.fk_all(pp, pq, q, jn)
 for i, b in enumerate(bn):
