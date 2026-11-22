@@ -1361,3 +1361,22 @@ fresh process per run, `--ladder_stab_threshold 0.0`, seeds 1-8 and 11-14, final
 | Passed the gate | 3 (the older, looser gate) | 0: the teacher stands with its heels over the edge, as before |
 
 Every run got at least to tread 4. What is left is the top-out, which is the old clip's ending.
+
+## The ladder after an operator lets go of it: recorded S01 takes re-simulated (2026-11-21)
+
+`ladder_release_replay.py` (new): for each of the 13 recorded Dex3 VR takes of S01 (10 scored 1.00),
+the ladder's own state (pose, both velocities) at the last step a hand gripped it is written to a
+ladder standing alone, robot pinned, and left to settle for 4 s. "Quiet" = first 0.5 s under 10 mm/s.
+
+Method check, the four takes whose last release is the end of the carry: the shipped-setting
+replay's peak tilt against the bag's own next steps -- 2.46 / 2.41, 1.39 / 1.52, 1.25 / 1.28,
+1.20 / 1.22 deg.
+
+| Ladder `stabilization_threshold` | Quiet after (12 takes; one take is the ladder already lying down) |
+|---|---|
+| 0.001 (shipped) | 2.1-3.2 s in seven takes; not within 4 s in five |
+| 0.0 | 0.04-1.8 s in all twelve |
+
+Peak tilt after release is the same or lower with 0.0 (e.g. 3.05 -> 1.56, 2.36 -> 0.50, 0.47 -> 0.16
+deg); none topples with either. In the recorded takes themselves the ladder is still tilted
+1.0-2.2 deg and moving at 80-390 mm/s in the last two seconds before success in nine of ten.
