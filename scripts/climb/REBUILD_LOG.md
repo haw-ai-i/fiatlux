@@ -1345,3 +1345,19 @@ At rest for 2 s the ladder is as quiet with the threshold at 0 (4.3 mm/s, 0.004 
 drift) as with 0.001 (4.2 mm/s, 0.0075 rad/s, 0.04 mm). The teacher's hands push forward with
 10-13 N on tread 4. `record_climb.py --ladder_stab_threshold 0.0` (diagnostic) applies the change
 to a run without touching the benchmark; twelve fresh S02 runs with it are in progress.
+
+## With the ladder's stabilization threshold at 0, no S02 run is lost in the mount (2026-11-21)
+
+Dex3, free-standing ladder, iteration-4,800 teacher (rebuild 72), clip start pose, +-0.03 rad,
+fresh process per run, `--ladder_stab_threshold 0.0`, seeds 1-8 and 11-14, final gate (12d91be):
+
+| | As shipped (20 fresh runs earlier) | Threshold 0 (12 runs) |
+|---|---|---|
+| Lost in the mount (steps 200-250) | 11 | 0 |
+| Ladder tilt as the hands land, from the bags | 2.5 deg median (1.7-3.3) | 0.00 deg median, 0.02 max |
+| Ladder tilt through the mount | 1.5-2.7 deg | 0.00 deg median, 0.04 max |
+| Lost at steps 1,279-1,312 (pelvis 1.71 m: the step onto the platform) | 6 of 20 | 6 |
+| Reached the top (pelvis 1.90-1.93 m) | 3 | 6: three stood to the 1,700-step limit, three fell at steps 1,423, 1,553, 1,557 |
+| Passed the gate | 3 (the older, looser gate) | 0: the teacher stands with its heels over the edge, as before |
+
+Every run got at least to tread 4. What is left is the top-out, which is the old clip's ending.
