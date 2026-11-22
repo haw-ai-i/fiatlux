@@ -35,6 +35,14 @@ ap.add_argument("--steps", nargs="+", default=["left:0.5", "right:1.0", "left:1.
 ap.add_argument("--arm_stagger", type=float, default=0.0,
                 help="0..0.6: the left arm does its move in the first (1 - this) of the settle and the right arm in the last "
                      "(1 - this). Moved together from the spawn pose, the two hands pass 3.7 mm apart.")
+ap.add_argument("--right_arm_span", type=float, default=0.0,
+                help="seconds the RIGHT arm takes from the spawn pose to the clip's pose, starting at 0 and running on through the "
+                     "walk-in (0: it moves inside the settle like everything else). For a hand that carries a loose bulb: the "
+                     "settle's 0.5 s move slid the bulb 65 mm in the cup and jammed it (S10, bulb17).")
+ap.add_argument("--level_palm", action="store_true",
+                help="with --right_arm_span: the three right wrist joints are solved so the hand's ORIENTATION goes straight from "
+                     "its spawn orientation to the clip's (both level) instead of tilting on the way; a joint-space blend tips "
+                     "the cup 14 deg mid-way")
 ap.add_argument("--ahead", type=float, default=0.03, help="pelvis this far ahead of the stance ankle, m")
 ap.add_argument("--walk_z", type=float, default=0.765, help="pelvis height while stepping, m")
 ap.add_argument("--lift", type=float, default=0.04, help="swing foot clearance, m")
@@ -115,6 +123,33 @@ if a.arm_stagger > 0:
         for i, n in enumerate(jn):
             if n.startswith(side) and any(k in n for k in ("shoulder", "elbow", "wrist")):
                 q[:, i] = q_start[i] + w * (q_end[i] - q_start[i])
+if a.right_arm_span > 0:
+    w = sm(np.clip(np.arange(N) / min(N - 1, a.right_arm_span * fps), 0, 1))
+    for i, n in enumerate(jn):
+        if n.startswith("right") and any(k in n for k in ("shoulder", "elbow", "wrist")):
+            q[:, i] = q_start[i] + w * (q_end[i] - q_start[i])
+    print(f"[arm  ] right arm: spawn -> clip over {min((N - 1) / fps, a.right_arm_span):.2f} s")
+    if a.level_palm:
+        WR = [J[f"right_wrist_{k}_joint"] for k in ("roll", "pitch", "yaw")]
+        _o = K.fk_all(pel_p, pel_q, q, jn)["right_wrist_yaw_link"][1]
+        _q0, _q1 = _o[0], (_o[-1] if np.dot(_o[0], _o[-1]) >= 0 else -_o[-1])
+        tq = (1 - w)[:, None] * _q0 + w[:, None] * _q1; tq /= np.linalg.norm(tq, axis=1, keepdims=True)
+        def _oerr(qq):
+            o = K.fk_all(pel_p, pel_q, qq, jn)["right_wrist_yaw_link"][1]
+            d = K.qmul(tq, K.qconj(o)); d = d * np.sign(d[:, :1] + 1e-12)
+            return 2.0 * d[:, 1:]                                                      # [N, 3] rad
+        for it in range(30):
+            e = _oerr(q)
+            if np.abs(e).max() < 1e-7: break
+            Jm = np.zeros((N, 3, 3))
+            for c, j in enumerate(WR):
+                qd = q.copy(); qd[:, j] += 1e-5
+                Jm[:, :, c] = (_oerr(qd) - e) / 1e-5
+            dq3 = np.linalg.solve(Jm.transpose(0, 2, 1) @ Jm + 1e-8 * np.eye(3)[None], -(Jm.transpose(0, 2, 1) @ e[:, :, None]))[:, :, 0]
+            for c, j in enumerate(WR): q[:, j] += dq3[:, c]
+        _g = K.qrot(K.qconj(K.fk_all(pel_p, pel_q, q, jn)["right_wrist_yaw_link"][1]), np.tile([0.0, 0.0, -1.0], (N, 1)))
+        print(f"[arm  ] palm held level: orientation error {np.degrees(np.abs(_oerr(q)).max()):.3f} deg after {it + 1} iterations; "
+              f"palm off level along the walk-in: peak {np.degrees(np.arccos(np.clip(-_g[:, 1], -1, 1))).max():.1f} deg")
 print("[plan ] " + "; ".join(f"{'settle' if k == 0 else 'home' if k == len(segs) - 1 else ('swing ' + sg[3]) if sg[3] else 'shift'} {n / fps:.2f}s" for k, (sg, n) in enumerate(zip(segs, n_seg))))
 
 # ---- legs: damped least squares, all frames at once -----------------------------------------

@@ -1590,3 +1590,132 @@ judged by the static check and the scan.
   S04's `payload_held` read false only because the bulb is not staged.
 
 Videos (kinematic): `desc01_ref/` side and rear, `descbulb01_ref/` rear-right, under the videos folder.
+
+## First checkpoints of the free-ladder runs in the benchmark; bulb rebuilds 19 and 20; the trainer's body (2026-11-22)
+
+### Job 15569375 (`edge87free`, `bulb17free`), checked early and stopped at 10 h 55 min
+- Trainer, 64 robots from the clip's start (`play_probe_trace.py`), reaching step 1,800: `edge87free` 27 at
+  iteration 5,400, 60 at 6,900; `bulb17free` 5 at 12,000, 33 at 13,200. The bulb arm did not improve with
+  it: right elbow 24 deg off the clip by step 3 at both checkpoints, 44-83 deg off at steps 1,200-1,650.
+- Benchmark S02 (Dex3, free ladder, clip's first pose, noise 0.03), `edge87free`:
+
+  | checkpoint | seed 0 | seed 1 | seed 2 | seed 3 |
+  |---|---|---|---|---|
+  | 6,900 | platform, stands | falls 450 | platform, stands | falls 446 |
+  | 6,900 with `--trace` | platform | falls 446 | falls 446 | falls 446 |
+  | 7,200 | falls 520 | falls 1,477 | falls 1,494 | - |
+
+  One seed changes outcome with `--trace` on; one flip does not separate a side effect of the trace from
+  run-to-run variation. The runs that reach the platform do NOT score: `soles_within_ladder_top` stays
+  false, both heels over the open edge (left 60-68 mm, right 142-143 mm, toes 17-82 mm inside).
+- Stopped on the user's word: the two runs train a body the benchmark does not have (below). Newest
+  checkpoints pinned on the cluster: `edge87free` 7,500, `bulb17free` 14,100.
+- Earlier in the day a wait loop of mine matched its own command line (`pgrep -f`) and the first probes
+  never ran for five hours. Wait on an output marker or a PID, not on a pattern the waiter contains.
+
+### `record_climb.py`: three opt-in readouts and a soft start
+- `--gate_table N`: every N steps, each conjunct of the task's success gate on the live state, and the
+  margin of each of the eight sole corners inside the platform footprint the gate uses.
+- `--residual_ramp N --ramp_joints REGEX`: the teacher's correction on the reference faded in over the
+  first N steps for the matching joints. Not for the legs: their correction carries the gravity
+  compensation, and ramping it let the robot sag 28 mm and jolt the hand.
+- The squeeze readout now takes the harder of the two hand sensors, as the crush gate does.
+
+### Why the bulb is lost in S10, in the order the causes were removed
+All S10, Dex3, free ladder, clip's first pose, `--right_curl` cup, one run per row unless said.
+1. The teacher's first action. Step 1: right shoulder_roll target 30 deg from where it is, waist_pitch
+   5.5 rad/s, wrist 1.2 m/s (the clip: 0.02). Bulb out at step 5 (26 with start noise), squeeze under 3 N.
+   A 100-step soft start on waist and both arms removes it.
+2. `bulb17`'s own opening. Steps 20-45 move the bulb hand from the spawn carry pose to the clip's: 9 cm,
+   0.55 m/s, palm tipped 14 deg on the way. Played with the root pinned and no teacher
+   (`physics_segment_test_bulb.py --pin_root --modes track`, cup fingers): the bulb ends 136 mm off its
+   seat. With a soft start on, the bulb slides 65 mm toward the palm by step 30 and jams between thumb and
+   finger at step 35 (39 N, then `bulb_crushed`), at every curl from 0.667 to 1.0.
+3. The cup at the benchmark's curl 0.667 does not grip: squeeze 0-1 N. At 0.9-1.0 it reads 2-3 N and the
+   bulb stays 4-34 mm from its seat through the walk-in (three runs of four; curl 0.8 lost its seat on a
+   second seed).
+4. The landing of the bulb wrist on tread 4's near edge (the clip's wrist rest). Clip: 0.83 m/s, arriving
+   step 300. Teacher: 1.8 m/s, arriving 285-289, elbow 21-24 deg off. Hand force on the last step 88 N up
+   (`fresh_bulb_struck`: the bulb's velocity changed by over 2.4 m/s in a step) or 26 N back
+   (`bulb_crushed`).
+5. Leaning on that wrist during the first step up (steps 453-477 of `bulb20`): 21-70 N backward on the
+   right hand; ends `bulb_crushed`, `bulb_dropped` or both rules on one step.
+Nine firm-grip runs on `bulb19`/`bulb20`: crushed 3, struck 2, both 1, dropped 1, fell 2.
+
+### Bulb rebuild 19 (`bulb19`) and 20 (`bulb20`) -- `bulb20` in training
+- `make_approach_prefix.py --right_arm_span S --level_palm` (new, off by default; without them the tool
+  reproduces `bulb17`'s walk-in byte for byte): the right arm takes S seconds from the spawn pose to the
+  clip's, and the three wrist joints are solved so the hand's orientation goes straight between the two
+  (both level). `bulb19` = `bulb17`'s chain with `--right_arm_span 5.0 --level_palm`. First 300 steps: hand
+  speed relative to the pelvis 0.10 m/s (0.55), palm off level 1.2 deg (14.1). Only the right arm, only
+  steps 0-250, differs from `bulb17`.
+- Pinned-root playback of steps 0-300: bulb 12 mm off its seat at the end, 27 at most (`bulb17`: 136).
+- `dilate_window.py` (new): one stretch of a clip in slow motion, whole body, positions by cubic through
+  the original frames, velocities the new clip's own derivatives, the added time a whole number of steps
+  and frames. `bulb20` = `bulb19` with steps 262-302 at one third speed: 1,976 steps (+70 after step 302),
+  right wrist peak in the window 0.39 m/s (1.03). Before step 258 and after the window it equals `bulb19`
+  to 0.0 (shifted 168 frames). Limits pass, torso CLEAN (+14.5 mm), bulb never under 17.3 mm from the
+  ladder. Physics scan and frozen holds NOT rerun (every pose is one of `bulb17`'s).
+- `retime_arm_window.py` (new) stretches ONE arm's move instead. Rejected for this reach: the reach is
+  coordinated with the torso leaning in, and the arm running ahead put the bulb 23.1 mm inside the ladder
+  at step 276. Kept for moves that are not coordinated with the body.
+- Teacher (`bulb17free` 13,200) on `bulb20`, soft start, curl 0.9-1.0, two seeds each: all four pass the
+  tread-4 landing that ended every `bulb19` run and end at steps 463-518, in the first step up.
+
+### The trainer's body was not the benchmark's
+- Self-collision is on in both. Shapes, benchmark read from the live S02 stage (Dex3), trainer from its
+  URDF, link frame, compared by extent:
+
+  | link | trainer | benchmark |
+  |---|---|---|
+  | shoulder_pitch (L/R) | none | cylinder r 30, 50 long |
+  | shoulder_roll (L/R) | none | cylinder r 30, 30 long |
+  | shoulder_yaw (L/R) | capsule r 35, 200 long | hull 81 x 75 x 145 |
+  | hip_pitch (L/R) | none | hull 83 x 99 x 117 |
+  | pelvis | sphere r 70 | none; pelvis_contour_link hull 120 x 136 x 124 |
+  | logo_link | none | hull 149 x 149 x 29 |
+
+  (mm.) Hip roll / yaw, knee, torso mesh, head, elbow and the three wrist links agree to under 3 mm. The
+  trainer's torso also carries three neck cylinders inside the head's hull. In the benchmark only a
+  joint's own two links are excluded from colliding, so torso against shoulder_roll collides.
+- Measured in S02: shoulder_roll links 349-435 N on the torso at step 300, left shoulder_roll motor at 100 %
+  torque, the joints about 20 deg inside the clip -- in the run that climbs and in the ones that fall.
+- `ladderman_port/make_fxbody_urdf.py` (new) + `fx_body_collision_points.npz`: a sibling URDF,
+  `g1_29dof_dex3open-complexfeet-fxbody`, with those links' shapes replaced by the benchmark's (convex
+  hulls of the benchmark colliders' points; cylinders as hulls because the import turns URDF cylinders
+  into capsules). Inertials, joints, names unchanged; checkpoints load.
+- The same teachers on the two bodies, trainer, 64 robots from the clip's start, stock rewards, robots
+  reaching the clip's end: `edge87free` 6,900: 56 -> 48 (15 lose a hand hold, median step 436);
+  `bulb17free` 13,200 on `bulb20`: 29 -> 4 (42 lose a hand hold, median step 508, all by 631). The
+  benchmark's failures sit in the same windows (S02 falls 446-450, S10 ends 463-518).
+
+### Opt-in trainer terms (`ladderman_port/bulb_hand.py`, registered by one import line)
+- LadderMan's arm tracking is loose: 0.1 m / 0.1 rad free, fall-off 1.0 m / 0.5 rad, averaged over six
+  links or eight joints. A 24 deg elbow error costs about 8 % of one term.
+- Rewards: `tight_arm_joint_pos_tracking`, `tight_arm_pos_tracking`, `tight_arm_ori_tracking` (both arms);
+  `carry_hand_linvel_tracking`, `carry_hand_contact_force_l2` (over 15 N), `carry_hand_accel_l2` (over
+  5 m/s2). Terminations: `carry_hand_force_exceeded` (50 N), `carry_hand_velocity_jump` (2.4 m/s), both
+  exempting an episode's first 25 steps. They go into existing reward groups: a new group changes the
+  critic's size and a checkpoint no longer loads. There is NO bulb in the trainer; these read the wrist.
+- `play_probe_terms.py` (new): which termination ends each robot and when, each reward's running mean, the
+  hand's contact force and velocity change per step, and (`+event_force=N`) where the hand is when loaded.
+- `bulb17free` 13,200 on `bulb20`, old body, terms on, no grace: all 64 end by step 500, 52 on the force
+  rule (median step 327), 5 on the velocity jump. The earliest (from step 80) are the bulb hand against the
+  robot's own right thigh (200-355 N) and then the left hand: the teacher carries the hand 14 cm below and
+  7 cm behind the clip. The offline suite does not test hand against thigh or hand against hand.
+- `edge87free` 6,900, hands, old body: 23-33 N median on the ladder; spikes 99th percentile 195 N on tread
+  1 -> 2, worst 682 N; over 15 N in 11 % of robot-steps before the hands should touch anything.
+- Without the grace, at 4,096 environments, the mean episode with the terminations on was 4.7 steps (30
+  without them): random-phase starts with the wrist already on a tread. With 25 steps of grace: 30.5.
+
+### Scale test and the job now running
+- Job 15574012, two runs, 4,096 environments, benchmark body, 30 iterations: 12.6 and 10.5 s per iteration
+  (13.1-13.2 on the old body), MaxRSS 58.6 / 58.9 GB (52-54), zero overflow, exit 0.
+- Job 15574462 (`koa/lm_train_fxbody_multi.sbatch`, new; the edge87 scripts are untouched): `edge87fx`
+  from `edge87free` 7,500 with the tight arm terms; `bulb20fx` from `bulb17free` 14,100 on `bulb20` with
+  the tight arm and carry-hand terms, velocity-jump termination on, force termination OFF (penalty only).
+  7,500 new iterations each.
+- Seen in every start's first log line, old runs included: `actor_std/mean` 0.50, where `edge87free` had
+  annealed to 0.14 by iteration 7,150. The action noise restarts on each resume. Cause not yet looked at.
+
+Videos: benchmark runs of the early checkpoints and of `bulb19` under the videos folder, `bench_early/`.

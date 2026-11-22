@@ -97,6 +97,14 @@ ap.add_argument("--dump_spawn", default=None,
 ap.add_argument("--video", default=None, help="write an mp4 of the run from a fixed camera (one frame per 50 Hz step)")
 ap.add_argument("--cam_eye", type=float, nargs=3, default=[3.25, 2.2, 1.45], help="camera position, world (layout seed 0 default)")
 ap.add_argument("--cam_look_z", type=float, default=1.25, help="aim this far above the ladder's root")
+ap.add_argument("--residual_ramp", type=int, default=0,
+                help="soft start: scale the network's residual on the reference from 0 to 1 over this many steps "
+                     "(0: off). The teacher's first action moves the arms to its own posture in one step.")
+ap.add_argument("--ramp_joints", default=".*",
+                help="--residual_ramp applies to the joints matching this regex (default all). The legs' residual carries their "
+                     "gravity compensation: ramping it lets the robot sag 28 mm in its first steps.")
+ap.add_argument("--gate_table", type=int, default=0,
+                help="every N steps print each conjunct of the task's success gate as it reads on the live state (0: off)")
 ap.add_argument("--past_success", action="store_true",
                 help="DIAGNOSTIC: do not end the episode when the task's success gate fires (S02's fires on tread 4, "
                      "before the feet reach the platform), so the run can continue to the clip's end. The step at "
@@ -257,6 +265,8 @@ def bulb_state():
     _off = float((base.scene["fresh_bulb"].data.root_link_pos_w[0:1] - (_wp + _qa(_wq, _BULB_P))).norm()) * 1000
     try:
         _g = float(base.scene.sensors["grip_contact"].data.force_matrix_w[0].norm(dim=-1).max())
+        if "grip_contact_left" in base.scene.sensors.keys():      # the crush gate watches both hands
+            _g = max(_g, float(base.scene.sensors["grip_contact_left"].data.force_matrix_w[0].norm(dim=-1).max()))
     except Exception:
         _g = float("nan")
     return _off, _g
@@ -410,6 +420,11 @@ try:
                             _bits.append(f"{_g}.{_nm} {_m:.1f}")
                 _res = (a_lm - groups["ref_joint_pos_"])[0]
                 print(f"[ZSCORE] step {steps:4d}: residual |max| {float(_res.abs().max()):.2f}; terms over 4: " + (", ".join(_bits) or "none"))
+            if a.residual_ramp and steps < a.residual_ramp:
+                import re as _re
+                _rm = torch.tensor([bool(_re.fullmatch(a.ramp_joints, n)) for n in obs_builder.act_names], device=a_lm.device)
+                _sc = torch.where(_rm, torch.full_like(a_lm[0], (steps + 1) / a.residual_ramp), torch.ones_like(a_lm[0]))
+                a_lm = groups["ref_joint_pos_"] + (a_lm - groups["ref_joint_pos_"]) * _sc
             if a.residual_scale != 1.0:
                 a_lm = groups["ref_joint_pos_"] + (a_lm - groups["ref_joint_pos_"]) * a.residual_scale
             action = net.to_fiatlux(a_lm, obs_builder, match_torque=a.match_torque, wrist_from_ref=a.step_ladder)
@@ -503,6 +518,27 @@ try:
                           f"from everything else (floor, fixture) x {float(_gnd[0]):+.0f} y {float(_gnd[1]):+.0f} z {float(_gnd[2]):+.0f}; ladder weight {float(_L_W):.0f}")
                 print(f"[FORCE ] {steps:4d} (N, world; weight {_W:.0f}) " + "; ".join(_o) + ("; other: " + ", ".join(f"{n} {v:.0f}" for n, v in _oth) if _oth else ""))
 
+            if a.gate_table and steps % a.gate_table == 0:
+                from fiatlux_task.tasks.manager_based.fiatlux_task import mdp as _mdp
+                _t = base.cfg.terminations.success
+                _fp = _real_gate if _real_gate is not None else (_t.func, dict(_t.params or {}))
+                print(f"[GATETB] {steps:4d} pelvis {pel:.3f} m | " + " ".join(
+                    f"{getattr(_f, '__name__', '?')}={bool(_f(base, **(_p or {}))[0])}" for _f, _p in _mdp.conjuncts_of(*_fp)))
+                from fiatlux_task.tasks.manager_based.fiatlux_task.mdp import balance_terms as _bt
+                from isaaclab.utils.math import quat_apply as _qa, quat_apply_inverse as _qai
+                _r = base.scene["robot"]; _ld = base.scene["ladder"]
+                (_xl, _xh), (_yl, _yh) = _bt.STEP_LADDER_PLATFORM_FOOTPRINT
+                _out = []
+                for _fn in ("left_ankle_roll_link", "right_ankle_roll_link"):
+                    _i = _r.body_names.index(_fn)
+                    for _cx in _bt.FOOT_SOLE_X:
+                        for _cy in (-_bt.FOOT_SOLE_HALF_Y, _bt.FOOT_SOLE_HALF_Y):
+                            _w = _r.data.body_pos_w[0, _i] + _qa(_r.data.body_quat_w[0:1, _i], torch.tensor([[_cx, _cy, 0.0]], device=base.device))[0]
+                            _l = _qai(_ld.data.root_quat_w[0:1], (_w - _ld.data.root_pos_w[0])[None])[0]
+                            _m = {"x_lo": float(_l[0]) - _xl, "x_hi": _xh - float(_l[0]), "y_lo": float(_l[1]) - _yl, "y_hi": _yh - float(_l[1])}
+                            _k = min(_m, key=_m.get)
+                            _out.append(f"{_fn.split('_')[0]} {'toe' if _cx == max(_bt.FOOT_SOLE_X) else 'heel'} {'L' if _cy > 0 else 'R'} {_m[_k] * 1000:+.0f} mm ({_k})")
+                print(f"[SOLES ] {steps:4d} margin of each sole corner inside the platform footprint x [{_xl:.3f}, {_xh:.3f}] y [{_yl:.3f}, {_yh:.3f}] (ladder frame; negative = outside): " + "; ".join(_out))
             if _real_gate is not None and not best.get("gate_step"):
                 if bool(_real_gate[0](base, **_real_gate[1])[0]):
                     best["gate_step"] = steps
