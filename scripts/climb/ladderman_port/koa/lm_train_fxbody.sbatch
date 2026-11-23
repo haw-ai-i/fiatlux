@@ -134,6 +134,10 @@ fi
 if [ -n "${MOUNT_ROOT:-}" ]; then   # "FROM:TO" in clip steps
   TERMS+=("+task.reward.tracking.mount_root_pos_tracking={weight:0.5,sigma:0.06,tolerance:0.01,start_step:${MOUNT_ROOT%%:*},end_step:${MOUNT_ROOT##*:},body_names:[\"pelvis\"]}")
 fi
+# KEEP_STD=1: a resume keeps the checkpoint's own action noise. The trainer otherwise resets it to 0.50 on
+# every load (algo.load_noise_scale, meant for fine-tuning); trained runs sit at 0.11-0.15 and a checkpoint
+# taken 300 iterations after a restart is still at 0.23 and climbs worse in the benchmark.
+[ -n "${KEEP_STD:-}" ] && TERMS+=("algo.load_noise_scale=null")
 [ "${SPEED_LIMIT:-0}" != 0 ] && TERMS+=("+task.termination.body_speed_exceeded={limit:${SPEED_LIMIT}}")
 [ -n "${ENV_SPACING:-}" ] && TERMS+=("task.viewer.env_spacing=${ENV_SPACING}")
 echo "[lm] robot=$ROBOT profile=$PROFILE terms: ${#TERMS[@]}"; printf '[lm]   %s\n' "${TERMS[@]}"

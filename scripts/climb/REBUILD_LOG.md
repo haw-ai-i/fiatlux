@@ -2022,3 +2022,43 @@ Videos (kinematic): `descbulb02_ref/` side and rear-right, under the videos fold
   joint targets (an open-loop replay of a trainer rollout in the benchmark).
 - `descbulb02fx` started on an H200 node (`gn-09-23-00`, 143 GB card): start-up completed in 10 minutes
   and it trained 2 iterations before the scheduler pre-empted it. H200 works.
+
+### The one-handed mount fails on the benchmark's soft fingers; restarts reset the action noise (Nov 23 UTC)
+
+- New probes: `ladderman_port/play_probe_mount.py` (trainer) and `FX_TRACE_COM=1` on `record_climb.py --trace`
+  print the same numbers in the clip's frame: centre of mass against each ankle, each ankle against the
+  clip, foot and left-hand forces; the recorder also prints the left finger joints (`[LFING ]`).
+- `bulb21fx` 18,000, the step onto tread 1 (trainer: median of 61 robots; benchmark: seeds 1 and 2):
+
+  | clip step | trainer, left foot | benchmark, left foot |
+  |---|---|---|
+  | 436 | 32 mm deeper onto the tread than the clip, in the air | 55 mm deeper, in the air |
+  | 444-448 | 42-45 mm deeper, 9-11 mm above the clip | 11-17 mm deeper, 13-25 mm above |
+  | 456 | planted, 186 N | 72-80 mm behind the clip, 32 mm below, 0 N |
+  | 460 | 281 N, right foot lifts | 118 mm behind, 57 mm below: down in front of the tread |
+
+  The benchmark's left foot never carries load (0 N from step 424 to 472). Left hand over steps 436-448:
+  trainer 20-25 N down and 10-15 N horizontal; benchmark 0-1 N down and 25-52 N horizontal.
+- Cause: in the benchmark the left hand's middle finger folds from open to its 90 deg limit as the hand
+  reaches the ladder (steps 304-328) and stays there, its drive at the 0.1 N m cap. The Dex3 finger drives
+  are stiffness 1.5, effort 0.1 (`robots/g1.py`, set for a gentle bulb grip). The trainer's hand is one
+  rigid open piece and the clip's left-hand holds sit 17 cm out from the wrist, on the fingers.
+- Confirmed with a DIAGNOSTIC that is not the benchmark (`FX_DIAG_LEFT_FINGER_KP=60`: left finger drives
+  at stiffness 60, effort 5), same checkpoint and clip in S02, 2 seeds: the fingers stay at 0 deg, the
+  left foot lands on tread 1 (30-35 mm deeper than the clip, at tread height) on both seeds; seed 0
+  climbs on to step 895 (pelvis 1.02 m, the furthest any bulb-clip teacher has got in the benchmark),
+  seed 1 falls at 544. Without it both seeds fall at 527-540 with the foot in front of the tread.
+- Ruled out on the way: total mass (trainer 34.39 kg, benchmark 34.35 kg), foot collider (sole -58..+135
+  by +-36 mm against -60..+135 by +-35 mm).
+- Restarts reset the action noise. `algo.load_noise_scale` (default 0.5) overwrites the checkpoint's
+  saved `actor_std` on every load. Saved means: `edge87fx` 8,400 0.147; `edge87st` 8,700 0.227 and 9,000
+  0.225 (each 300 iterations after a restart); `bulb21fx` 15,900 0.112, 17,100 0.162, 18,000 0.107.
+  `KEEP_STD=1` in `lm_train_fxbody.sbatch` passes `algo.load_noise_scale=null`; local resume of 8,400
+  starts at 0.147 with it and 0.500 without.
+- `edge87st` 9,000 (300 iterations after its second restart), S02, 4 seeds: 0 reach the top (falls at
+  steps 437, 441, 442 and 1,512). Every S02 checkpoint tested since 8,400 was taken 300-900 iterations
+  after a restart, including the ones behind "whole-clip foot terms hurt"; that conclusion is not
+  separable from the restart effect and is withdrawn until retested.
+- `edge87s2` (job 15580682): from the pinned 8,400, stance foot terms from clip step 1,630 (both feet on
+  the platform; the left swings on at 1,545-1,580, the right at 1,585-1,620), `KEEP_STD=1`.
+- `desc01fx` (job 15579999) trains on the H200 node, about 23 s per iteration in its first iterations.

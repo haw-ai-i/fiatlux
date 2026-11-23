@@ -384,6 +384,15 @@ _all = torch.arange(len(base.scene["robot"].joint_names), device=base.device)
 _fing = _all[~torch.isin(_all, obs_builder.j_fx)]
 print(f"[HANDS ] {_fing.numel()} finger joints outside the clip; spawn angles (deg): "
       + ", ".join(f"{float(torch.rad2deg(v)):.0f}" for v in base.scene["robot"].data.default_joint_pos[0, _fing]))
+if os.environ.get("FX_DIAG_LEFT_FINGER_KP"):
+    # DIAGNOSTIC ONLY, never a fix: stiffen the LEFT hand's finger drives so the open hand behaves like the
+    # trainer's one-piece hand, to test whether the folding fingers are what fails the one-handed mount.
+    _rbd = base.scene["robot"]; _lfj = [j for j, n in enumerate(_rbd.joint_names) if n.startswith("left_hand_")]
+    _kp = float(os.environ["FX_DIAG_LEFT_FINGER_KP"])
+    _rbd.write_joint_stiffness_to_sim(torch.full((1, len(_lfj)), _kp, device=base.device), joint_ids=_lfj)
+    _rbd.write_joint_damping_to_sim(torch.full((1, len(_lfj)), _kp / 20.0, device=base.device), joint_ids=_lfj)
+    _rbd.write_joint_effort_limit_to_sim(torch.full((1, len(_lfj)), 5.0, device=base.device), joint_ids=_lfj)
+    print(f"[DIAG  ] left finger drives stiffened to kp {_kp} (benchmark 1.5), effort 5 N m (benchmark 0.1): NOT the benchmark")
 _vw = None
 if a.video:
     import imageio.v2 as _imageio  # noqa: E402
@@ -517,6 +526,27 @@ try:
                     print(f"[LADFRC] {steps:4d} on the ladder, world N: from the robot x {float(_rob[0]):+.0f} y {float(_rob[1]):+.0f} z {float(_rob[2]):+.0f}; "
                           f"from everything else (floor, fixture) x {float(_gnd[0]):+.0f} y {float(_gnd[1]):+.0f} z {float(_gnd[2]):+.0f}; ladder weight {float(_L_W):.0f}")
                 print(f"[FORCE ] {steps:4d} (N, world; weight {_W:.0f}) " + "; ".join(_o) + ("; other: " + ", ".join(f"{n} {v:.0f}" for n, v in _oth) if _oth else ""))
+                if os.environ.get("FX_TRACE_COM"):
+                    # the trainer-side twin is ladderman_port/play_probe_mount.py: clip frame, x toward the ladder
+                    _rb = base.scene["robot"]; _mm = _rb.root_physx_view.get_masses().to(base.device)[0]
+                    _cw = (_mm[:, None] * _rb.data.body_com_pos_w[0]).sum(0) / _mm.sum()
+                    _bnm = list(_rb.body_names); _qi = _rb.data.root_quat_w[:1]
+                    _cc = _ob.to_clip(_cw[None], _qi)[0][0]
+                    _out = []
+                    for _sd in ("left", "right"):
+                        _pa = _ob.to_clip(_rb.data.body_link_pos_w[:1, _bnm.index(f"{_sd}_ankle_roll_link")], _qi)[0][0]
+                        _pr = _ob.to_clip(_ob.ref_body_pos[_ob.t][:1, _ob.lm_body_names.index(f"{_sd}_ankle_roll_link")], _qi)[0][0]
+                        _out.append((_cc - _pa) * 1000); _out.append((_pa - _pr) * 1000)
+                    _pc = getattr(obs_builder, "_fx_prev_com", None)
+                    _vx = float((_cc - _pc[0])[0] / (0.02 * max(1, steps - _pc[1]))) if _pc is not None else 0.0
+                    obs_builder._fx_prev_com = (_cc.clone(), steps)
+                    _jn = list(_rb.joint_names); _lf = [j for j, n in enumerate(_jn) if n.startswith("left_hand_")]
+                    if _lf:
+                        _fq = torch.rad2deg(_rb.data.joint_pos[0, _lf]); _ft = _rb.data.applied_torque[0, _lf]
+                        print(f"[LFING ] {steps:4d} left finger joints (deg): " + ", ".join(f"{_jn[j].replace('left_hand_', '').replace('_joint', '')} {float(q):+.0f}" for j, q in zip(_lf, _fq))
+                              + f"; hardest finger torque {float(_ft.abs().max()):.2f} N m")
+                    print(f"[COM   ] {steps:4d} com-Lankle x {float(_out[0][0]):+5.0f} z {float(_out[0][2]):+5.0f}  com-Rankle x {float(_out[2][0]):+5.0f} mm  com vx {_vx:+5.2f} m/s"
+                          f" | L ankle err x {float(_out[1][0]):+4.0f} y {float(_out[1][1]):+4.0f} z {float(_out[1][2]):+4.0f}  R ankle err x {float(_out[3][0]):+4.0f} y {float(_out[3][1]):+4.0f} z {float(_out[3][2]):+4.0f} mm")
 
             if a.gate_table and steps % a.gate_table == 0:
                 from fiatlux_task.tasks.manager_based.fiatlux_task import mdp as _mdp
