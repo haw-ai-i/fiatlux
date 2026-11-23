@@ -2108,3 +2108,32 @@ Videos (kinematic): `descbulb02_ref/` side and rear-right, under the videos fold
   identical to the millimetre, so the four seeds are two distinct cases, not four.
 - `bulb21fx` finished at 21,900 (job 15579275 completed); not resubmitted.
 - `descbulb02fx` (job 15581313, H200) passed iteration 450 with no PhysX error.
+
+### S12's spawn wedges the hips in the ladder's top frame on some layouts; bulb climb at its end (Nov 23 UTC)
+
+- S12 (`FIATLUX-S12-ClimbDown-v0`, Dex3), the task's own spawn, teacher residual off (`--residual_scale
+  0`, the clip stands still for its first 25 steps), `--trace 1`:
+
+  | layout seed | step 1 contact on the robot | feet |
+  |---|---|---|
+  | 0 | left_hip_pitch_link 15.5 kN, left_hip_roll_link 16.6 kN, right_hip_roll_link 3.4 kN | 0 N through step 20 |
+  | 1 | none | 170-270 N from step 5 |
+
+  With the teacher on, seed 3 shows the same on the other side at step 50 (right_hip_pitch_link 3.5 kN,
+  right_hip_roll_link 4.8 kN). The ladder's top rails are at hip height; on those layouts the robot starts
+  hanging on its hips, not standing on the platform. This is the benchmark's spawn: the clip's first frame
+  is within 2 cm of it and the force is there before any action can act. Overlap depth and what differs
+  between the layouts: not measured yet. Whether the trainer's resets meet the same overlap (the descent
+  clip starts in this stance): not checked; the 28 kN "ankle" readings that led to `RESET_LIFT` may have
+  been this.
+- `FX_TRACE_BULB=N` on `record_climb.py`: the socketed bulb's position and orientation error every N
+  steps. S12 seed 0: 1.9 mm and 0.041 rad throughout (limits 15 mm, 0.2 rad) until the robot's upper body
+  reaches the wall socket. The socket in these layouts is on the WALL in front of the platform.
+- `desc01fx` 10,200, S12 from the spawn: seed 0 ends at step 141 (`bulb_unseated`, upper body into the
+  socket) or 145 (`fell_over`, ladder thrown 0.5-0.8 m) on two runs of the same command; seed 1 (clean
+  start) gets its pelvis down to 1.79 m by step 300 (clip 1.72) and falls sideways at step 359; seed 3
+  (hips wedged) stays on the platform and ends at 437 on `bulb_unseated`.
+- `bulb21fx` 21,600 (its last regular checkpoint), S10, 3 seeds: fall at step 516, and two
+  `bulb_crushed` at steps 273-274 during the reach, before the mount. Not better than 17,100-18,600.
+- Videos: `videos/finger_fail/` (S10, 18,000: wide and a close-up of the left hand), `videos/descent_fail/`
+  (S12, 10,200, seed 0).

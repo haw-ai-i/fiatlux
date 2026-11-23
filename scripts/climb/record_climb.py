@@ -548,6 +548,13 @@ try:
                     print(f"[COM   ] {steps:4d} com-Lankle x {float(_out[0][0]):+5.0f} z {float(_out[0][2]):+5.0f}  com-Rankle x {float(_out[2][0]):+5.0f} mm  com vx {_vx:+5.2f} m/s"
                           f" | L ankle err x {float(_out[1][0]):+4.0f} y {float(_out[1][1]):+4.0f} z {float(_out[1][2]):+4.0f}  R ankle err x {float(_out[3][0]):+4.0f} y {float(_out[3][1]):+4.0f} z {float(_out[3][2]):+4.0f} mm")
 
+            if os.environ.get("FX_TRACE_BULB") and steps % int(os.environ["FX_TRACE_BULB"]) == 0:
+                from fiatlux_task.tasks.manager_based.fiatlux_task.mdp import rewards as _rw  # noqa: E402
+                try:
+                    print(f"[BULBSK] {steps:4d} bulb vs socket: position error {float(_rw._bulb_socket_pos_error(base)[0]) * 1000:6.1f} mm (limit 15), "
+                          f"orientation error {float(_rw._bulb_socket_ori_error(base)[0]):.3f} rad (limit 0.2)")
+                except Exception as _e:  # a task without a socketed bulb
+                    print(f"[BULBSK] not available: {_e!r}"[:160])
             if a.gate_table and steps % a.gate_table == 0:
                 from fiatlux_task.tasks.manager_based.fiatlux_task import mdp as _mdp
                 _t = base.cfg.terminations.success
