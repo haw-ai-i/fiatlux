@@ -2137,3 +2137,18 @@ Videos (kinematic): `descbulb02_ref/` side and rear-right, under the videos fold
   `bulb_crushed` at steps 273-274 during the reach, before the mount. Not better than 17,100-18,600.
 - Videos: `videos/finger_fail/` (S10, 18,000: wide and a close-up of the left hand), `videos/descent_fail/`
   (S12, 10,200, seed 0).
+- S12 spawn over six layout seeds (`--dump_spawn`, root in the clip's frame, x toward the wall) and the
+  hip contact on step 1 (`--residual_scale 0 --trace 1`):
+
+  | seed | x | y | yaw | step-1 hip contact |
+  |---|---|---|---|---|
+  | 0 | -0.082 | +0.013 | -2.6 deg | 15-17 kN, left |
+  | 3 | -0.083 | +0.020 | +0.3 deg | wedged, right (3.5-4.8 kN at step 50) |
+  | 4 | -0.090 | -0.020 | -2.2 deg | none |
+  | 5 | -0.092 | -0.001 | -0.2 deg | none |
+  | 1 | -0.110 | -0.016 | -1.0 deg | none |
+  | 2 | -0.114 | +0.009 | -1.2 deg | none |
+
+  The two spawns furthest forward are the wedged ones; the line is between x -0.083 and -0.090. The
+  ladder's top frame narrows toward the front (the same place that put the thigh in the rail when the
+  descent clip was built). `desc01` starts at x -0.098, 8-15 mm on the clean side.
