@@ -2062,3 +2062,26 @@ Videos (kinematic): `descbulb02_ref/` side and rear-right, under the videos fold
 - `edge87s2` (job 15580682): from the pinned 8,400, stance foot terms from clip step 1,630 (both feet on
   the platform; the left swings on at 1,545-1,580, the right at 1,585-1,620), `KEEP_STD=1`.
 - `desc01fx` (job 15579999) trains on the H200 node, about 23 s per iteration in its first iterations.
+
+### `edge87s2`: stance foot terms from step 1,630 with the action noise kept (Nov 23 UTC)
+
+- S02, 4 seeds each, `--rsi --rsi_noise 0.03`:
+
+  | checkpoint | saved noise | stand on the platform | left heel over the open edge | right heel over the edge |
+  |---|---|---|---|---|
+  | `edge87fx` 8,400 (start) | 0.147 | 4 of 4 | 49-114 mm (both heels, earlier run) | |
+  | `edge87s2` 8,700 | 0.147 | 2 of 4 (falls at 1,606 and 1,610) | 71-78 mm | 126-131 mm |
+  | `edge87s2` 9,000 | 0.146 | 4 of 4 | 28-43 mm | 108-138 mm |
+
+  All four at 9,000 pass every conjunct but `soles_within_ladder_top`. The left heel is coming in: the
+  left foot re-steps at clip steps 1,690-1,715, inside the term's window. The right heel is not: the right
+  foot lands at 1,585-1,620, before the term starts, and the clip never moves it again.
+- The two falls at 8,700 came before step 1,630, i.e. before the new term pays anything, with the noise
+  kept. A restart disturbs the policy for its first few hundred iterations by itself (the optimiser's
+  state is not in the checkpoint; the critic meets a new reward). Not separated from the term's effect.
+- `desc01fx` (job 15579999, H200): clean to iteration 179, then `collisionStackSize` overflows without
+  pause (4,832 by iteration 300; asked for up to 285 M against 268 M), no pair-buffer errors. Stopped at
+  checkpoint 8,400 and resubmitted with `COLLISION_STACK=536870912` (job 15581301). `descbulb02fx`
+  resubmitted the same way before it trained (job 15581313).
+- `bulb21fx` 18,600, S10, 3 seeds: falls at 502-525, 6-12 mm behind the clip at step 400. No further bulb
+  checkpoints are being tested until the finger question is decided.
