@@ -2103,3 +2103,8 @@ Videos (kinematic): `descbulb02_ref/` side and rear-right, under the videos fold
   yet (pelvis 1.92 m at step 300, 19 cm above the clip), presses knees, elbows and torso on the ladder,
   and every run ends on `bulb_unseated` at steps 230-399; `bulb_seated` reads True at steps 200 and 300.
   The trainer has no socket above the platform.
+- `edge87s2` 10,200 (noise 0.140), S02, 4 seeds: seeds 0 and 2 stand (left heel 22-30 mm over the edge,
+  right heel 120-125 mm), seeds 1 and 3 fall at step 445 at the mount. Seeds 0/2 and 1/3 give results
+  identical to the millimetre, so the four seeds are two distinct cases, not four.
+- `bulb21fx` finished at 21,900 (job 15579275 completed); not resubmitted.
+- `descbulb02fx` (job 15581313, H200) passed iteration 450 with no PhysX error.
