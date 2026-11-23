@@ -40,6 +40,8 @@ Terminations:
     carry_hand_force_exceeded     wrist contact force over a limit (benchmark: 50 N on the glass)
     carry_hand_velocity_jump      wrist velocity changes by more than a limit in one control step
                                   (benchmark: 2.4 m/s on the bulb)
+    body_speed_exceeded           any body faster than a limit: ends an episode whose reset threw the robot,
+                                  before it crosses into the neighbouring environments
 
 The four tracking terms are plain subclasses of LadderMan's own, only so that a config can name a
 second, tighter instance without the ``name(class)`` key syntax, which a command-line override
@@ -218,3 +220,30 @@ class carry_hand_velocity_jump(Termination):
 
     def __call__(self) -> torch.Tensor:
         return ((self.jump > self.limit) & (self.age > self.grace_steps)).unsqueeze(-1)
+
+
+class body_speed_exceeded(Termination):
+    """True where any body of the robot moves faster than ``limit`` (m/s). No grace period.
+
+    LadderMan adds +-0.1 rad to every joint at a reset, and a foot or hand that lands inside the ladder is
+    pushed out hard: 2-4 % of episode starts, climb and descent alike, have a body over 6 m/s within six
+    steps (ankle contact 99th percentile about 30 kN, fastest body 37-42 m/s). The stock terminations need
+    25 steps or more to end such an episode. In the climb the thrown robot stays within 2.3 m of its own
+    origin; from the platform, where a descent starts 30 % of its episodes, it travels 4.4-8.9 m, across the
+    3 m grid into its neighbours' space, and PhysX's pair buffers then grow without bound (asked for 172 M,
+    330 M, 1.2 billion aggregate pairs; the run stalls). Environments do not collide with each other, but the
+    broadphase still counts the overlapping pairs. Ending the episode on the step the speed is seen keeps
+    the robot where it belongs.
+    """
+
+    def __init__(self, env, limit: float = 10.0):
+        super().__init__(env)
+        self.asset = self.env.scene["robot"]
+        self.limit = limit
+        self.over = torch.zeros(self.num_envs, dtype=torch.bool, device=self.device)
+
+    def update(self):
+        self.over[:] = self.asset.data.body_lin_vel_w.norm(dim=-1).amax(dim=1) > self.limit
+
+    def __call__(self) -> torch.Tensor:
+        return self.over.unsqueeze(-1)

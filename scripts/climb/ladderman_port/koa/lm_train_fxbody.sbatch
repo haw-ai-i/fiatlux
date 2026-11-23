@@ -31,6 +31,9 @@
 #   FEET=1 adds the two world-frame ankle terms (tight_feet_*): where the robot stands at the top.
 #   RESET_LIFT (default 0) raises the root this many metres at every reset. A start on the PLATFORM needs it
 #   (0.03): without it the ankles read up to 28 kN in the first step and 4,096 robots are thrown at once.
+#   SPEED_LIMIT (m/s, default off) ends an episode on the step any body is faster than that; ENV_SPACING
+#   (default the trainer's 3.0 m) spreads the environments. A descent needs both (6.0 and 6.0): a robot thrown
+#   by a reset on the platform otherwise travels 4-9 m, into its neighbours, and the pair buffers explode.
 #SBATCH -J lm-fxbody
 #SBATCH -A ece605
 #SBATCH -p ece605
@@ -121,6 +124,8 @@ if [ -n "${FEET:-}" ]; then
   TERMS+=('+task.reward.tracking.tight_feet_pos_tracking={weight:0.5,sigma:0.06,tolerance:0.005,body_names:[".*_ankle_roll_link"]}'
           '+task.reward.tracking.tight_feet_ori_tracking={weight:0.5,sigma:0.3,tolerance:0.05,body_names:[".*_ankle_roll_link"]}')
 fi
+[ "${SPEED_LIMIT:-0}" != 0 ] && TERMS+=("+task.termination.body_speed_exceeded={limit:${SPEED_LIMIT}}")
+[ -n "${ENV_SPACING:-}" ] && TERMS+=("task.viewer.env_spacing=${ENV_SPACING}")
 echo "[lm] robot=$ROBOT profile=$PROFILE terms: ${#TERMS[@]}"; printf '[lm]   %s\n' "${TERMS[@]}"
 md5sum active_adaptation/envs/mdp/commands/hdmi/bulb_hand.py "active_adaptation/assets/g1/$ROBOT.urdf"
 md5sum active_adaptation/envs/ladder_fiatlux.py active_adaptation/envs/ladder_env.py active_adaptation/envs/mdp/commands/hdmi/command_spawn.py

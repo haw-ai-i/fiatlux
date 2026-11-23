@@ -1899,3 +1899,36 @@ Videos (kinematic): `descbulb02_ref/` side and rear-right, under the videos fold
   of 64 (15 without); the rest end at step 235 (`desc01`) or 345 (`descbulb02`) on the first hand hold, the
   seed being a climb teacher. `lm_train_fxbody.sbatch` RESET_LIFT, FLOOR_STEPS, CAPACITY_SCALE.
 - Resubmitted with `RESET_LIFT=0.03`, buffers x3, large-memory GPUs only, one after the other.
+
+## Descents, fourth failure and the cause: thrown robots cross the environment grid (2026-11-22)
+
+- `desc01fx` with `RESET_LIFT=0.03` and pair buffers x3 (job 15577182, L40): clean for about 250 iterations,
+  then 476 PhysX errors (466 `collisionStackSize buffer overflow`, the rest pair buffers, up to 227 M asked
+  for) and a stall at iteration 396. The lift moved the failure later; it did not remove it.
+- The `gpu` partition (`-A uh -p gpu`) is open to this account and not preemptible, but a job there waited
+  with a start estimate eight days out. `sbatch --test-only` printing "Preempts: ..." is not a promise to
+  start. Withdrawn. `sinfo %e` / FreeMem is free memory without the page cache, not what is available:
+  node exclusions made on it were too cautious.
+- `bulb21fx` was preempted on `kill-shared` after 3 h 37 min and requeued from checkpoint 15,300.
+- `play_probe_resets.py` (new): resets as training makes them (random phase, pose and joint noise,
+  exploration noise), 256 robots; a "launch" is a body over 6 m/s within six steps of an episode's start.
+
+  | clip, setting | launched starts | ankle force, 99th pct | fastest body | furthest from own origin |
+  |---|---|---|---|---|
+  | `edge87` (climb), as trained | 3.4 % | 35 kN | 37 m/s | 2.25 m |
+  | `desc01`, no lift | 4.2 % | 33 kN | 42 m/s | 4.39 m |
+  | `desc01`, lift 0.03 | 1.9 % | 31 kN | 40 m/s | 4.46 m |
+  | `desc01`, lift 0.03, joint noise 0.03 | 2.3 % | 14 kN | 39 m/s | 8.93 m |
+  | `desc01`, lift 0.03, speed limit 6, spacing 6 | 0 | 34 kN | 6.0 m/s | 1.88 m |
+  | `descbulb02`, the same | 0 | 36 kN | 6.0 m/s | 2.00 m |
+
+  Environments are 3.0 m apart. The CLIMB throws its robots just as often and trains: they stay inside
+  their own cell. From the platform a thrown robot is in the air for the 25 or more steps the stock
+  terminations need and lands in its neighbours' space. Environments do not collide with each other, but
+  the broadphase counts the overlapping pairs, which is the number that grew to 1.2 billion.
+  Launches happen at every phase of both clips (the +-0.1 rad joint noise at a reset), not only on the
+  platform; earlier entries that blamed the platform start alone were incomplete.
+- `bulb_hand.py` `body_speed_exceeded` (new termination, no grace): ends the episode on the step any body
+  is over a limit. `lm_train_fxbody.sbatch` SPEED_LIMIT, ENV_SPACING (`task.viewer.env_spacing`).
+- Not done: the same check at 4,096 environments (only the cluster can), and whether the climb runs would
+  also gain from the speed limit (their robots get within 0.75 m of the next cell).
