@@ -2096,3 +2096,10 @@ Videos (kinematic): `descbulb02_ref/` side and rear-right, under the videos fold
 - `desc01fx` (job 15581301, L40, `COLLISION_STACK=536870912`): 471 iterations past the resume with no
   PhysX error, the first descent to pass iteration 450 at 4,096 environments. `descbulb02fx` (job
   15581313, H200, same settings) training.
+- `edge87s2` 9,900 (noise 0.144), S02, 4 seeds: 0 stand; falls at steps 759, 853, 1,349, 1,610. Three
+  checkpoints in a row at 0 of 4 after 9,000's 4 of 4.
+- `desc01fx` 9,000 (900 iterations of descent), S12, 2 seeds from the task's spawn and 2 with `--rsi`:
+  the spawn is within 2 cm of the clip's first frame and the adapter runs. The teacher does not descend
+  yet (pelvis 1.92 m at step 300, 19 cm above the clip), presses knees, elbows and torso on the ladder,
+  and every run ends on `bulb_unseated` at steps 230-399; `bulb_seated` reads True at steps 200 and 300.
+  The trainer has no socket above the platform.
