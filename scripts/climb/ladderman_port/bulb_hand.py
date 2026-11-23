@@ -50,21 +50,21 @@ The four tracking terms are plain subclasses of LadderMan's own, only so that a 
 second, tighter instance without the ``name(class)`` key syntax, which a command-line override
 cannot carry.
 """
+
 from __future__ import annotations
 
-from typing import List
+from typing import List  # noqa: UP035
 
 import torch
-
 from active_adaptation.envs.mdp.base import Reward, Termination
 
 from .rewards import (
     joint_pos_tracking_product,
-    keypoint_ori_tracking_product,
-    keypoint_pos_tracking_product,
     keypoint_lin_vel_tracking_product,
     keypoint_ori_tracking_local_product,
+    keypoint_ori_tracking_product,
     keypoint_pos_tracking_local_product,
+    keypoint_pos_tracking_product,
 )
 
 DEFAULT_HAND_BODIES = "right_wrist_.*_link"
@@ -73,15 +73,23 @@ DEFAULT_HAND_LINK = "right_wrist_yaw_link"
 
 def _hand_force(sensor, body_ids) -> torch.Tensor:
     """[N] hardest contact force on any of the hand's links over the sensor's history (the substeps of this step)."""
-    f = sensor.data.net_forces_w_history[:, :, body_ids].norm(dim=-1)       # [N, history, links]
+    f = sensor.data.net_forces_w_history[:, :, body_ids].norm(dim=-1)  # [N, history, links]
     return f.amax(dim=(1, 2))
 
 
 class carry_hand_contact_force_l2(Reward):
     """-(max(0, F - free_force) / scale)^2, clipped. F is the hardest contact force on the hand's links."""
 
-    def __init__(self, env, weight: float, body_names: str | List[str] = DEFAULT_HAND_BODIES,
-                 free_force: float = 15.0, scale: float = 25.0, clip: float = 4.0, enabled: bool = True):
+    def __init__(
+        self,
+        env,
+        weight: float,
+        body_names: str | List[str] = DEFAULT_HAND_BODIES,
+        free_force: float = 15.0,
+        scale: float = 25.0,
+        clip: float = 4.0,
+        enabled: bool = True,
+    ):
         super().__init__(env, weight, enabled)
         self.sensor = self.env.scene["contact_forces"]
         self.body_ids, names = self.sensor.find_bodies(body_names)
@@ -96,8 +104,16 @@ class carry_hand_contact_force_l2(Reward):
 class carry_hand_accel_l2(Reward):
     """-(max(0, |a| - free_accel) / scale)^2, clipped. a is the hand link's velocity change over one control step."""
 
-    def __init__(self, env, weight: float, body_name: str = DEFAULT_HAND_LINK,
-                 free_accel: float = 5.0, scale: float = 10.0, clip: float = 4.0, enabled: bool = True):
+    def __init__(
+        self,
+        env,
+        weight: float,
+        body_name: str = DEFAULT_HAND_LINK,
+        free_accel: float = 5.0,
+        scale: float = 10.0,
+        clip: float = 4.0,
+        enabled: bool = True,
+    ):
         super().__init__(env, weight, enabled)
         self.asset = self.env.scene["robot"]
         self.body_id = self.asset.find_bodies(body_name)[0][0]
@@ -111,7 +127,9 @@ class carry_hand_accel_l2(Reward):
 
     def update(self):
         v = self.asset.data.body_com_lin_vel_w[:, self.body_id]
-        self.accel[:] = torch.where(self.fresh, torch.zeros_like(self.accel), (v - self.prev).norm(dim=-1) / self.env.step_dt)
+        self.accel[:] = torch.where(
+            self.fresh, torch.zeros_like(self.accel), (v - self.prev).norm(dim=-1) / self.env.step_dt
+        )
         self.prev[:] = v
         self.fresh[:] = False
 
@@ -173,7 +191,7 @@ class _from_step:
     the whole climb to fix a stance that only matters at the top.
     """
 
-    def __init__(self, *args, start_step: int = 0, end_step: int = 10 ** 9, **kwargs):
+    def __init__(self, *args, start_step: int = 0, end_step: int = 10**9, **kwargs):
         super().__init__(*args, **kwargs)
         self.start_step, self.end_step = int(start_step), int(end_step)
 
@@ -212,8 +230,14 @@ class carry_hand_force_exceeded(Termination):
     without the grace the mean episode at 4,096 environments was 4.7 steps (30 without the rule).
     """
 
-    def __init__(self, env, body_names: str | List[str] = DEFAULT_HAND_BODIES, limit: float = 50.0, min_steps: int = 1,
-                 grace_steps: int = 25):
+    def __init__(
+        self,
+        env,
+        body_names: str | List[str] = DEFAULT_HAND_BODIES,
+        limit: float = 50.0,
+        min_steps: int = 1,
+        grace_steps: int = 25,
+    ):
         super().__init__(env)
         self.sensor = self.env.scene["contact_forces"]
         self.body_ids, _ = self.sensor.find_bodies(body_names)

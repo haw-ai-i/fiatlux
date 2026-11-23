@@ -58,39 +58,42 @@ _B, _J, _F = NUM_TRACKING_BODIES, NUM_TRACKING_JOINTS, NUM_FUTURE_STEPS
 
 COMMAND = [
     ("ref_body_pos_future_local", _F * _B * 3, "future body positions in the MOTION root's yaw frame, z zeroed"),
-    ("ref_joint_pos_future",      _F * _J,     "future reference joint angles"),
-    ("ref_motion_phase",          1,           "t / motion_len -- the only term we must drive ourselves"),
+    ("ref_joint_pos_future", _F * _J, "future reference joint angles"),
+    ("ref_motion_phase", 1, "t / motion_len -- the only term we must drive ourselves"),
 ]
 
 POLICY = [
-    ("root_ang_vel_history",      1 * 3,                          "history_steps [0], noise 0.05"),
-    ("projected_gravity_history", 1 * 3,                          "history_steps [0], noise 0.05"),
-    ("joint_pos_history",         POLICY_JOINT_HISTORY_STEPS * NUM_JOINTS,
-                                  "steps [0,1,2,3,4,8]; MEAN of the last two physics substeps, minus the action offset"),
-    ("prev_actions",              3 * NUM_ACTUATED,               "steps=3 of the action buffer"),
+    ("root_ang_vel_history", 1 * 3, "history_steps [0], noise 0.05"),
+    ("projected_gravity_history", 1 * 3, "history_steps [0], noise 0.05"),
+    (
+        "joint_pos_history",
+        POLICY_JOINT_HISTORY_STEPS * NUM_JOINTS,
+        "steps [0,1,2,3,4,8]; MEAN of the last two physics substeps, minus the action offset",
+    ),
+    ("prev_actions", 3 * NUM_ACTUATED, "steps=3 of the action buffer"),
 ]
 
 OBJECT = [
-    ("ladder_pos_b",     2, "rung 0's xy in the robot's YAW-ONLY root frame -- not per-rung"),
+    ("ladder_pos_b", 2, "rung 0's xy in the robot's YAW-ONLY root frame -- not per-rung"),
     ("ladder_heading_b", 2, "[cos, sin] of wrap_to_pi(rung 0 yaw - robot yaw)"),
 ]
 
 PRIV = [
-    ("root_ang_vel_history",           PRIV_HISTORY_STEPS * 3,       "steps [0..8], no noise"),
-    ("projected_gravity_history",      PRIV_HISTORY_STEPS * 3,       "steps [0..8], no noise"),
-    ("joint_pos_history",              PRIV_HISTORY_STEPS * NUM_JOINTS, "steps [0..8], all 29 joints"),
-    ("ref_root_pos_future_b",          _F * 3,                       "future reference root position, robot root frame"),
-    ("ref_root_ori_future_b",          _F * 2 * 3,                   "FIRST TWO ROWS of the rotation matrix (6D rotation), not a quaternion"),
-    ("diff_body_pos_future_local",     _F * _B * 3,                  "reference minus robot, body positions"),
-    ("diff_body_ori_future_local",     _F * _B * 2 * 3,              "same 6D rotation convention -- the single largest term"),
-    ("diff_body_lin_vel_future_local", _F * _B * 3,                  "reference minus robot, body linear velocity"),
-    ("diff_body_ang_vel_future_local", _F * _B * 3,                  "reference minus robot, body angular velocity"),
-    ("root_linvel_b",                  3,                            "root linear velocity, body frame"),
-    ("body_pos_b",                     2 * 3,                        "body_names '.*ankle_roll_link' -> both ankles"),
-    ("body_vel_b",                     2 * 3,                        "both ankles"),
-    ("body_height",                    4,                            "both ankles + pelvis + torso_link"),
-    ("applied_action",                 NUM_ACTUATED,                 "what the action manager actually applied"),
-    ("applied_torque",                 NUM_JOINTS,                   "joint_names defaults to '.*', so all 29 -- NOT the 23 actuated"),
+    ("root_ang_vel_history", PRIV_HISTORY_STEPS * 3, "steps [0..8], no noise"),
+    ("projected_gravity_history", PRIV_HISTORY_STEPS * 3, "steps [0..8], no noise"),
+    ("joint_pos_history", PRIV_HISTORY_STEPS * NUM_JOINTS, "steps [0..8], all 29 joints"),
+    ("ref_root_pos_future_b", _F * 3, "future reference root position, robot root frame"),
+    ("ref_root_ori_future_b", _F * 2 * 3, "FIRST TWO ROWS of the rotation matrix (6D rotation), not a quaternion"),
+    ("diff_body_pos_future_local", _F * _B * 3, "reference minus robot, body positions"),
+    ("diff_body_ori_future_local", _F * _B * 2 * 3, "same 6D rotation convention -- the single largest term"),
+    ("diff_body_lin_vel_future_local", _F * _B * 3, "reference minus robot, body linear velocity"),
+    ("diff_body_ang_vel_future_local", _F * _B * 3, "reference minus robot, body angular velocity"),
+    ("root_linvel_b", 3, "root linear velocity, body frame"),
+    ("body_pos_b", 2 * 3, "body_names '.*ankle_roll_link' -> both ankles"),
+    ("body_vel_b", 2 * 3, "both ankles"),
+    ("body_height", 4, "both ankles + pelvis + torso_link"),
+    ("applied_action", NUM_ACTUATED, "what the action manager actually applied"),
+    ("applied_torque", NUM_JOINTS, "joint_names defaults to '.*', so all 29 -- NOT the 23 actuated"),
 ]
 
 # A fifth input, and the one easiest to miss: the teacher is built with `residual_action=True`,
@@ -99,12 +102,14 @@ PRIV = [
 # units, not a standalone action. It is not a VecNorm group -- the checkpoint's running stats
 # cover only the four above -- because it bypasses the trunk and is added to the head's output.
 REF_JPOS = [
-    ("ref_joint_pos_action_policy", NUM_ACTUATED,
-     "(ref_joint_pos - LadderMan default) / action_scaling, over the 23 actuated joints"),
+    (
+        "ref_joint_pos_action_policy",
+        NUM_ACTUATED,
+        "(ref_joint_pos - LadderMan default) / action_scaling, over the 23 actuated joints",
+    ),
 ]
 
-GROUPS = {"command": COMMAND, "policy": POLICY, "object": OBJECT, "priv": PRIV,
-          "ref_joint_pos_": REF_JPOS}
+GROUPS = {"command": COMMAND, "policy": POLICY, "object": OBJECT, "priv": PRIV, "ref_joint_pos_": REF_JPOS}
 
 # Only these four carry VecNorm running statistics in the checkpoint.
 VECNORM_GROUPS = ("command", "policy", "object", "priv")
@@ -159,7 +164,7 @@ def main() -> int:
         print(f"\n{group}  ({width(group)})")
         for name, start, stop in offsets(group):
             why = next(w for n, _, w in GROUPS[group] if n == name)
-            print(f"  [{start:5d}:{stop:5d}] {stop-start:5d}  {name:32s} {why}")
+            print(f"  [{start:5d}:{stop:5d}] {stop - start:5d}  {name:32s} {why}")
 
     if a.checkpoint:
         print()

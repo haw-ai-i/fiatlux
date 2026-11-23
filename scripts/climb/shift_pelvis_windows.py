@@ -11,68 +11,133 @@ waist is not touched.
 
     python shift_pelvis_windows.py --clip <in> --out <out> --dx -0.02 --window 780 825 --window 1195 1235 ...
 """
-import argparse, json, pathlib, shutil, sys
+
+import argparse
+import json
+import pathlib
+import shutil
+import sys
+
 import numpy as np
+
 sys.path.insert(0, str(pathlib.Path(__file__).parent))
 import g1_arm_fk as K
 
 ap = argparse.ArgumentParser()
-ap.add_argument("--clip", required=True); ap.add_argument("--out", required=True)
+ap.add_argument("--clip", required=True)
+ap.add_argument("--out", required=True)
 ap.add_argument("--dx", type=float, default=-0.02)
 ap.add_argument("--dz", type=float, default=0.0)
-ap.add_argument("--window", type=int, nargs=2, action="append", required=True, metavar=("FROM", "TO"), help="50 Hz steps at full shift")
-ap.add_argument("--heel_raise", nargs=2, default=None, metavar=("SIDE", "DEG"),
-                help="that foot goes up on its toes by DEG over the windows (rotated about the front of its sole, which stays "
-                     "where it is). With --dz this is how a person gets the hip higher on a ladder: the trailing leg is "
-                     "already straight, so the only height left is in its ankle.")
-ap.add_argument("--toe", type=float, nargs=3, default=[0.135, 0.0, -0.035], help="front of the sole in the ankle link's frame")
-ap.add_argument("--avoid_limits", type=float, default=None, metavar="DEG",
-                help="keep each limb's joints this far inside their limits where the limb has a spare degree of freedom "
-                     "(the 7-joint arms): the pose is still held exactly, the arm's elbow swivel is used to stay inside. "
-                     "Off by default, so earlier rebuilds reproduce.")
+ap.add_argument(
+    "--window",
+    type=int,
+    nargs=2,
+    action="append",
+    required=True,
+    metavar=("FROM", "TO"),
+    help="50 Hz steps at full shift",
+)
+ap.add_argument(
+    "--heel_raise",
+    nargs=2,
+    default=None,
+    metavar=("SIDE", "DEG"),
+    help="that foot goes up on its toes by DEG over the windows (rotated about the front of its sole, which stays "
+    "where it is). With --dz this is how a person gets the hip higher on a ladder: the trailing leg is "
+    "already straight, so the only height left is in its ankle.",
+)
+ap.add_argument(
+    "--toe", type=float, nargs=3, default=[0.135, 0.0, -0.035], help="front of the sole in the ankle link's frame"
+)
+ap.add_argument(
+    "--avoid_limits",
+    type=float,
+    default=None,
+    metavar="DEG",
+    help="keep each limb's joints this far inside their limits where the limb has a spare degree of freedom "
+    "(the 7-joint arms): the pose is still held exactly, the arm's elbow swivel is used to stay inside. "
+    "Off by default, so earlier rebuilds reproduce.",
+)
 ap.add_argument("--ramp", type=float, default=0.5, help="seconds to ramp the shift in before FROM and out after TO")
 a = ap.parse_args()
 src, dst = pathlib.Path(a.clip), pathlib.Path(a.out)
-d = dict(np.load(src / "motion.npz")); meta = json.loads((src / "meta.json").read_text())
+d = dict(np.load(src / "motion.npz"))
+meta = json.loads((src / "meta.json").read_text())
 jn, bn, fps = list(meta["joint_names"]), list(meta["body_names"]), float(meta["fps"])
-T = d["joint_pos"].shape[0]; PEL = bn.index("pelvis")
+T = d["joint_pos"].shape[0]
+PEL = bn.index("pelvis")
 sm = lambda u: u * u * u * (u * (6 * u - 15) + 10)
-w = np.zeros(T); nr = int(a.ramp * fps); t = np.arange(T)
+w = np.zeros(T)
+nr = int(a.ramp * fps)
+t = np.arange(T)
 for s0, s1 in a.window:
     f0, f1 = int(s0 * fps / 50), int(s1 * fps / 50)
     w = np.maximum(w, sm(np.clip((t - (f0 - nr)) / nr, 0, 1)) * sm(np.clip(((f1 + nr) - t) / nr, 0, 1)))
-act = np.flatnonzero(w > 1e-6); sl = slice(int(act.min()), int(act.max()) + 1)
-q = d["joint_pos"].copy(); bp, bq = d["body_pos_w"].copy(), d["body_quat_w"].copy()
-pp = bp[:, PEL].copy(); pp[:, 0] += a.dx * w; pp[:, 2] += a.dz * w
+act = np.flatnonzero(w > 1e-6)
+sl = slice(int(act.min()), int(act.max()) + 1)
+q = d["joint_pos"].copy()
+bp, bq = d["body_pos_w"].copy(), d["body_quat_w"].copy()
+pp = bp[:, PEL].copy()
+pp[:, 0] += a.dx * w
+pp[:, 2] += a.dz * w
 pq = bq[:, PEL]
 LIMBS = {}
 for side in ("left", "right"):
-    LIMBS[f"{side} leg"] = (f"{side}_ankle_roll_link", [jn.index(f"{side}_{k}_joint") for k in ("hip_pitch", "hip_roll", "hip_yaw", "knee", "ankle_pitch", "ankle_roll")])
-    LIMBS[f"{side} arm"] = (f"{side}_wrist_yaw_link", [jn.index(f"{side}_{k}_joint") for k in ("shoulder_pitch", "shoulder_roll", "shoulder_yaw", "elbow", "wrist_roll", "wrist_pitch", "wrist_yaw")])
+    LIMBS[f"{side} leg"] = (
+        f"{side}_ankle_roll_link",
+        [
+            jn.index(f"{side}_{k}_joint")
+            for k in ("hip_pitch", "hip_roll", "hip_yaw", "knee", "ankle_pitch", "ankle_roll")
+        ],
+    )
+    LIMBS[f"{side} arm"] = (
+        f"{side}_wrist_yaw_link",
+        [
+            jn.index(f"{side}_{k}_joint")
+            for k in (
+                "shoulder_pitch",
+                "shoulder_roll",
+                "shoulder_yaw",
+                "elbow",
+                "wrist_roll",
+                "wrist_pitch",
+                "wrist_yaw",
+            )
+        ],
+    )
 for name, (body, js) in LIMBS.items():
-    k = bn.index(body); tp, tq = bp[sl, k].copy(), bq[sl, k].copy()
+    k = bn.index(body)
+    tp, tq = bp[sl, k].copy(), bq[sl, k].copy()
     if a.heel_raise is not None and name == f"{a.heel_raise[0]} leg":
         th = np.radians(float(a.heel_raise[1])) * w[sl]
-        ry = np.stack([np.cos(th / 2), np.zeros_like(th), np.sin(th / 2), np.zeros_like(th)], 1)      # about the foot's own +y: nose down
+        ry = np.stack(
+            [np.cos(th / 2), np.zeros_like(th), np.sin(th / 2), np.zeros_like(th)], 1
+        )  # about the foot's own +y: nose down
         c = np.array(a.toe)[None]
         pivot = tp + K.qrot(tq, c)
         tq = K.qmul(tq, ry)
         tp = pivot - K.qrot(tq, c)
-        print(f"[{name:9s}] heel raised by up to {float(a.heel_raise[1]):.0f} deg about the front of the sole: ankle up {(tp[:, 2] - bp[sl, k, 2]).max()*1000:.0f} mm")
+        print(
+            f"[{name:9s}] heel raised by up to {float(a.heel_raise[1]):.0f} deg about the front of the sole: ankle up {(tp[:, 2] - bp[sl, k, 2]).max() * 1000:.0f} mm"
+        )
 
     def err(qq):
         o = K.fk_all(pp[sl], pq[sl], qq, jn)[body]
-        e_ = K.qmul(tq, K.qconj(o[1])); e_ = e_ * np.sign(e_[:, :1] + 1e-12)
+        e_ = K.qmul(tq, K.qconj(o[1]))
+        e_ = e_ * np.sign(e_[:, :1] + 1e-12)
         return np.concatenate([tp - o[0], 2.0 * e_[:, 1:]], 1)
 
-    qs = q[sl].copy(); n = len(js); viol = 0.0
+    qs = q[sl].copy()
+    n = len(js)
+    viol = 0.0
     for it in range(400 if a.avoid_limits is not None else 80):
         e = err(qs)
         if np.abs(e).max() < 1e-5 and (it > 0 and viol < 1e-4 or a.avoid_limits is None or n <= 6):
             break
         Jm = np.zeros((qs.shape[0], 6, n))
         for c, j in enumerate(js):
-            qp = qs.copy(); qp[:, j] += 1e-4
+            qp = qs.copy()
+            qp[:, j] += 1e-4
             Jm[:, :, c] = -(err(qp) - e) / 1e-4
         JJt = np.einsum("nij,nkj->nik", Jm, Jm) + 1e-6 * np.eye(6)
         step = np.einsum("nji,nj->ni", Jm, np.linalg.solve(JJt, e))
@@ -80,32 +145,51 @@ for name, (body, js) in LIMBS.items():
             m_ = np.radians(a.avoid_limits)
             # never ask for more room than the clip itself had on that frame: frames the shift does not touch stay as they are
             q0 = d["joint_pos"][sl][:, js]
-            lo = np.minimum(np.array([K.limits(jn[j])[0] for j in js]) + m_, q0); hi = np.maximum(np.array([K.limits(jn[j])[1] for j in js]) - m_, q0)
+            lo = np.minimum(np.array([K.limits(jn[j])[0] for j in js]) + m_, q0)
+            hi = np.maximum(np.array([K.limits(jn[j])[1] for j in js]) - m_, q0)
             z = np.where(qs[:, js] < lo, lo - qs[:, js], np.where(qs[:, js] > hi, hi - qs[:, js], 0.0))
-            Jp = np.einsum("nji,njk->nik", Jm, np.linalg.inv(JJt))                      # J^T (J J^T)^-1, [N, n, 6]
-            N_ = np.eye(n)[None] - np.einsum("nik,nkj->nij", Jp, Jm)                    # null-space projector
+            Jp = np.einsum("nji,njk->nik", Jm, np.linalg.inv(JJt))  # J^T (J J^T)^-1, [N, n, 6]
+            N_ = np.eye(n)[None] - np.einsum("nik,nkj->nij", Jp, Jm)  # null-space projector
             step = step + np.einsum("nij,nj->ni", N_, 0.5 * z)
             viol = np.abs(z).max()
         else:
             viol = 0.0
         qs[:, js] += np.clip(step, -0.2, 0.2)
     e = err(qs)
-    q[sl.start:sl.stop, js] = qs[:, js]
-    lim = [(jn[j], round(float(np.degrees(q[:, j].min())), 1), round(float(np.degrees(q[:, j].max())), 1)) for j in js
-           if q[:, j].min() < K.limits(jn[j])[0] - 1e-6 or q[:, j].max() > K.limits(jn[j])[1] + 1e-6]
-    print(f"[{name:9s}] held at its {'toe-raised' if a.heel_raise is not None and name == a.heel_raise[0] + ' leg' else 'original'} pose to {np.abs(e[:, :3]).max()*1000:.2f} mm / {np.degrees(np.abs(e[:, 3:]).max()):.2f} deg ({it + 1} iterations); "
-          f"largest joint change {np.degrees(np.abs(q[sl][:, js] - d['joint_pos'][sl][:, js]).max()):.1f} deg; outside limits: {lim or 'none'}")
+    q[sl.start : sl.stop, js] = qs[:, js]
+    lim = [
+        (jn[j], round(float(np.degrees(q[:, j].min())), 1), round(float(np.degrees(q[:, j].max())), 1))
+        for j in js
+        if q[:, j].min() < K.limits(jn[j])[0] - 1e-6 or q[:, j].max() > K.limits(jn[j])[1] + 1e-6
+    ]
+    print(
+        f"[{name:9s}] held at its {'toe-raised' if a.heel_raise is not None and name == a.heel_raise[0] + ' leg' else 'original'} pose to {np.abs(e[:, :3]).max() * 1000:.2f} mm / {np.degrees(np.abs(e[:, 3:]).max()):.2f} deg ({it + 1} iterations); "
+        f"largest joint change {np.degrees(np.abs(q[sl][:, js] - d['joint_pos'][sl][:, js]).max()):.1f} deg; outside limits: {lim or 'none'}"
+    )
 allb = K.fk_all(pp, pq, q, jn)
 for i, b in enumerate(bn):
     bp[:, i], bq[:, i] = allb[b]
 chk = max(float(np.abs(bp[~(w > 1e-6)] - d["body_pos_w"][~(w > 1e-6)]).max()), 0.0)
 qd = np.gradient(q, 1.0 / fps, axis=0)
-print(f"[shift] pelvis moved {a.dx*1000:+.0f} mm in x, {a.dz*1000:+.0f} mm in z over {len(a.window)} windows ({int((w > 1e-6).sum())} frames); "
-      f"frames outside the windows reproduce the clip to {chk*1000:.3f} mm; peak joint speed {np.abs(qd).max():.2f} rad/s (was {np.abs(d['joint_vel']).max():.2f})")
-dq_ = K.qmul(np.roll(bq, -1, axis=0), K.qconj(bq)); dq_[-1] = dq_[-2]; dq_ = dq_ * np.sign(dq_[..., :1] + 1e-12)
+print(
+    f"[shift] pelvis moved {a.dx * 1000:+.0f} mm in x, {a.dz * 1000:+.0f} mm in z over {len(a.window)} windows ({int((w > 1e-6).sum())} frames); "
+    f"frames outside the windows reproduce the clip to {chk * 1000:.3f} mm; peak joint speed {np.abs(qd).max():.2f} rad/s (was {np.abs(d['joint_vel']).max():.2f})"
+)
+dq_ = K.qmul(np.roll(bq, -1, axis=0), K.qconj(bq))
+dq_[-1] = dq_[-2]
+dq_ = dq_ * np.sign(dq_[..., :1] + 1e-12)
 dst.mkdir(parents=True, exist_ok=True)
 for f in src.iterdir():
-    if f.name != "motion.npz": shutil.copy(f, dst / f.name)
-np.savez(dst / "motion.npz", joint_pos=q, joint_vel=qd, body_pos_w=bp, body_quat_w=bq,
-         body_lin_vel_w=np.gradient(bp, 1.0 / fps, axis=0), body_ang_vel_w=2.0 * dq_[..., 1:] * fps, object_contact=d["object_contact"])
+    if f.name != "motion.npz":
+        shutil.copy(f, dst / f.name)
+np.savez(
+    dst / "motion.npz",
+    joint_pos=q,
+    joint_vel=qd,
+    body_pos_w=bp,
+    body_quat_w=bq,
+    body_lin_vel_w=np.gradient(bp, 1.0 / fps, axis=0),
+    body_ang_vel_w=2.0 * dq_[..., 1:] * fps,
+    object_contact=d["object_contact"],
+)
 print(f"[out  ] {dst}")

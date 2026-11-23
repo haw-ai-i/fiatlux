@@ -23,6 +23,8 @@ from isaaclab.managers import RewardTermCfg as RewTerm
 from isaaclab.managers import TerminationTermCfg as DoneTerm
 from isaaclab.utils import configclass
 
+from fiatlux_task.robots.g1 import add_foot_sole, fix_sensor_frame_mass
+
 from .. import mdp
 from ..mdp import balance_terms, grasp_terms, place_terms
 from ..replace_env_cfg import SEAT_ORI_THRESHOLD, SEAT_POS_THRESHOLD
@@ -36,7 +38,6 @@ from ..subtask_tiers.balance import (
     DescendRewardsCfg,
     DescendSubtaskCfg,
 )
-from fiatlux_task.robots.g1 import add_foot_sole, fix_sensor_frame_mass
 
 _SEATING = {"pos_threshold": SEAT_POS_THRESHOLD, "ori_threshold": SEAT_ORI_THRESHOLD}
 

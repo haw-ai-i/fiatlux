@@ -4,21 +4,25 @@ Importable WITHOUT launching Isaac: replay_clip_kinematic.py builds a Simulation
 module level, so anything that merely wants the tread table must not import it (doing so
 silently starts Kit and blocks on its EULA prompt).
 """
+
 from __future__ import annotations
+
 import math
+
 import numpy as np
 
 
 def quat_rot(q, v):
     w, u = q[0], np.asarray(q[1:])
     v = np.asarray(v, float)
-    return v + 2*np.cross(u, np.cross(u, v) + w*v)
+    return v + 2 * np.cross(u, np.cross(u, v) + w * v)
 
 
 def mesh_inventory(stage, ladder_prim_path, scale):
     """World AABB of every mesh under the ladder prim. The step treads are NOT named prims --
     they come out of the convex decomposition -- so they are found by shape, not by name."""
-    from pxr import Usd, UsdGeom, Gf
+    from pxr import Gf, Usd, UsdGeom
+
     out = []
     root = stage.GetPrimAtPath(ladder_prim_path)
     if not root or not root.IsValid():
@@ -34,11 +38,17 @@ def mesh_inventory(stage, ladder_prim_path, scale):
         m = UsdGeom.Xformable(prim).ComputeLocalToWorldTransform(Usd.TimeCode.Default())
         P = np.array([[*m.Transform(Gf.Vec3d(q[0], q[1], q[2]))] for q in pts], float) * scale
         lo, hi = P.min(0), P.max(0)
-        out.append({"name": prim.GetName(), "path": str(prim.GetPath()),
-                    "lo": lo.tolist(), "hi": hi.tolist(), "npts": len(pts)})
+        out.append(
+            {
+                "name": prim.GetName(),
+                "path": str(prim.GetPath()),
+                "lo": lo.tolist(),
+                "hi": hi.tolist(),
+                "npts": len(pts),
+            }
+        )
     out.sort(key=lambda t: t["hi"][2])
     return out
-
 
 
 # Tread geometry in the LADDER'S OWN frame, measured off this asset's vertex cloud
@@ -59,8 +69,8 @@ PLATFORM_WIDTH = 0.4764
 
 TREAD_WIDTH = 0.4946
 TREAD_DEPTH = 0.0738
-ZBINS = 0.002   # top = highest 2 mm bin (anchored at 0) holding >=100 verts; ONE definition,
-                #       shared by the table above and verify_treads below
+ZBINS = 0.002  # top = highest 2 mm bin (anchored at 0) holding >=100 verts; ONE definition,
+#       shared by the table above and verify_treads below
 TREAD_X_CENTRE = 0.0
 
 
@@ -94,7 +104,7 @@ def verify_treads(verts_world, ladder_pos, ladder_yaw, tol=0.006):
         top = max(dense)
         d = top - t["top"]
         flag = "" if abs(d) <= tol else "   <-- MISMATCH"
-        print(f"[VERIFY] tread {i}: live top {top:.4f} vs table {t['top']:.4f}  ({d*1000:+.1f} mm){flag}", flush=True)
+        print(f"[VERIFY] tread {i}: live top {top:.4f} vs table {t['top']:.4f}  ({d * 1000:+.1f} mm){flag}", flush=True)
         ok = ok and abs(d) <= tol
     return ok
 
@@ -104,7 +114,5 @@ def tread_world(t, ladder_pos, ladder_yaw):
     c, s_ = math.cos(ladder_yaw), math.sin(ladder_yaw)
     R = np.array([[c, -s_, 0.0], [s_, c, 0.0], [0.0, 0.0, 1.0]])
     ctr = R @ np.array([t["x_centre"], (t["y_front"] + t["y_back"]) / 2, t["top"]]) + ladder_pos
-    fr  = R @ np.array([t["x_centre"], t["y_front"], t["top"]]) + ladder_pos
+    fr = R @ np.array([t["x_centre"], t["y_front"], t["top"]]) + ladder_pos
     return ctr, fr
-
-

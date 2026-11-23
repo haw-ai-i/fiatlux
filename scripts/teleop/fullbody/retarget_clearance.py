@@ -17,56 +17,92 @@ it. Only the swing leg's six joints change, and only between takeoff and touchdo
 FK/IK run offline in numpy against Unitree's own URDF chain; the sim replay then measures the
 foot independently, so a wrong IK shows up as a gate failure rather than a plausible-looking lie.
 """
+
 from __future__ import annotations
-import argparse, json, math, os
+
+import argparse
+import json
+import math
+import os
+
 import numpy as np
 
 # right leg, from g1_body29_hand14.urdf (parent -> child, origin xyz/rpy, axis, limits)
 RIGHT_LEG = [
-    ("right_hip_pitch_joint",   (0.0, -0.064452, -0.1027),    (0.0,  0.0,    0.0), (0, 1, 0), (-2.5307,  2.8798)),
-    ("right_hip_roll_joint",    (0.0, -0.052,    -0.030465),  (0.0, -0.1749, 0.0), (1, 0, 0), (-2.9671,  0.5236)),
-    ("right_hip_yaw_joint",     (0.025001, 0.0,  -0.12412),   (0.0,  0.0,    0.0), (0, 0, 1), (-2.7576,  2.7576)),
-    ("right_knee_joint",        (-0.078273, -0.0021489, -0.17734), (0.0, 0.1749, 0.0), (0, 1, 0), (-0.087267, 2.8798)),
-    ("right_ankle_pitch_joint", (0.0, 9.4445e-05, -0.30001),  (0.0,  0.0,    0.0), (0, 1, 0), (-0.87267, 0.5236)),
-    ("right_ankle_roll_joint",  (0.0, 0.0,       -0.017558),  (0.0,  0.0,    0.0), (1, 0, 0), (-0.2618,  0.2618)),
+    ("right_hip_pitch_joint", (0.0, -0.064452, -0.1027), (0.0, 0.0, 0.0), (0, 1, 0), (-2.5307, 2.8798)),
+    ("right_hip_roll_joint", (0.0, -0.052, -0.030465), (0.0, -0.1749, 0.0), (1, 0, 0), (-2.9671, 0.5236)),
+    ("right_hip_yaw_joint", (0.025001, 0.0, -0.12412), (0.0, 0.0, 0.0), (0, 0, 1), (-2.7576, 2.7576)),
+    ("right_knee_joint", (-0.078273, -0.0021489, -0.17734), (0.0, 0.1749, 0.0), (0, 1, 0), (-0.087267, 2.8798)),
+    ("right_ankle_pitch_joint", (0.0, 9.4445e-05, -0.30001), (0.0, 0.0, 0.0), (0, 1, 0), (-0.87267, 0.5236)),
+    ("right_ankle_roll_joint", (0.0, 0.0, -0.017558), (0.0, 0.0, 0.0), (1, 0, 0), (-0.2618, 0.2618)),
 ]
 JOINT_ORDER = (
-    "left_hip_pitch_joint", "left_hip_roll_joint", "left_hip_yaw_joint",
-    "left_knee_joint", "left_ankle_pitch_joint", "left_ankle_roll_joint",
-    "right_hip_pitch_joint", "right_hip_roll_joint", "right_hip_yaw_joint",
-    "right_knee_joint", "right_ankle_pitch_joint", "right_ankle_roll_joint",
-    "waist_yaw_joint", "waist_roll_joint", "waist_pitch_joint",
-    "left_shoulder_pitch_joint", "left_shoulder_roll_joint", "left_shoulder_yaw_joint",
-    "left_elbow_joint", "left_wrist_roll_joint", "left_wrist_pitch_joint", "left_wrist_yaw_joint",
-    "right_shoulder_pitch_joint", "right_shoulder_roll_joint", "right_shoulder_yaw_joint",
-    "right_elbow_joint", "right_wrist_roll_joint", "right_wrist_pitch_joint", "right_wrist_yaw_joint",
+    "left_hip_pitch_joint",
+    "left_hip_roll_joint",
+    "left_hip_yaw_joint",
+    "left_knee_joint",
+    "left_ankle_pitch_joint",
+    "left_ankle_roll_joint",
+    "right_hip_pitch_joint",
+    "right_hip_roll_joint",
+    "right_hip_yaw_joint",
+    "right_knee_joint",
+    "right_ankle_pitch_joint",
+    "right_ankle_roll_joint",
+    "waist_yaw_joint",
+    "waist_roll_joint",
+    "waist_pitch_joint",
+    "left_shoulder_pitch_joint",
+    "left_shoulder_roll_joint",
+    "left_shoulder_yaw_joint",
+    "left_elbow_joint",
+    "left_wrist_roll_joint",
+    "left_wrist_pitch_joint",
+    "left_wrist_yaw_joint",
+    "right_shoulder_pitch_joint",
+    "right_shoulder_roll_joint",
+    "right_shoulder_yaw_joint",
+    "right_elbow_joint",
+    "right_wrist_roll_joint",
+    "right_wrist_pitch_joint",
+    "right_wrist_yaw_joint",
 )
-LEG_COLS = [6, 7, 8, 9, 10, 11]          # indices of these joints in the clip's 29-dof JOINT_ORDER
+LEG_COLS = [6, 7, 8, 9, 10, 11]  # indices of these joints in the clip's 29-dof JOINT_ORDER
 
 
 def rpy_mat(r, p, y):
     cr, sr, cp, sp, cy, sy = math.cos(r), math.sin(r), math.cos(p), math.sin(p), math.cos(y), math.sin(y)
-    return np.array([[cy*cp, cy*sp*sr - sy*cr, cy*sp*cr + sy*sr],
-                     [sy*cp, sy*sp*sr + cy*cr, sy*sp*cr - cy*sr],
-                     [-sp,   cp*sr,            cp*cr]])
+    return np.array(
+        [
+            [cy * cp, cy * sp * sr - sy * cr, cy * sp * cr + sy * sr],
+            [sy * cp, sy * sp * sr + cy * cr, sy * sp * cr - cy * sr],
+            [-sp, cp * sr, cp * cr],
+        ]
+    )
 
 
 def axis_mat(axis, q):
-    a = np.asarray(axis, float); a = a / np.linalg.norm(a)
+    a = np.asarray(axis, float)
+    a = a / np.linalg.norm(a)
     K = np.array([[0, -a[2], a[1]], [a[2], 0, -a[0]], [-a[1], a[0], 0]])
-    return np.eye(3) + math.sin(q)*K + (1 - math.cos(q))*(K @ K)
+    return np.eye(3) + math.sin(q) * K + (1 - math.cos(q)) * (K @ K)
 
 
 def quat_to_mat(q):
     w, x, y, z = q
-    return np.array([[1-2*(y*y+z*z), 2*(x*y-w*z),   2*(x*z+w*y)],
-                     [2*(x*y+w*z),   1-2*(x*x+z*z), 2*(y*z-w*x)],
-                     [2*(x*z-w*y),   2*(y*z+w*x),   1-2*(x*x+y*y)]])
+    return np.array(
+        [
+            [1 - 2 * (y * y + z * z), 2 * (x * y - w * z), 2 * (x * z + w * y)],
+            [2 * (x * y + w * z), 1 - 2 * (x * x + z * z), 2 * (y * z - w * x)],
+            [2 * (x * z - w * y), 2 * (y * z + w * x), 1 - 2 * (x * x + y * y)],
+        ]
+    )
 
 
 def leg_fk(qleg, chain=RIGHT_LEG):
     """Foot pose in the PELVIS frame, plus every joint's origin and axis (for the Jacobian)."""
-    R = np.eye(3); p = np.zeros(3)
+    R = np.eye(3)
+    p = np.zeros(3)
     origins, axes = [], []
     for (nm, xyz, rpy, ax, _lim), q in zip(chain, qleg):
         p = p + R @ np.asarray(xyz, float)
@@ -98,8 +134,7 @@ def so3_err(R_cur, R_des):
 DEFAULT_LEG = np.array([-0.312, 0.0, 0.0, 0.669, -0.363, 0.0])
 
 
-def ik_leg(q0, p_des, R_des, chain=RIGHT_LEG, iters=120, lam=0.08, w_rot=0.45, restarts=True,
-           alt_seeds=None):
+def ik_leg(q0, p_des, R_des, chain=RIGHT_LEG, iters=120, lam=0.08, w_rot=0.45, restarts=True, alt_seeds=None):
     """Damped least squares onto a 6-DoF foot pose in the pelvis frame, limits respected.
 
     Warm-starting from the previous frame is fast but can pin the solve against a joint limit it
@@ -109,9 +144,18 @@ def ik_leg(q0, p_des, R_des, chain=RIGHT_LEG, iters=120, lam=0.08, w_rot=0.45, r
     """
     seeds = [np.array(q0, float)]
     if restarts:
-        seeds += [np.array(s, float) for s in (alt_seeds if alt_seeds is not None else
-                  (DEFAULT_LEG, DEFAULT_LEG + np.array([-0.5, 0.0, 0.0, 1.0, -0.5, 0.0]),
-                   DEFAULT_LEG + np.array([0.4, 0.0, 0.0, 0.8, -1.0, 0.0])))]
+        seeds += [
+            np.array(s, float)
+            for s in (
+                alt_seeds
+                if alt_seeds is not None
+                else (
+                    DEFAULT_LEG,
+                    DEFAULT_LEG + np.array([-0.5, 0.0, 0.0, 1.0, -0.5, 0.0]),
+                    DEFAULT_LEG + np.array([0.4, 0.0, 0.0, 0.8, -1.0, 0.0]),
+                )
+            )
+        ]
     best = None
     for seed in seeds:
         q, ep, er = _ik_once(seed, p_des, R_des, chain, iters, lam, w_rot)
@@ -124,14 +168,15 @@ def ik_leg(q0, p_des, R_des, chain=RIGHT_LEG, iters=120, lam=0.08, w_rot=0.45, r
 
 def _ik_once(q0, p_des, R_des, chain, iters, lam, w_rot):
     q = np.array(q0, float)
-    lo = np.array([c[4][0] for c in chain]); hi = np.array([c[4][1] for c in chain])
+    lo = np.array([c[4][0] for c in chain])
+    hi = np.array([c[4][1] for c in chain])
     for _ in range(iters):
         J, R, p = leg_jacobian(q, chain)
         e = np.concatenate([p_des - p, w_rot * so3_err(R, R_des)])
         if np.linalg.norm(e[:3]) < 2e-5 and np.linalg.norm(e[3:]) < 2e-4:
             break
         JT = J.T
-        dq = JT @ np.linalg.solve(J @ JT + (lam ** 2) * np.eye(6), e)
+        dq = JT @ np.linalg.solve(J @ JT + (lam**2) * np.eye(6), e)
         q = np.clip(q + np.clip(dq, -0.2, 0.2), lo, hi)
     J, R, p = leg_jacobian(q, chain)
     return q, float(np.linalg.norm(p_des - p)), float(np.linalg.norm(so3_err(R, R_des)))
@@ -170,18 +215,25 @@ def arc_path(p0, p1, z_clear, n, f_lift=0.35, f_place=0.80, out_dir=None, out_bu
 
 # ---------------------------------------------------------------------------------------------
 def quat_mul(a, b):
-    w1, x1, y1, z1 = a; w2, x2, y2, z2 = b
-    return np.array([w1*w2-x1*x2-y1*y2-z1*z2, w1*x2+x1*w2+y1*z2-z1*y2,
-                     w1*y2-x1*z2+y1*w2+z1*x2, w1*z2+x1*y2-y1*x2+z1*w2])
+    w1, x1, y1, z1 = a
+    w2, x2, y2, z2 = b
+    return np.array(
+        [
+            w1 * w2 - x1 * x2 - y1 * y2 - z1 * z2,
+            w1 * x2 + x1 * w2 + y1 * z2 - z1 * y2,
+            w1 * y2 - x1 * z2 + y1 * w2 + z1 * x2,
+            w1 * z2 + x1 * y2 - y1 * x2 + z1 * w2,
+        ]
+    )
 
 
 def yaw_quat(t):
-    return np.array([math.cos(t/2), 0.0, 0.0, math.sin(t/2)])
+    return np.array([math.cos(t / 2), 0.0, 0.0, math.sin(t / 2)])
 
 
 def quat_yaw(q):
     w, x, y, z = q
-    return math.atan2(2*(w*z + x*y), 1 - 2*(y*y + z*z))
+    return math.atan2(2 * (w * z + x * y), 1 - 2 * (y * y + z * z))
 
 
 def main() -> int:
@@ -197,10 +249,12 @@ def main() -> int:
 
     P = json.load(open(a.phase1))
     meta, tread = P["meta"], P["tread"]
-    lp = np.array(meta["ladder_pos"]); lyaw = math.radians(meta["ladder_yaw_deg"])
+    lp = np.array(meta["ladder_pos"])
+    lyaw = math.radians(meta["ladder_yaw_deg"])
     sole = meta["sole_offset_m"]
     shift = np.array(P["shift"])
-    start = P["frames"][0]["frame"]; end = P["frames"][-1]["frame"]
+    start = P["frames"][0]["frame"]
+    end = P["frames"][-1]["frame"]
 
     clip = np.load(a.clip)
     dof = clip["dof"].astype(np.float64).copy()
@@ -227,8 +281,10 @@ def main() -> int:
         _, pf, _, _ = leg_fk(dof[i, LEG_COLS])
         errs.append(np.linalg.norm(rp + quat_to_mat(rq) @ pf - np.array(fr["swing_foot"])))
     errs = np.array(errs)
-    print(f"[FK    ] offline vs sim-measured swing foot: mean {errs.mean()*1000:.3f} mm, "
-          f"max {errs.max()*1000:.3f} mm over {len(errs)} frames")
+    print(
+        f"[FK    ] offline vs sim-measured swing foot: mean {errs.mean() * 1000:.3f} mm, "
+        f"max {errs.max() * 1000:.3f} mm over {len(errs)} frames"
+    )
     if errs.max() > 0.003:
         print("[FATAL] offline FK does not reproduce the sim; IK built on it cannot be trusted")
         return 2
@@ -238,13 +294,16 @@ def main() -> int:
     spd = np.r_[0.0, np.linalg.norm(np.diff(fw, axis=0), axis=1) * fps]
     k0 = a.takeoff - start if a.takeoff is not None else int(np.argmax(spd > 0.05))
     k1 = len(P["frames"]) - 1
-    print(f"[SWING ] frames {start+k0}-{start+k1}  (t {(start+k0)/fps:.2f}-{(start+k1)/fps:.2f}s)")
+    print(f"[SWING ] frames {start + k0}-{start + k1}  (t {(start + k0) / fps:.2f}-{(start + k1) / fps:.2f}s)")
 
-    p0 = fw[k0].copy(); p1 = fw[k1].copy()
+    p0 = fw[k0].copy()
+    p1 = fw[k1].copy()
     z_clear = tread["top"] + sole + a.margin
     # tread top is a LADDER-frame z and the ladder sits on the floor, so this is also world z
-    print(f"[ARC   ] takeoff {np.round(p0,4)} -> landing {np.round(p1,4)}")
-    print(f"[ARC   ] clear height {z_clear:.4f} m  (tread top {tread['top']:.4f} + sole {sole:.4f} + margin {a.margin:.3f})")
+    print(f"[ARC   ] takeoff {np.round(p0, 4)} -> landing {np.round(p1, 4)}")
+    print(
+        f"[ARC   ] clear height {z_clear:.4f} m  (tread top {tread['top']:.4f} + sole {sole:.4f} + margin {a.margin:.3f})"
+    )
     path = arc_path(p0, p1, z_clear, k1 - k0 + 1, a.f_lift, a.f_place)
 
     # ---- solve the leg --------------------------------------------------------------------------
@@ -254,16 +313,22 @@ def main() -> int:
         rp, rq = root_of(i)
         Rr = quat_to_mat(rq)
         p_des_pelvis = Rr.T @ (path[k - k0] - rp)
-        R_cur, _, _, _ = leg_fk(dof[i, LEG_COLS])          # keep the clip's foot ORIENTATION
+        R_cur, _, _, _ = leg_fk(dof[i, LEG_COLS])  # keep the clip's foot ORIENTATION
         q, ep, er = ik_leg(dof[i, LEG_COLS], p_des_pelvis, R_cur)
         dof[i, LEG_COLS] = q
-        worst_p = max(worst_p, ep); worst_r = max(worst_r, er)
-    print(f"[IK    ] worst residual: position {worst_p*1000:.3f} mm, rotation {math.degrees(worst_r):.3f} deg")
+        worst_p = max(worst_p, ep)
+        worst_r = max(worst_r, er)
+    print(f"[IK    ] worst residual: position {worst_p * 1000:.3f} mm, rotation {math.degrees(worst_r):.3f} deg")
 
     os.makedirs(os.path.dirname(a.out_clip) or ".", exist_ok=True)
-    np.savez(a.out_clip, dof=dof.astype(np.float32), root_rot=rrot,
-             root_trans_offset=rtra.astype(np.float32), fps=np.int64(fps))
-    print(f"[OK    ] wrote {a.out_clip}  (only right-leg cols {LEG_COLS} changed, frames {start+k0}-{start+k1})")
+    np.savez(
+        a.out_clip,
+        dof=dof.astype(np.float32),
+        root_rot=rrot,
+        root_trans_offset=rtra.astype(np.float32),
+        fps=np.int64(fps),
+    )
+    print(f"[OK    ] wrote {a.out_clip}  (only right-leg cols {LEG_COLS} changed, frames {start + k0}-{start + k1})")
     return 0
 
 
@@ -285,51 +350,69 @@ if __name__ == "__main__":
 # Hands on the rails add support, which is how a person climbs a step ladder.
 # ---------------------------------------------------------------------------------------------
 LEFT_ARM = [
-    ('left_shoulder_pitch_joint', (0.0039563, 0.10022, 0.24778), (0.27931, 5.4949e-05, -0.00019159), (0, 1, 0), (-3.0892, 2.6704)),
-    ('left_shoulder_roll_joint', (0, 0.038, -0.013831), (-0.27925, 0, 0), (1, 0, 0), (-1.5882, 2.2515)),
-    ('left_shoulder_yaw_joint', (0, 0.00624, -0.1032), (0, 0, 0), (0, 0, 1), (-2.6180, 2.6180)),
-    ('left_elbow_joint', (0.015783, 0, -0.080518), (0, 0, 0), (0, 1, 0), (-1.0472, 2.0944)),
-    ('left_wrist_roll_joint', (0.1, 0.00188791, -0.01), (0, 0, 0), (1, 0, 0), (-1.9722, 1.9722)),
-    ('left_wrist_pitch_joint', (0.038, 0, 0), (0, 0, 0), (0, 1, 0), (-1.6144, 1.6144)),
-    ('left_wrist_yaw_joint', (0.046, 0, 0), (0, 0, 0), (0, 0, 1), (-1.6144, 1.6144)),
-    ('left_hand_palm_joint', (0.0415, 0.003, 0), (0, 0, 0), (0, 0, 1), (0.0, 0.0)),  # fixed: carries FK to the palm
+    (
+        "left_shoulder_pitch_joint",
+        (0.0039563, 0.10022, 0.24778),
+        (0.27931, 5.4949e-05, -0.00019159),
+        (0, 1, 0),
+        (-3.0892, 2.6704),
+    ),
+    ("left_shoulder_roll_joint", (0, 0.038, -0.013831), (-0.27925, 0, 0), (1, 0, 0), (-1.5882, 2.2515)),
+    ("left_shoulder_yaw_joint", (0, 0.00624, -0.1032), (0, 0, 0), (0, 0, 1), (-2.6180, 2.6180)),
+    ("left_elbow_joint", (0.015783, 0, -0.080518), (0, 0, 0), (0, 1, 0), (-1.0472, 2.0944)),
+    ("left_wrist_roll_joint", (0.1, 0.00188791, -0.01), (0, 0, 0), (1, 0, 0), (-1.9722, 1.9722)),
+    ("left_wrist_pitch_joint", (0.038, 0, 0), (0, 0, 0), (0, 1, 0), (-1.6144, 1.6144)),
+    ("left_wrist_yaw_joint", (0.046, 0, 0), (0, 0, 0), (0, 0, 1), (-1.6144, 1.6144)),
+    ("left_hand_palm_joint", (0.0415, 0.003, 0), (0, 0, 0), (0, 0, 1), (0.0, 0.0)),  # fixed: carries FK to the palm
 ]
 RIGHT_ARM = [
-    ('right_shoulder_pitch_joint', (0.0039563, -0.10021, 0.24778), (-0.27931, 5.4949e-05, 0.00019159), (0, 1, 0), (-3.0892, 2.6704)),
-    ('right_shoulder_roll_joint', (0, -0.038, -0.013831), (0.27925, 0, 0), (1, 0, 0), (-2.2515, 1.5882)),
-    ('right_shoulder_yaw_joint', (0, -0.00624, -0.1032), (0, 0, 0), (0, 0, 1), (-2.6180, 2.6180)),
-    ('right_elbow_joint', (0.015783, 0, -0.080518), (0, 0, 0), (0, 1, 0), (-1.0472, 2.0944)),
-    ('right_wrist_roll_joint', (0.1, -0.00188791, -0.01), (0, 0, 0), (1, 0, 0), (-1.9722, 1.9722)),
-    ('right_wrist_pitch_joint', (0.038, 0, 0), (0, 0, 0), (0, 1, 0), (-1.6144, 1.6144)),
-    ('right_wrist_yaw_joint', (0.046, 0, 0), (0, 0, 0), (0, 0, 1), (-1.6144, 1.6144)),
-    ('right_hand_palm_joint', (0.0415, -0.003, 0), (0, 0, 0), (0, 0, 1), (0.0, 0.0)),  # fixed: carries FK to the palm
+    (
+        "right_shoulder_pitch_joint",
+        (0.0039563, -0.10021, 0.24778),
+        (-0.27931, 5.4949e-05, 0.00019159),
+        (0, 1, 0),
+        (-3.0892, 2.6704),
+    ),
+    ("right_shoulder_roll_joint", (0, -0.038, -0.013831), (0.27925, 0, 0), (1, 0, 0), (-2.2515, 1.5882)),
+    ("right_shoulder_yaw_joint", (0, -0.00624, -0.1032), (0, 0, 0), (0, 0, 1), (-2.6180, 2.6180)),
+    ("right_elbow_joint", (0.015783, 0, -0.080518), (0, 0, 0), (0, 1, 0), (-1.0472, 2.0944)),
+    ("right_wrist_roll_joint", (0.1, -0.00188791, -0.01), (0, 0, 0), (1, 0, 0), (-1.9722, 1.9722)),
+    ("right_wrist_pitch_joint", (0.038, 0, 0), (0, 0, 0), (0, 1, 0), (-1.6144, 1.6144)),
+    ("right_wrist_yaw_joint", (0.046, 0, 0), (0, 0, 0), (0, 0, 1), (-1.6144, 1.6144)),
+    ("right_hand_palm_joint", (0.0415, -0.003, 0), (0, 0, 0), (0, 0, 1), (0.0, 0.0)),  # fixed: carries FK to the palm
 ]
 WAIST = [
-    ('waist_yaw_joint', (0, 0, 0), (0, 0, 0), (0, 0, 1), (-2.6180, 2.6180)),
-    ('waist_roll_joint', (-0.0039635, 0, 0.044), (0, 0, 0), (1, 0, 0), (-0.5200, 0.5200)),
-    ('waist_pitch_joint', (0, 0, 0), (0, 0, 0), (0, 1, 0), (-0.5200, 0.5200)),
+    ("waist_yaw_joint", (0, 0, 0), (0, 0, 0), (0, 0, 1), (-2.6180, 2.6180)),
+    ("waist_roll_joint", (-0.0039635, 0, 0.044), (0, 0, 0), (1, 0, 0), (-0.5200, 0.5200)),
+    ("waist_pitch_joint", (0, 0, 0), (0, 0, 0), (0, 1, 0), (-0.5200, 0.5200)),
 ]
 
 ARM_CHAIN = {"left": LEFT_ARM, "right": RIGHT_ARM}
 
 # arm down and slightly forward -- the posture the climb used before the hands had a job
 DEFAULT_ARM = np.array([0.25, 0.22, 0.0, 0.45, 0.0, 0.0, 0.0, 0.0])
-ARM_SEEDS = (DEFAULT_ARM,
-             np.array([0.0, 0.35, 0.0, 1.2, 0.0, 0.0, 0.0, 0.0]),    # elbow up, reaching out
-             np.array([-0.6, 0.25, 0.0, 1.5, 0.0, 0.0, 0.0, 0.0]))   # reaching forward and high
+ARM_SEEDS = (
+    DEFAULT_ARM,
+    np.array([0.0, 0.35, 0.0, 1.2, 0.0, 0.0, 0.0, 0.0]),  # elbow up, reaching out
+    np.array([-0.6, 0.25, 0.0, 1.5, 0.0, 0.0, 0.0, 0.0]),
+)  # reaching forward and high
 
 
 def mirror_arm_seed(q, side):
     """Shoulder roll and the yaw joints flip sign on the right arm."""
     q = np.array(q, float).copy()
     if side == "right":
-        q[1] = -q[1]; q[2] = -q[2]; q[4] = -q[4]; q[6] = -q[6]
+        q[1] = -q[1]
+        q[2] = -q[2]
+        q[4] = -q[4]
+        q[6] = -q[6]
     return q
 
 
 def torso_frame(waist_q):
     """Pose of torso_link in the PELVIS frame, given (waist_yaw, waist_roll, waist_pitch)."""
-    R = np.eye(3); p = np.zeros(3)
+    R = np.eye(3)
+    p = np.zeros(3)
     for (_nm, xyz, rpy, ax, _lim), q in zip(WAIST, waist_q):
         p = p + R @ np.asarray(xyz, float)
         R = R @ rpy_mat(*rpy) @ axis_mat(ax, float(q))
@@ -341,17 +424,19 @@ def ik_arm(q0, p_des_torso, chain, iters=160, lam=0.10):
     rail does not care how the wrist is rolled, and spending the orientation DoF on a grip angle
     we have not measured would only fight the reach."""
     best = None
-    for seed in [np.array(q0, float)] + [mirror_arm_seed(s, "right" if chain is RIGHT_ARM else "left")
-                                         for s in ARM_SEEDS]:
+    for seed in [np.array(q0, float)] + [
+        mirror_arm_seed(s, "right" if chain is RIGHT_ARM else "left") for s in ARM_SEEDS
+    ]:
         q = np.array(seed, float)
-        lo = np.array([c[4][0] for c in chain]); hi = np.array([c[4][1] for c in chain])
+        lo = np.array([c[4][0] for c in chain])
+        hi = np.array([c[4][1] for c in chain])
         for _ in range(iters):
             J, R, p = leg_jacobian(q, chain)
             e = p_des_torso - p
             if np.linalg.norm(e) < 1e-4:
                 break
             Jp = J[:3]
-            dq = Jp.T @ np.linalg.solve(Jp @ Jp.T + (lam ** 2) * np.eye(3), e)
+            dq = Jp.T @ np.linalg.solve(Jp @ Jp.T + (lam**2) * np.eye(3), e)
             q = np.clip(q + np.clip(dq, -0.25, 0.25), lo, hi)
         _, _, p = leg_jacobian(q, chain)
         ep = float(np.linalg.norm(p_des_torso - p))
@@ -372,7 +457,7 @@ def ik_arm(q0, p_des_torso, chain, iters=160, lam=0.10):
 # of the structure by 37 mm. The two fits agree to 9 mm where they meet.
 # Worst residual 51 mm, mean 14 mm, most of which is the 25-50 mm probe grid.
 RAIL_Z_KNEE = 1.15
-RAIL_LOW = (-0.4618, 0.3694, 0.220)      # y0, dy/dz, |x|
+RAIL_LOW = (-0.4618, 0.3694, 0.220)  # y0, dy/dz, |x|
 RAIL_HIGH = (-0.3778, 0.3041, 0.225)
 RAIL_Z_MIN, RAIL_Z_MAX = 0.30, 1.80
 
@@ -389,9 +474,8 @@ def rail_point(z, side):
 def rail_nearest_z(p_local):
     """Height on the grip line closest to a point, solved per segment and clamped to the rail."""
     best = None
-    for y0, dydz, _x, lo, hi in ((*RAIL_LOW, RAIL_Z_MIN, RAIL_Z_KNEE),
-                                 (*RAIL_HIGH, RAIL_Z_KNEE, RAIL_Z_MAX)):
-        z = (p_local[2] + dydz * (p_local[1] - y0)) / (1.0 + dydz ** 2)
+    for y0, dydz, _x, lo, hi in ((*RAIL_LOW, RAIL_Z_MIN, RAIL_Z_KNEE), (*RAIL_HIGH, RAIL_Z_KNEE, RAIL_Z_MAX)):
+        z = (p_local[2] + dydz * (p_local[1] - y0)) / (1.0 + dydz**2)
         z = float(min(max(z, lo), hi))
         d = math.hypot(y0 + dydz * z - p_local[1], z - p_local[2])
         if best is None or d < best[1]:

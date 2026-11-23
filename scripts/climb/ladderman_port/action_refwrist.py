@@ -14,6 +14,7 @@ angle at the current phase. The policy still outputs 23 numbers and nothing abou
 observations or network changes; whoever runs the trained policy elsewhere must drive the wrists
 the same way (the reference is available there too).
 """
+
 from __future__ import annotations
 
 import torch
@@ -27,7 +28,9 @@ class JointPositionRefWrist(JointPosition):
         ids, names = self.asset.find_joints(list(ref_joint_names))
         clash = sorted(set(ids) & set(self.joint_ids))
         if clash:
-            raise ValueError(f"reference-driven joints are also policy-actuated: {[self.asset.joint_names[i] for i in clash]}")
+            raise ValueError(
+                f"reference-driven joints are also policy-actuated: {[self.asset.joint_names[i] for i in clash]}"
+            )
         self.ref_ids = torch.as_tensor(ids, device=self.device, dtype=torch.long)
         print(f"[action] wrists follow the reference: {names}")
 
@@ -35,6 +38,6 @@ class JointPositionRefWrist(JointPosition):
         cmd = getattr(self.env, "command_manager", None)
         ref = getattr(cmd, "future_ref_motion", None)
         if ref is not None:
-            q = ref.joint_pos[:, 0][:, cmd.asset_joint_idx_motion]          # [N, all joints], asset order
+            q = ref.joint_pos[:, 0][:, cmd.asset_joint_idx_motion]  # [N, all joints], asset order
             self.offset[:, self.ref_ids] = q[:, self.ref_ids] - self.default_joint_pos[:, self.ref_ids]
         return super().__call__(action, substep)

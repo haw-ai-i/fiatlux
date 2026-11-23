@@ -36,16 +36,17 @@ every object. That works when every hold is a rung centre. Here the hand rests o
 part of each object (an edge, a rim), so no single offset fits; an anchor per hold does. They
 are read from the clip's own ``anchors.json`` so the targets cannot drift from the clip.
 """
+
 from __future__ import annotations
 
 import json
 import math
 
 TREAD_TOPS = (0.2397, 0.4742, 0.7092, 0.9441)
-TREAD_X4 = (-0.3650, -0.2973)          # tread 4's top face; each lower tread is 85.7 mm nearer
+TREAD_X4 = (-0.3650, -0.2973)  # tread 4's top face; each lower tread is 85.7 mm nearer
 TREAD_DX = 0.0857
 TREAD_THICK = 0.0356
-HALF_W = 0.200                          # treads, platform, tray between the stringers
+HALF_W = 0.200  # treads, platform, tray between the stringers
 PLATFORM = dict(x=(-0.3036, 0.0762), top=1.1517, thick=0.0428)
 TRAY = dict(x=(-0.0421, 0.0701), floor=1.8419, bottom=1.8105, rim=1.8609, half_w=0.247)
 N_PHYS = 13
@@ -84,15 +85,17 @@ FREE_MASS_KG = 10.9
 FREE_COM = (-0.2116, 0.0, 0.826)
 FREE_INERTIA = (3.57, 3.927, 1.318)
 FREE_FRICTION = (1.5, 1.2)
-FOOT = (0.10, 0.040, 0.030)             # x, y, z of each flat foot
-LEG_BOTTOM = 0.045                      # the tilted members' axes stop here
+FOOT = (0.10, 0.040, 0.030)  # x, y, z of each flat foot
+LEG_BOTTOM = 0.045  # the tilted members' axes stop here
 
 
 def _members(z_bottom: float):
     """(size, pos, rot) of the two stringers and two rear legs, with their axes starting at z_bottom."""
     out = []
-    for ang, x_at_030, slope, half_x, thick, z_top in ((70.08, -0.598, 0.3623, 0.0405, (0.040, 0.0762), 1.83),
-                                                      (80.03, 0.165, -0.1755, 0.037, (0.026, 0.0729), 1.50)):
+    for ang, x_at_030, slope, half_x, thick, z_top in (
+        (70.08, -0.598, 0.3623, 0.0405, (0.040, 0.0762), 1.83),
+        (80.03, 0.165, -0.1755, 0.037, (0.026, 0.0729), 1.50),
+    ):
         zc = 0.5 * (z_top + z_bottom)
         xc = x_at_030 + (zc - 0.30) * slope + half_x
         length = (z_top - z_bottom) / math.sin(math.radians(ang))
@@ -117,29 +120,49 @@ def free_body_boxes():
     for k, top in enumerate(TREAD_TOPS):
         dx = -(3 - k) * TREAD_DX
         x0, x1 = TREAD_X4[0] + dx, TREAD_X4[1] + dx
-        boxes.append(((2 * HALF_W, x1 - x0, TREAD_THICK), (0.5 * (x0 + x1), 0.0, top - 0.5 * TREAD_THICK), _q_yaw(-90.0)))
+        boxes.append(
+            ((2 * HALF_W, x1 - x0, TREAD_THICK), (0.5 * (x0 + x1), 0.0, top - 0.5 * TREAD_THICK), _q_yaw(-90.0))
+        )
     x0, x1 = PLATFORM["x"]
-    boxes.append(((2 * HALF_W, x1 - x0, PLATFORM["thick"]), (0.5 * (x0 + x1), 0.0, PLATFORM["top"] - 0.5 * PLATFORM["thick"]), _q_yaw(-90.0)))
+    boxes.append(
+        (
+            (2 * HALF_W, x1 - x0, PLATFORM["thick"]),
+            (0.5 * (x0 + x1), 0.0, PLATFORM["top"] - 0.5 * PLATFORM["thick"]),
+            _q_yaw(-90.0),
+        )
+    )
     t = TRAY
-    for x0, x1, top, bottom in ((t["x"][0], t["x"][1], t["floor"], t["bottom"]), (-0.0395, -0.0280, 1.8510, t["floor"]),
-                                (-0.0358, -0.0280, t["rim"], 1.8510), (0.0600, t["x"][1], t["rim"], t["floor"])):
-        boxes.append(((2 * t["half_w"], x1 - x0, top - bottom), (0.5 * (x0 + x1), 0.0, top - 0.5 * (top - bottom)), _q_yaw(-90.0)))
+    for x0, x1, top, bottom in (
+        (t["x"][0], t["x"][1], t["floor"], t["bottom"]),
+        (-0.0395, -0.0280, 1.8510, t["floor"]),
+        (-0.0358, -0.0280, t["rim"], 1.8510),
+        (0.0600, t["x"][1], t["rim"], t["floor"]),
+    ):
+        boxes.append(
+            (
+                (2 * t["half_w"], x1 - x0, top - bottom),
+                (0.5 * (x0 + x1), 0.0, top - 0.5 * (top - bottom)),
+                _q_yaw(-90.0),
+            )
+        )
     return boxes + _members(LEG_BOTTOM) + _feet()
 
 
 def _spawn_free_ladder(prim_path, cfg, translation=None, orientation=None, **kwargs):
     import isaacsim.core.utils.prims as prim_utils
+    from pxr import Gf, UsdPhysics
+
     from isaaclab.sim import schemas
     from isaaclab.sim.utils import bind_physics_material
-    from pxr import Gf, UsdPhysics
 
     prim = prim_utils.create_prim(prim_path, prim_type="Xform", translation=translation, orientation=orientation)
     mat_path = f"{prim_path}/physicsMaterial"
     cfg.physics_material.func(mat_path, cfg.physics_material)
     for i, (size, pos, rot) in enumerate(cfg.boxes):
         path = f"{prim_path}/box_{i}"
-        prim_utils.create_prim(path, "Cube", translation=pos, orientation=rot, scale=tuple(0.5 * v for v in size),
-                               attributes={"size": 2.0})
+        prim_utils.create_prim(
+            path, "Cube", translation=pos, orientation=rot, scale=tuple(0.5 * v for v in size), attributes={"size": 2.0}
+        )
         schemas.define_collision_properties(path, cfg.collision_props)
         bind_physics_material(path, mat_path)
     schemas.define_mass_properties(prim_path, cfg.mass_props)
@@ -167,16 +190,25 @@ def create_fiatlux_free_ladder_body_cfg(prim_path: str = "{ENV_REGEX_NS}/LadderB
 
     spawn = _FreeLadderSpawnCfg(
         boxes=free_body_boxes(),
-        physics_material=sim_utils.RigidBodyMaterialCfg(static_friction=FREE_FRICTION[0], dynamic_friction=FREE_FRICTION[1], restitution=0.0),
+        physics_material=sim_utils.RigidBodyMaterialCfg(
+            static_friction=FREE_FRICTION[0], dynamic_friction=FREE_FRICTION[1], restitution=0.0
+        ),
         mass_props=sim_utils.MassPropertiesCfg(mass=FREE_MASS_KG),
         # as the benchmark sets them on its ladder (scene_cfg.apply_position_preset)
-        rigid_props=sim_utils.RigidBodyPropertiesCfg(kinematic_enabled=False, rigid_body_enabled=True,
-                                                     solver_position_iteration_count=16, solver_velocity_iteration_count=1,
-                                                     max_depenetration_velocity=1.0, stabilization_threshold=0.001),
+        rigid_props=sim_utils.RigidBodyPropertiesCfg(
+            kinematic_enabled=False,
+            rigid_body_enabled=True,
+            solver_position_iteration_count=16,
+            solver_velocity_iteration_count=1,
+            max_depenetration_velocity=1.0,
+            stabilization_threshold=0.001,
+        ),
         collision_props=sim_utils.CollisionPropertiesCfg(collision_enabled=True),
         activate_contact_sensors=False,
     )
-    return RigidObjectCfg(prim_path=prim_path, spawn=spawn, init_state=RigidObjectCfg.InitialStateCfg(pos=(0.0, 0.0, 0.0)))
+    return RigidObjectCfg(
+        prim_path=prim_path, spawn=spawn, init_state=RigidObjectCfg.InitialStateCfg(pos=(0.0, 0.0, 0.0))
+    )
 
 
 # The benchmark's OWN ladder as the free body (``ladder_config.free: asset``). The box body above
@@ -190,7 +222,7 @@ def create_fiatlux_free_ladder_body_cfg(prim_path: str = "{ENV_REGEX_NS}/LadderB
 # 0.1996 m behind the clip's x origin, hence the pose below.
 ASSET_USD = "assets_fiatlux/AlumStep_D/AluminumStepLadder_D01_PR_NVD_01_collision_rigid.usd"
 ASSET_POS = (-0.1996, 0.0, 0.0)
-ASSET_ROT = (0.7071067811865476, 0.0, 0.0, -0.7071067811865476)      # -90 deg about z: ladder +y -> clip +x
+ASSET_ROT = (0.7071067811865476, 0.0, 0.0, -0.7071067811865476)  # -90 deg about z: ladder +y -> clip +x
 
 
 def _spawn_ladder_asset(prim_path, cfg, translation=None, orientation=None, **kwargs):
@@ -204,7 +236,9 @@ def _spawn_ladder_asset(prim_path, cfg, translation=None, orientation=None, **kw
         schemas.modify_rigid_body_properties(prim.GetPath(), cfg.rigid_props)
     if cfg.mass_props is not None:
         schemas.modify_mass_properties(prim.GetPath(), cfg.mass_props)
-    grip = sim_utils.RigidBodyMaterialCfg(static_friction=FREE_FRICTION[0], dynamic_friction=FREE_FRICTION[1], restitution=0.0)
+    grip = sim_utils.RigidBodyMaterialCfg(
+        static_friction=FREE_FRICTION[0], dynamic_friction=FREE_FRICTION[1], restitution=0.0
+    )
     grip.func(f"{prim_path}/physicsMaterial", grip)
     bind_physics_material(prim_path, f"{prim_path}/physicsMaterial")
     return prim
@@ -218,42 +252,56 @@ def create_fiatlux_asset_ladder_body_cfg(prim_path: str = "{ENV_REGEX_NS}/Ladder
     from isaaclab.sim.utils import clone
 
     f = pathlib.Path(usd_path or ASSET_USD)
-    if not f.is_absolute():                                # hydra changes cwd: resolve against the repo
+    if not f.is_absolute():  # hydra changes cwd: resolve against the repo
         f = pathlib.Path(__file__).resolve().parents[2] / f
     if not f.exists():
         raise FileNotFoundError(f"the benchmark's ladder asset is not at {f} (with its two sibling layers)")
     spawn = sim_utils.UsdFileCfg(
-        usd_path=str(f), func=clone(_spawn_ladder_asset), scale=(0.01, 0.01, 0.01),
-        rigid_props=sim_utils.RigidBodyPropertiesCfg(kinematic_enabled=False, solver_position_iteration_count=16,
-                                                     solver_velocity_iteration_count=1, max_depenetration_velocity=1.0,
-                                                     # as the benchmark after its PR #271: never sleeps (#121), no stabilization
-                                                     sleep_threshold=0.0, stabilization_threshold=0.0),
+        usd_path=str(f),
+        func=clone(_spawn_ladder_asset),
+        scale=(0.01, 0.01, 0.01),
+        rigid_props=sim_utils.RigidBodyPropertiesCfg(
+            kinematic_enabled=False,
+            solver_position_iteration_count=16,
+            solver_velocity_iteration_count=1,
+            max_depenetration_velocity=1.0,
+            # as the benchmark after its PR #271: never sleeps (#121), no stabilization
+            sleep_threshold=0.0,
+            stabilization_threshold=0.0,
+        ),
         mass_props=sim_utils.MassPropertiesCfg(mass=FREE_MASS_KG),
     )
-    return RigidObjectCfg(prim_path=prim_path, spawn=spawn, init_state=RigidObjectCfg.InitialStateCfg(pos=ASSET_POS, rot=ASSET_ROT))
+    return RigidObjectCfg(
+        prim_path=prim_path, spawn=spawn, init_state=RigidObjectCfg.InitialStateCfg(pos=ASSET_POS, rot=ASSET_ROT)
+    )
 
 
 def install_free_ladder(env) -> None:
     """Make the collection's markers follow the free body, and put the body back at every reset."""
     import torch
+
     from isaaclab.utils.math import quat_apply, quat_mul
 
     body, coll = env.scene.rigid_objects["ladder_body"], env.ladder
     n = coll.num_objects
     # each marker's pose in the BODY's frame: where it was authored, seen from where the body is authored
     from isaaclab.utils.math import quat_apply_inverse, quat_conjugate
+
     b0p = body.data.default_root_state[:, None, :3].expand(-1, n, -1)
     b0q = body.data.default_root_state[:, None, 3:7].expand(-1, n, -1)
     m0p, m0q = coll.data.default_object_state[:, :, :3], coll.data.default_object_state[:, :, 3:7]
     loc_p = quat_apply_inverse(b0q.reshape(-1, 4), (m0p - b0p).reshape(-1, 3)).reshape(-1, n, 3)
     loc_q = quat_mul(quat_conjugate(b0q.reshape(-1, 4)), m0q.reshape(-1, 4)).reshape(-1, n, 4)
-    park_p = m0p.clone()                                    # env-local authored positions, for the parked dummy
-    keep = torch.zeros(n, dtype=torch.bool, device=env.device); keep[N_PHYS] = True      # the parked dummy stays parked
+    park_p = m0p.clone()  # env-local authored positions, for the parked dummy
+    keep = torch.zeros(n, dtype=torch.bool, device=env.device)
+    keep[N_PHYS] = True  # the parked dummy stays parked
 
     def sync(_substep=None):
-        bp, bq = body.data.root_link_pos_w, body.data.root_link_quat_w                  # [N, 3], [N, 4]
+        bp, bq = body.data.root_link_pos_w, body.data.root_link_quat_w  # [N, 3], [N, 4]
         q = quat_mul(bq[:, None].expand(-1, n, -1).reshape(-1, 4), loc_q.reshape(-1, 4)).reshape(-1, n, 4)
-        p = bp[:, None] + quat_apply(bq[:, None].expand(-1, n, -1).reshape(-1, 4), loc_p.reshape(-1, 3)).reshape(-1, n, 3)
+        p = bp[:, None] + quat_apply(bq[:, None].expand(-1, n, -1).reshape(-1, 4), loc_p.reshape(-1, 3)).reshape(
+            -1, n, 3
+        )
         p[:, keep] = env.scene.env_origins[:, None] + park_p[:, keep]
         coll.write_object_link_pose_to_sim(torch.cat([p, q], dim=-1))
 
@@ -267,18 +315,26 @@ def install_free_ladder(env) -> None:
     env._reset_callbacks.insert(0, reset)
     env._post_step_callbacks.append(sync)
     env.ladder_body = body
-    print(f"[ladder] FREE-STANDING: one {float(body.root_physx_view.get_masses()[0].sum()):.2f} kg body "
-          f"({getattr(body.root_physx_view, 'max_shapes', '?')} collision shapes) at {[round(float(v), 4) for v in body.data.default_root_state[0, :3].tolist()]}; "
-          f"{n} markers follow it after every physics step")
+    print(
+        f"[ladder] FREE-STANDING: one {float(body.root_physx_view.get_masses()[0].sum()):.2f} kg body "
+        f"({getattr(body.root_physx_view, 'max_shapes', '?')} collision shapes) at {[round(float(v), 4) for v in body.data.default_root_state[0, :3].tolist()]}; "
+        f"{n} markers follow it after every physics step"
+    )
 
 
-def create_fiatlux_step_ladder_cfg(prim_path: str = "{ENV_REGEX_NS}/Ladder", anchors_file: str | None = None,
-                                   anchors=None, mass: float = 2.0, free: bool = False, **_unused):
+def create_fiatlux_step_ladder_cfg(
+    prim_path: str = "{ENV_REGEX_NS}/Ladder",
+    anchors_file: str | None = None,
+    anchors=None,
+    mass: float = 2.0,
+    free: bool = False,
+    **_unused,
+):
     import isaaclab.sim as sim_utils
     from isaaclab.assets import RigidObjectCfg, RigidObjectCollectionCfg
 
     def cuboid(size, pos, rot, path, collide=True, color=(0.10, 0.10, 0.10)):
-        collide = collide and not free                 # free: the boxes are markers, the body collides
+        collide = collide and not free  # free: the boxes are markers, the body collides
         return RigidObjectCfg(
             prim_path=path,
             spawn=sim_utils.CuboidCfg(
@@ -306,10 +362,12 @@ def create_fiatlux_step_ladder_cfg(prim_path: str = "{ENV_REGEX_NS}/Ladder", anc
     size, pos, rot = slab(*PLATFORM["x"], HALF_W, PLATFORM["top"], PLATFORM["thick"])
     objs.append(cuboid(size, pos, rot, f"{prim_path}_rung_{len(objs)}"))
     t = TRAY
-    for x0, x1, top, bottom in ((t["x"][0], t["x"][1], t["floor"], t["bottom"]),       # tray body
-                                (-0.0395, -0.0280, 1.8510, t["floor"]),                # rim, lower course
-                                (-0.0358, -0.0280, t["rim"], 1.8510),                  # rim, upper course
-                                (0.0600, t["x"][1], t["rim"], t["floor"])):            # back rim
+    for x0, x1, top, bottom in (
+        (t["x"][0], t["x"][1], t["floor"], t["bottom"]),  # tray body
+        (-0.0395, -0.0280, 1.8510, t["floor"]),  # rim, lower course
+        (-0.0358, -0.0280, t["rim"], 1.8510),  # rim, upper course
+        (0.0600, t["x"][1], t["rim"], t["floor"]),
+    ):  # back rim
         size, pos, rot = slab(x0, x1, t["half_w"], top, top - bottom)
         objs.append(cuboid(size, pos, rot, f"{prim_path}_rung_{len(objs)}", color=(0.55, 0.05, 0.05)))
     # stringers: front edge x = -0.598 at z 0.30, rising 0.3623 m in x per m of z; 81 mm wide in x
@@ -317,30 +375,46 @@ def create_fiatlux_step_ladder_cfg(prim_path: str = "{ENV_REGEX_NS}/Ladder", anc
     xc = -0.598 + (zc - 0.30) * 0.3623 + 0.0405
     length = 1.83 / math.sin(math.radians(ang))
     for sy in (1.0, -1.0):
-        objs.append(cuboid((length, 0.040, 0.0762), (xc, 0.225 * sy, zc), _q_pitch(-ang),
-                           f"{prim_path}_rung_{len(objs)}"))
+        objs.append(
+            cuboid((length, 0.040, 0.0762), (xc, 0.225 * sy, zc), _q_pitch(-ang), f"{prim_path}_rung_{len(objs)}")
+        )
     # rear legs: front edge x = 0.165 at z 0.30, falling 0.1755 m in x per m of z; 74 mm wide
     ang, zc = 80.03, 0.75
     xc = 0.165 - (zc - 0.30) * 0.1755 + 0.037
     length = 1.50 / math.sin(math.radians(ang))
     for sy in (1.0, -1.0):
-        objs.append(cuboid((length, 0.026, 0.0729), (xc, 0.225 * sy, zc), _q_pitch(-(180.0 - ang)),
-                           f"{prim_path}_rung_{len(objs)}"))
+        objs.append(
+            cuboid(
+                (length, 0.026, 0.0729), (xc, 0.225 * sy, zc), _q_pitch(-(180.0 - ang)), f"{prim_path}_rung_{len(objs)}"
+            )
+        )
     assert len(objs) == N_PHYS, len(objs)
-    objs.append(cuboid((0.02, 0.02, 0.02), (0.0, 0.0, -5.0), (1.0, 0.0, 0.0, 0.0),
-                       f"{prim_path}_rung_{len(objs)}", collide=False))               # label 0 parks here
+    objs.append(
+        cuboid(
+            (0.02, 0.02, 0.02), (0.0, 0.0, -5.0), (1.0, 0.0, 0.0, 0.0), f"{prim_path}_rung_{len(objs)}", collide=False
+        )
+    )  # label 0 parks here
     if anchors is None:
         if anchors_file is None:
             raise ValueError("fiatlux_step ladder needs anchors_file (the clip's anchors.json)")
         import pathlib
+
         f = pathlib.Path(anchors_file)
-        if not f.is_absolute():                            # hydra changes cwd: resolve against the repo
+        if not f.is_absolute():  # hydra changes cwd: resolve against the repo
             f = pathlib.Path(__file__).resolve().parents[2] / f
         anchors = json.loads(f.read_text())["anchors"]
     assert len(anchors) == 6, "one anchor per contact label 1..6"
     for xyz in anchors:
-        objs.append(cuboid((0.01, 0.01, 0.01), tuple(float(v) for v in xyz), (1.0, 0.0, 0.0, 0.0),
-                           f"{prim_path}_rung_{len(objs)}", collide=False, color=(0.0, 0.8, 0.0)))
+        objs.append(
+            cuboid(
+                (0.01, 0.01, 0.01),
+                tuple(float(v) for v in xyz),
+                (1.0, 0.0, 0.0, 0.0),
+                f"{prim_path}_rung_{len(objs)}",
+                collide=False,
+                color=(0.0, 0.8, 0.0),
+            )
+        )
     return RigidObjectCollectionCfg(rigid_objects={f"rung_{i}": c for i, c in enumerate(objs)})
 
 

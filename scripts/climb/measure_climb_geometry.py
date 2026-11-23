@@ -132,6 +132,7 @@ print(f"[CONST] LADDER_FLOOR_STANCE_HEIGHT {LADDER_FLOOR_STANCE_HEIGHT:.4f} m")
 # compared against.
 try:
     from fiatlux_task.assets import STEP_LADDER_USD  # noqa: E402
+
     from pxr import Usd, UsdGeom  # noqa: E402
 
     _st = Usd.Stage.Open(STEP_LADDER_USD)
@@ -141,14 +142,15 @@ try:
     _r = _bb.ComputeWorldBound(_st.GetDefaultPrim()).ComputeAlignedRange()
     _mn = [v * _mpu for v in _r.GetMin()]
     _mx = [v * _mpu for v in _r.GetMax()]
-    print(f"[LADDER] metersPerUnit {_mpu}; bbox min {[round(v, 4) for v in _mn]} "
-          f"max {[round(v, 4) for v in _mx]} (m)")
+    print(f"[LADDER] metersPerUnit {_mpu}; bbox min {[round(v, 4) for v in _mn]} max {[round(v, 4) for v in _mx]} (m)")
     # The steps face LADDER_STEP_FACE_LOCAL; its extreme along that axis is the step face.
     _ax = [i for i, v in enumerate(LADDER_STEP_FACE_LOCAL) if v][0]
     _sgn = LADDER_STEP_FACE_LOCAL[_ax]
     STEP_FACE_OFFSET = abs(_mn[_ax] if _sgn < 0 else _mx[_ax])
-    print(f"[LADDER] step face sits {STEP_FACE_OFFSET:.4f} m from the root along local "
-          f"axis {_ax} (sign {_sgn:+.0f}); depth {_mx[_ax] - _mn[_ax]:.4f} m")
+    print(
+        f"[LADDER] step face sits {STEP_FACE_OFFSET:.4f} m from the root along local "
+        f"axis {_ax} (sign {_sgn:+.0f}); depth {_mx[_ax] - _mn[_ax]:.4f} m"
+    )
 except Exception as exc:  # pragma: no cover -- diagnostic only
     STEP_FACE_OFFSET = None
     print(f"[LADDER] bbox unavailable ({exc})")
@@ -175,24 +177,30 @@ up = [r for r in rows if r["dir"] == "up"]
 worst = max(r["stage_r"] for r in up)
 ok = worst < LADDER_SUCCESS_XY_RADIUS
 print(f"[CHAIN] a descent that returns to the CLIMB START stands {worst:.3f} m from the ladder root;")
-print(f"        the descend gate admits {LADDER_SUCCESS_XY_RADIUS:.3f} m -> {'INSIDE' if ok else 'OUTSIDE'}"
-      f" by {abs(worst - LADDER_SUCCESS_XY_RADIUS) * 1000:.0f} mm")
+print(
+    f"        the descend gate admits {LADDER_SUCCESS_XY_RADIUS:.3f} m -> {'INSIDE' if ok else 'OUTSIDE'}"
+    f" by {abs(worst - LADDER_SUCCESS_XY_RADIUS) * 1000:.0f} mm"
+)
+
 
 def span(path: str) -> tuple[float, float, float]:
     pel = np.load(path)["body_pos_w"][:, 0, :]
-    return (float(np.hypot(pel[-1, 0] - pel[0, 0], pel[-1, 1] - pel[0, 1])),
-            float(pel[0, 2]), float(pel[-1, 2]))
+    return (float(np.hypot(pel[-1, 0] - pel[0, 0], pel[-1, 1] - pel[0, 1])), float(pel[0, 2]), float(pel[-1, 2]))
 
 
 if STEP_FACE_OFFSET is not None:
     print()
     for name in [n for n in CFGS if CFGS[n][1] == "up"]:
         sr = max(r["stage_r"] for r in rows if r["name"] == name)
-        print(f"[FACE ] {name} staged pelvis is {sr:.3f} m from the root = "
-              f"{sr - STEP_FACE_OFFSET:.3f} m clear of the STEP FACE")
+        print(
+            f"[FACE ] {name} staged pelvis is {sr:.3f} m from the root = "
+            f"{sr - STEP_FACE_OFFSET:.3f} m clear of the STEP FACE"
+        )
     _pf = min(r["plat_along_face"] for r in rows)
-    print(f"[FACE ] the platform stance sits {STEP_FACE_OFFSET - _pf:.3f} m BEHIND the step "
-          f"face, so a top-out must carry the pelvis that far back from the face")
+    print(
+        f"[FACE ] the platform stance sits {STEP_FACE_OFFSET - _pf:.3f} m BEHIND the step "
+        f"face, so a top-out must carry the pelvis that far back from the face"
+    )
 
 if args_cli.clip_up:
     travel, z0, z1 = span(args_cli.clip_up)
@@ -202,19 +210,25 @@ if args_cli.clip_up:
     for name in [n for n in CFGS if CFGS[n][1] == "up"]:
         need = max(r["stage_to_top"] for r in rows if r["name"] == name)
         mark = "COVERS" if travel >= need else "SHORT"
-        print(f"[UP   ]   {name} staged start is {need:.3f} m from the platform stance "
-              f"-> {mark} by {abs(travel - need) * 1000:.0f} mm")
+        print(
+            f"[UP   ]   {name} staged start is {need:.3f} m from the platform stance "
+            f"-> {mark} by {abs(travel - need) * 1000:.0f} mm"
+        )
 
 if args_cli.clip_down:
     travel, z0, z1 = span(args_cli.clip_down)
     print()
     print(f"[DOWN ] {args_cli.clip_down}")
-    print(f"[DOWN ] horizontal span {travel:.3f} m, pelvis {z0:.3f} -> {z1:.3f} m "
-          f"(gate wants < {LADDER_FLOOR_STANCE_HEIGHT:.3f})")
+    print(
+        f"[DOWN ] horizontal span {travel:.3f} m, pelvis {z0:.3f} -> {z1:.3f} m "
+        f"(gate wants < {LADDER_FLOOR_STANCE_HEIGHT:.3f})"
+    )
     for name in [n for n in CFGS if CFGS[n][1] == "down"]:
         bd = min(r["budget"] for r in rows if r["name"] == name)
         mark = "FITS" if travel <= bd else "OVER"
-        print(f"[DOWN ]   {name} may travel {bd:.3f} m from the platform stance "
-              f"-> {mark} by {abs(bd - travel) * 1000:.0f} mm")
+        print(
+            f"[DOWN ]   {name} may travel {bd:.3f} m from the platform stance "
+            f"-> {mark} by {abs(bd - travel) * 1000:.0f} mm"
+        )
 
 simulation_app.close()

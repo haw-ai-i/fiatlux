@@ -30,7 +30,6 @@ import argparse
 import sys
 
 import numpy as np
-
 from gear_sonic_contract import JOINT_ORDER
 
 # Fiatlux step-ladder geometry (assets.py): treads ascend to the top platform.
@@ -54,7 +53,7 @@ def _foot_steps(z: np.ndarray, min_rise: float = 0.10) -> list[tuple[int, int, f
     settles, which is what distinguishes a tread transition from a swing."""
     steps, i, n = [], 1, len(z)
     while i < n:
-        if z[i] - z[i - 1] > 0.002:                       # rising
+        if z[i] - z[i - 1] > 0.002:  # rising
             j = i
             while j + 1 < n and z[j + 1] >= z[j] - 0.002:
                 j += 1
@@ -70,32 +69,45 @@ def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("src", help="LadderMan motion.npz")
     ap.add_argument("--out", default="ladderman_climb.npz")
-    ap.add_argument("--meta",
-                    help="the clip's meta.json. When given, joint order is verified by NAME "
-                         "against JOINT_ORDER, which is exact. The knee-signature heuristic "
-                         "below only infers order, and it assumes a natural gait -- a clip we "
-                         "synthesised ourselves can trip it while being perfectly ordered. "
-                         "Names win when we have them; the heuristic stays for files without.")
-    ap.add_argument("--fps", type=int, default=120,
-                    help="motion arrays are 120 Hz; only object_contact is 50 (see docstring)")
-    ap.add_argument("--anchor-mode", default="xyz", choices=["xyz", "xy"],
-                    help="'xyz' shifts all three axes so frame 0 matches the anchor -- correct "
-                         "when both clips START THE SAME WAY, e.g. both standing on the floor. "
-                         "'xy' leaves z alone, which is what a motion that starts on the PLATFORM "
-                         "needs: its heights are already right and only its ground-plane position "
-                         "has to move. Using xyz there drags the whole descent underground.")
-    ap.add_argument("--anchor",
-                    help="one of OUR clips. The raw motion sits in LadderMan's world with the "
-                         "ladder near the origin, so replaying it against our scene puts the "
-                         "robot metres from our ladder. Frame 0 of both is the robot standing "
-                         "with an identity root quaternion, so anchoring on frame-0 pelvis is a "
-                         "pure translation. Without it the clip is written unplaced.")
-    ap.add_argument("--segment", default="full", choices=["ascent", "descent", "full"],
-                    help="the take climbs two rungs and then descends, so the halves are "
-                         "separable: 'ascent' for S02, 'descent' for S04/S12.")
+    ap.add_argument(
+        "--meta",
+        help="the clip's meta.json. When given, joint order is verified by NAME "
+        "against JOINT_ORDER, which is exact. The knee-signature heuristic "
+        "below only infers order, and it assumes a natural gait -- a clip we "
+        "synthesised ourselves can trip it while being perfectly ordered. "
+        "Names win when we have them; the heuristic stays for files without.",
+    )
+    ap.add_argument(
+        "--fps", type=int, default=120, help="motion arrays are 120 Hz; only object_contact is 50 (see docstring)"
+    )
+    ap.add_argument(
+        "--anchor-mode",
+        default="xyz",
+        choices=["xyz", "xy"],
+        help="'xyz' shifts all three axes so frame 0 matches the anchor -- correct "
+        "when both clips START THE SAME WAY, e.g. both standing on the floor. "
+        "'xy' leaves z alone, which is what a motion that starts on the PLATFORM "
+        "needs: its heights are already right and only its ground-plane position "
+        "has to move. Using xyz there drags the whole descent underground.",
+    )
+    ap.add_argument(
+        "--anchor",
+        help="one of OUR clips. The raw motion sits in LadderMan's world with the "
+        "ladder near the origin, so replaying it against our scene puts the "
+        "robot metres from our ladder. Frame 0 of both is the robot standing "
+        "with an identity root quaternion, so anchoring on frame-0 pelvis is a "
+        "pure translation. Without it the clip is written unplaced.",
+    )
+    ap.add_argument(
+        "--segment",
+        default="full",
+        choices=["ascent", "descent", "full"],
+        help="the take climbs two rungs and then descends, so the halves are "
+        "separable: 'ascent' for S02, 'descent' for S04/S12.",
+    )
     args = ap.parse_args()
 
-    d = np.load(args.src)                                  # no allow_pickle: numeric arrays only
+    d = np.load(args.src)  # no allow_pickle: numeric arrays only
     need = {"joint_pos", "body_pos_w", "body_quat_w"}
     missing = need - set(d.files)
     if missing:
@@ -109,6 +121,7 @@ def main() -> int:
 
     if args.meta:
         import json as _json
+
         names = list(_json.load(open(args.meta))["joint_names"])
         if names != list(JOINT_ORDER):
             raise SystemExit("meta.json joint_names differ from JOINT_ORDER -- refusing")
@@ -119,57 +132,75 @@ def main() -> int:
     print(f"  joint order : {order}")
     print(f"  root quat   : {quat}")
     if "UNKNOWN" in order:
-        raise SystemExit("joint order could not be confirmed -- refusing to write a clip that "
-                         "would silently scramble the legs")
+        raise SystemExit(
+            "joint order could not be confirmed -- refusing to write a clip that would silently scramble the legs"
+        )
     root_rot = bq[:, 0] if quat == "wxyz" else bq[:, 0][:, [3, 0, 1, 2]]
 
     root_trans = bp[:, 0].astype(np.float64)
     peak = int(np.argmax(root_trans[:, 2]))
-    seg = {"ascent": slice(0, peak + 1), "descent": slice(peak, len(jp)),
-           "full": slice(0, len(jp))}[args.segment]
-    print(f"  peak        : frame {peak} (t={peak / args.fps:.2f}s, pelvis "
-          f"{root_trans[peak, 2]:.3f} m) -> '{args.segment}' = frames {seg.start}..{seg.stop}")
+    seg = {"ascent": slice(0, peak + 1), "descent": slice(peak, len(jp)), "full": slice(0, len(jp))}[args.segment]
+    print(
+        f"  peak        : frame {peak} (t={peak / args.fps:.2f}s, pelvis "
+        f"{root_trans[peak, 2]:.3f} m) -> '{args.segment}' = frames {seg.start}..{seg.stop}"
+    )
 
     if args.anchor:
         a = np.load(args.anchor)
         a0 = np.asarray(a["root_trans_offset"], np.float64)[0]
         q0 = np.asarray(a["root_rot"], np.float64)[0]
         if abs(q0[0] - 1.0) > 1e-3 or np.abs(q0[1:]).max() > 1e-3:
-            print(f"  WARNING     : anchor frame-0 root_rot {np.round(q0, 4)} is not identity, so "
-                  f"a translation alone will not place this clip correctly")
+            print(
+                f"  WARNING     : anchor frame-0 root_rot {np.round(q0, 4)} is not identity, so "
+                f"a translation alone will not place this clip correctly"
+            )
         delta = a0 - root_trans[0]
         if args.anchor_mode == "xy":
             delta[2] = 0.0
         elif abs(delta[2]) > 0.25:
             raise SystemExit(
-                f"anchor would move z by {delta[2]*1000:+.0f} mm. Both clips are ground-referenced, "
+                f"anchor would move z by {delta[2] * 1000:+.0f} mm. Both clips are ground-referenced, "
                 f"so a shift that large means they do not start the same way -- a motion that "
-                f"begins on the platform needs --anchor-mode xy. Refusing to bury the clip.")
+                f"begins on the platform needs --anchor-mode xy. Refusing to bury the clip."
+            )
         root_trans = root_trans + delta
-        print(f"  anchored on : {args.anchor} -> translation {np.round(delta, 4)} "
-              f"(dz {delta[2] * 1000:+.1f} mm; a small dz confirms a shared convention)")
+        print(
+            f"  anchored on : {args.anchor} -> translation {np.round(delta, 4)} "
+            f"(dz {delta[2] * 1000:+.1f} mm; a small dz confirms a shared convention)"
+        )
     else:
-        print("  anchored on : NOTHING -- clip stays in LadderMan's frame and will not line up "
-              "with our ladder. Pass --anchor to place it.")
+        print(
+            "  anchored on : NOTHING -- clip stays in LadderMan's frame and will not line up "
+            "with our ladder. Pass --anchor to place it."
+        )
 
-    np.savez(args.out, dof=jp[seg], root_rot=root_rot[seg],
-             root_trans_offset=root_trans[seg].astype(np.float32), fps=args.fps)
+    np.savez(
+        args.out,
+        dof=jp[seg],
+        root_rot=root_rot[seg],
+        root_trans_offset=root_trans[seg].astype(np.float32),
+        fps=args.fps,
+    )
     T = jp[seg].shape[0]
     print(f"\n  wrote {args.out}: {T} frames @ {args.fps} Hz = {T / args.fps:.1f} s")
 
     # --- does this motion contain a step the size of one fiatlux tread? ---
     z0 = bp[0, :, 2]
     feet = np.argsort(z0)[:2]
-    print(f"\n  tread rises in this project: "
-          f"{', '.join(f'{b - a:.3f}' for a, b in zip((0.0,) + TREAD_Z, TREAD_Z))} m "
-          f"(then {PLATFORM_Z - TREAD_Z[-1]:.3f} to the platform)")
+    print(
+        f"\n  tread rises in this project: "
+        f"{', '.join(f'{b - a:.3f}' for a, b in zip((0.0,) + TREAD_Z, TREAD_Z))} m "
+        f"(then {PLATFORM_Z - TREAD_Z[-1]:.3f} to the platform)"
+    )
     print(f"\n  {'body':>5} {'step':>5} {'lift t':>8} {'land t':>8} {'rise m':>8}  nearest tread rise")
     for f in feet:
         for k, (i, j, rise) in enumerate(_foot_steps(bp[:, f, 2])):
             gaps = [abs(rise - (b - a)) for a, b in zip((0.0,) + TREAD_Z, TREAD_Z)]
             best = int(np.argmin(gaps))
-            print(f"  {f:>5} {k:>5} {i / args.fps:>7.2f}s {j / args.fps:>7.2f}s {rise:>8.3f}"
-                  f"   tread {best} (off by {gaps[best]:+.3f} m)")
+            print(
+                f"  {f:>5} {k:>5} {i / args.fps:>7.2f}s {j / args.fps:>7.2f}s {rise:>8.3f}"
+                f"   tread {best} (off by {gaps[best]:+.3f} m)"
+            )
     print("\n  A step whose rise is within a few cm of a tread rise is the one to retarget first.")
     return 0
 

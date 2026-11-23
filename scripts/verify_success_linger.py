@@ -6,6 +6,7 @@ must not fire on a fresh episode.
 
     python scripts/verify_success_linger.py --task FIATLUX-S07-ApproachNewBulb-v0 --headless
 """
+
 import argparse
 import sys
 
@@ -24,6 +25,7 @@ import gymnasium as gym  # noqa: E402
 import torch  # noqa: E402
 from fiatlux_task.tasks.manager_based.fiatlux_task import mdp  # noqa: E402
 from fiatlux_task.tasks.manager_based.fiatlux_task.subtask_env_cfg import SUCCESS_LINGER_SECONDS  # noqa: E402
+
 from isaaclab_tasks.utils import parse_env_cfg  # noqa: E402
 
 cfg = parse_env_cfg(a.task, num_envs=1)
@@ -40,13 +42,25 @@ def check(label, cond, detail=""):
 
 
 check("term is sustained", term.func is mdp.sustained, f"({getattr(term.func, '__name__', term.func)})")
-check("linger", abs(float(term.params.get("linger_seconds", -1)) - SUCCESS_LINGER_SECONDS) < 1e-9,
-      f"({term.params.get('linger_seconds')} s)")
-check("hold unchanged", float(term.params.get("seconds")) == float((cfg.success_params or {}).get("seconds", 0.0)),
-      f"({term.params.get('seconds')} s)")
-check("conjuncts unchanged", [f for f, _ in wired] == [f for f, _ in leaf] and [p for _, p in wired] == [p for _, p in leaf],
-      "(" + ", ".join(getattr(f, "__name__", "?") for f, _ in wired) + ")")
-check("gate_progress reads the same conjuncts", [f for f, _ in cfg.rewards.gate_progress.params["predicates"]] == [f for f, _ in leaf])
+check(
+    "linger",
+    abs(float(term.params.get("linger_seconds", -1)) - SUCCESS_LINGER_SECONDS) < 1e-9,
+    f"({term.params.get('linger_seconds')} s)",
+)
+check(
+    "hold unchanged",
+    float(term.params.get("seconds")) == float((cfg.success_params or {}).get("seconds", 0.0)),
+    f"({term.params.get('seconds')} s)",
+)
+check(
+    "conjuncts unchanged",
+    [f for f, _ in wired] == [f for f, _ in leaf] and [p for _, p in wired] == [p for _, p in leaf],
+    "(" + ", ".join(getattr(f, "__name__", "?") for f, _ in wired) + ")",
+)
+check(
+    "gate_progress reads the same conjuncts",
+    [f for f, _ in cfg.rewards.gate_progress.params["predicates"]] == [f for f, _ in leaf],
+)
 env = gym.make(a.task, cfg=cfg).unwrapped
 env.reset()
 fired = False

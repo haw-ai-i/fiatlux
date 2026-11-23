@@ -25,6 +25,7 @@ climb from the bottom rather than from a random phase.
     python scripts/play_probe.py algo=teacher task=teacher checkpoint_path=<...> \
         headless=true task.num_envs=4 +probe_steps=1200 +zero_residual=false <ladder overrides>
 """
+
 import itertools
 import os
 import sys
@@ -53,7 +54,7 @@ def main(cfg):
 
     env, policy, vecnorm = make_env_policy(cfg)
     rollout_policy = policy.get_rollout_policy("eval")
-    env.base_env.eval()                      # forces start_t = 0: the full climb, not a phase
+    env.base_env.eval()  # forces start_t = 0: the full climb, not a phase
 
     base = env.base_env
     robot = base.scene["robot"]
@@ -73,16 +74,24 @@ def main(cfg):
         missing = [i for i in act_ids if i not in tr_asset]
         if missing:
             names = [robot.joint_names[i] for i in missing]
-            print(f"[probe] NOTE: {len(missing)} actuated joints are not tracked by the command "
-                  f"and will be held at their default: {names}", flush=True)
+            print(
+                f"[probe] NOTE: {len(missing)} actuated joints are not tracked by the command "
+                f"and will be held at their default: {names}",
+                flush=True,
+            )
         perm = [tr_asset.index(i) if i in tr_asset else -1 for i in act_ids]
-        print(f"[probe] zero-residual mode: forcing the PD target onto the reference for "
-              f"{sum(p >= 0 for p in perm)} of {len(act_ids)} actuated joints", flush=True)
+        print(
+            f"[probe] zero-residual mode: forcing the PD target onto the reference for "
+            f"{sum(p >= 0 for p in perm)} of {len(act_ids)} actuated joints",
+            flush=True,
+        )
 
     z0 = (robot.data.root_pos_w[:, 2] - base.scene.env_origins[:, 2]).clone()
-    print(f"[probe] mode={'open-loop reference' if zero_residual else 'policy'}  "
-          f"envs={base.num_envs}  steps={steps}  motion_len={int(cmd.motion_len[0]) if hasattr(cmd.motion_len, '__len__') else int(cmd.motion_len)}",
-          flush=True)
+    print(
+        f"[probe] mode={'open-loop reference' if zero_residual else 'policy'}  "
+        f"envs={base.num_envs}  steps={steps}  motion_len={int(cmd.motion_len[0]) if hasattr(cmd.motion_len, '__len__') else int(cmd.motion_len)}",
+        flush=True,
+    )
     print(f"[probe] spawn pelvis {[round(v, 3) for v in z0.tolist()]}", flush=True)
 
     best = z0.clone()
@@ -96,13 +105,14 @@ def main(cfg):
                 break
             td_ = rollout_policy(td_)
             if zero_residual:
-                ref = cmd.ref_joint_pos                                   # [N, n_tracked]
+                ref = cmd.ref_joint_pos  # [N, n_tracked]
                 tgt = act.default_joint_pos[:, act.joint_ids].clone()
                 for a_i, r_i in enumerate(perm):
                     if r_i >= 0:
                         tgt[:, a_i] = ref[:, r_i]
-                td_["action"] = ((tgt - act.default_joint_pos[:, act.joint_ids])
-                                 / act.action_scaling).clamp(-10.0, 10.0)
+                td_["action"] = ((tgt - act.default_joint_pos[:, act.joint_ids]) / act.action_scaling).clamp(
+                    -10.0, 10.0
+                )
             td, td_ = env.step_and_maybe_reset(td_)
 
             z = robot.data.root_pos_w[:, 2] - base.scene.env_origins[:, 2]
@@ -112,18 +122,26 @@ def main(cfg):
             died_at[newly] = i + 1
             alive = alive & ~done
             if (i + 1) % 100 == 0 or not alive.any():
-                print(f"[probe] step {i+1:5d}  alive {int(alive.sum())}/{base.num_envs}  "
-                      f"pelvis now {z.max().item():.3f}  best {best.max().item():.3f}", flush=True)
+                print(
+                    f"[probe] step {i + 1:5d}  alive {int(alive.sum())}/{base.num_envs}  "
+                    f"pelvis now {z.max().item():.3f}  best {best.max().item():.3f}",
+                    flush=True,
+                )
             if not alive.any():
                 break
 
     gain = (best - z0) * 1000.0
     print("[probe] ---- result ----", flush=True)
     for e in range(base.num_envs):
-        print(f"[probe] env {e}: died at step {int(died_at[e]) if died_at[e] >= 0 else 'survived'}"
-              f"   spawn {z0[e]:.3f}  best {best[e]:.3f}  gain {gain[e]:+.0f} mm", flush=True)
-    print(f"[probe] BEST GAIN {gain.max().item():+.0f} mm  (one tread rise is 234 mm; "
-          f"the clip's own end is +1179 mm)", flush=True)
+        print(
+            f"[probe] env {e}: died at step {int(died_at[e]) if died_at[e] >= 0 else 'survived'}"
+            f"   spawn {z0[e]:.3f}  best {best[e]:.3f}  gain {gain[e]:+.0f} mm",
+            flush=True,
+        )
+    print(
+        f"[probe] BEST GAIN {gain.max().item():+.0f} mm  (one tread rise is 234 mm; the clip's own end is +1179 mm)",
+        flush=True,
+    )
     sys.stdout.flush()
     os._exit(0)
 

@@ -7,7 +7,11 @@ reported. Depth is how far the deepest ladder sample sits inside the hull.
 
     python scripts/climb/check_leg_collision.py --clip <dir> --mesh <ladder_mesh.npz> [--detail]
 """
-import argparse, json, pathlib
+
+import argparse
+import json
+import pathlib
+
 import numpy as np
 from scipy.spatial import ConvexHull, cKDTree
 
@@ -24,7 +28,7 @@ bn, fps = list(meta["body_names"]), float(meta["fps"])
 BP, BQ = m["body_pos_w"], m["body_quat_w"]
 H = np.load(pathlib.Path(__file__).parent / "g1_body_hulls.npz")
 TRI = np.load(a.mesh)["T"].reshape(-1, 3)
-TRI = np.stack([TRI[:, 1] - 0.1996, -TRI[:, 0], TRI[:, 2]], 1).reshape(-1, 3, 3)   # ladder -> clip frame
+TRI = np.stack([TRI[:, 1] - 0.1996, -TRI[:, 0], TRI[:, 2]], 1).reshape(-1, 3, 3)  # ladder -> clip frame
 lp = []
 for A, B, C in TRI:
     n = int(max(np.linalg.norm(B - A), np.linalg.norm(C - A), np.linalg.norm(C - B)) / 0.005) + 1
@@ -59,13 +63,16 @@ for ln in ("left_knee_link", "right_knee_link", "left_hip_yaw_link", "right_hip_
     dd = np.array([e[1] for e in ev]) if ev else np.zeros(0)
     sec = lambda th: (dd > th).sum() * a.stride / fps
     clean &= len(dd) == 0
-    print(f"[{'PASS' if len(dd) == 0 else 'FAIL'}] {ln:20s} seconds deeper than 3 mm {sec(3):.1f}, 10 mm {sec(10):.1f}, "
-          f"20 mm {sec(20):.1f}; deepest {dd.max() if len(dd) else 0:.0f} mm")
+    print(
+        f"[{'PASS' if len(dd) == 0 else 'FAIL'}] {ln:20s} seconds deeper than 3 mm {sec(3):.1f}, 10 mm {sec(10):.1f}, "
+        f"20 mm {sec(20):.1f}; deepest {dd.max() if len(dd) else 0:.0f} mm"
+    )
     if a.detail and ev:
         runs = []
         for s_, dp in ev:
             if runs and s_ - runs[-1][1] <= 8:
-                runs[-1][1] = s_; runs[-1][2] = max(runs[-1][2], dp)
+                runs[-1][1] = s_
+                runs[-1][2] = max(runs[-1][2], dp)
             else:
                 runs.append([s_, s_, dp])
         for s0, s1, dp in runs:

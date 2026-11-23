@@ -115,6 +115,11 @@ ignore = [
 
 [tool.ruff.lint.per-file-ignores]
 "__init__.py" = ["F401"]  # Allow unused imports in __init__.py files
+# Research tooling for the climb clips and the whole-body teleop experiments: dense numeric
+# scripts with long diagnostic print lines and maths-style names. Formatted and import-sorted like
+# the rest; these style rules are not enforced on them.
+"scripts/climb/**" = ["E501", "E731", "E741", "F841", "C901", "SIM105", "SIM115", "UP031"]
+"scripts/teleop/fullbody/**" = ["E501", "E731", "E741", "F841", "C901", "SIM105", "SIM115", "UP031"]
 
 [tool.ruff.lint.mccabe]
 max-complexity = 30

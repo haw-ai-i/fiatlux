@@ -6,7 +6,9 @@ zero pelvis gain. This logs enough per step to say WHY: whether the policy is co
 something violent from step 0 (observation mismatch) or whether the state diverges under
 sane commands (dynamics/actuator mismatch).
 """
+
 import numpy as _np_trace  # noqa
+
 _ORIG_DOC = """Drive a LadderMan teacher through a fiatlux climb subtask and record the bag.
 
 A sibling of ``scripts/record_run.py``, not a modification of it: the teacher is not a
@@ -26,8 +28,8 @@ Examples
         --motion /home/yujin-chen/psi0_ft/climb/topout --out /tmp/climb-run --max_steps 1200
 """
 
-import os
 import argparse
+import os
 import pathlib
 import sys
 
@@ -45,61 +47,94 @@ ap.add_argument("--format", default="hdf5")
 ap.add_argument("--print_every", type=int, default=100)
 ap.add_argument("--trace_out", default=None, help="npz to write the per-step trace to")
 ap.add_argument("--trace_steps", type=int, default=120)
-ap.add_argument("--null_action", action="store_true",
-                help="ignore the policy and send a zero action every step (hold the default\n                     pose). Isolates what the SPAWN does from what the POLICY does.")
-ap.add_argument("--action_delay", type=int, default=0,
-                help="Action delay in PHYSICS steps, reproducing LadderMan's action term "
-                     "(min_delay 2, max_delay 6, randomised per episode). We apply actions "
-                     "instantly, i.e. delay 0 -- OUTSIDE the range the policy trained on, which "
-                     "is the only such condition left after the structural audit. Their term "
-                     "picks a buffer slot per physics substep; fiatlux holds one target for the "
-                     "whole control step, so this applies the exact time-average over the 4 "
-                     "substeps instead.")
-ap.add_argument("--mass_scale", type=float, default=None,
-                help="Scale EVERY body mass (and its inertia) by this factor. Completes the "
-                     "--lm_masses probe: name matching only reaches the hands, so this is the "
-                     "way to put the robot on the teacher's 33.34 kg total without needing a "
-                     "body-by-body correspondence. Also a diagnostic -- it changes the "
-                     "benchmark's robot, so nothing recorded under it is a demo.")
-ap.add_argument("--lm_masses", default=None,
-                help="JSON of LadderMan's URDF link masses. Overwrites this robot's body masses "
-                     "(and scales inertia with them) so the ONLY thing left differing from the "
-                     "teacher's training robot is geometry. A DIAGNOSTIC -- it changes the "
-                     "benchmark's robot, so nothing recorded under it is a demo.")
-ap.add_argument("--match_torque", action="store_true",
-                help="convert targets so OUR actuators reproduce LadderMan's torque")
-ap.add_argument("--residual_scale", type=float, default=1.0,
-                help="scale the NETWORK's 23 outputs. 0 = pure open-loop replay of the reference "
-                     "through the same action path, which isolates the conversion from the policy.")
-ap.add_argument("--layout_seed", type=int, default=0,
-                help="fix the Replace layout draw (ladder pose, fixture mount). MUST be set "
-                     "before the cfg is built or the layout comes from OS entropy and two runs "
-                     "are different scenes, not a repeat -- see scene_cfg.set_layout_seed. "
-                     "Default 0 = reproducible; pass -1 for OS entropy (varied bags).")
-ap.add_argument("--lm_gains", action="store_true",
-                help="run the robot on LADDERMAN's PD gains instead of fiatlux's. Not the same "
-                     "test as --match_torque: that solves for a target so OUR gains produce "
-                     "LadderMan's torque, whereas ImplicitActuator hands kp/kd to PhysX, which "
-                     "solves the PD inside the solver -- so a softer joint behaves differently "
-                     "from a stiff joint fed a converted target. Gains are a control-stack "
-                     "choice, not hardware; armature (the other mismatch) is hardware and is "
-                     "deliberately NOT touched here.")
-ap.add_argument("--rsi", action="store_true",
-                help="DIAGNOSTIC: stage the robot in the REFERENCE's frame-0 state at every "
-                     "reset -- root pose, root velocity and the 29 joint positions -- which is "
-                     "what LadderMan's `sample_init` does on every training episode. Their "
-                     "teacher only ever sees initial states drawn from the reference pose "
-                     "+/-0.1 rad per joint and +/-0.02 m of root, whereas the benchmark spawn "
-                     "is 0.600 rad off at the elbows and 0.252 m behind. A bag recorded with "
-                     "this flag is NOT a valid S02 demo -- the benchmark's spawn pose is part "
-                     "of what S02 measures. It answers one question: does the teacher fail "
-                     "because it cannot climb, or because it wakes up out of distribution?")
-ap.add_argument("--standoff_delta", type=float, default=0.0,
-                help="metres to move the spawn TOWARD the ladder along the step-facing ray "
-                     "(positive = closer). The reference is anchored to the LADDER, not to the "
-                     "robot, so the spawn standoff sets the frame-0 tracking error the policy "
-                     "wakes up holding -- see the [ALIGN ] line, which measures it directly. "
-                     "Only meaningful for a floor stance; refused on a platform stance.")
+ap.add_argument(
+    "--null_action",
+    action="store_true",
+    help="ignore the policy and send a zero action every step (hold the default\n                     pose). Isolates what the SPAWN does from what the POLICY does.",
+)
+ap.add_argument(
+    "--action_delay",
+    type=int,
+    default=0,
+    help="Action delay in PHYSICS steps, reproducing LadderMan's action term "
+    "(min_delay 2, max_delay 6, randomised per episode). We apply actions "
+    "instantly, i.e. delay 0 -- OUTSIDE the range the policy trained on, which "
+    "is the only such condition left after the structural audit. Their term "
+    "picks a buffer slot per physics substep; fiatlux holds one target for the "
+    "whole control step, so this applies the exact time-average over the 4 "
+    "substeps instead.",
+)
+ap.add_argument(
+    "--mass_scale",
+    type=float,
+    default=None,
+    help="Scale EVERY body mass (and its inertia) by this factor. Completes the "
+    "--lm_masses probe: name matching only reaches the hands, so this is the "
+    "way to put the robot on the teacher's 33.34 kg total without needing a "
+    "body-by-body correspondence. Also a diagnostic -- it changes the "
+    "benchmark's robot, so nothing recorded under it is a demo.",
+)
+ap.add_argument(
+    "--lm_masses",
+    default=None,
+    help="JSON of LadderMan's URDF link masses. Overwrites this robot's body masses "
+    "(and scales inertia with them) so the ONLY thing left differing from the "
+    "teacher's training robot is geometry. A DIAGNOSTIC -- it changes the "
+    "benchmark's robot, so nothing recorded under it is a demo.",
+)
+ap.add_argument(
+    "--match_torque", action="store_true", help="convert targets so OUR actuators reproduce LadderMan's torque"
+)
+ap.add_argument(
+    "--residual_scale",
+    type=float,
+    default=1.0,
+    help="scale the NETWORK's 23 outputs. 0 = pure open-loop replay of the reference "
+    "through the same action path, which isolates the conversion from the policy.",
+)
+ap.add_argument(
+    "--layout_seed",
+    type=int,
+    default=0,
+    help="fix the Replace layout draw (ladder pose, fixture mount). MUST be set "
+    "before the cfg is built or the layout comes from OS entropy and two runs "
+    "are different scenes, not a repeat -- see scene_cfg.set_layout_seed. "
+    "Default 0 = reproducible; pass -1 for OS entropy (varied bags).",
+)
+ap.add_argument(
+    "--lm_gains",
+    action="store_true",
+    help="run the robot on LADDERMAN's PD gains instead of fiatlux's. Not the same "
+    "test as --match_torque: that solves for a target so OUR gains produce "
+    "LadderMan's torque, whereas ImplicitActuator hands kp/kd to PhysX, which "
+    "solves the PD inside the solver -- so a softer joint behaves differently "
+    "from a stiff joint fed a converted target. Gains are a control-stack "
+    "choice, not hardware; armature (the other mismatch) is hardware and is "
+    "deliberately NOT touched here.",
+)
+ap.add_argument(
+    "--rsi",
+    action="store_true",
+    help="DIAGNOSTIC: stage the robot in the REFERENCE's frame-0 state at every "
+    "reset -- root pose, root velocity and the 29 joint positions -- which is "
+    "what LadderMan's `sample_init` does on every training episode. Their "
+    "teacher only ever sees initial states drawn from the reference pose "
+    "+/-0.1 rad per joint and +/-0.02 m of root, whereas the benchmark spawn "
+    "is 0.600 rad off at the elbows and 0.252 m behind. A bag recorded with "
+    "this flag is NOT a valid S02 demo -- the benchmark's spawn pose is part "
+    "of what S02 measures. It answers one question: does the teacher fail "
+    "because it cannot climb, or because it wakes up out of distribution?",
+)
+ap.add_argument(
+    "--standoff_delta",
+    type=float,
+    default=0.0,
+    help="metres to move the spawn TOWARD the ladder along the step-facing ray "
+    "(positive = closer). The reference is anchored to the LADDER, not to the "
+    "robot, so the spawn standoff sets the frame-0 tracking error the policy "
+    "wakes up holding -- see the [ALIGN ] line, which measures it directly. "
+    "Only meaningful for a floor stance; refused on a platform stance.",
+)
 AppLauncher.add_app_launcher_args(ap)
 a = ap.parse_args()
 a.enable_cameras = True
@@ -111,12 +146,11 @@ import fiatlux_task.tasks  # noqa: E402,F401
 import gymnasium as gym  # noqa: E402
 import torch  # noqa: E402
 from fiatlux_task.recording import TrajectoryRecorder  # noqa: E402
-from isaaclab_tasks.utils import parse_env_cfg  # noqa: E402
-
+from fiatlux_task.tasks.manager_based.fiatlux_task.scene_cfg import set_layout_seed  # noqa: E402
 from ladderman_policy import LadderManPolicy  # noqa: E402
 from ladderman_runtime import LadderManObs  # noqa: E402
 
-from fiatlux_task.tasks.manager_based.fiatlux_task.scene_cfg import set_layout_seed  # noqa: E402
+from isaaclab_tasks.utils import parse_env_cfg  # noqa: E402
 
 # Before parse_env_cfg, not after: the layout is drawn in __post_init__, which runs INSIDE
 # parse_env_cfg, so cfg.seed is far too late. Without this every run is a different ladder pose
@@ -153,13 +187,22 @@ obs_builder = LadderManObs(base, a.motion)
 net = LadderManPolicy(a.checkpoint, device=base.device)
 print(f"[POLICY] {a.checkpoint}")
 print(f"[MOTION] {obs_builder.motion_len} steps at 50 Hz = {obs_builder.motion_len / 50:.2f} s")
-print(f"[FRAME ] rung0 {[round(v, 3) for v in obs_builder.rung0_w[0].tolist()]}, "
-      f"climb yaw {float(obs_builder.climb_yaw[0]) * 57.2958:+.1f} deg")
+print(
+    f"[FRAME ] rung0 {[round(v, 3) for v in obs_builder.rung0_w[0].tolist()]}, "
+    f"climb yaw {float(obs_builder.climb_yaw[0]) * 57.2958:+.1f} deg"
+)
 
 recorder = (
-    TrajectoryRecorder(base, policy_spec=f"ladderman:{pathlib.Path(a.checkpoint).name}",
-                       seed=a.seed, checkpoint=a.checkpoint, out_dir=a.out, fmt=a.format)
-    if a.out else None
+    TrajectoryRecorder(
+        base,
+        policy_spec=f"ladderman:{pathlib.Path(a.checkpoint).name}",
+        seed=a.seed,
+        checkpoint=a.checkpoint,
+        out_dir=a.out,
+        fmt=a.format,
+    )
+    if a.out
+    else None
 )
 
 obs, _ = env.reset(seed=a.seed)
@@ -209,21 +252,34 @@ def apply_rsi() -> None:
 
 if a.rsi:
     apply_rsi()
-    print("[RSI   ] staged in the reference frame-0 state (root pose+vel, 29 joints). "
-          "The [ALIGN ] line below should now read ~0 -- that is the check this flag worked.")
+    print(
+        "[RSI   ] staged in the reference frame-0 state (root pose+vel, 29 joints). "
+        "The [ALIGN ] line below should now read ~0 -- that is the check this flag worked."
+    )
 
 if a.lm_gains:
     apply_lm_gains()
     _names = list(base.scene["robot"].joint_names)
-    _show = [n for n in ("left_hip_pitch_joint", "left_knee_joint", "waist_pitch_joint",
-                         "left_ankle_pitch_joint", "left_shoulder_pitch_joint") if n in _names]
+    _show = [
+        n
+        for n in (
+            "left_hip_pitch_joint",
+            "left_knee_joint",
+            "waist_pitch_joint",
+            "left_ankle_pitch_joint",
+            "left_shoulder_pitch_joint",
+        )
+        if n in _names
+    ]
     print("[GAINS ] running LadderMan PD gains (armature unchanged):")
     for n in _show:
         i = _names.index(n)
         j = (obs_builder.j_fx == i).nonzero()
         if len(j):
-            print(f"         {n:28s} kp {float(obs_builder.lm_kp[int(j[0])]):7.2f}  "
-                  f"kd {float(obs_builder.lm_kd[int(j[0])]):6.3f}")
+            print(
+                f"         {n:28s} kp {float(obs_builder.lm_kp[int(j[0])]):7.2f}  "
+                f"kd {float(obs_builder.lm_kd[int(j[0])]):6.3f}"
+            )
 
 # The frame-0 tracking error, measured rather than assumed. The reference is anchored to the
 # ladder (rung 0 in its local frame), so wherever the robot is staged, THIS is the offset the
@@ -231,14 +287,18 @@ if a.lm_gains:
 # Read without calling update(): update() pushes the current state into the history buffers, and
 # doing that twice at t=0 would double the first sample in `joint_pos_history`.
 _rob = base.scene["robot"].data
-_ref0 = obs_builder.ref_body_pos[obs_builder.t][:, obs_builder.root_mo]        # [N,3] world
+_ref0 = obs_builder.ref_body_pos[obs_builder.t][:, obs_builder.root_mo]  # [N,3] world
 _d_b = quat_apply_inverse(_rob.root_quat_w, _ref0 - _rob.root_pos_w)[0]
 _lad = base.scene["ladder"].data.root_pos_w[0]
-print(f"[ALIGN ] robot root {[round(v, 3) for v in _rob.root_pos_w[0].tolist()]}, "
-      f"standoff {float(((_rob.root_pos_w[0, :2] - _lad[:2]) ** 2).sum().sqrt()):.3f} m")
-print(f"[ALIGN ] reference root at t=0 is {float(_d_b[0]):+.3f} m forward, "
-      f"{float(_d_b[1]):+.3f} m left, {float(_d_b[2]):+.3f} m up of the robot "
-      f"(forward > 0 means the robot is staged BEHIND where the clip starts)")
+print(
+    f"[ALIGN ] robot root {[round(v, 3) for v in _rob.root_pos_w[0].tolist()]}, "
+    f"standoff {float(((_rob.root_pos_w[0, :2] - _lad[:2]) ** 2).sum().sqrt()):.3f} m"
+)
+print(
+    f"[ALIGN ] reference root at t=0 is {float(_d_b[0]):+.3f} m forward, "
+    f"{float(_d_b[1]):+.3f} m left, {float(_d_b[2]):+.3f} m up of the robot "
+    f"(forward > 0 means the robot is staged BEHIND where the clip starts)"
+)
 
 if os.environ.get("FX_DEBUG_PRIV"):
     _ob = obs_builder
@@ -252,12 +312,11 @@ if os.environ.get("FX_DEBUG_PRIV"):
     print("[DBG] pelvis is b%d" % _pel)
     _fi = _ob._future_idx()
     print("[DBG] future idx from t=%d: %s" % (int(_ob.t[0]), _fi[0].tolist()))
-    _rp = _ob.ref_body_pos[_fi][:, :, _ob.track_b_mo]          # [N,F,B,3]
-    _r0 = _ob.ref_body_pos[_ob.t][:, _ob.root_mo]              # [N,3]
+    _rp = _ob.ref_body_pos[_fi][:, :, _ob.track_b_mo]  # [N,F,B,3]
+    _r0 = _ob.ref_body_pos[_ob.t][:, _ob.root_mo]  # [N,3]
     for _j, _k in enumerate(_fi[0].tolist()):
         _d = (_rp[0, _j, _pel] - _r0[0]).tolist()
-        print(f"[DBG] ref pelvis world displacement at idx {_k}: "
-              f"dx {_d[0]:+.4f} dy {_d[1]:+.4f} dz {_d[2]:+.4f}")
+        print(f"[DBG] ref pelvis world displacement at idx {_k}: dx {_d[0]:+.4f} dy {_d[1]:+.4f} dz {_d[2]:+.4f}")
 
 if a.mass_scale:
     _rb = base.scene["robot"]
@@ -268,11 +327,11 @@ if a.mass_scale:
     _idx = torch.arange(_m.shape[0], dtype=torch.int32)
     _rb.root_physx_view.set_masses(_m, _idx)
     _rb.root_physx_view.set_inertias(_I, _idx)
-    print(f"[MASS  ] every body scaled by {a.mass_scale:.4f}: "
-          f"total {_t0:.2f} -> {float(_m[0].sum()):.2f} kg")
+    print(f"[MASS  ] every body scaled by {a.mass_scale:.4f}: total {_t0:.2f} -> {float(_m[0].sum()):.2f} kg")
 
 if a.lm_masses:
     import json as _json
+
     _lm = _json.load(open(a.lm_masses))
     _rb = base.scene["robot"]
     _bn = list(_rb.body_names)
@@ -284,7 +343,8 @@ if a.lm_masses:
     _hit = 0
     for i, n in enumerate(_bn):
         if n in _lm:
-            _m[:, i] = float(_lm[n]); _hit += 1
+            _m[:, i] = float(_lm[n])
+            _hit += 1
     # LadderMan's whole hand is ONE 0.170 kg rubber link. Spread that over whatever our
     # multi-link hand has, in proportion, so each side ends up at the same 0.170 kg.
     for side in ("left", "right"):
@@ -301,34 +361,45 @@ if a.lm_masses:
     _idx = torch.arange(_m.shape[0], dtype=torch.int32)
     _rb.root_physx_view.set_masses(_m, _idx)
     _rb.root_physx_view.set_inertias(_I, _idx)
-    print(f"[MASS  ] {_hit} of {len(_bn)} bodies matched by name; hands lumped to "
-          f"{float(_lm.get('left_rubber_hand', 0.170)):.3f} kg a side. "
-          f"total {float(_m0[0].sum()):.2f} -> {float(_m[0].sum()):.2f} kg "
-          f"(LadderMan URDF {sum(_lm.values()):.2f} kg)")
+    print(
+        f"[MASS  ] {_hit} of {len(_bn)} bodies matched by name; hands lumped to "
+        f"{float(_lm.get('left_rubber_hand', 0.170)):.3f} kg a side. "
+        f"total {float(_m0[0].sum()):.2f} -> {float(_m[0].sum()):.2f} kg "
+        f"(LadderMan URDF {sum(_lm.values()):.2f} kg)"
+    )
 
 if a.trace_out:
     import json as _json
+
     _o = obs_builder
     _fx23 = _o.j_fx[_o.act_mo]
     _lim = base.scene["robot"].data
-    _json.dump({
-        "act_names": list(_o.act_names),
-        "act_scaling": _o.act_scaling.tolist(),
-        "lm_default_act": _o.lm_default[_o.act_mo].tolist(),
-        "fx_joint_names_23": [base.scene["robot"].joint_names[int(i)] for i in _fx23],
-        "fx_effort_limit_23": _lim.joint_effort_limits[0][_fx23].tolist()
-            if hasattr(_lim, "joint_effort_limits") else [],
-        "fx_stiffness_23": _lim.joint_stiffness[0][_fx23].tolist(),
-        "fx_damping_23": _lim.joint_damping[0][_fx23].tolist(),
-        "lm_kp_act": _o.lm_kp[_o.act_mo].tolist(),
-        "lm_kd_act": _o.lm_kd[_o.act_mo].tolist(),
-        "track_bodies": list(_o.track_bodies),
-        # every body's mass, so the "our robot is 38.61 kg where the teacher trained on 33.34 kg"
-        # claim can be checked per link instead of as one total.
-        "fx_body_masses": {n: float(m) for n, m in zip(
-            base.scene["robot"].body_names,
-            base.scene["robot"].root_physx_view.get_masses()[0].tolist())},
-    }, open(str(a.trace_out) + ".meta.json", "w"), indent=1)
+    _json.dump(
+        {
+            "act_names": list(_o.act_names),
+            "act_scaling": _o.act_scaling.tolist(),
+            "lm_default_act": _o.lm_default[_o.act_mo].tolist(),
+            "fx_joint_names_23": [base.scene["robot"].joint_names[int(i)] for i in _fx23],
+            "fx_effort_limit_23": _lim.joint_effort_limits[0][_fx23].tolist()
+            if hasattr(_lim, "joint_effort_limits")
+            else [],
+            "fx_stiffness_23": _lim.joint_stiffness[0][_fx23].tolist(),
+            "fx_damping_23": _lim.joint_damping[0][_fx23].tolist(),
+            "lm_kp_act": _o.lm_kp[_o.act_mo].tolist(),
+            "lm_kd_act": _o.lm_kd[_o.act_mo].tolist(),
+            "track_bodies": list(_o.track_bodies),
+            # every body's mass, so the "our robot is 38.61 kg where the teacher trained on 33.34 kg"
+            # claim can be checked per link instead of as one total.
+            "fx_body_masses": {
+                n: float(m)
+                for n, m in zip(
+                    base.scene["robot"].body_names, base.scene["robot"].root_physx_view.get_masses()[0].tolist()
+                )
+            },
+        },
+        open(str(a.trace_out) + ".meta.json", "w"),
+        indent=1,
+    )
     print("[TRACE ] meta -> " + str(a.trace_out) + ".meta.json")
 
 DECIMATION = 4
@@ -337,20 +408,38 @@ if a.action_delay > 0:
     for _s in range(DECIMATION):
         _k = (a.action_delay - _s + DECIMATION - 1) // DECIMATION
         _delay_w[_k] = _delay_w.get(_k, 0.0) + 1.0 / DECIMATION
-    print(f"[DELAY ] {a.action_delay} physics steps -> per-control-step weights "
-          + ", ".join(f"t-{k}: {v:.2f}" for k, v in sorted(_delay_w.items())))
+    print(
+        f"[DELAY ] {a.action_delay} physics steps -> per-control-step weights "
+        + ", ".join(f"t-{k}: {v:.2f}" for k, v in sorted(_delay_w.items()))
+    )
 _abuf = None
 
 gate_hits = 0
 best = {}
 steps = 0
-TR = {k: [] for k in (
-    'root_pos', 'root_quat', 'root_lin', 'root_ang', 'tilt_rad', 'joint_pos', 'joint_vel',
-    'a_lm', 'ref_q', 'resid', 'action', 'torque', 'foot_force', 'ref_root_pos')}
+TR = {
+    k: []
+    for k in (
+        "root_pos",
+        "root_quat",
+        "root_lin",
+        "root_ang",
+        "tilt_rad",
+        "joint_pos",
+        "joint_vel",
+        "a_lm",
+        "ref_q",
+        "resid",
+        "action",
+        "torque",
+        "foot_force",
+        "ref_root_pos",
+    )
+}
 try:
     with torch.inference_mode():
         while steps < a.max_steps:
-            obs_builder.update()                       # buffers see the CURRENT state
+            obs_builder.update()  # buffers see the CURRENT state
             groups = obs_builder.groups()
             a_lm = net.act(groups)
             if a.residual_scale != 1.0:
@@ -370,7 +459,7 @@ try:
             action = net.to_fiatlux(a_applied, obs_builder, match_torque=a.match_torque)
             if a.null_action:
                 action = torch.zeros_like(action)
-            obs_builder.step(a_lm)                     # record action, advance the clock
+            obs_builder.step(a_lm)  # record action, advance the clock
 
             obs, reward, terminated, truncated, extras = env.step(action)
 
@@ -379,58 +468,54 @@ try:
                 q = rd.root_quat_w[0]
                 # angle between the base's own +z and world +z == mdp.bad_orientation's measure
                 upz = 1.0 - 2.0 * (q[1] ** 2 + q[2] ** 2)
-                TR['tilt_rad'].append(float(torch.acos(upz.clamp(-1.0, 1.0))))
-                TR['root_pos'].append(rd.root_pos_w[0].tolist())
-                TR['root_quat'].append(q.tolist())
-                TR['root_lin'].append(rd.root_lin_vel_w[0].tolist())
-                TR['root_ang'].append(rd.root_ang_vel_w[0].tolist())
-                TR['joint_pos'].append(rd.joint_pos[0].tolist())
-                TR['joint_vel'].append(rd.joint_vel[0].tolist())
+                TR["tilt_rad"].append(float(torch.acos(upz.clamp(-1.0, 1.0))))
+                TR["root_pos"].append(rd.root_pos_w[0].tolist())
+                TR["root_quat"].append(q.tolist())
+                TR["root_lin"].append(rd.root_lin_vel_w[0].tolist())
+                TR["root_ang"].append(rd.root_ang_vel_w[0].tolist())
+                TR["joint_pos"].append(rd.joint_pos[0].tolist())
+                TR["joint_vel"].append(rd.joint_vel[0].tolist())
                 # the 23 ACTUATED joints: what the reference asks, what the robot does,
                 # and what the actuator manages -- the three numbers that separate "the arm was
                 # never told to reach" from "it was told and could not".
                 _o2 = obs_builder
                 _fx23 = _o2.j_fx[_o2.act_mo]
-                TR.setdefault('ref_rad', []).append(
-                    _o2.ref_joint_pos[_o2.t][0, _o2.act_mo].tolist())
-                TR.setdefault('q_track', []).append(rd.joint_pos[0][_fx23].tolist())
-                TR.setdefault('qd_track', []).append(rd.joint_vel[0][_fx23].tolist())
+                TR.setdefault("ref_rad", []).append(_o2.ref_joint_pos[_o2.t][0, _o2.act_mo].tolist())
+                TR.setdefault("q_track", []).append(rd.joint_pos[0][_fx23].tolist())
+                TR.setdefault("qd_track", []).append(rd.joint_vel[0][_fx23].tolist())
                 try:
-                    TR.setdefault('tau_track', []).append(rd.applied_torque[0][_fx23].tolist())
+                    TR.setdefault("tau_track", []).append(rd.applied_torque[0][_fx23].tolist())
                 except Exception:
-                    TR.setdefault('tau_track', []).append([])
-                TR['a_lm'].append(a_lm[0].detach().cpu().tolist())
+                    TR.setdefault("tau_track", []).append([])
+                TR["a_lm"].append(a_lm[0].detach().cpu().tolist())
                 _rq = groups.get("ref_joint_pos_")
-                TR['ref_q'].append(_rq[0].detach().cpu().tolist() if _rq is not None else [])
-                TR['resid'].append((a_lm[0] - _rq[0]).detach().cpu().tolist()
-                                   if _rq is not None else [])
-                TR['action'].append(action[0].detach().cpu().tolist())
+                TR["ref_q"].append(_rq[0].detach().cpu().tolist() if _rq is not None else [])
+                TR["resid"].append((a_lm[0] - _rq[0]).detach().cpu().tolist() if _rq is not None else [])
+                TR["action"].append(action[0].detach().cpu().tolist())
                 try:
-                    TR['torque'].append(rd.applied_torque[0].tolist())
+                    TR["torque"].append(rd.applied_torque[0].tolist())
                 except Exception:
-                    TR['torque'].append([])
+                    TR["torque"].append([])
                 # This env has no sensor called "contact_forces" -- it has hand_contact,
                 # left_hand_contact and ladder_contact. Asking for the wrong name returned an
                 # empty array for the whole of the first trace, which reads as "no contact"
                 # when it actually means "no sensor". Capture whatever is actually there.
                 for _sn, _sv in base.scene.sensors.items():
                     try:
-                        TR.setdefault('c_' + _sn, []).append(
-                            _sv.data.net_forces_w[0].norm(dim=-1).tolist())
+                        TR.setdefault("c_" + _sn, []).append(_sv.data.net_forces_w[0].norm(dim=-1).tolist())
                     except Exception:
                         pass
-                TR['foot_force'].append([])
+                TR["foot_force"].append([])
                 for _gn, _gv in groups.items():
                     try:
-                        TR.setdefault('g_' + _gn, []).append(_gv[0].detach().cpu().tolist())
+                        TR.setdefault("g_" + _gn, []).append(_gv[0].detach().cpu().tolist())
                     except Exception:
                         pass
                 try:
                     ob = obs_builder
-                    TR['ref_root_pos'].append(
-                        ob.ref_body_pos[ob.t][0, ob.root_mo].tolist())
+                    TR["ref_root_pos"].append(ob.ref_body_pos[ob.t][0, ob.root_mo].tolist())
                 except Exception:
-                    TR['ref_root_pos'].append([])
+                    TR["ref_root_pos"].append([])
 
             if recorder is not None:
                 recorder.record_step(obs, action, reward, terminated, truncated)
@@ -440,8 +525,10 @@ try:
             pel = float(base.scene["robot"].data.root_pos_w[0, 2])
             best["pelvis_max"] = max(best.get("pelvis_max", -9e9), pel)
             if steps % a.print_every == 0:
-                print(f"[STEP  ] {steps:5d}  phase {float(obs_builder.t[0]) / obs_builder.motion_len:5.2f}"
-                      f"  pelvis {pel:6.3f} m  action |max| {float(action.abs().max()):6.2f}")
+                print(
+                    f"[STEP  ] {steps:5d}  phase {float(obs_builder.t[0]) / obs_builder.motion_len:5.2f}"
+                    f"  pelvis {pel:6.3f} m  action |max| {float(action.abs().max()):6.2f}"
+                )
 
             done = terminated | truncated
             if bool(done.any()):
@@ -455,25 +542,35 @@ try:
                                 why.append(term)
                         except Exception:
                             pass
-                print(f"[RESET ] step {steps}: {len(ids)} env(s) done "
-                      f"(terminated={bool(terminated.any())}, truncated={bool(truncated.any())})"
-                      f" reason={why or 'unknown'}")
+                print(
+                    f"[RESET ] step {steps}: {len(ids)} env(s) done "
+                    f"(terminated={bool(terminated.any())}, truncated={bool(truncated.any())})"
+                    f" reason={why or 'unknown'}"
+                )
                 if a.rsi:
-                    obs_builder.t[ids] = 0    # apply_rsi reads t; reset() would zero it after
-                    apply_rsi()               # the env reset restores the benchmark spawn pose
+                    obs_builder.t[ids] = 0  # apply_rsi reads t; reset() would zero it after
+                    apply_rsi()  # the env reset restores the benchmark spawn pose
                 obs_builder.reset(ids)
                 if a.lm_gains:
-                    apply_lm_gains()      # the env reset restores the cfg's gains
+                    apply_lm_gains()  # the env reset restores the cfg's gains
                 gate_hits += 1
                 if gate_hits >= a.episodes:
                     break
 finally:
     print(f"[RESULT] {steps} steps; highest pelvis {best.get('pelvis_max', float('nan')):.3f} m")
-    if a.trace_out and TR['root_pos']:
+    if a.trace_out and TR["root_pos"]:
         import numpy as _np
-        _np.savez(a.trace_out, **{k: _np.asarray(v, dtype=object if (
-            v and isinstance(v[0], list) and len({len(x) for x in v}) > 1) else _np.float32)
-            for k, v in TR.items() if v})
+
+        _np.savez(
+            a.trace_out,
+            **{
+                k: _np.asarray(
+                    v, dtype=object if (v and isinstance(v[0], list) and len({len(x) for x in v}) > 1) else _np.float32
+                )
+                for k, v in TR.items()
+                if v
+            },
+        )
         print(f"[TRACE ] {len(TR['root_pos'])} steps -> {a.trace_out}")
     if recorder is not None:
         info = recorder.write(a.out, fmt=a.format)

@@ -21,6 +21,7 @@ robot USD into g1_dex3_hand_hulls.npz), fingers at zero = open:
 
     python scripts/climb/check_hand_collision.py --clip <dir> --mesh <ladder_mesh.npz>
 """
+
 from __future__ import annotations
 
 import argparse
@@ -36,9 +37,13 @@ ap.add_argument("--clip", required=True)
 ap.add_argument("--mesh", required=True)
 ap.add_argument("--stride", type=int, default=6, help="sample every Nth clip frame")
 ap.add_argument("--clear", type=float, default=0.004, help="required clearance, m")
-ap.add_argument("--rest_depth", type=float, default=0.006,
-                help="a resting link may sit this far into its hold's top face (the builder "
-                     "presses the pad 3 mm in so the solver finds contact)")
+ap.add_argument(
+    "--rest_depth",
+    type=float,
+    default=0.006,
+    help="a resting link may sit this far into its hold's top face (the builder "
+    "presses the pad 3 mm in so the solver finds contact)",
+)
 a = ap.parse_args()
 HERE = pathlib.Path(__file__).parent
 clip = pathlib.Path(a.clip)
@@ -86,15 +91,18 @@ def dense(V, sp=0.010):
     return P, h.equations
 
 
-HANDL = {}      # side -> {link: (points in wrist frame, hull planes in wrist frame)}
-ARML = {}       # side -> {link: (points in own frame, planes in own frame)}
+HANDL = {}  # side -> {link: (points in wrist frame, hull planes in wrist frame)}
+ARML = {}  # side -> {link: (points in own frame, planes in own frame)}
 for side in ("left", "right"):
     HANDL[side] = {}
     for ln, off in offsets(side).items():
         P, eq = dense(H[f"{side}_{ln}"].astype(float))
-        eq = eq.copy(); eq[:, 3] -= eq[:, :3] @ off
+        eq = eq.copy()
+        eq[:, 3] -= eq[:, :3] @ off
         HANDL[side][ln] = (P + off, eq)
-    ARML[side] = {ln: dense(H[f"{side}_{ln}"].astype(float)) for ln in ("wrist_pitch_link", "wrist_roll_link", "elbow_link")}
+    ARML[side] = {
+        ln: dense(H[f"{side}_{ln}"].astype(float)) for ln in ("wrist_pitch_link", "wrist_roll_link", "elbow_link")
+    }
 REST = ("hand_palm_link", "hand_index_0_link", "hand_index_1_link", "hand_middle_0_link", "hand_middle_1_link")
 
 # ladder, clip frame, sampled densely
@@ -156,18 +164,35 @@ for i in range(0, T, a.stride):
                 # part of it that is NOT over the face (hanging in front of the edge) is judged
                 # like any other link
                 hx, hy = holds["holds"][nm]["x"], holds["holds"][nm]["y"]
-                over = (P[:, 0] >= hx[0]) & (P[:, 0] <= hx[1]) & (P[:, 1] >= hy[0]) & (P[:, 1] <= hy[1]) \
+                over = (
+                    (P[:, 0] >= hx[0])
+                    & (P[:, 0] <= hx[1])
+                    & (P[:, 1] >= hy[0])
+                    & (P[:, 1] <= hy[1])
                     & (P[:, 2] > face_z - 0.03)
+                )
                 if over.any():
-                    note("ladder(resting)", f"{side} {ln} on {nm}", float(P[over, 2].min()) - (face_z - a.rest_depth), i)
-                low = (~over) & (P[:, 2] < face_z - a.rest_depth)      # hanging in front AND below the top
+                    note(
+                        "ladder(resting)", f"{side} {ln} on {nm}", float(P[over, 2].min()) - (face_z - a.rest_depth), i
+                    )
+                low = (~over) & (P[:, 2] < face_z - a.rest_depth)  # hanging in front AND below the top
                 if low.any():
                     k_ = np.where(low)[0][dd[low].argmin()]
-                    note("ladder", f"{side} {ln} (part below the face) while holding {nm}", float(dd[low].min()), i,
-                         f"hand pt {P[k_].round(3)} ladder pt {LAD.data[di[k_]].round(3)}")
+                    note(
+                        "ladder",
+                        f"{side} {ln} (part below the face) while holding {nm}",
+                        float(dd[low].min()),
+                        i,
+                        f"hand pt {P[k_].round(3)} ladder pt {LAD.data[di[k_]].round(3)}",
+                    )
             else:
-                note("ladder", f"{side} {ln} while {'holding ' + nm if nm else 'moving'}", float(dd.min()), i,
-                     f"hand pt {P[dd.argmin()].round(3)} ladder pt {LAD.data[di[dd.argmin()]].round(3)}")
+                note(
+                    "ladder",
+                    f"{side} {ln} while {'holding ' + nm if nm else 'moving'}",
+                    float(dd.min()),
+                    i,
+                    f"hand pt {P[dd.argmin()].round(3)} ladder pt {LAD.data[di[dd.argmin()]].round(3)}",
+                )
         for an, (PA, eqA) in ARML[side].items():
             ap_, aq_ = wf(side, i, an)
             PAw = ap_ + qrot(aq_, PA)
@@ -176,7 +201,8 @@ for i in range(0, T, a.stride):
                 # arm link points into the wrist frame, against the hand link's hull
                 loc = qrot(wq * np.array([1, -1, -1, -1]), PAw - wp)
                 note("self", f"{side} {ln} vs {an}", hull_gap(loc, eql), i)
-    lw, lq = wf("left", i); rw, rq = wf("right", i)
+    lw, lq = wf("left", i)
+    rw, rq = wf("right", i)
     for la, (Pl, eql) in HANDL["left"].items():
         for ra, (Pr, eqr) in HANDL["right"].items():
             g1 = hull_gap(qrot(lq * np.array([1, -1, -1, -1]), W["right"][ra] - lw), eql)
@@ -195,7 +221,7 @@ for kind in ("ladder", "ladder(resting)", "hands", "self"):
         fail = v < {"ladder(resting)": 0.0, "self": -0.0008}.get(kind, a.clear)
         bad += int(fail)
         if fail or shown < 4:
-            print(f"   {'FAIL' if fail else ' ok '} {v*1000:7.1f}  {key}  (step {i/fps*50:.0f})  {e}")
+            print(f"   {'FAIL' if fail else ' ok '} {v * 1000:7.1f}  {key}  (step {i / fps * 50:.0f})  {e}")
             shown += 1
 print(f"\n[result] {'CLEAN' if bad == 0 else str(bad) + ' colliding pairs'}")
 sys.exit(0 if bad == 0 else 2)

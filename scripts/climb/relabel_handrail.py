@@ -12,7 +12,12 @@ hand's does, plus --settle seconds. The motion is untouched.
 
     python relabel_handrail.py --clip <in dir> --out <out dir> [--settle 0.4]
 """
-import argparse, json, pathlib, shutil
+
+import argparse
+import json
+import pathlib
+import shutil
+
 import numpy as np
 
 ap = argparse.ArgumentParser()
@@ -38,5 +43,10 @@ d["object_contact"] = oc
 np.savez(dst / "motion.npz", **d)
 hj = dst / "holds.json"
 if hj.exists():
-    h = json.loads(hj.read_text()); h["relabel_handrail"] = dict(settle=a.settle, from_step=late); hj.write_text(json.dumps(h, indent=1))
-print("motion arrays unchanged:", all(np.array_equal(d[k], np.load(src / "motion.npz")[k]) for k in d if k != "object_contact"))
+    h = json.loads(hj.read_text())
+    h["relabel_handrail"] = dict(settle=a.settle, from_step=late)
+    hj.write_text(json.dumps(h, indent=1))
+print(
+    "motion arrays unchanged:",
+    all(np.array_equal(d[k], np.load(src / "motion.npz")[k]) for k in d if k != "object_contact"),
+)

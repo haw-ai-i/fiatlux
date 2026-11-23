@@ -16,6 +16,7 @@ Positions and orientations are reversed in time; every velocity is reversed AND 
 hold labels (`object_contact`) are reversed. Holds and anchors are properties of the ladder and are
 copied unchanged.
 """
+
 import argparse
 import json
 import pathlib
@@ -24,16 +25,25 @@ import shutil
 import numpy as np
 
 ap = argparse.ArgumentParser()
-ap.add_argument("--clip", required=True); ap.add_argument("--out", required=True)
-ap.add_argument("--keep", type=int, nargs=2, default=None, metavar=("FROM", "TO"),
-                help="50 Hz steps of the climb to keep before reversing (default: all)")
+ap.add_argument("--clip", required=True)
+ap.add_argument("--out", required=True)
+ap.add_argument(
+    "--keep",
+    type=int,
+    nargs=2,
+    default=None,
+    metavar=("FROM", "TO"),
+    help="50 Hz steps of the climb to keep before reversing (default: all)",
+)
 a = ap.parse_args()
 
 src, dst = pathlib.Path(a.clip), pathlib.Path(a.out)
 d = np.load(src / "motion.npz")
 meta = json.loads((src / "meta.json").read_text())
-fps = float(meta["fps"]); per = fps / 50.0
-nf = d["joint_pos"].shape[0]; ns = d["object_contact"].shape[0]
+fps = float(meta["fps"])
+per = fps / 50.0
+nf = d["joint_pos"].shape[0]
+ns = d["object_contact"].shape[0]
 s0, s1 = a.keep if a.keep is not None else (0, ns)
 s1 = min(s1, ns)
 f0, f1 = int(round(s0 * per)), min(nf, int(round(s1 * per)))
@@ -47,9 +57,11 @@ for k in d.files:
     else:
         out[k] = v[f0:f1][::-1].copy()
 # the stored velocities must be the reversed clip's own derivatives: check against a finite difference
-q = out["joint_pos"]; fd = np.gradient(q, 1.0 / fps, axis=0)
+q = out["joint_pos"]
+fd = np.gradient(q, 1.0 / fps, axis=0)
 err = float(np.abs(fd[2:-2] - out["joint_vel"][2:-2]).max())
-p = out["body_pos_w"]; fdp = np.gradient(p, 1.0 / fps, axis=0)
+p = out["body_pos_w"]
+fdp = np.gradient(p, 1.0 / fps, axis=0)
 errp = float(np.abs(fdp[2:-2] - out["body_lin_vel_w"][2:-2]).max())
 dst.mkdir(parents=True, exist_ok=True)
 for f in src.iterdir():
@@ -59,7 +71,11 @@ np.savez(dst / "motion.npz", **out)
 bn = meta["body_names"]
 print(f"[rev  ] kept climb steps {s0}-{s1} ({f1 - f0} frames), reversed: {out['object_contact'].shape[0]} steps")
 print(f"[rev  ] starts at pelvis {np.round(p[0, 0], 3).tolist()}, ends at pelvis {np.round(p[-1, 0], 3).tolist()}")
-print(f"[rev  ] stored joint velocity against the reversed clip's own finite difference: worst {err:.3f} rad/s; "
-      f"body velocity worst {errp:.3f} m/s")
-print(f"[rev  ] peak joint speed {np.abs(out['joint_vel']).max():.2f} rad/s (the climb's {np.abs(d['joint_vel'][f0:f1]).max():.2f})")
+print(
+    f"[rev  ] stored joint velocity against the reversed clip's own finite difference: worst {err:.3f} rad/s; "
+    f"body velocity worst {errp:.3f} m/s"
+)
+print(
+    f"[rev  ] peak joint speed {np.abs(out['joint_vel']).max():.2f} rad/s (the climb's {np.abs(d['joint_vel'][f0:f1]).max():.2f})"
+)
 print(f"[out  ] {dst}")

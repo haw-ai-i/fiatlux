@@ -25,7 +25,6 @@ import os
 from collections import deque
 
 import numpy as np
-
 from gear_sonic_contract import (  # noqa: F401  (module lives beside this file)
     ACTION_DIM,
     ACTION_SCALE,
@@ -42,8 +41,7 @@ from gear_sonic_contract import (  # noqa: F401  (module lives beside this file)
     policy_to_robot_index,
 )
 
-_RELEASE = os.path.expanduser(
-    "~/robotica_project/GR00T-WholeBodyControl/gear_sonic_deploy/policy/release")
+_RELEASE = os.path.expanduser("~/robotica_project/GR00T-WholeBodyControl/gear_sonic_deploy/policy/release")
 
 
 class GearSonicPolicy:
@@ -52,12 +50,11 @@ class GearSonicPolicy:
     def __init__(self, robot, release_dir: str = _RELEASE, device: str = "cpu"):
         import onnxruntime as ort
 
-        providers = (["CUDAExecutionProvider", "CPUExecutionProvider"]
-                     if device.startswith("cuda") else ["CPUExecutionProvider"])
-        self.enc = ort.InferenceSession(os.path.join(release_dir, "model_encoder.onnx"),
-                                        providers=providers)
-        self.dec = ort.InferenceSession(os.path.join(release_dir, "model_decoder.onnx"),
-                                        providers=providers)
+        providers = (
+            ["CUDAExecutionProvider", "CPUExecutionProvider"] if device.startswith("cuda") else ["CPUExecutionProvider"]
+        )
+        self.enc = ort.InferenceSession(os.path.join(release_dir, "model_encoder.onnx"), providers=providers)
+        self.dec = ort.InferenceSession(os.path.join(release_dir, "model_decoder.onnx"), providers=providers)
         self.enc_in = self.enc.get_inputs()[0].name
         self.dec_in = self.dec.get_inputs()[0].name
 
@@ -67,7 +64,7 @@ class GearSonicPolicy:
         self.last_action = np.zeros(ACTION_DIM, dtype=np.float32)
 
         n = HISTORY_FRAMES
-        self._q = deque(maxlen=n)      # oldest .. newest
+        self._q = deque(maxlen=n)  # oldest .. newest
         self._dq = deque(maxlen=n)
         self._act = deque(maxlen=n)
         self._omega = deque(maxlen=n)
@@ -86,9 +83,11 @@ class GearSonicPolicy:
         self._omega.append(omega)
         self._grav.append(grav)
         self._act.append(self.last_action.copy())
-        while len(self._q) < HISTORY_FRAMES:      # prime the buffers on the first steps
-            self._q.appendleft(q); self._dq.appendleft(dq)
-            self._omega.appendleft(omega); self._grav.appendleft(grav)
+        while len(self._q) < HISTORY_FRAMES:  # prime the buffers on the first steps
+            self._q.appendleft(q)
+            self._dq.appendleft(dq)
+            self._omega.appendleft(omega)
+            self._grav.appendleft(grav)
             self._act.appendleft(self.last_action.copy())
 
     # -- observation assembly -------------------------------------------------------
@@ -109,9 +108,17 @@ class GearSonicPolicy:
         return obs
 
     @staticmethod
-    def encoder_obs_clip(motion_q_hist, motion_dq_hist, anchor_orn_hist,
-                         anchor_orn, root_z, root_z_hist, wrists_hist=None,
-                         lowerbody_q_hist=None, lowerbody_dq_hist=None) -> np.ndarray:
+    def encoder_obs_clip(
+        motion_q_hist,
+        motion_dq_hist,
+        anchor_orn_hist,
+        anchor_orn,
+        root_z,
+        root_z_hist,
+        wrists_hist=None,
+        lowerbody_q_hist=None,
+        lowerbody_dq_hist=None,
+    ) -> np.ndarray:
         """Encoder input for mode 0 ('g1'): imitate a G1 motion clip.
 
         All history arguments are oldest-first, 10 frames at step 5.
@@ -122,7 +129,7 @@ class GearSonicPolicy:
         def put(name, value):
             s, e = ENCODER_OFFSETS[name]
             v = np.asarray(value, dtype=np.float32).reshape(-1)
-            obs[s:s + min(len(v), e - s)] = v[:e - s]
+            obs[s : s + min(len(v), e - s)] = v[: e - s]
 
         # NOT a one-hot: their GatherEncoderMode writes the mode ID as a SCALAR in slot 0
         # and zero-fills the rest (fill_zeros_num=3). Writing 1.0 at index 0 would select
@@ -142,11 +149,9 @@ class GearSonicPolicy:
         if wrists_hist is not None:
             put("motion_joint_positions_wrists_10frame_step1", np.concatenate(list(wrists_hist)))
         if lowerbody_q_hist is not None:
-            put("motion_joint_positions_lowerbody_10frame_step5",
-                np.concatenate(list(lowerbody_q_hist)))
+            put("motion_joint_positions_lowerbody_10frame_step5", np.concatenate(list(lowerbody_q_hist)))
         if lowerbody_dq_hist is not None:
-            put("motion_joint_velocities_lowerbody_10frame_step5",
-                np.concatenate(list(lowerbody_dq_hist)))
+            put("motion_joint_velocities_lowerbody_10frame_step5", np.concatenate(list(lowerbody_dq_hist)))
         return obs
 
     # -- one control step -----------------------------------------------------------

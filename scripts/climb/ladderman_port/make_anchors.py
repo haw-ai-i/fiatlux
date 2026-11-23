@@ -9,6 +9,7 @@ be above its target.
 
     python make_anchors.py --clip <dir>      -> <dir>/anchors.json, and prints the overrides
 """
+
 import argparse
 import json
 import pathlib
@@ -17,8 +18,12 @@ ap = argparse.ArgumentParser()
 ap.add_argument("--clip", required=True)
 ap.add_argument("--pad_u", type=float, default=0.17)
 ap.add_argument("--palm_pt", type=float, default=0.115)
-ap.add_argument("--drop", type=float, default=0.0,
-                help="m: every anchor this much lower still, so a few cm of body sag is not read as 'hand below its hold'")
+ap.add_argument(
+    "--drop",
+    type=float,
+    default=0.0,
+    help="m: every anchor this much lower still, so a few cm of body sag is not read as 'hand below its hold'",
+)
 a = ap.parse_args()
 clip = pathlib.Path(a.clip)
 h = json.loads((clip / "holds.json").read_text())
@@ -34,22 +39,24 @@ order = ["step1", "step2", "step3", "step4", "platform", "handrail"]
 anchors = []
 for n in order:
     hz = holds[n]["z"] - a.drop
-    if n not in by:                                        # never held by a hand in this clip
-        anchors.append([0.5 * (holds[n]["x"][0] + holds[n]["x"][1]), yc, hz - 0.02]); continue
+    if n not in by:  # never held by a hand in this clip
+        anchors.append([0.5 * (holds[n]["x"][0] + holds[n]["x"][1]), yc, hz - 0.02])
+        continue
     cx = by[n]["left"][0]
-    flat_pad = cx + (a.pad_u - a.palm_pt)                  # pad point once the hand lies flat
+    flat_pad = cx + (a.pad_u - a.palm_pt)  # pad point once the hand lies flat
     if n == "step4":
         anchors.append([flat_pad, yc, hz - 0.02])
-    elif n == "platform":                                  # arrives on the nose, then rolls flat
+    elif n == "platform":  # arrives on the nose, then rolls flat
         nose = cx - 0.0235
         anchors.append([0.5 * (nose + flat_pad), yc, hz - 0.02])
-    else:                                                  # handrail: pivot (as stored), then flat
+    else:  # handrail: pivot (as stored), then flat
         flat_pad = (-0.042 + 0.0235) + (a.pad_u - a.palm_pt)
         anchors.append([0.5 * (cx + flat_pad), yc, hz - 0.03])
-(clip / "anchors.json").write_text(json.dumps(dict(anchors=anchors, hand_y_centre=yc, hand_half_spacing=half,
-                                                   pad_u=a.pad_u), indent=1))
+(clip / "anchors.json").write_text(
+    json.dumps(dict(anchors=anchors, hand_y_centre=yc, hand_half_spacing=half, pad_u=a.pad_u), indent=1)
+)
 print("anchors:", [[round(v, 4) for v in x] for x in anchors])
-print(f"hands at y {yc+half:+.3f} / {yc-half:+.3f}")
+print(f"hands at y {yc + half:+.3f} / {yc - half:+.3f}")
 print("overrides:")
 print(f"  task.command.contact_target_pos_offset=[[0.0,{half:.4f},0.0],[0.0,{-half:.4f},0.0]]")
 print(f"  task.command.contact_eef_pos_offset=[[{a.pad_u},-0.017,0.0],[{a.pad_u},0.017,0.0]]")

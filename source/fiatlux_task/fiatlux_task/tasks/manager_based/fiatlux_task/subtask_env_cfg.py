@@ -285,7 +285,10 @@ class SubtaskEnvCfg(ManagerBasedRLEnvCfg):
             # The linger lives in ``sustained``. A stateless gate is wrapped with a zero hold, which
             # is one step: the same decision it made bare.
             if predicate is not mdp.sustained:
-                predicate, params = mdp.sustained, {"predicate_fn": predicate, "seconds": 0.0, "predicate_params": params}
+                predicate, params = (
+                    mdp.sustained,
+                    {"predicate_fn": predicate, "seconds": 0.0, "predicate_params": params},
+                )
             params.setdefault("linger_seconds", SUCCESS_LINGER_SECONDS)
         self.terminations.success.func = predicate
         self.terminations.success.params = params

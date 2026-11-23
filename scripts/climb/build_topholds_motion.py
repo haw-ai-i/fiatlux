@@ -33,6 +33,7 @@ that were measured, not guessed:
 
     python scripts/climb/build_topholds_motion.py --base <clip> --out <dir> --mesh <npz>
 """
+
 import argparse
 import json
 import pathlib
@@ -45,90 +46,136 @@ ap.add_argument("--task", default="FIATLUX-S02-ClimbLadder-v0")
 ap.add_argument("--base", required=True, help="clip dir to re-author (read only)")
 ap.add_argument("--out", required=True)
 ap.add_argument("--mesh", required=True, help="ladder_mesh.npz, triangles in the ladder frame")
-ap.add_argument("--robot", default="dex3", choices=["dex3", "inspire"],
-                help="G1 hand variant. The scene default is INSPIRE everywhere -- every task "
-                     "in the repo is authored against it and swapped explicitly -- so without "
-                     "this the climb work silently ran on the wrong hand. Dex3 is what this "
-                     "project uses, so it is the default here.")
+ap.add_argument(
+    "--robot",
+    default="dex3",
+    choices=["dex3", "inspire"],
+    help="G1 hand variant. The scene default is INSPIRE everywhere -- every task "
+    "in the repo is authored against it and swapped explicitly -- so without "
+    "this the climb work silently ran on the wrong hand. Dex3 is what this "
+    "project uses, so it is the default here.",
+)
 ap.add_argument("--envs", type=int, default=64, help="frames solved in parallel")
 ap.add_argument("--iters", type=int, default=12, help="IK iterations per batch")
-ap.add_argument("--reuse_q", action="store_true",
-                help="load q_out_cache.npy from --out and skip the IK pass")
-ap.add_argument("--plan_only", action="store_true",
-                help="print the hold schedule and exit, before the ~1 h IK pass")
-ap.add_argument("--reach", type=float, default=0.4161,
-                help="max shoulder-to-CONTACT distance: FK-measured shoulder-to-PALM with the\n                     DEX3 hand and the arm straight. assets.py's G1_PALM_REACH = 0.419 is the\n                     INSPIRE figure.")
-ap.add_argument("--palm_off", type=float, default=0.0416,
-                help="wrist-to-palm offset, FK-measured on DEX3 (wrist_yaw_link to\n                     hand_palm_link; max wrist reach 0.3746). The "
-                     "wrist target sits this far back from the contact point, toward the "
-                     "shoulder.")
-ap.add_argument("--grip_up", type=float, default=0.025,
-                help="floor on how far the wrist stays above the face its palm rests on")
+ap.add_argument("--reuse_q", action="store_true", help="load q_out_cache.npy from --out and skip the IK pass")
+ap.add_argument("--plan_only", action="store_true", help="print the hold schedule and exit, before the ~1 h IK pass")
+ap.add_argument(
+    "--reach",
+    type=float,
+    default=0.4161,
+    help="max shoulder-to-CONTACT distance: FK-measured shoulder-to-PALM with the\n                     DEX3 hand and the arm straight. assets.py's G1_PALM_REACH = 0.419 is the\n                     INSPIRE figure.",
+)
+ap.add_argument(
+    "--palm_off",
+    type=float,
+    default=0.0416,
+    help="wrist-to-palm offset, FK-measured on DEX3 (wrist_yaw_link to\n                     hand_palm_link; max wrist reach 0.3746). The "
+    "wrist target sits this far back from the contact point, toward the "
+    "shoulder.",
+)
+ap.add_argument(
+    "--grip_up", type=float, default=0.025, help="floor on how far the wrist stays above the face its palm rests on"
+)
 ap.add_argument("--min_hold", type=float, default=0.40, help="seconds; shorter segments merge")
-ap.add_argument("--transit", type=float, default=0.40,
-                help="seconds the hand spends moving between two holds. Without this the "
-                     "wrist target jumps straight from one face to the next -- 0.69 m in a "
-                     "single frame for platform->handrail -- which is the arm glitching.")
-ap.add_argument("--null_gain", type=float, default=0.35,
-                help="how hard the redundant arm swivel is pulled toward the base clip's own "
-                     "arm pose. Four arm joints solve a 3-D wrist target, so one degree of "
-                     "freedom is free; nothing constrained it, and neighbouring frames settled "
-                     "into different elbow configurations and snapped between them. This is "
-                     "applied in the NULL SPACE, so it steers the swivel without pulling the "
-                     "hand off its hold.")
-ap.add_argument("--tie", type=float, default=0.0,
-                help="a HIGHER hold wins only when it is no farther than this beyond the "
-                     "nearest one. The hand otherwise takes the NEAREST reachable hold, so it "
-                     "never reaches PAST a near support to a far one: off the floor that keeps "
-                     "both hands on step 4 at 0.33 m instead of stretching over it to the "
-                     "platform at 0.35 m, and it hands over to the platform at step 112 and to "
-                     "the handrail at 442, where each in turn becomes the nearest.")
-ap.add_argument("--clear", type=float, default=0.055,
-                help="a moving hand stays at least this far above the ladder silhouette")
-ap.add_argument("--ik_tol", type=float, default=0.025,
-                help="wrist error above which a frame counts as an IK convergence failure and "
-                     "is re-made by interpolating its arm angles from good neighbours. The "
-                     "solver starts each frame from the base clip's pose and runs a fixed "
-                     "number of Gauss-Newton steps, so isolated frames stall in a bad basin "
-                     "while their neighbours land on 0 mm -- and a frame whose arm angles jump "
-                     "away from its neighbours IS the visible glitch.")
-ap.add_argument("--max_patch", type=int, default=16,
-                help="longest run of failed frames that may be interpolated; longer runs are "
-                     "left alone, because they are a real reach limit and not a stall")
-ap.add_argument("--hold_tol", type=float, default=0.040,
-                help="if the hand still ends this far from its target, the clip stops claiming "
-                     "a hold there and the label goes to 0")
-ap.add_argument("--hold_margin", type=float, default=0.010,
-                help="headroom a hold needs before the clip claims it. --reach is the arm's "
-                     "ABSOLUTE straight-arm maximum, so without this a hold is taken the "
-                     "instant it is theoretically touchable -- measured, the handrail hold "
-                     "began with 1.6 mm of headroom and several frames were 3 mm BEYOND the "
-                     "arm. The IK cannot make those, so the hand sat short, against the bar.")
-ap.add_argument("--park", type=float, default=0.26,
-                help="while NEITHER hold is in reach, the hand waits this far out from the "
-                     "shoulder, pointed away from the ladder, instead of reaching for a hold "
-                     "it cannot get to. Aiming at an unreachable hold leaves the hand short "
-                     "ALONG THE RAY to it, and that ray grazes the handrail's front face -- "
-                     "which is why every transit target could be 55 mm clear and the hand "
-                     "still came within 6 mm.")
-ap.add_argument("--rise_frac", type=float, default=0.25,
-                help="fraction of a transit spent rising straight up off the old hold")
-ap.add_argument("--descend_frac", type=float, default=0.25,
-                help="fraction spent descending straight down onto the new one")
+ap.add_argument(
+    "--transit",
+    type=float,
+    default=0.40,
+    help="seconds the hand spends moving between two holds. Without this the "
+    "wrist target jumps straight from one face to the next -- 0.69 m in a "
+    "single frame for platform->handrail -- which is the arm glitching.",
+)
+ap.add_argument(
+    "--null_gain",
+    type=float,
+    default=0.35,
+    help="how hard the redundant arm swivel is pulled toward the base clip's own "
+    "arm pose. Four arm joints solve a 3-D wrist target, so one degree of "
+    "freedom is free; nothing constrained it, and neighbouring frames settled "
+    "into different elbow configurations and snapped between them. This is "
+    "applied in the NULL SPACE, so it steers the swivel without pulling the "
+    "hand off its hold.",
+)
+ap.add_argument(
+    "--tie",
+    type=float,
+    default=0.0,
+    help="a HIGHER hold wins only when it is no farther than this beyond the "
+    "nearest one. The hand otherwise takes the NEAREST reachable hold, so it "
+    "never reaches PAST a near support to a far one: off the floor that keeps "
+    "both hands on step 4 at 0.33 m instead of stretching over it to the "
+    "platform at 0.35 m, and it hands over to the platform at step 112 and to "
+    "the handrail at 442, where each in turn becomes the nearest.",
+)
+ap.add_argument(
+    "--clear", type=float, default=0.055, help="a moving hand stays at least this far above the ladder silhouette"
+)
+ap.add_argument(
+    "--ik_tol",
+    type=float,
+    default=0.025,
+    help="wrist error above which a frame counts as an IK convergence failure and "
+    "is re-made by interpolating its arm angles from good neighbours. The "
+    "solver starts each frame from the base clip's pose and runs a fixed "
+    "number of Gauss-Newton steps, so isolated frames stall in a bad basin "
+    "while their neighbours land on 0 mm -- and a frame whose arm angles jump "
+    "away from its neighbours IS the visible glitch.",
+)
+ap.add_argument(
+    "--max_patch",
+    type=int,
+    default=16,
+    help="longest run of failed frames that may be interpolated; longer runs are "
+    "left alone, because they are a real reach limit and not a stall",
+)
+ap.add_argument(
+    "--hold_tol",
+    type=float,
+    default=0.040,
+    help="if the hand still ends this far from its target, the clip stops claiming "
+    "a hold there and the label goes to 0",
+)
+ap.add_argument(
+    "--hold_margin",
+    type=float,
+    default=0.010,
+    help="headroom a hold needs before the clip claims it. --reach is the arm's "
+    "ABSOLUTE straight-arm maximum, so without this a hold is taken the "
+    "instant it is theoretically touchable -- measured, the handrail hold "
+    "began with 1.6 mm of headroom and several frames were 3 mm BEYOND the "
+    "arm. The IK cannot make those, so the hand sat short, against the bar.",
+)
+ap.add_argument(
+    "--park",
+    type=float,
+    default=0.26,
+    help="while NEITHER hold is in reach, the hand waits this far out from the "
+    "shoulder, pointed away from the ladder, instead of reaching for a hold "
+    "it cannot get to. Aiming at an unreachable hold leaves the hand short "
+    "ALONG THE RAY to it, and that ray grazes the handrail's front face -- "
+    "which is why every transit target could be 55 mm clear and the hand "
+    "still came within 6 mm.",
+)
+ap.add_argument(
+    "--rise_frac", type=float, default=0.25, help="fraction of a transit spent rising straight up off the old hold"
+)
+ap.add_argument(
+    "--descend_frac", type=float, default=0.25, help="fraction spent descending straight down onto the new one"
+)
 AppLauncher.add_app_launcher_args(ap)
 a = ap.parse_args()
 a.enable_cameras = True
 app = AppLauncher(a).app
 
+import fiatlux_task.tasks  # noqa: E402,F401
 import gymnasium as gym  # noqa: E402
 import numpy as np  # noqa: E402
 import torch  # noqa: E402
-import fiatlux_task.tasks  # noqa: E402,F401
 from fiatlux_task.tasks.manager_based.fiatlux_task.scene_cfg import set_layout_seed  # noqa: E402
+
 from isaaclab_tasks.utils import parse_env_cfg  # noqa: E402
 
-ARM_JOINTS = ["{s}_shoulder_pitch_joint", "{s}_shoulder_roll_joint",
-              "{s}_shoulder_yaw_joint", "{s}_elbow_joint"]
+ARM_JOINTS = ["{s}_shoulder_pitch_joint", "{s}_shoulder_roll_joint", "{s}_shoulder_yaw_joint", "{s}_elbow_joint"]
 
 base = pathlib.Path(a.base)
 meta = json.loads((base / "meta.json").read_text())
@@ -138,6 +185,7 @@ T = d["joint_pos"].shape[0]
 file_joints = list(meta["joint_names"])
 clip_bodies = list(meta["body_names"])
 print(f"[base] {T} frames @ {fps} fps, {len(file_joints)} joints, {len(clip_bodies)} bodies")
+
 
 # ---- the six top faces, in the clip's own frame -------------------------------------------
 # The runtime's mapping (ladderman_runtime._set_frame, rung0_local=(0,-0.3804,0.196)):
@@ -156,19 +204,20 @@ HOLDS = {}
 for _k, (_z, _yc) in enumerate(STEPS):
     _a = lad_to_clip(-0.247, _yc - 0.038, _z)
     _b = lad_to_clip(+0.247, _yc + 0.038, _z)
-    HOLDS[f"step{_k+1}"] = dict(x=(min(_a[0], _b[0]), max(_a[0], _b[0])),
-                                y=(min(_a[1], _b[1]), max(_a[1], _b[1])), z=_z)
+    HOLDS[f"step{_k + 1}"] = dict(
+        x=(min(_a[0], _b[0]), max(_a[0], _b[0])), y=(min(_a[1], _b[1]), max(_a[1], _b[1])), z=_z
+    )
 HOLDS["platform"] = dict(x=(-0.302, 0.075), y=(-0.208, 0.206), z=1.1494)
 HOLDS["handrail"] = dict(x=(-0.030, 0.066), y=(-0.241, 0.241), z=1.8424)
-ORDER = ["step1", "step2", "step3", "step4", "platform", "handrail"]   # ascending in z
+ORDER = ["step1", "step2", "step3", "step4", "platform", "handrail"]  # ascending in z
 
 # ---- how high the ladder stands under any point, so a moving hand can pass OVER it ---------
 # A transit used to be a straight line between two holds plus a fixed arc, with no reference
 # to the mesh at all -- which is how a moving hand went through the structure. Here every
 # transit waypoint is lifted above the real silhouette beneath it.
-_TRI = np.load(a.mesh)["T"]                                   # ladder-frame triangles
+_TRI = np.load(a.mesh)["T"]  # ladder-frame triangles
 _TV = _TRI.reshape(-1, 3)
-_TC = np.stack([_TV[:, 1] - 0.1996, -_TV[:, 0], _TV[:, 2]], axis=1)   # ... in CLIP frame
+_TC = np.stack([_TV[:, 1] - 0.1996, -_TV[:, 0], _TV[:, 2]], axis=1)  # ... in CLIP frame
 _CELL = 0.02
 _GLO = _TC[:, :2].min(0) - 0.40
 _GHI = _TC[:, :2].max(0) + 0.40
@@ -185,8 +234,7 @@ for _dx in range(-_R, _R + 1):
             continue
         _DIL = np.maximum(_DIL, np.roll(np.roll(_HMAP, _dx, 0), _dy, 1))
 _HMAP = _DIL
-print(f"[mesh] silhouette map {_GN[0]}x{_GN[1]} cells at {_CELL*1000:.0f} mm, "
-      f"peak {_HMAP.max():.3f} m")
+print(f"[mesh] silhouette map {_GN[0]}x{_GN[1]} cells at {_CELL * 1000:.0f} mm, peak {_HMAP.max():.3f} m")
 
 # Take each face's height from the mesh itself, as the TRUE top of its footprint. The nominal
 # values above came from clustering upward-facing triangles and taking an area-weighted mean,
@@ -195,19 +243,23 @@ print(f"[mesh] silhouette map {_GN[0]}x{_GN[1]} cells at {_CELL*1000:.0f} mm, "
 # 5 mm (platform) to 18 mm (handrail) INSIDE the solid, which is a hand clipping the ladder.
 for _n in ORDER:
     _h = HOLDS[_n]
-    _m = ((_TC[:, 0] >= _h["x"][0] - 0.005) & (_TC[:, 0] <= _h["x"][1] + 0.005)
-          & (_TC[:, 1] >= _h["y"][0] - 0.005) & (_TC[:, 1] <= _h["y"][1] + 0.005)
-          & (np.abs(_TC[:, 2] - _h["z"]) < 0.06))
+    _m = (
+        (_TC[:, 0] >= _h["x"][0] - 0.005)
+        & (_TC[:, 0] <= _h["x"][1] + 0.005)
+        & (_TC[:, 1] >= _h["y"][0] - 0.005)
+        & (_TC[:, 1] <= _h["y"][1] + 0.005)
+        & (np.abs(_TC[:, 2] - _h["z"]) < 0.06)
+    )
     if not _m.any():
         raise SystemExit(f"[mesh] no ladder surface under the {_n} footprint -- check the frame")
     _top = float(_TC[_m, 2].max())
-    print(f"[mesh] {_n:9s} top {_top:.4f} m (nominal {_h['z']:.4f}, {(_top-_h['z'])*1000:+.1f} mm)")
+    print(f"[mesh] {_n:9s} top {_top:.4f} m (nominal {_h['z']:.4f}, {(_top - _h['z']) * 1000:+.1f} mm)")
     _h["z"] = _top
 
 
 _TLO = np.stack([_TC.reshape(-1, 3, 3)[:, :, i].min(1) for i in range(3)], axis=1)
 _THI = np.stack([_TC.reshape(-1, 3, 3)[:, :, i].max(1) for i in range(3)], axis=1)
-_TCL = _TC.reshape(-1, 3, 3)                                   # clip-frame triangles
+_TCL = _TC.reshape(-1, 3, 3)  # clip-frame triangles
 
 
 def _exact_on(p, ids):
@@ -260,11 +312,15 @@ def ladder_top_under(p):
     """Highest ladder surface at this clip-frame x,y (-inf where the ladder is not)."""
     g = np.clip(((p[:2] - _GLO) / _CELL).astype(int), 0, _GN - 1)
     return float(_HMAP[g[0], g[1]])
-LABEL = {n: i + 1 for i, n in enumerate(ORDER)}                        # 0 stays "hand free"
+
+
+LABEL = {n: i + 1 for i, n in enumerate(ORDER)}  # 0 stays "hand free"
 for _n in ORDER:
     _h = HOLDS[_n]
-    print(f"[hold] {_n:9s} z {_h['z']:.4f}  clip x [{_h['x'][0]:+.3f},{_h['x'][1]:+.3f}]"
-          f"  y [{_h['y'][0]:+.3f},{_h['y'][1]:+.3f}]  -> label {LABEL[_n]}")
+    print(
+        f"[hold] {_n:9s} z {_h['z']:.4f}  clip x [{_h['x'][0]:+.3f},{_h['x'][1]:+.3f}]"
+        f"  y [{_h['y'][0]:+.3f},{_h['y'][1]:+.3f}]  -> label {LABEL[_n]}"
+    )
 
 lw = clip_bodies.index("left_wrist_yaw_link")
 rw = clip_bodies.index("right_wrist_yaw_link")
@@ -287,9 +343,7 @@ def contact_on(name, shoulder, is_left):
     if name == "handrail":
         out = LEFT_SIGN if is_left else -LEFT_SIGN
         ylo, yhi = (0.03, yhi) if out > 0 else (ylo, -0.03)
-    return np.array([float(np.clip(shoulder[0], *h["x"])),
-                     float(np.clip(shoulder[1], ylo, yhi)),
-                     h["z"]])
+    return np.array([float(np.clip(shoulder[0], *h["x"])), float(np.clip(shoulder[1], ylo, yhi)), h["z"]])
 
 
 def target_on(name, shoulder, is_left):
@@ -309,7 +363,7 @@ def target_on(name, shoulder, is_left):
     v = shoulder - c
     nv = float(np.linalg.norm(v))
     w = c + (v / nv) * a.palm_off if nv > 1e-6 else c + np.array([0.0, 0.0, a.palm_off])
-    w[2] = max(w[2], HOLDS[name]["z"] + a.grip_up)      # never below the face it rests on
+    w[2] = max(w[2], HOLDS[name]["z"] + a.grip_up)  # never below the face it rests on
     # Never ask the solver for a point outside the arm. Measured, the handrail hold opened
     # with targets up to 3 mm BEYOND the wrist's maximum: the arm then straightens toward the
     # bar and the hand ends up short, resting against it. Clamped, the target sits just in
@@ -346,14 +400,14 @@ def segments(col):
     out, cur, st = [], raw[0][col], 0
     for i in range(1, T):
         if raw[i][col] != cur:
-            out.append([st, i, cur]); cur = raw[i][col]; st = i
+            out.append([st, i, cur])
+            cur = raw[i][col]
+            st = i
     out.append([st, T, cur])
     # drop runs shorter than --min_hold by extending the previous segment over them
     merged = []
     for s in out:
-        if merged and (s[1] - s[0]) < MINF:
-            merged[-1][1] = s[1]
-        elif merged and merged[-1][2] == s[2]:
+        if merged and (s[1] - s[0]) < MINF or merged and merged[-1][2] == s[2]:
             merged[-1][1] = s[1]
         else:
             merged.append(s)
@@ -386,21 +440,21 @@ def add_transits(sl_):
             s2 = s + h
         if k + 1 < len(sl_) and sl_[k + 1][2] is not None and v is not None and sl_[k + 1][2] != v:
             e2 = e - h
-        if s2 >= e2:                                   # segment too short to carve; leave it
+        if s2 >= e2:  # segment too short to carve; leave it
             s2, e2 = s, e
         if out_ and out_[-1][1] < s2:
-            out_.append([out_[-1][1], s2, None])       # the transit itself
+            out_.append([out_[-1][1], s2, None])  # the transit itself
         out_.append([s2, e2, v])
     return out_
 
 
 segs = [add_transits(segments(0)), add_transits(segments(1))]
 for c, lab in ((0, "L"), (1, "R")):
-    print(f"[plan] {lab}: " + "  ".join(
-        f"{s/fps*50:.0f}-{e/fps*50:.0f}:{v or 'transit'}" for s, e, v in segs[c]))
-both_free = sum(1 for i in range(T)
-                if all(next(v for s, e, v in segs[c] if s <= i < e) is None for c in (0, 1)))
-print(f"[plan] frames with BOTH hands in transit: {both_free}/{T} = {both_free/T*100:.1f}%")
+    print(
+        f"[plan] {lab}: " + "  ".join(f"{s / fps * 50:.0f}-{e / fps * 50:.0f}:{v or 'transit'}" for s, e, v in segs[c])
+    )
+both_free = sum(1 for i in range(T) if all(next(v for s, e, v in segs[c] if s <= i < e) is None for c in (0, 1)))
+print(f"[plan] frames with BOTH hands in transit: {both_free}/{T} = {both_free / T * 100:.1f}%")
 
 # ---- wrist target per frame, easing across transits ----------------------------------------
 tgt = np.zeros((T, 2, 3))
@@ -418,6 +472,7 @@ for c in range(2):
             # arcing up so the palm clears the edge it is leaving instead of dragging through
             prev = segs[c][k - 1][2] if k > 0 else None
             nxt = segs[c][k + 1][2] if k + 1 < len(segs[c]) else None
+
             # RISE, TRAVERSE, DESCEND -- the ordinary approach path, and the only shape that
             # cannot bring a hand at a face from below or from the side. The previous version
             # blended straight from hold to hold, lifted over the silhouette with a taper that
@@ -457,16 +512,16 @@ for c in range(2):
             _, e0, e1 = ends(s)
             _, f0, f1 = ends(e - 1)
             if parked:
-                e0 = park_at(ap_s)                   # the move now starts from the park point
+                e0 = park_at(ap_s)  # the move now starts from the park point
             # one safe height for the whole transit, from the tallest thing under the traverse
             zs = max(e0[2], e1[2], f0[2], f1[2])
             for t_ in np.linspace(0.0, 1.0, 25):
-                for (g0, g1) in ((e0, e1), (f0, f1)):
+                for g0, g1 in ((e0, e1), (f0, f1)):
                     zs = max(zs, ladder_top_under((1 - t_) * g0 + t_ * g1) + a.clear)
             uA, uB = a.rise_frac, 1.0 - a.descend_frac
             R = a.reach - a.palm_off
             path = np.zeros((e - s, 3))
-            holds_xy = np.zeros(e - s, dtype=bool)              # True where xy must not be moved
+            holds_xy = np.zeros(e - s, dtype=bool)  # True where xy must not be moved
             for i in range(s, e):
                 sp, p0, p1 = ends(i)
                 if parked and i < ap_s:
@@ -481,20 +536,19 @@ for c in range(2):
                     p0 = park_at(ap_s)
                 lo_, hi_ = (ap_s, e) if parked else (s, e)
                 u = 0.0 if hi_ - lo_ <= 1 else (i - lo_) / (hi_ - lo_ - 1)
-                if u < uA:                                     # rise, straight up off the hold
+                if u < uA:  # rise, straight up off the hold
                     w = 0.5 - 0.5 * np.cos(np.pi * (u / uA))
                     p = np.array([p0[0], p0[1], p0[2] + (zs - p0[2]) * w])
                     holds_xy[i - s] = True
-                elif u < uB:                                   # traverse, at the safe height
+                elif u < uB:  # traverse, at the safe height
                     w = 0.5 - 0.5 * np.cos(np.pi * ((u - uA) / (uB - uA)))
-                    p = np.array([(1 - w) * p0[0] + w * p1[0],
-                                  (1 - w) * p0[1] + w * p1[1], zs])
-                else:                                          # descend, straight onto the hold
+                    p = np.array([(1 - w) * p0[0] + w * p1[0], (1 - w) * p0[1] + w * p1[1], zs])
+                else:  # descend, straight onto the hold
                     w = 0.5 - 0.5 * np.cos(np.pi * ((u - uB) / (1.0 - uB)))
                     p = np.array([p1[0], p1[1], zs + (p1[2] - zs) * w])
                     holds_xy[i - s] = True
                 path[i - s] = p
-            if len(path) > 4:                                  # round the two corners
+            if len(path) > 4:  # round the two corners
                 ker = np.ones(5) / 5.0
                 for ax in range(3):
                     pad = np.r_[[path[0, ax]] * 2, path[:, ax], [path[-1, ax]] * 2]
@@ -535,20 +589,26 @@ for c in range(2):
             for i in range(s, e):
                 dmin, _ = nearest_on_ladder(path[i - s])
                 transit_minclear[0] = min(transit_minclear[0], dmin)
-            n_bad = sum(1 for i in range(s, e)
-                        if float(np.linalg.norm(path[i - s] - d["body_pos_w"][i, sh[c]])) > R + 1e-6)
+            n_bad = sum(
+                1 for i in range(s, e) if float(np.linalg.norm(path[i - s] - d["body_pos_w"][i, sh[c]])) > R + 1e-6
+            )
             if n_bad:
                 transit_overreach[c] += n_bad
 
-print(f"[plan] closest any TRANSIT target comes to the ladder: "
-      f"{transit_minclear[0]*1000:.1f} mm (asked for {a.clear*1000:.0f})")
+print(
+    f"[plan] closest any TRANSIT target comes to the ladder: "
+    f"{transit_minclear[0] * 1000:.1f} mm (asked for {a.clear * 1000:.0f})"
+)
 if any(transit_overreach):
-    print(f"[plan] transit frames whose safe height is past arm reach: "
-          f"L {transit_overreach[0]}, R {transit_overreach[1]} -- the hand is left short of "
-          f"the target there, which keeps it ABOVE the ladder rather than inside it")
+    print(
+        f"[plan] transit frames whose safe height is past arm reach: "
+        f"L {transit_overreach[0]}, R {transit_overreach[1]} -- the hand is left short of "
+        f"the target there, which keeps it ABOVE the ladder rather than inside it"
+    )
 
 if a.plan_only:
     import sys as _sys
+
     print("[plan] --plan_only: stopping before IK")
     _sys.exit(0)
 
@@ -557,6 +617,7 @@ set_layout_seed(0)
 cfg = parse_env_cfg(a.task, num_envs=a.envs)
 if a.robot != "inspire":
     from fiatlux_task.robots.g1 import swap_robot_variant
+
     swap_robot_variant(cfg, a.robot)
 print(f"[robot] {a.robot}: {cfg.scene.robot.spawn.usd_path.split('/')[-1]}")
 env = gym.make(a.task, cfg=cfg).unwrapped
@@ -596,12 +657,13 @@ if _reuse:
     if _ec.exists():
         ik_err = np.load(_ec)
     print(f"[ik  ] reusing solved angles from {_cache}", flush=True)
-for b0 in ([] if _reuse else range(0, T, N)):
+for b0 in [] if _reuse else range(0, T, N):
     fr = np.arange(b0, min(b0 + N, T))
     n = len(fr)
     qf = rob.data.default_joint_pos.clone()
     qf[:n][:, j_dst] = torch.as_tensor(d["joint_pos"][fr][:, j_src], dtype=torch.float32, device=dev)
-    root = torch.zeros(N, 7, device=dev); root[:, 3] = 1.0
+    root = torch.zeros(N, 7, device=dev)
+    root[:, 3] = 1.0
     root[:n, :3] = torch.as_tensor(d["body_pos_w"][fr, pel], dtype=torch.float32, device=dev) + origins[:n]
     root[:n, 3:] = torch.as_tensor(d["body_quat_w"][fr, pel], dtype=torch.float32, device=dev)
     rob.write_root_pose_to_sim(root)
@@ -610,7 +672,8 @@ for b0 in ([] if _reuse else range(0, T, N)):
     for s, col in (("left", 0), ("right", 1)):
         tt = torch.zeros(N, 3, device=dev)
         tt[:n] = torch.as_tensor(tgt[fr, col], dtype=torch.float32, device=dev)
-        act = torch.zeros(N, dtype=torch.bool, device=dev); act[:n] = True
+        act = torch.zeros(N, dtype=torch.bool, device=dev)
+        act[:n] = True
         ids = arm_ids[s]
         ref_cols = [file_joints.index(t.format(s=s)) for t in ARM_JOINTS]
         qref = torch.zeros(N, len(ids), device=dev)
@@ -618,24 +681,28 @@ for b0 in ([] if _reuse else range(0, T, N)):
         I3 = torch.eye(3, device=dev)
         Ij = torch.eye(len(ids), device=dev)
         for _ in range(a.iters):
-            rob.write_joint_state_to_sim(qf, torch.zeros_like(qf)); fk_refresh()
+            rob.write_joint_state_to_sim(qf, torch.zeros_like(qf))
+            fk_refresh()
             w = rob.data.body_pos_w[:, wrist_ids[s]] - origins
             e = tt - w
             J = torch.zeros(N, 3, len(ids), device=dev)
             for c in range(len(ids)):
-                qp = qf.clone(); qp[:, ids[c]] += 1e-3
-                rob.write_joint_state_to_sim(qp, torch.zeros_like(qp)); fk_refresh()
+                qp = qf.clone()
+                qp[:, ids[c]] += 1e-3
+                rob.write_joint_state_to_sim(qp, torch.zeros_like(qp))
+                fk_refresh()
                 J[:, :, c] = ((rob.data.body_pos_w[:, wrist_ids[s]] - origins) - w) / 1e-3
             JT = J.transpose(1, 2)
-            Jp = JT @ torch.linalg.inv(J @ JT + 1e-4 * I3)       # damped pseudo-inverse
-            prim = (Jp @ e.unsqueeze(-1)).squeeze(-1)            # reach the target
-            null = Ij - Jp @ J                                   # ... without disturbing it
+            Jp = JT @ torch.linalg.inv(J @ JT + 1e-4 * I3)  # damped pseudo-inverse
+            prim = (Jp @ e.unsqueeze(-1)).squeeze(-1)  # reach the target
+            null = Ij - Jp @ J  # ... without disturbing it
             sec = (null @ (qref - qf[:, ids]).unsqueeze(-1)).squeeze(-1)
             dq = prim + a.null_gain * sec
             dq = dq.clamp(-0.25, 0.25) * act.float().unsqueeze(-1)
             qf[:, ids] += dq
             qf[:, ids] = qf[:, ids].clamp(-2.6, 2.6)
-        rob.write_joint_state_to_sim(qf, torch.zeros_like(qf)); fk_refresh()
+        rob.write_joint_state_to_sim(qf, torch.zeros_like(qf))
+        fk_refresh()
         fin = (tt - (rob.data.body_pos_w[:, wrist_ids[s]] - origins)).norm(dim=-1)
         err_hist.append(float(fin[:n].mean()))
         ik_err[fr, col] = fin[:n].cpu().numpy()
@@ -645,40 +712,42 @@ for b0 in ([] if _reuse else range(0, T, N)):
             nm = t.format(s=s)
             q_out[fr, file_joints.index(nm)] = qf[:n, jn.index(nm)].cpu().numpy()
     if b0 % (N * 4) == 0:
-        print(f"[ik  ] frames {b0:4d}-{fr[-1]:4d}  mean wrist error "
-              f"{np.mean(err_hist[-2:])*1000:6.1f} mm", flush=True)
+        print(
+            f"[ik  ] frames {b0:4d}-{fr[-1]:4d}  mean wrist error {np.mean(err_hist[-2:]) * 1000:6.1f} mm", flush=True
+        )
 
 if not _reuse:
-    print(f"[ik  ] done. overall mean wrist error {np.mean(err_hist)*1000:.1f} mm", flush=True)
+    print(f"[ik  ] done. overall mean wrist error {np.mean(err_hist) * 1000:.1f} mm", flush=True)
     _cache.parent.mkdir(parents=True, exist_ok=True)
     np.save(_cache, q_out)
     np.save(_cache.with_name("ik_err_cache.npy"), ik_err)
     print(f"[ik  ] cached -> {_cache}", flush=True)
 
 # ---- repair frames the solver stalled on ----------------------------------------------------
-arm_cols = {s_: [file_joints.index(t.format(s=s_)) for t in ARM_JOINTS]
-            for s_ in ("left", "right")}
+arm_cols = {s_: [file_joints.index(t.format(s=s_)) for t in ARM_JOINTS] for s_ in ("left", "right")}
 patched = dropped_runs = 0
 for col, s_ in ((0, "left"), (1, "right")):
     badf = ik_err[:, col] > a.ik_tol
     i = 0
     while i < T:
         if not badf[i]:
-            i += 1; continue
+            i += 1
+            continue
         j = i
         while j < T and badf[j]:
             j += 1
         if i > 0 and j < T and (j - i) <= a.max_patch:
             for cjt in arm_cols[s_]:
-                q_out[i:j, cjt] = np.interp(np.arange(i, j), [i - 1, j],
-                                            [q_out[i - 1, cjt], q_out[j, cjt]])
+                q_out[i:j, cjt] = np.interp(np.arange(i, j), [i - 1, j], [q_out[i - 1, cjt], q_out[j, cjt]])
             patched += j - i
         else:
             dropped_runs += 1
         i = j
-print(f"[fix ] frames over {a.ik_tol*1000:.0f} mm: "
-      f"{int((ik_err > a.ik_tol).sum())} of {2*T}; interpolated {patched}, "
-      f"left {dropped_runs} run(s) alone as a real reach limit")
+print(
+    f"[fix ] frames over {a.ik_tol * 1000:.0f} mm: "
+    f"{int((ik_err > a.ik_tol).sum())} of {2 * T}; interpolated {patched}, "
+    f"left {dropped_runs} run(s) alone as a real reach limit"
+)
 
 # ---- rebuild body tracks from the solved pose ----------------------------------------------
 bp = d["body_pos_w"].copy()
@@ -686,14 +755,17 @@ bq = d["body_quat_w"].copy()
 clip_in_rob = [bn.index(b) for b in clip_bodies if b in bn]
 clip_rows = [i for i, b in enumerate(clip_bodies) if b in bn]
 for b0 in range(0, T, N):
-    fr = np.arange(b0, min(b0 + N, T)); n = len(fr)
+    fr = np.arange(b0, min(b0 + N, T))
+    n = len(fr)
     qf = rob.data.default_joint_pos.clone()
     qf[:n][:, j_dst] = torch.as_tensor(q_out[fr][:, j_src], dtype=torch.float32, device=dev)
-    root = torch.zeros(N, 7, device=dev); root[:, 3] = 1.0
+    root = torch.zeros(N, 7, device=dev)
+    root[:, 3] = 1.0
     root[:n, :3] = torch.as_tensor(d["body_pos_w"][fr, pel], dtype=torch.float32, device=dev) + origins[:n]
     root[:n, 3:] = torch.as_tensor(d["body_quat_w"][fr, pel], dtype=torch.float32, device=dev)
     rob.write_root_pose_to_sim(root)
-    rob.write_joint_state_to_sim(qf, torch.zeros_like(qf)); fk_refresh()
+    rob.write_joint_state_to_sim(qf, torch.zeros_like(qf))
+    fk_refresh()
     P = (rob.data.body_pos_w - origins[:, None, :]).cpu().numpy()
     Q = rob.data.body_quat_w.cpu().numpy()
     bp[np.ix_(fr, clip_rows)] = P[:n][:, clip_in_rob]
@@ -705,33 +777,53 @@ jv = np.gradient(q_out, 1.0 / fps, axis=0)
 # ---- contact labels at 50 Hz, downsampled from the 120 Hz schedule --------------------------
 oc50 = d["object_contact"]
 n50 = oc50.shape[0]
-ach = np.linalg.norm(bp[:, [lw, rw], :] - tgt, axis=-1)        # [T,2] what the hand reached
+ach = np.linalg.norm(bp[:, [lw, rw], :] - tgt, axis=-1)  # [T,2] what the hand reached
 miss = (lab_f > 0) & (ach > a.hold_tol)
 lab_f = np.where(miss, 0, lab_f)
-print(f"[fix ] hand-frames still over {a.hold_tol*1000:.0f} mm from their target: "
-      f"{int(miss.sum())} -- label dropped to 0 there, so the clip never claims a hold the "
-      f"hand did not make")
+print(
+    f"[fix ] hand-frames still over {a.hold_tol * 1000:.0f} mm from their target: "
+    f"{int(miss.sum())} -- label dropped to 0 there, so the clip never claims a hold the "
+    f"hand did not make"
+)
 oc_new = np.zeros_like(oc50)
 for i in range(n50):
     f = min(int(i / 50 * fps), T - 1)
     oc_new[i] = lab_f[f]
 
-out = pathlib.Path(a.out); out.mkdir(parents=True, exist_ok=True)
-np.savez(out / "motion.npz", joint_pos=q_out, joint_vel=jv, body_pos_w=bp, body_quat_w=bq,
-         body_lin_vel_w=bv, body_ang_vel_w=d["body_ang_vel_w"], object_contact=oc_new)
+out = pathlib.Path(a.out)
+out.mkdir(parents=True, exist_ok=True)
+np.savez(
+    out / "motion.npz",
+    joint_pos=q_out,
+    joint_vel=jv,
+    body_pos_w=bp,
+    body_quat_w=bq,
+    body_lin_vel_w=bv,
+    body_ang_vel_w=d["body_ang_vel_w"],
+    object_contact=oc_new,
+)
 shutil.copy(base / "meta.json", out / "meta.json")
-(out / "holds.json").write_text(json.dumps(
-    dict(holds=HOLDS, label=LABEL, contact_idx=0,
-         objects=["dummy"] + ORDER, reach=a.reach, palm_off=a.palm_off,
-         grip_up=a.grip_up), indent=1))
+(out / "holds.json").write_text(
+    json.dumps(
+        dict(
+            holds=HOLDS,
+            label=LABEL,
+            contact_idx=0,
+            objects=["dummy"] + ORDER,
+            reach=a.reach,
+            palm_off=a.palm_off,
+            grip_up=a.grip_up,
+        ),
+        indent=1,
+    )
+)
 
 # ---- diagnostics ----------------------------------------------------------------------------
-print(f"[out ] {out/'motion.npz'}")
+print(f"[out ] {out / 'motion.npz'}")
 print(f"[out ] pelvis {bp[0, pel, 2]:.3f} -> {bp[-1, pel, 2]:.3f} m")
 uniq = sorted(set(int(v) for v in np.unique(oc_new)))
 inv = {v: k for k, v in LABEL.items()}
-print(f"[out ] contact labels used: {uniq} -> "
-      + ", ".join(f"{v}:{inv.get(v, 'free')}" for v in uniq))
+print(f"[out ] contact labels used: {uniq} -> " + ", ".join(f"{v}:{inv.get(v, 'free')}" for v in uniq))
 print(f"[out ] max label {max(uniq)}; valid range for the ported ladder is 0..{len(ORDER)}")
 for v in uniq:
     if v == 0:
@@ -749,4 +841,5 @@ for i in range(n50):
         if v and bp[f, wi, 2] < HOLDS[inv[v]]["z"] - 0.01:
             bad += 1
 print(f"[out ] hand-frames BELOW the face they hold: {bad} (must be 0)")
-env.close(); app.close()
+env.close()
+app.close()

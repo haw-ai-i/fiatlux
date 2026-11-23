@@ -10,7 +10,11 @@ sagging or swaying robot does.
 
     python check_bulb_clearance.py --clip <dir> --mesh <ladder_mesh.npz> [--warn 0.02]
 """
-import argparse, json, pathlib
+
+import argparse
+import json
+import pathlib
+
 import numpy as np
 from scipy.spatial import cKDTree
 
@@ -27,7 +31,7 @@ meta = json.loads((clip / "meta.json").read_text())
 bn, fps = list(meta["body_names"]), float(meta["fps"])
 BP, BQ = m["body_pos_w"], m["body_quat_w"]
 TRI = np.load(a.mesh)["T"].reshape(-1, 3)
-TRI = np.stack([TRI[:, 1] - 0.1996, -TRI[:, 0], TRI[:, 2]], 1).reshape(-1, 3, 3)   # ladder -> clip frame
+TRI = np.stack([TRI[:, 1] - 0.1996, -TRI[:, 0], TRI[:, 2]], 1).reshape(-1, 3, 3)  # ladder -> clip frame
 lp = []
 for A, B, C in TRI:
     n = int(max(np.linalg.norm(B - A), np.linalg.norm(C - A), np.linalg.norm(C - B)) / 0.005) + 1
@@ -60,16 +64,26 @@ for i in range(0, BP.shape[0], a.stride):
     dc, jc = tree.query(c)
     kc = int(np.argmin(dc))
     rows.append((i / fps * 50, dg - 0.040, LAD[jg], dc[kc] - 0.021, LAD[jc[kc]]))
-st = np.array([r[0] for r in rows]); G = np.array([r[1] for r in rows]); C = np.array([r[3] for r in rows])
+st = np.array([r[0] for r in rows])
+G = np.array([r[1] for r in rows])
+C = np.array([r[3] for r in rows])
 oc = m["object_contact"][:, 1]
-print(f"[bulb] {len(rows)} frames. Glass closest {G.min()*1000:+.1f} mm at step {st[G.argmin()]:.0f} ({part(rows[int(G.argmin())][2])}); "
-      f"cap closest {C.min()*1000:+.1f} mm at step {st[C.argmin()]:.0f} ({part(rows[int(C.argmin())][4])})")
+print(
+    f"[bulb] {len(rows)} frames. Glass closest {G.min() * 1000:+.1f} mm at step {st[G.argmin()]:.0f} ({part(rows[int(G.argmin())][2])}); "
+    f"cap closest {C.min() * 1000:+.1f} mm at step {st[C.argmin()]:.0f} ({part(rows[int(C.argmin())][4])})"
+)
 for lo in range(0, int(st.max()) + 1, 50):
     k = (st >= lo) & (st < lo + 50)
     if not k.any():
         continue
-    ig = int(np.flatnonzero(k)[G[k].argmin()]); ic = int(np.flatnonzero(k)[C[k].argmin()])
-    lab = sorted(set(int(x) for x in oc[lo:lo + 50]))
+    ig = int(np.flatnonzero(k)[G[k].argmin()])
+    ic = int(np.flatnonzero(k)[C[k].argmin()])
+    lab = sorted(set(int(x) for x in oc[lo : lo + 50]))
     flag = "  <-- under %.0f mm" % (a.warn * 1000) if min(G[ig], C[ic]) < a.warn else ""
-    print(f"[bulb] steps {lo:4d}-{lo+49:4d} right-hand label {lab}: glass {G[ig]*1000:+6.1f} mm ({part(rows[ig][2])}); cap {C[ic]*1000:+6.1f} mm ({part(rows[ic][4])}){flag}")
-print("[result] " + ("BULB INSIDE THE LADDER" if min(G.min(), C.min()) < 0 else f"closest {min(G.min(), C.min())*1000:.1f} mm"))
+    print(
+        f"[bulb] steps {lo:4d}-{lo + 49:4d} right-hand label {lab}: glass {G[ig] * 1000:+6.1f} mm ({part(rows[ig][2])}); cap {C[ic] * 1000:+6.1f} mm ({part(rows[ic][4])}){flag}"
+    )
+print(
+    "[result] "
+    + ("BULB INSIDE THE LADDER" if min(G.min(), C.min()) < 0 else f"closest {min(G.min(), C.min()) * 1000:.1f} mm")
+)

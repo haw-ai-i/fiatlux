@@ -18,17 +18,27 @@ Two additions, both off unless configured:
 Mid-climb starts keep LadderMan's own ranges: 5 cm off a 68 mm tread is not a start the
 benchmark ever produces.
 """
+
 from __future__ import annotations
 
 import torch
+
 from isaaclab.utils.math import quat_from_euler_xyz, quat_mul, sample_uniform
 
 from .command import RobotTracking
 
 
 class RobotTrackingSpawn(RobotTracking):
-    def __init__(self, env, *args, start_zero_prob: float = 0.0, floor_steps: int = 0,
-                 floor_pose_range: dict | None = None, reset_lift: float = 0.0, **kwargs):
+    def __init__(
+        self,
+        env,
+        *args,
+        start_zero_prob: float = 0.0,
+        floor_steps: int = 0,
+        floor_pose_range: dict | None = None,
+        reset_lift: float = 0.0,
+        **kwargs,
+    ):
         super().__init__(env, *args, **kwargs)
         self.reset_lift = float(reset_lift)
         self.start_zero_prob = float(start_zero_prob)
@@ -37,9 +47,12 @@ class RobotTrackingSpawn(RobotTracking):
         keys = ["x", "y", "z", "roll", "pitch", "yaw"]
         self.floor_pose_range = torch.tensor(
             [tuple(rng[k]) if k in rng else tuple(self.pose_range[i].tolist()) for i, k in enumerate(keys)],
-            device=self.device)
-        print(f"[command] spawn randomisation: {self.start_zero_prob:.0%} of training episodes start at step 0; "
-              f"starts inside the first {self.floor_steps} steps use root range {self.floor_pose_range.tolist()}")
+            device=self.device,
+        )
+        print(
+            f"[command] spawn randomisation: {self.start_zero_prob:.0%} of training episodes start at step 0; "
+            f"starts inside the first {self.floor_steps} steps use root range {self.floor_pose_range.tolist()}"
+        )
 
     def _sample_motions(self, env_ids: torch.Tensor) -> None:
         super()._sample_motions(env_ids)
@@ -74,5 +87,7 @@ class RobotTrackingSpawn(RobotTracking):
         motion = self._motion_reset[on_floor]
         r = sample_uniform(self.floor_pose_range[:, 0], self.floor_pose_range[:, 1], (len(ids), 6), device=self.device)
         pos = motion.body_pos_w[:, self.root_body_idx_motion] + self.env.scene.env_origins[ids] + r[:, 0:3]
-        quat = quat_mul(motion.body_quat_w[:, self.root_body_idx_motion], quat_from_euler_xyz(r[:, 3], r[:, 4], r[:, 5]))
+        quat = quat_mul(
+            motion.body_quat_w[:, self.root_body_idx_motion], quat_from_euler_xyz(r[:, 3], r[:, 4], r[:, 5])
+        )
         self.asset.write_root_link_pose_to_sim(torch.cat([pos, quat], dim=-1), env_ids=ids)
