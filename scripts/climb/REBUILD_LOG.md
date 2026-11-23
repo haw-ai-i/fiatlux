@@ -2085,3 +2085,8 @@ Videos (kinematic): `descbulb02_ref/` side and rear-right, under the videos fold
   resubmitted the same way before it trained (job 15581313).
 - `bulb21fx` 18,600, S10, 3 seeds: falls at 502-525, 6-12 mm behind the clip at step 400. No further bulb
   checkpoints are being tested until the finger question is decided.
+- `edge87s2` 9,300 (saved noise 0.149), S02, 4 seeds: 0 stand; falls at steps 1,318, 1,346, 1,350 (upper
+  treads) and 457 (mount). In the TRAINER, clip start, 64 robots to step 1,900: 9,000 keeps 64 of 64 up,
+  9,300 keeps 60 of 64. The same two checkpoints go 4 of 4 and 0 of 4 in the benchmark, so the swing is
+  in the transfer, not in the policy as the trainer measures it. The four benchmark seeds behave nearly
+  alike (`--rsi_noise 0.03`), so one checkpoint is closer to one sample than to four.
