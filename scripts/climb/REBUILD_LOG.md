@@ -1719,3 +1719,94 @@ Nine firm-grip runs on `bulb19`/`bulb20`: crushed 3, struck 2, both 1, dropped 1
   annealed to 0.14 by iteration 7,150. The action noise restarts on each resume. Cause not yet looked at.
 
 Videos: benchmark runs of the early checkpoints and of `bulb19` under the videos folder, `bench_early/`.
+
+## Bulb rebuild 21 (`bulb21`): no tread-4 wrist rest, more room from the right stringer (2026-11-22) -- in training
+
+### A test that plays the clip itself with the bulb loose: `physics_segment_test_bulb.py --follow_root`
+- The robot is a puppet of the clip: its gravity off, the ladder kinematic, and at every PHYSICS step the root
+  pose and velocity and the 29 joints' positions and velocities written from the clip (interpolated inside a
+  control step). The bulb and the fingers stay dynamic. Hand off the clip: median 1-2 mm.
+- `--pin_root` is only right while the body barely moves: on climbing windows it read the palm 65 deg off
+  level where the clip has 28 at most, and "lost" the bulb in windows the puppet holds.
+- Checked on the two openings with known answers (curl 0.667): `bulb17` loses the bulb at +1.08 s, `bulb19`
+  keeps it (76 mm off its seat at most).
+- A segment that starts while the hand is moving (0.5 m/s at step 1,300) drops a resting bulb into a moving
+  hand and can lose it within 7-21 steps. Start segments at slow moments, or run long ones: `bulb21` steps
+  1,200-1,975 in one run holds the bulb throughout.
+- Contact forces are overstated: any touch pinches the bulb against an immovable hand. Counts and places are
+  what to read.
+
+### The grip, measured with it
+- `bulb20`, whole clip in 150-step segments, segments losing the bulb by `--right_curl`: 0.667 7 of 14,
+  0.75 2, 0.8 3, 0.85 2, 0.9 0. Every curl under 0.9 loses it in steps 300-450. At 1.0 this tool reads a
+  222 N squeeze where `record_climb.py --right_curl 1.0` read 2-3 N: the two map "curl" to finger targets
+  differently. NOT reconciled; 0.9 here is the tested value.
+- At curl 0.9 the bulb's root sits at (0.112, 0.076, -0.128) in the right wrist frame, 22 mm further out of
+  the palm than the loose-cup seat `check_bulb_clearance.py` assumes (0.1192, 0.0540, -0.1310). With the
+  measured seat `bulb20`'s glass is -2.1 mm from the platform's front lip at step 343 (approach to the
+  tread-4 rest), +8..+10 mm just before and after the rest, +20..+25 mm during it, and +21..+28 mm from the
+  right stringer over steps 650-1,250.
+- Tilt and acceleration alone were a false alarm: `bulb20` has the palm up to 28 deg off level and the hand
+  at up to 8.3 m/s2, and holds the bulb through both at curl 0.9.
+
+### Why the tread-4 rest goes
+- Platform underside 1.109 m, tread 4's top 0.944 m. At the rest the glass tops out at 1.072 (loose cup) or
+  1.094 m (curl 0.9): 15 mm under the platform. On the approach (step 340) it is at 1.115 m, into the lip.
+  Moving the wrist along the tread keeps the bulb under the platform; in front of it the wrist is 10 cm
+  short of the tread.
+- Rejected, all by the puppet map at curl 0.9:
+  - `clear_bulb_path.py` on `bulb20` (wrist pushed away from the nearest ladder point): 180 touching steps,
+    452 N, two segments lost. It only sees the glass; away from the lip is down, into tread 4.
+  - Variant A, `--pitch -6 8 8 --lift 0.02` (hand tipped fingers-down at the rest, low approach): bulb lost
+    in one segment, 96-99 N touches, 226 N squeeze.
+
+### `bulb21`
+- `make_bulb_wristrest_clip.py --rests 0 0 372 890 0 0` (no tread-4 rest; the rest of `bulb15`'s arguments),
+  `bulb15`'s left-hand labels copied in (30 rows, steps 851-880, that a fresh build labels free), then
+  `bulb20`'s chain unchanged, then `clear_bulb_path.py --target 0.045 --max_shift 0.05`: wrist moved up to
+  24 mm over steps 660-975, 13 mm at 1,205-1,230, 14 mm at 1,391-1,458, orientation held to 0.011 deg.
+  Chain check: started from `bulb15` it reproduces `bulb20` to 0.0, and `edge74` with `bulb15`'s arguments
+  reproduces `bulb15`'s motion to 0.0.
+- `make_approach_prefix.py --level_palm` now holds the three wrist joints 0.5 deg inside their limits (the
+  no-rest variant had right wrist_roll at 113.58 deg for steps 149-193, limit 113).
+- Against `bulb20`: 1,976 steps; every joint that is not the right arm identical; right arm differs in steps
+  2-1,484; right-hand rest steps 230 (420); left labels identical.
+- Offline: limits pass; torso CLEAN; glass never under 25.4 mm from the ladder at the measured seat, 28.6 mm
+  at the loose-cup seat.
+- Puppet maps, curl 0.9, three per clip with the re-seat points shifted by 50 steps:
+
+  | clip | segments | bulb lost | steps touching the ladder | hardest squeeze while held |
+  |---|---|---|---|---|
+  | `bulb20` | 40 | 1 (step 344, the lip) | 78 (340-451, 674-881; up to 29 N) | 31 N |
+  | `bulb21` | 39 | 2, both the re-seat artefact above | 3 (1,042-1,043, 1,154; up to 6 N) | 11 N |
+
+- Frozen holds, cup at curl 0.9, nine ladder-supported poses, 3 s each: 9 of 9 stay up on both clips. Pelvis
+  off the reference at the mount pose 44 mm (`bulb20`: 2 mm) -- what the wrist rest was carrying -- and at
+  the first-step-up pose 55 (58), on tread 1 46 (85); the six higher poses equal. Bulb in the hand in all
+  nine on `bulb21` (furthest 114 mm); `bulb20` loses it at tread 3->4 (196 mm) and at the top (183 mm).
+- Body scan (overlap indicators, not loads; every 5 steps): bulb against the ladder 0 N at every pose,
+  squeeze 3 N; left knee at steps 465 and 1,450, left hip_yaw at 1,270 and 1,450. `bulb17` had the knee at
+  the same two poses (395, 1,380 before the +70) and hip_yaw at one; the legs are `bulb20`'s to 0.0, and
+  `bulb20` was not scanned, so the extra hip_yaw pose is unexplained.
+- NOT tested: the dynamics of the first step up without the right wrist. A frozen hold says the pose is
+  holdable, not that the teacher can make the step.
+
+### Descent clips, checked against today's findings -- not rebuilt
+- Benchmark body: none of `edge87`, `bulb20`, `desc01`, `descbulb01` enters the shoulder, hip or thigh
+  colliders (shoulder links 5-11 mm clear of the torso hull, wrist 60-132 mm from thigh and hip).
+- `descbulb01`, puppet map: curl 0.9 loses the bulb in 0 of 13 segments (one touch, steps 1,509-1,519,
+  16 N: the reversed tread-4 rest); curl 0.667 in 4 of 13. It needs `bulb21`'s arm (reversed), and its
+  opening is the mirror of the move `bulb19` slowed (0.55 m/s in the first 2 s).
+- For training a descent: the climb scripts' start randomisation (x, y +-0.05 m over the first 265 steps)
+  is for the floor walk-in; a descent starts on the platform.
+
+### Koa
+- Job 15574462 (ece605) unchanged: `edge87fx`, `bulb20fx`. Action noise restarts at 0.50 on a resume and is
+  back to 0.13-0.18 within about 500 iterations.
+- `bulb21fx`: job 15575977 on `kill-shared` (preemptible, requeues from its own checkpoints), one run, from
+  `bulb20fx` 14,400, `lm_train_fxbody.sbatch` with `ALLOW_PARALLEL=1` (new: skips the stand-down that keeps
+  two jobs off one lineage). Submitted BEFORE the holds and the scan above were run, on the user's word.
+  - A value with commas cannot go through `sbatch --export=`: export it in the calling shell.
+  - V100 nodes: `CUDA error: no kernel image is available` with this trainer's PyTorch. Excluded, with the
+    ece605 node (two runs fill its memory), the sliced-GPU nodes and the 2080 Ti / 2070 nodes; the RTX 5000
+    nodes showed 59-77 GB actually free against the ~80 GB a run needs.

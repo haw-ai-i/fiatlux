@@ -18,6 +18,10 @@
 #   SEED / EEF_R / SEEDCKPT) is lm_train_edge87.sbatch's; read its header.
 #
 #       sbatch --export=ALL,FAMILY=fxtest,ITERS=7530,SEEDCKPT=edge87free_checkpoint_7500.pt -t 1:00:00 lm_train_fxbody.sbatch
+#   A second job beside the multi-GPU one (another partition, its OWN family): ALLOW_PARALLEL=1 skips the
+#   stand-down below, e.g. on the preemptible partition, away from the ece605 node (two runs fill its memory):
+#       sbatch -A uh -p kill-shared -J lm-bulb21 --exclude=gn-15-35-00 -t 2-00:00:00 \\
+#           --export=ALL,ALLOW_PARALLEL=1,FAMILY=bulb21fx,PROFILE=bulb,CLIPNAME=bulb21,... lm_train_fxbody.sbatch
 #SBATCH -J lm-fxbody
 #SBATCH -A ece605
 #SBATCH -p ece605
@@ -39,7 +43,7 @@ FAMILY="${FAMILY:-edge87fx}"
 ROBOT="${ROBOT:-g1_29dof_dex3open-complexfeet-fxbody}"
 PROFILE="${PROFILE:-std}"
 MINE=$(squeue -h -u "$USER" -t RUNNING -o '%i %j' | grep -E 'lm-fxbody' | grep -v "^$SLURM_JOB_ID " || true)
-if [ -n "$MINE" ]; then
+if [ -n "$MINE" ] && [ -z "${ALLOW_PARALLEL:-}" ]; then
   echo "[lm] another lm-fxbody is already RUNNING -- standing down so we do not fork the lineage:"
   echo "$MINE"
   exit 0

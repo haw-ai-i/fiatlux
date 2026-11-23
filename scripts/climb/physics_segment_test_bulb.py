@@ -67,6 +67,13 @@ ap.add_argument("--wrist_offset", type=float, nargs=3, default=[0.0, 0.0, 0.0],
                 help="DIAGNOSTIC: radians added to the right wrist roll, pitch, yaw at every staged pose and target")
 ap.add_argument("--pin_root", action="store_true",
                 help="test fixture: fix the robot's root at the reference pose, so the grip is tested without the body sagging or falling")
+ap.add_argument("--follow_root", action="store_true",
+                help="test fixture for the BULB, not for balance: the robot is a puppet of the clip. Its gravity is off, the ladder is "
+                     "kinematic, and every control step the root pose and velocity and the 29 joints' positions and velocities are "
+                     "written from the clip, so the hand moves through the world exactly as the clip has it (speed, acceleration, "
+                     "tilt) while the bulb and the fingers stay dynamic. --pin_root freezes the root where the segment starts, which "
+                     "is only right while the body barely moves; with it a climbing segment read the palm 65 deg off level where the "
+                     "clip has 28 at most.")
 ap.add_argument("--right_curl", type=float, default=None,
                 help="close the right hand's fingers to this curl (rad; the benchmark's cup is 0.667) AFTER the bulb is seated")
 ap.add_argument("--curl_ramp", type=int, default=15, help="control steps over which --right_curl is reached")
@@ -111,6 +118,9 @@ if not a.body_scan:
 cfg.scene.bulb_vs_ladder = _CSC(prim_path=cfg.scene.fresh_bulb.prim_path, filter_prim_paths_expr=[cfg.scene.ladder.prim_path], history_length=1)
 if a.pin_root:
     cfg.scene.robot.spawn.articulation_props.fix_root_link = True
+if a.follow_root:
+    cfg.scene.robot.spawn.rigid_props.disable_gravity = True
+    cfg.scene.ladder.spawn.rigid_props.kinematic_enabled = True
 env = gym.make(a.task, cfg=cfg).unwrapped
 env.reset()
 base, dev = env, env.device
@@ -145,7 +155,7 @@ eff = robot.data.joint_effort_limits[0] if hasattr(robot.data, "joint_effort_lim
     else robot.root_physx_view.get_dof_max_forces()[0].to(dev)
 
 
-from isaaclab.utils.math import quat_apply as _qa, quat_mul as _qm  # noqa: E402
+from isaaclab.utils.math import quat_apply as _qa, quat_mul as _qm, quat_apply_inverse as _qai  # noqa: E402
 bulb = base.scene["fresh_bulb"]
 _WR = ob.lm_body_names.index("right_wrist_yaw_link")
 _BP = torch.tensor([[0.1192, 0.0540, -0.1310]], device=dev); _BQ = torch.tensor([[0.70710678, 0.0, 0.0, 0.70710678]], device=dev)
@@ -220,8 +230,21 @@ def run(name, mode, t0, t1, lift=0.0):
         if _CURL is not None:
             _w = min(1.0, (k + 1) / max(1, a.curl_ramp))
             tgt[:, _CURL[0]] = (1 - _w) * q_all0[:, _CURL[0]] + _w * _CURL[1]
+        if a.follow_root and mode == "track":
+            t1_ = torch.tensor([min(t + 1, int(ob.motion_len) - 1)], device=dev, dtype=torch.long); h_ = DT * DEC
+            p0_, p1_ = ob.ref_body_pos[tt][:, ob.root_mo].clone(), ob.ref_body_pos[t1_][:, ob.root_mo]
+            q0_, q1_ = ob.ref_body_quat[tt][:, ob.root_mo], ob.ref_body_quat[t1_][:, ob.root_mo]
+            dq_ = _qm(q1_, q0_ * torch.tensor([[1.0, -1.0, -1.0, -1.0]], device=dev)); dq_ = dq_ * torch.sign(dq_[:, :1] + 1e-12)
+            j0_, j1_ = ob.ref_joint_pos[tt], ob.ref_joint_pos[t1_]
+            tgt[:, ob.j_fx] = j1_
+            _rv = torch.cat([(p1_ - p0_) / h_, 2.0 * dq_[:, 1:] / h_], -1); _jv = (j1_ - j0_) / h_
         robot.set_joint_position_target(tgt)
-        for _ in range(DEC):
+        for _s in range(DEC):
+            if a.follow_root and mode == "track":      # every physics step, so a contact cannot carry the puppet off the clip
+                _u = _s / DEC; _qq = q0_ * (1 - _u) + (q1_ if float((q0_ * q1_).sum()) >= 0 else -q1_) * _u
+                robot.write_root_link_pose_to_sim(torch.cat([p0_ + (p1_ - p0_) * _u, _qq / _qq.norm(dim=-1, keepdim=True)], -1))
+                robot.write_root_com_velocity_to_sim(_rv)
+                robot.write_joint_state_to_sim(j0_ + (j1_ - j0_) * _u, _jv, joint_ids=ob.j_fx)
             base.scene.write_data_to_sim()
             base.sim.step(render=False)
             base.scene.update(DT)
@@ -240,6 +263,8 @@ def run(name, mode, t0, t1, lift=0.0):
         r["fingR"] = float((d.joint_pos[0, fR] - q_all0[0, fR]).abs().max()) if fR else 0.0
         r["lad"] = float((ladder.data.root_pos_w[0] - lad0[0, :3]).norm())
         r["bulb_lad"], r["bulb_grip"] = bulb_forces(); r["bulb_off"] = bulb_off_seat()
+        _iw = robot.body_names.index("right_wrist_yaw_link")
+        r["bulb_w"] = _qai(robot.data.body_link_quat_w[0:1, _iw], bulb.data.root_link_pos_w[0:1] - robot.data.body_link_pos_w[0:1, _iw])[0].cpu().numpy()
         _i = robot.body_names.index("right_wrist_yaw_link")
         _n = _qa(robot.data.body_link_quat_w[0:1, _i], torch.tensor([[0.0, 1.0, 0.0]], device=dev))[0]
         _f = _qa(robot.data.body_link_quat_w[0:1, _i], torch.tensor([[1.0, 0.0, 0.0]], device=dev))[0]
@@ -289,10 +314,13 @@ def report(name, mode, rows, fell, t0):
     print(f"    right palm off level: start {A('palm_tilt')[0]:.0f} deg, max {A('palm_tilt').max():.0f} deg; fingers pitched (+up) start {A('finger_pitch')[0]:+.0f}, min {A('finger_pitch').min():+.0f} deg; "
           f"right finger joints pushed off the cup by up to {np.degrees(np.abs(A('fingR_each')).max()):.0f} deg"
           + (f"; bulb left the hand at +{_k * DT * DEC:.2f} s" if _k >= 0 else ""))
+    _bw = A("bulb_w"); _m = min(len(_bw) - 1, 25)
+    print(f"    bulb root in the wrist frame (m): after the grip closes {np.round(_bw[_m], 3).tolist()}, median {np.round(np.median(_bw[_m:], 0), 3).tolist()}, "
+          f"range {np.round(_bw[_m:].min(0), 3).tolist()} .. {np.round(_bw[_m:].max(0), 3).tolist()}")
     print(f"    BULB: against the ladder max {np.nanmax(A('bulb_lad')):.0f} N; hardest squeeze by a hand link max {np.nanmax(A('bulb_grip')):.0f} N (glass limit 50 N); "
           f"off its seat in the hand: end {A('bulb_off')[-1]*1000:.0f} mm, max {A('bulb_off').max()*1000:.0f} mm")
     return {f"{name}_{mode}_{k}": A(k) for k in ("t", "pelvis", "left_wrist_yaw_link", "right_wrist_yaw_link",
-            "left_ankle_roll_link", "right_ankle_roll_link", "FL", "FR", "tilt", "tau", "fingL", "fingR", "lad", "bulb_lad", "bulb_grip", "bulb_off")}
+            "left_ankle_roll_link", "right_ankle_roll_link", "FL", "FR", "tilt", "tau", "fingL", "fingR", "lad", "bulb_lad", "bulb_grip", "bulb_off", "bulb_w")}
 
 
 print("[sensors] " + ", ".join(base.scene.sensors.keys()))

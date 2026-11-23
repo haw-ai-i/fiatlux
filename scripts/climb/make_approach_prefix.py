@@ -147,6 +147,8 @@ if a.right_arm_span > 0:
                 Jm[:, :, c] = (_oerr(qd) - e) / 1e-5
             dq3 = np.linalg.solve(Jm.transpose(0, 2, 1) @ Jm + 1e-8 * np.eye(3)[None], -(Jm.transpose(0, 2, 1) @ e[:, :, None]))[:, :, 0]
             for c, j in enumerate(WR): q[:, j] += dq3[:, c]
+        for j in WR:                                    # the solve knows no limits: hold the wrist joints 0.5 deg inside theirs
+            lo_, hi_ = K.limits(jn[j]); q[:, j] = np.clip(q[:, j], lo_ + np.radians(0.5), hi_ - np.radians(0.5))
         _g = K.qrot(K.qconj(K.fk_all(pel_p, pel_q, q, jn)["right_wrist_yaw_link"][1]), np.tile([0.0, 0.0, -1.0], (N, 1)))
         print(f"[arm  ] palm held level: orientation error {np.degrees(np.abs(_oerr(q)).max()):.3f} deg after {it + 1} iterations; "
               f"palm off level along the walk-in: peak {np.degrees(np.arccos(np.clip(-_g[:, 1], -1, 1))).max():.1f} deg")
