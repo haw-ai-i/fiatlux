@@ -22,6 +22,15 @@
 #   stand-down below, e.g. on the preemptible partition, away from the ece605 node (two runs fill its memory):
 #       sbatch -A uh -p kill-shared -J lm-bulb21 --exclude=gn-15-35-00 -t 2-00:00:00 \\
 #           --export=ALL,ALLOW_PARALLEL=1,FAMILY=bulb21fx,PROFILE=bulb,CLIPNAME=bulb21,... lm_train_fxbody.sbatch
+#   FLOOR_STEPS (default 265) is the length of the floor walk-in whose starts get the benchmark's +-0.05 m root
+#   range; a DESCENT starts on the platform: FLOOR_STEPS=0. START_ZERO (default 0.3) is the share of episodes
+#   forced to start at step 0.
+#   CAPACITY_SCALE (default 1.5) scales PhysX's GPU pair buffers. The S12 descent asked for up to 171.6M
+#   aggregate pairs against the 93M that 1.5 gives (`foundLostAggregatePairsCapacity ... will miss
+#   interactions`, 24 times in 68 iterations): CAPACITY_SCALE=3.0 for the descents.
+#   FEET=1 adds the two world-frame ankle terms (tight_feet_*): where the robot stands at the top.
+#   RESET_LIFT (default 0) raises the root this many metres at every reset. A start on the PLATFORM needs it
+#   (0.03): without it the ankles read up to 28 kN in the first step and 4,096 robots are thrown at once.
 #SBATCH -J lm-fxbody
 #SBATCH -A ece605
 #SBATCH -p ece605
@@ -108,6 +117,10 @@ case "$PROFILE" in
         [ "${CARRY_JUMP_LIMIT:-2.4}" != 0 ] && TERMS+=("+task.termination.carry_hand_velocity_jump={limit:${CARRY_JUMP_LIMIT:-2.4},grace_steps:${CARRY_GRACE:-25}}") ;;
   *) echo "[lm] PROFILE must be none, std or bulb"; exit 1 ;;
 esac
+if [ -n "${FEET:-}" ]; then
+  TERMS+=('+task.reward.tracking.tight_feet_pos_tracking={weight:0.5,sigma:0.06,tolerance:0.005,body_names:[".*_ankle_roll_link"]}'
+          '+task.reward.tracking.tight_feet_ori_tracking={weight:0.5,sigma:0.3,tolerance:0.05,body_names:[".*_ankle_roll_link"]}')
+fi
 echo "[lm] robot=$ROBOT profile=$PROFILE terms: ${#TERMS[@]}"; printf '[lm]   %s\n' "${TERMS[@]}"
 md5sum active_adaptation/envs/mdp/commands/hdmi/bulb_hand.py "active_adaptation/assets/g1/$ROBOT.urdf"
 md5sum active_adaptation/envs/ladder_fiatlux.py active_adaptation/envs/ladder_env.py active_adaptation/envs/mdp/commands/hdmi/command_spawn.py
@@ -127,13 +140,14 @@ exec python scripts/train.py algo=teacher task=teacher "${RESUME[@]}" \
     "task.command.contact_eef_pos_offset=[[0.17,-0.017,0.0],${EEF_R:-[0.17,0.017,0.0]}]" \
     task.randomization.ladder_geometry_randomization.enabled=false \
     +task.randomization.perturb_body_materials.homogeneous=true \
-    +task.sim.physx_capacity_scale=1.5 \
+    +task.sim.physx_capacity_scale="${CAPACITY_SCALE:-1.5}" \
     "${FREE[@]}" seed="$SEED" \
     task.max_episode_length=2100 \
     task.action._target_=active_adaptation.envs.mdp.action_refwrist.JointPositionRefWrist \
     task.command._target_=active_adaptation.envs.mdp.commands.hdmi.command_spawn.RobotTrackingSpawn \
-    +task.command.start_zero_prob=0.3 +task.command.floor_steps=265 \
+    +task.command.start_zero_prob="${START_ZERO:-0.3}" +task.command.floor_steps="${FLOOR_STEPS:-265}" \
     '+task.command.floor_pose_range={x:[-0.05,0.05],y:[-0.05,0.05]}' \
+    +task.command.reset_lift="${RESET_LIFT:-0.0}" \
     task.num_envs="$ENVS" algo.max_iters="$ITERS" \
     hydra.run.dir="$OUT" \
     wandb.mode=disabled

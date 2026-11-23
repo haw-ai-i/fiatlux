@@ -14,6 +14,9 @@
 #
 # TWO runs: see MEMORY in lm_train_edge87.sbatch. The benchmark body adds collision shapes; the scale test
 # with SUFFIX=test is what says whether two still fit.
+#   Profiles: std | bulb | desc | descbulb, each optionally with the suffix "feet" (e.g. stdfeet).
+#   A descent at 4,096 environments needs PhysX pair buffers 3x the stock size (DESC_CAP), and those do not
+#   fit a 16 GB card (CUDA out of memory at start-up on an A4000). On a 16 GB card: DESC_ENVS=2048 DESC_CAP=1.5.
 #SBATCH -J lm-fxbody
 #SBATCH -A ece605
 #SBATCH -p ece605
@@ -36,10 +39,19 @@ pids=()
 for r in $RUNS; do
   IFS=: read -r fam clip ladder seed prof <<< "$r"
   if [ "${prof:-std}" = bulb ]; then eef="[0.005,-0.03,0.0]"; ck="$CK_BULB"; else eef="[0.17,0.017,0.0]"; ck="$CK_STD"; fi
+  # profile suffixes: "feet" adds the world-frame ankle terms; a "desc" prefix is a descent (platform start,
+  # larger PhysX pair buffers), seeded from CK_DESC / CK_DESCBULB
+  feet=""; floor=265; cap=1.5; envs=4096; base="${prof:-std}"
+  case "$base" in *feet) feet=1; base="${base%feet}";; esac
+  case "$base" in
+    desc)     base=std;  floor=0; cap="${DESC_CAP:-3.0}"; envs="${DESC_ENVS:-4096}"; eef="[0.17,0.017,0.0]";  ck="${CK_DESC:-edge87fx_checkpoint_8100.pt}";;
+    descbulb) base=bulb; floor=0; cap="${DESC_CAP:-3.0}"; envs="${DESC_ENVS:-4096}"; eef="[0.005,-0.03,0.0]"; ck="${CK_DESCBULB:-bulb20fx_checkpoint_14700.pt}";;
+  esac
+  prof="$base"
   total=$(( $(echo "$ck" | sed -E "s/.*checkpoint_([0-9]+)\.pt/\1/") + NEW ))
   fam="$fam${SUFFIX:-}"
   echo "[multi] starting $fam (clip $clip, ladder $ladder, seed $seed, from $ck to iteration $total) -> lm-fxbody.$fam.$SLURM_JOB_ID.out"
-  FAMILY="$fam" PROFILE="${prof:-std}" CLIPNAME="$clip" LADDER="$ladder" SEED="$seed" ITERS="$total" EEF_R="$eef" SEEDCKPT="$ck" \
+  FAMILY="$fam" PROFILE="${prof:-std}" FEET="$feet" FLOOR_STEPS="$floor" CAPACITY_SCALE="$cap" ENVS="$envs" CLIPNAME="$clip" LADDER="$ladder" SEED="$seed" ITERS="$total" EEF_R="$eef" SEEDCKPT="$ck" \
     srun --exact -N1 -n1 -c4 --gres=gpu:1 --mem="$MEM_PER_RUN" \
          --output="lm-fxbody.$fam.$SLURM_JOB_ID.out" --error="lm-fxbody.$fam.$SLURM_JOB_ID.out" --open-mode=append \
          bash "$ROOT/jobs/lm_train_fxbody.sbatch" &

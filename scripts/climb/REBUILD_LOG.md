@@ -1844,3 +1844,58 @@ Videos: benchmark runs of the early checkpoints and of `bulb19` under the videos
   scripts switched off for the platform start (`floor_steps`).
 
 Videos (kinematic): `descbulb02_ref/` side and rear-right, under the videos folder.
+
+## First checkpoints on the benchmark body; foot terms; why a start on the platform throws the robot (2026-11-22)
+
+### `edge87fx` 8,400 (900 iterations on the benchmark body, tight arm terms)
+- Benchmark S02, Dex3, free ladder, seeds 0-3: all four reach the platform and stand (the old run at
+  6,900: two of four, the other two falling at steps 446-450). None scores: `soles_within_ladder_top` false
+  on every seed, the other four conjuncts true. Seed 0: left heel 49 mm over the open edge, right heel
+  109-114 mm (old run: 60-68 and 142-143).
+- Trainer, benchmark body, 64 robots from the clip's start: 57-60 reach the clip's end (48 when the old
+  checkpoint was first put on this body).
+- `tight_feet_pos_tracking`, `tight_feet_ori_tracking` (new, `bulb_hand.py`): the two ankle links held to the
+  clip's WORLD pose (sigma 0.06 m / 0.3 rad). LadderMan's leg terms are pelvis-relative or averaged over
+  several links with a 0.5 m fall-off. On checkpoint 8,400 the position term pays 0.07 of 0.5.
+  `lm_train_fxbody.sbatch` FEET=1; multi-script profile suffix `feet`. `edge87fx` restarted with them from
+  8,400 (job 15576907, one run).
+
+### The bulb teachers, early
+- Trainer, benchmark body, robots reaching the clip's end: `bulb20fx` 15,000 on `bulb20` 54 of 64 (4 when
+  first put on this body); `bulb21fx` 14,700 on `bulb21` 26 of 64 after 300 iterations (26 lose a hand hold,
+  median step 1,195).
+- Benchmark S10, curl 0.9, soft start on waist and arms, two seeds each:
+  - `bulb21fx` 14,700: the robot falls at steps 507-512 (the first step up, now without the right wrist's
+    rest); the bulb is in the hand, squeeze 3.5 N at most.
+  - `bulb20fx` 15,000: reaches tread 1; bulb out of the hand at 507 / 704 with a 37-49 N squeeze, ends
+    `bulb_dropped` / `fresh_bulb_struck` at 639 / 740 (the wrist rest under the platform lip).
+- `bulb20fx` stopped at 15,000 (superseded clip).
+
+### Descents: three failed starts and their causes
+1. `desc01fx`, 4,096 environments, stock pair buffers x1.5: 24 PhysX errors in 68 iterations
+   (`foundLostAggregatePairsCapacity`, up to 171.6M asked for, "the simulation will miss interactions").
+   A log check that greps for "overflow" does not see these: grep for `PhysX error`.
+2. Buffers x3 (`CAPACITY_SCALE`, new): the asked-for size kept growing, 330M then 1.2 billion, and the run
+   stalled at iteration 114. On a 16 GB card x3 does not fit at all (CUDA out of memory at start-up).
+3. `descbulb02fx` on an H100 node: log frozen for 28 minutes at the URDF-to-USD conversion, 1.9 GB resident.
+   It had started 6 minutes after `desc01fx`, which converts the same robot file to the same place. Start
+   one job at a time (what the multi script already does for its own runs). Not shown to be the H100.
+- Cause of 1 and 2: a reset ON THE PLATFORM throws the robot. Trainer, 64 robots, ankle links, first steps:
+
+  | start | 99th percentile | worst | largest velocity jump |
+  |---|---|---|---|
+  | `edge87`, on the floor | 0.4 kN, 2.2 kN while settling | 2.2 kN | 1.8 m/s |
+  | `desc01`, on the platform | 10-12 kN | 25-28 kN | 12-14 m/s |
+  | the same, `init_joint_pos_noise=0` | 5.9 kN | 7.6 kN | 5.5 m/s |
+  | the same, `reset_lift=0.03` | 1.5-2.6 kN | one robot at 22-25 kN | 2-3 m/s |
+  | `edge87`'s own end stance as a start | 10 kN | 11 kN | 8 m/s |
+
+  The hands read 0 N at step 0; the ankles carry it. The clips keep the soles 1 mm above the platform, and
+  LadderMan adds +-0.1 rad to every joint at a reset, in evaluation too. Against the ladder's triangles the
+  foot shapes are 0.0 mm inside at frame 0; the trainer still reads 5.9 kN with no noise, unexplained.
+  A climb starts at the top in a small share of episodes; a descent in 30 % plus every early phase.
+- `command_spawn.py` `reset_lift` (new, default 0): every reset places the root that much higher (the
+  benchmark's own on-ladder spawns are 28 mm high). With 0.03: robots ending in the first 100 steps about 5
+  of 64 (15 without); the rest end at step 235 (`desc01`) or 345 (`descbulb02`) on the first hand hold, the
+  seed being a climb teacher. `lm_train_fxbody.sbatch` RESET_LIFT, FLOOR_STEPS, CAPACITY_SCALE.
+- Resubmitted with `RESET_LIFT=0.03`, buffers x3, large-memory GPUs only, one after the other.

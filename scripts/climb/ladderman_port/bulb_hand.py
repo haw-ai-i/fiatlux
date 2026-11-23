@@ -32,6 +32,9 @@ checkpoint no longer loads):
     tight_arm_pos_tracking        arm links' position (local), tight
     tight_arm_ori_tracking        arm links' orientation (local), tight
 
+    tight_feet_pos_tracking       the two ankle links' WORLD position, tight (where the robot stands)
+    tight_feet_ori_tracking       the two ankle links' WORLD orientation
+
 Terminations:
 
     carry_hand_force_exceeded     wrist contact force over a limit (benchmark: 50 N on the glass)
@@ -52,6 +55,8 @@ from active_adaptation.envs.mdp.base import Reward, Termination
 
 from .rewards import (
     joint_pos_tracking_product,
+    keypoint_ori_tracking_product,
+    keypoint_pos_tracking_product,
     keypoint_lin_vel_tracking_product,
     keypoint_ori_tracking_local_product,
     keypoint_pos_tracking_local_product,
@@ -138,6 +143,19 @@ class tight_arm_pos_tracking(keypoint_pos_tracking_local_product):
 
 
 class tight_arm_ori_tracking(keypoint_ori_tracking_local_product):
+    pass
+
+
+# ---- the feet, in the WORLD ----------------------------------------------------------------------
+# LadderMan's leg terms are local (relative to the pelvis) or average over several links with a 0.5 m
+# fall-off, so a robot that ends the climb standing 75 mm short of the clip's stance loses almost nothing.
+# In the benchmark that is the one condition S02 still fails on every seed: both heels over the platform's
+# open edge (49-114 mm, `soles_within_ladder_top`). These hold the two ankle links to the clip's WORLD pose.
+class tight_feet_pos_tracking(keypoint_pos_tracking_product):
+    pass
+
+
+class tight_feet_ori_tracking(keypoint_ori_tracking_product):
     pass
 
 

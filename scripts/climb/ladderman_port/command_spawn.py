@@ -13,6 +13,7 @@ Two additions, both off unless configured:
   start_zero_prob   fraction of training episodes forced to start at step 0
   floor_steps       clip steps that are a walk-in on the floor; an episode starting inside them
   floor_pose_range  takes its root offset from this range instead of ``pose_range``
+  reset_lift        metres added to the root's height at every reset (default 0)
 
 Mid-climb starts keep LadderMan's own ranges: 5 cm off a 68 mm tread is not a start the
 benchmark ever produces.
@@ -27,8 +28,9 @@ from .command import RobotTracking
 
 class RobotTrackingSpawn(RobotTracking):
     def __init__(self, env, *args, start_zero_prob: float = 0.0, floor_steps: int = 0,
-                 floor_pose_range: dict | None = None, **kwargs):
+                 floor_pose_range: dict | None = None, reset_lift: float = 0.0, **kwargs):
         super().__init__(env, *args, **kwargs)
+        self.reset_lift = float(reset_lift)
         self.start_zero_prob = float(start_zero_prob)
         self.floor_steps = int(floor_steps)
         rng = dict(floor_pose_range or {})
@@ -48,6 +50,20 @@ class RobotTrackingSpawn(RobotTracking):
             self.t[env_ids] = t
 
     def sample_init(self, env_ids: torch.Tensor) -> None:
+        # reset_lift: every reset places the root this much higher (training and evaluation), so the robot
+        # settles onto its feet instead of starting in the surface it stands on. LadderMan adds +-0.1 rad to
+        # every joint at a reset, in evaluation too; with the clip's soles 1 mm above the platform that puts a
+        # sole centimetres inside it, and a start on the PLATFORM reads up to 28 kN on an ankle in the first
+        # step (the floor start: 0.5 kN). The benchmark does the same thing: its on-ladder spawns are 28 mm high.
+        if self.reset_lift > 0:
+            self.env.scene.env_origins[env_ids, 2] += self.reset_lift
+        try:
+            self._sample_init_spawn(env_ids)
+        finally:
+            if self.reset_lift > 0:
+                self.env.scene.env_origins[env_ids, 2] -= self.reset_lift
+
+    def _sample_init_spawn(self, env_ids: torch.Tensor) -> None:
         super().sample_init(env_ids)
         if not self.env.training or self.floor_steps <= 0 or self.replay_motion:
             return
