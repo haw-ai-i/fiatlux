@@ -18,6 +18,10 @@
 #   terms, e.g. stdfeet) or "stance" (foot terms from FEET_START on, e.g. stdstance).
 #   A descent at 4,096 environments needs PhysX pair buffers 3x the stock size (DESC_CAP), and those do not
 #   fit a 16 GB card (CUDA out of memory at start-up on an A4000). On a 16 GB card: DESC_ENVS=2048 DESC_CAP=1.5.
+#   A descent also gets the reset lift, the body-speed termination and wider environment spacing
+#   (DESC_LIFT 0.03, DESC_SPEED 6.0, DESC_SPACING 6.0; see lm_train_fxbody.sbatch). The other runs in the
+#   same job do not. CPUS_PER_RUN (default 4) and MEM_PER_RUN (default 90G) size each run's step; pass
+#   matching -c and --mem to sbatch.
 #SBATCH -J lm-fxbody
 #SBATCH -A ece605
 #SBATCH -p ece605
@@ -42,18 +46,19 @@ for r in $RUNS; do
   if [ "${prof:-std}" = bulb ]; then eef="[0.005,-0.03,0.0]"; ck="$CK_BULB"; else eef="[0.17,0.017,0.0]"; ck="$CK_STD"; fi
   # profile suffixes: "feet" adds the world-frame ankle terms; a "desc" prefix is a descent (platform start,
   # larger PhysX pair buffers), seeded from CK_DESC / CK_DESCBULB
-  feet=""; floor=265; cap=1.5; envs=4096; base="${prof:-std}"
+  feet=""; floor=265; cap=1.5; envs=4096; lift=""; speed=""; spacing=""; base="${prof:-std}"
   case "$base" in *stance) feet=stance; base="${base%stance}";; *feet) feet=1; base="${base%feet}";; esac
   case "$base" in
-    desc)     base=std;  floor=0; cap="${DESC_CAP:-3.0}"; envs="${DESC_ENVS:-4096}"; eef="[0.17,0.017,0.0]";  ck="${CK_DESC:-edge87fx_checkpoint_8100.pt}";;
-    descbulb) base=bulb; floor=0; cap="${DESC_CAP:-3.0}"; envs="${DESC_ENVS:-4096}"; eef="[0.005,-0.03,0.0]"; ck="${CK_DESCBULB:-bulb20fx_checkpoint_14700.pt}";;
+    desc)     base=std;  lift="${DESC_LIFT:-0.03}"; speed="${DESC_SPEED:-6.0}"; spacing="${DESC_SPACING:-6.0}"; floor=0; cap="${DESC_CAP:-3.0}"; envs="${DESC_ENVS:-4096}"; eef="[0.17,0.017,0.0]";  ck="${CK_DESC:-edge87fx_checkpoint_8100.pt}";;
+    descbulb) base=bulb; lift="${DESC_LIFT:-0.03}"; speed="${DESC_SPEED:-6.0}"; spacing="${DESC_SPACING:-6.0}"; floor=0; cap="${DESC_CAP:-3.0}"; envs="${DESC_ENVS:-4096}"; eef="[0.005,-0.03,0.0]"; ck="${CK_DESCBULB:-bulb20fx_checkpoint_14700.pt}";;
   esac
   prof="$base"
   total=$(( $(echo "$ck" | sed -E "s/.*checkpoint_([0-9]+)\.pt/\1/") + NEW ))
   fam="$fam${SUFFIX:-}"
   echo "[multi] starting $fam (clip $clip, ladder $ladder, seed $seed, from $ck to iteration $total) -> lm-fxbody.$fam.$SLURM_JOB_ID.out"
   FAMILY="$fam" PROFILE="${prof:-std}" FEET="$feet" FLOOR_STEPS="$floor" CAPACITY_SCALE="$cap" ENVS="$envs" CLIPNAME="$clip" LADDER="$ladder" SEED="$seed" ITERS="$total" EEF_R="$eef" SEEDCKPT="$ck" \
-    srun --exact -N1 -n1 -c4 --gres=gpu:1 --mem="$MEM_PER_RUN" \
+  RESET_LIFT="$lift" SPEED_LIMIT="$speed" ENV_SPACING="$spacing" \
+    srun --exact -N1 -n1 -c"${CPUS_PER_RUN:-4}" --gres=gpu:1 --mem="$MEM_PER_RUN" \
          --output="lm-fxbody.$fam.$SLURM_JOB_ID.out" --error="lm-fxbody.$fam.$SLURM_JOB_ID.out" --open-mode=append \
          bash "$ROOT/jobs/lm_train_fxbody.sbatch" &
   pids+=($!)

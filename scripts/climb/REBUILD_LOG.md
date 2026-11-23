@@ -1961,3 +1961,43 @@ Videos (kinematic): `descbulb02_ref/` side and rear-right, under the videos fold
   distance behind the clip at step 400 and whether tread 1 is reached.
 - Descents: `desc01fx` (job 15578517) with lift 0.03, speed limit 6, spacing 6 is training at 4,096
   environments with no PhysX errors in its first 92 iterations; the earlier failures came at about 250.
+
+### First checkpoints after the mount and stance terms; the paired job hung (Nov 23 UTC, morning)
+
+- `bulb21fx` with `MOUNT_ROOT=300:520` (job 15579275, from 16,800). S10, 3 seeds, curl 0.9, soft start:
+
+  | checkpoint | outcome | behind the clip at step 400 |
+  |---|---|---|
+  | 15,900 (before the term) | all fall at 502-528 | 60-85 mm |
+  | 17,100 | fall 504, `bulb_crushed` 443, fall 535 | 71, 35, 67 mm |
+  | 17,400 | fall 531, 543, 539 | 35, 38, 55 mm |
+
+  The robot arrives closer to the clip and falls a little later, but still falls backward on tread 1.
+- Fine trace of 17,400 seed 0 (`--trace 2`): from step 460 the left upper arm presses on the torso with
+  130-175 N (`torso_link` and `left_shoulder_yaw_link` read the same force) while left shoulder_roll is at
+  its torque limit; at steps 480-484 both feet take 90-120 N of horizontal force pushing the robot away from
+  the ladder; the left hand's force goes to zero at step 482 and the robot tips back.
+- Not the cause: the actuators. Shoulder effort limit (25 N m), stiffness (100), damping (2) and armature
+  are the same in the trainer's `g1_fiatlux.py` and the benchmark's `robots/g1.py`. And not the clip's arm
+  pose: `bulb21`'s left upper arm clears the torso hull by 5 mm at its closest (step 478). The left
+  shoulder_roll sits 22-35 deg off the clip at steps 360-440 in the TRAINER as well, so the arm-on-torso
+  press follows from where the body is, not from the reference.
+- Trainer, same checkpoint, left wrist contact through the mount: almost purely vertical, 6-35 N. The hand
+  rests on the ladder; it does not pull the robot in. The trainer's robot is 35-78 mm AHEAD of the clip at
+  steps 470-500, the benchmark's falls behind from +19 to -89 mm over the same steps.
+- The trainer randomises friction on the ankle and wrist links: static 0.3-7.2, dynamic 0.3-3.6
+  (`cfg/task/base/ladder.yaml`). The benchmark's ladder grip material is 1.5 / 1.2. Not tested as a cause.
+- The trainer's contact sensor covers only the ankle and wrist links, so arm-on-torso force cannot be read
+  there with the existing probes.
+- `edge87st` (stance foot terms from step 1,500, from 8,400) at 8,700, S02, 4 seeds: two stand on the
+  platform with heels 24-115 mm over the open edge, two fall at steps 1,659-1,662. 8,400 stood on 4 of 4.
+  In `edge87` the left foot swings onto the platform at steps 1,545-1,580, the right at 1,585-1,620, and the
+  left re-steps 4 cm forward at 1,690-1,715; the falls come with both feet already up.
+- Two runs in one ece605 job (job 15579646: `edge87st` + `desc01fx`, 12 cores, 220 GB): `edge87st` trained
+  18 iterations, then went silent the moment the descent began its start-up beside it, and the descent
+  never reached an iteration in 28 minutes. No PhysX errors, no memory limit hit (cgroup 112 GB of 220,
+  no OOM events), GPU utilisation 1-2 %. Cause not found. Cancelled; `edge87st` restarted alone from 8,700
+  (job 15579998) and `desc01fx` put back on `kill-shared` (job 15579999, 12 h limit).
+- `lm_train_fxbody_multi.sbatch`: descent settings (lift, speed limit, spacing) now go only to a descent
+  run in a pair (`DESC_LIFT`, `DESC_SPEED`, `DESC_SPACING`); `CPUS_PER_RUN`.
+- Pending descents changed in place to a 12 h limit and released from the single-node pin.
