@@ -34,6 +34,9 @@ checkpoint no longer loads):
 
     tight_feet_pos_tracking       the two ankle links' WORLD position, tight (where the robot stands)
     tight_feet_ori_tracking       the two ankle links' WORLD orientation
+    stance_feet_pos_tracking      the same two, counted only from clip step `start_step` on (the top stance)
+    stance_feet_ori_tracking
+    mount_root_pos_tracking       the pelvis' WORLD position between `start_step` and `end_step` (the mount)
 
 Terminations:
 
@@ -159,6 +162,46 @@ class tight_feet_pos_tracking(keypoint_pos_tracking_product):
 
 class tight_feet_ori_tracking(keypoint_ori_tracking_product):
     pass
+
+
+class _from_step:
+    """Mixin: the term counts only from clip step ``start_step`` on; before that it pays its full value.
+
+    The whole-clip foot terms cost S02 its working checkpoint: 4 of 4 seeds reached the platform before
+    them and 0 of 4 at each of the next three checkpoints (300, 600, 900 iterations in). The robot is
+    10-15 cm off the clip in the benchmark's walk-in, and a world-frame pull on the feet fights that for
+    the whole climb to fix a stance that only matters at the top.
+    """
+
+    def __init__(self, *args, start_step: int = 0, end_step: int = 10 ** 9, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.start_step, self.end_step = int(start_step), int(end_step)
+
+    def compute(self):
+        r = super().compute()
+        t = self.command_manager.t
+        on = ((t >= self.start_step) & (t < self.end_step)).to(r.dtype).reshape(-1, 1)
+        return r * on + (1.0 - on)
+
+
+class stance_feet_pos_tracking(_from_step, keypoint_pos_tracking_product):
+    pass
+
+
+class stance_feet_ori_tracking(_from_step, keypoint_ori_tracking_product):
+    pass
+
+
+class mount_root_pos_tracking(_from_step, keypoint_pos_tracking_product):
+    """The pelvis held to the clip's WORLD position between two clip steps (the mount), neutral elsewhere.
+
+    S10 on `bulb21`, where the left hand is the only hand on the ladder for the first step up: the robot
+    reaches the ladder 6-8.5 cm behind the clip in the benchmark (4-5 cm in the trainer), the left
+    shoulder_roll motor is at its torque limit from then on, and the robot falls backward when the pelvis
+    should travel 15 cm forward and 16 cm up (steps 460-500). The walk-in before `start_step` is left
+    free: that is where a randomised spawn is absorbed, and the clip is anchored to the ladder, so this
+    asks only that the robot be at the mount spot when it gets there.
+    """
 
 
 class carry_hand_force_exceeded(Termination):

@@ -14,7 +14,8 @@
 #
 # TWO runs: see MEMORY in lm_train_edge87.sbatch. The benchmark body adds collision shapes; the scale test
 # with SUFFIX=test is what says whether two still fit.
-#   Profiles: std | bulb | desc | descbulb, each optionally with the suffix "feet" (e.g. stdfeet).
+#   Profiles: std | bulb | desc | descbulb, each optionally with the suffix "feet" (whole-clip foot
+#   terms, e.g. stdfeet) or "stance" (foot terms from FEET_START on, e.g. stdstance).
 #   A descent at 4,096 environments needs PhysX pair buffers 3x the stock size (DESC_CAP), and those do not
 #   fit a 16 GB card (CUDA out of memory at start-up on an A4000). On a 16 GB card: DESC_ENVS=2048 DESC_CAP=1.5.
 #SBATCH -J lm-fxbody
@@ -42,7 +43,7 @@ for r in $RUNS; do
   # profile suffixes: "feet" adds the world-frame ankle terms; a "desc" prefix is a descent (platform start,
   # larger PhysX pair buffers), seeded from CK_DESC / CK_DESCBULB
   feet=""; floor=265; cap=1.5; envs=4096; base="${prof:-std}"
-  case "$base" in *feet) feet=1; base="${base%feet}";; esac
+  case "$base" in *stance) feet=stance; base="${base%stance}";; *feet) feet=1; base="${base%feet}";; esac
   case "$base" in
     desc)     base=std;  floor=0; cap="${DESC_CAP:-3.0}"; envs="${DESC_ENVS:-4096}"; eef="[0.17,0.017,0.0]";  ck="${CK_DESC:-edge87fx_checkpoint_8100.pt}";;
     descbulb) base=bulb; floor=0; cap="${DESC_CAP:-3.0}"; envs="${DESC_ENVS:-4096}"; eef="[0.005,-0.03,0.0]"; ck="${CK_DESCBULB:-bulb20fx_checkpoint_14700.pt}";;

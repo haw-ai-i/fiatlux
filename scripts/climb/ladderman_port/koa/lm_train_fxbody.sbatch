@@ -28,12 +28,16 @@
 #   CAPACITY_SCALE (default 1.5) scales PhysX's GPU pair buffers. The S12 descent asked for up to 171.6M
 #   aggregate pairs against the 93M that 1.5 gives (`foundLostAggregatePairsCapacity ... will miss
 #   interactions`, 24 times in 68 iterations): CAPACITY_SCALE=3.0 for the descents.
-#   FEET=1 adds the two world-frame ankle terms (tight_feet_*): where the robot stands at the top.
+#   FEET=1 adds the two world-frame ankle terms (tight_feet_*) over the whole clip -- measured to HURT S02
+#   (0 of 4 seeds reach the platform after them, 4 of 4 before). FEET=stance counts them only from clip step
+#   FEET_START on (stance_feet_*), i.e. the steps onto the platform and the stand.
 #   RESET_LIFT (default 0) raises the root this many metres at every reset. A start on the PLATFORM needs it
 #   (0.03): without it the ankles read up to 28 kN in the first step and 4,096 robots are thrown at once.
 #   SPEED_LIMIT (m/s, default off) ends an episode on the step any body is faster than that; ENV_SPACING
 #   (default the trainer's 3.0 m) spreads the environments. A descent needs both (6.0 and 6.0): a robot thrown
 #   by a reset on the platform otherwise travels 4-9 m, into its neighbours, and the pair buffers explode.
+#   MOUNT_ROOT=FROM:TO holds the pelvis to the clip's world position between those clip steps (the one-handed
+#   mount of the bulb climb: 300:520). Neutral elsewhere, so a randomised spawn is absorbed in the walk-in.
 #SBATCH -J lm-fxbody
 #SBATCH -A ece605
 #SBATCH -p ece605
@@ -120,9 +124,15 @@ case "$PROFILE" in
         [ "${CARRY_JUMP_LIMIT:-2.4}" != 0 ] && TERMS+=("+task.termination.carry_hand_velocity_jump={limit:${CARRY_JUMP_LIMIT:-2.4},grace_steps:${CARRY_GRACE:-25}}") ;;
   *) echo "[lm] PROFILE must be none, std or bulb"; exit 1 ;;
 esac
-if [ -n "${FEET:-}" ]; then
+if [ "${FEET:-}" = stance ]; then
+  TERMS+=("+task.reward.tracking.stance_feet_pos_tracking={weight:0.5,sigma:0.06,tolerance:0.005,start_step:${FEET_START:-1450},body_names:[\".*_ankle_roll_link\"]}"
+          "+task.reward.tracking.stance_feet_ori_tracking={weight:0.5,sigma:0.3,tolerance:0.05,start_step:${FEET_START:-1450},body_names:[\".*_ankle_roll_link\"]}")
+elif [ -n "${FEET:-}" ]; then
   TERMS+=('+task.reward.tracking.tight_feet_pos_tracking={weight:0.5,sigma:0.06,tolerance:0.005,body_names:[".*_ankle_roll_link"]}'
           '+task.reward.tracking.tight_feet_ori_tracking={weight:0.5,sigma:0.3,tolerance:0.05,body_names:[".*_ankle_roll_link"]}')
+fi
+if [ -n "${MOUNT_ROOT:-}" ]; then   # "FROM:TO" in clip steps
+  TERMS+=("+task.reward.tracking.mount_root_pos_tracking={weight:0.5,sigma:0.06,tolerance:0.01,start_step:${MOUNT_ROOT%%:*},end_step:${MOUNT_ROOT##*:},body_names:[\"pelvis\"]}")
 fi
 [ "${SPEED_LIMIT:-0}" != 0 ] && TERMS+=("+task.termination.body_speed_exceeded={limit:${SPEED_LIMIT}}")
 [ -n "${ENV_SPACING:-}" ] && TERMS+=("task.viewer.env_spacing=${ENV_SPACING}")

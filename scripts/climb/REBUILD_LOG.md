@@ -1932,3 +1932,32 @@ Videos (kinematic): `descbulb02_ref/` side and rear-right, under the videos fold
   is over a limit. `lm_train_fxbody.sbatch` SPEED_LIMIT, ENV_SPACING (`task.viewer.env_spacing`).
 - Not done: the same check at 4,096 environments (only the cluster can), and whether the climb runs would
   also gain from the speed limit (their robots get within 0.75 m of the next cell).
+
+### Foot terms hurt the climb; stance-only foot terms and a gated mount term (Nov 23 UTC)
+
+- Whole-clip foot terms (`FEET=1`, `tight_feet_*`), added to `edge87fx` to bring the heels inside the
+  platform, made S02 in the benchmark worse: checkpoint 8,400 (before them) reaches the platform and stands
+  on 4 of 4 seeds, failing only `soles_within_ladder_top` (heels 49-114 mm over the open edge);
+  8,700 / 9,000 / 9,300 (after them) reach it on 0 of 4. That run is stopped. 8,400 is pinned.
+- `bulb_hand.py` `stance_feet_pos_tracking` / `stance_feet_ori_tracking` (new): the same two ankle terms,
+  counted only from `start_step` on and neutral (1.0) before it, so the climb itself is left as trained.
+  `lm_train_fxbody.sbatch` `FEET=stance`, `FEET_START` (default 1450); profile suffix `stance` in the multi
+  script. Run `edge87st` (job 15579037, from 8,400, `FEET_START=1500`, to 15,900) is training.
+- `bulb21fx` (S10 clip `bulb21`, benchmark body, bulb profile). Trainer, clip start, 64 robots: 26, then 8
+  just after the pre-emption restart, then 34 complete the clip. Benchmark S10, checkpoints 14,700 / 15,600
+  / 15,900: every seed falls at steps 502-528, the first step up with one hand on the ladder. No bulb run
+  has passed the first tread.
+- Where it goes wrong: at clip steps 380-420 the benchmark robot is 6-8.5 cm behind the clip (4-5 cm in the
+  trainer), the left shoulder_roll motor is at its torque limit from then on, and the robot falls backward
+  at steps 470-500, when the pelvis should travel forward and up. In the trainer 61 of 64 get through.
+  Why the benchmark robot ends 2-3 cm further back than the trainer's is not explained.
+- `bulb_hand.py` `mount_root_pos_tracking` (new): the pelvis' world position held to the clip between
+  `start_step` and `end_step`, neutral elsewhere. `lm_train_fxbody.sbatch` `MOUNT_ROOT=FROM:TO`. The walk-in
+  before it stays free, so a randomised spawn is still absorbed there. Local smoke on checkpoint 15,900 with
+  `300:520`: a 3-iteration training run exits 0; in a 530-step probe the term pays 0.287 of 0.5 and 58 of
+  64 robots are still up at step 530. That is the term loading and being unsatisfied, not evidence it helps.
+- `bulb21fx` restarts from its newest checkpoint with `MOUNT_ROOT=300:520`; checkpoints 16,500 and 16,800
+  (before the term) are pinned. To test: S10 on 3 seeds at about 300 and 600 iterations after the restart,
+  distance behind the clip at step 400 and whether tread 1 is reached.
+- Descents: `desc01fx` (job 15578517) with lift 0.03, speed limit 6, spacing 6 is training at 4,096
+  environments with no PhysX errors in its first 92 iterations; the earlier failures came at about 250.
