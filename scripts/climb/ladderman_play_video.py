@@ -12,6 +12,7 @@ in advance.
     python scripts/play_video.py algo=teacher task=teacher checkpoint_path=<...> \
         headless=true app.enable_cameras=true task.num_envs=4 +probe_steps=1000 +out=<dir>
 """
+
 import itertools
 import os
 import sys
@@ -37,11 +38,12 @@ def main(cfg):
     cfg.app.enable_cameras = True
     app = AppLauncher(OmegaConf.to_container(cfg.app)).app  # noqa: F841
 
-    import numpy as np
     import imageio.v2 as imageio
+    import numpy as np
+    from scripts.helpers import make_env_policy
+
     import isaaclab.sim as sim_utils
     from isaaclab.sensors import Camera, CameraCfg
-    from scripts.helpers import make_env_policy
 
     env, policy, vecnorm = make_env_policy(cfg)
     rollout_policy = policy.get_rollout_policy("eval")
@@ -58,13 +60,17 @@ def main(cfg):
     # underneath the ladder's RigidObjectCollection and the next scene.reset() indexed out of
     # bounds -- a CUDA device-side assert in rigid_object_collection.reset (job 15490885).
     td_ = env.reset()
-    cam = Camera(CameraCfg(
-        prim_path="/World/probe_cam", height=720, width=1280, data_types=["rgb"],
-        update_period=0.0,
-        spawn=sim_utils.PinholeCameraCfg(focal_length=22.0, clipping_range=(0.05, 1.0e4)),
-        offset=CameraCfg.OffsetCfg(pos=(0.0, -4.0, 2.0), rot=(1.0, 0.0, 0.0, 0.0),
-                                   convention="world"),
-    ))
+    cam = Camera(
+        CameraCfg(
+            prim_path="/World/probe_cam",
+            height=720,
+            width=1280,
+            data_types=["rgb"],
+            update_period=0.0,
+            spawn=sim_utils.PinholeCameraCfg(focal_length=22.0, clipping_range=(0.05, 1.0e4)),
+            offset=CameraCfg.OffsetCfg(pos=(0.0, -4.0, 2.0), rot=(1.0, 0.0, 0.0, 0.0), convention="world"),
+        )
+    )
     # Sensors initialise on the timeline PLAY event (SensorBase._initialize_callback). The
     # sim is ALREADY playing when this camera is constructed, so that event never fires, the
     # sensor allocates no buffers, and cam.update() dies on a missing _timestamp (job
@@ -97,18 +103,23 @@ def main(cfg):
             e = int(cand.argmax())
             picked.append(e)
             tgt = robot.data.root_pos_w[e].detach().cpu().numpy().astype(float)
-            lad = base.scene["ladder"].data.object_pos_w[e, 0].detach().cpu().numpy().astype(float) \
-                if hasattr(base.scene["ladder"].data, "object_pos_w") else tgt
+            lad = (
+                base.scene["ladder"].data.object_pos_w[e, 0].detach().cpu().numpy().astype(float)
+                if hasattr(base.scene["ladder"].data, "object_pos_w")
+                else tgt
+            )
             outv = tgt[:2] - lad[:2]
             n = np.linalg.norm(outv)
             outv = outv / n if n > 1e-6 else np.array([0.0, -1.0])
             side = np.array([-outv[1], outv[0]])
-            eye = np.array([tgt[0] + outv[0] * 2.6 + side[0] * 1.9,
-                            tgt[1] + outv[1] * 2.6 + side[1] * 1.9, tgt[2] + 0.7])
+            eye = np.array(
+                [tgt[0] + outv[0] * 2.6 + side[0] * 1.9, tgt[1] + outv[1] * 2.6 + side[1] * 1.9, tgt[2] + 0.7]
+            )
             look = np.array([tgt[0], tgt[1], tgt[2] - 0.15])
             cam.set_world_poses_from_view(
                 torch.tensor(eye, dtype=torch.float32, device=dev).expand(1, 3),
-                torch.tensor(look, dtype=torch.float32, device=dev).expand(1, 3))
+                torch.tensor(look, dtype=torch.float32, device=dev).expand(1, 3),
+            )
             base.sim.render()
             cam.update(0.0)
             frames.append(cam.data.output["rgb"][0, ..., :3].detach().cpu().numpy().astype(np.uint8))
@@ -116,14 +127,19 @@ def main(cfg):
             done = td.get(("next", "done"), td.get("done")).reshape(-1).bool()
             alive = alive & ~done
             if (i + 1) % 100 == 0:
-                print(f"[video] step {i+1:4d}  alive {int(alive.sum())}/{base.num_envs}  "
-                      f"following env {e}  pelvis {float(z[e]):.3f}  best {float(best.max()):.3f}",
-                      flush=True)
+                print(
+                    f"[video] step {i + 1:4d}  alive {int(alive.sum())}/{base.num_envs}  "
+                    f"following env {e}  pelvis {float(z[e]):.3f}  best {float(best.max()):.3f}",
+                    flush=True,
+                )
 
     gain = (best - z0) * 1000.0
-    d = float(np.abs(frames[0].astype(np.int16) - frames[len(frames)//2].astype(np.int16)).mean())
-    print(f"[video] frame-difference check: {d:.2f}/255 "
-          f"({'OK' if d >= 1.0 else 'FAILED - frames identical, camera saw nothing'})", flush=True)
+    d = float(np.abs(frames[0].astype(np.int16) - frames[len(frames) // 2].astype(np.int16)).mean())
+    print(
+        f"[video] frame-difference check: {d:.2f}/255 "
+        f"({'OK' if d >= 1.0 else 'FAILED - frames identical, camera saw nothing'})",
+        flush=True,
+    )
     mp4 = os.path.join(out, "ladderman_climb.mp4")
     imageio.mimwrite(mp4, frames, fps=50, codec="libx264", quality=8)
     print(f"[video] {len(frames)} frames -> {mp4}", flush=True)
@@ -139,6 +155,7 @@ if __name__ == "__main__":
         main()
     except Exception:
         import traceback
+
         traceback.print_exc()
         sys.stdout.flush()
         sys.stderr.flush()

@@ -29,6 +29,7 @@ Collection order (positional, which is what `object_contact` indexes):
 `create_ladder_cfg_maybe_railsegs` dispatches: with `rail_segments=0` it calls LadderMan's own
 function unchanged, so the original behaviour is always one config key away.
 """
+
 from __future__ import annotations
 
 import math
@@ -57,19 +58,19 @@ def create_ladder_cfg_railsegs(
     rung_spacing: float = 0.2492,
     inclination_deg: float = 70.3,
     align_rungs_to_incline: bool = False,
-    contact_idx: int = 0,            # consumed by the tracking command, not here
+    contact_idx: int = 0,  # consumed by the tracking command, not here
     rail_segments: int = 6,
-    rail_lateral: float = 0.040,     # MEASURED cross-section across the ladder's width
-    rail_depth: float = 0.0745,      # MEASURED cross-section front-to-back
-    rail_offset: float = 0.225,      # MEASURED centre offset from the ladder centreline
+    rail_lateral: float = 0.040,  # MEASURED cross-section across the ladder's width
+    rail_depth: float = 0.0745,  # MEASURED cross-section front-to-back
+    rail_offset: float = 0.225,  # MEASURED centre offset from the ladder centreline
     rail_z_lo: float = 0.25,
-    rail_z_hi: float = 1.35,         # MEASURED: the climbing-side rail ends here
+    rail_z_hi: float = 1.35,  # MEASURED: the climbing-side rail ends here
     top_cap: bool = True,
-    top_cap_z: float = 1.845,        # MEASURED apex height
+    top_cap_z: float = 1.845,  # MEASURED apex height
     top_cap_lateral: float = 0.063,  # MEASURED across
-    top_cap_depth: float = 0.107,    # MEASURED fore-aft
-    top_cap_len: float = 0.090,      # along the ladder axis
-    top_cap_offset: float = 0.220,   # MEASURED centre offset
+    top_cap_depth: float = 0.107,  # MEASURED fore-aft
+    top_cap_len: float = 0.090,  # along the ladder axis
+    top_cap_offset: float = 0.220,  # MEASURED centre offset
 ):
     import isaaclab.sim as sim_utils
     from isaaclab.assets import RigidObjectCfg, RigidObjectCollectionCfg
@@ -79,8 +80,7 @@ def create_ladder_cfg_railsegs(
     z_rot = (math.cos(-math.pi * 0.25), 0.0, 0.0, math.sin(-math.pi * 0.25))
 
     rung_rotation = (
-        (math.cos(angle / 2.0), 0.0, math.sin(angle / 2.0), 0.0)
-        if align_rungs_to_incline else (1.0, 0.0, 0.0, 0.0)
+        (math.cos(angle / 2.0), 0.0, math.sin(angle / 2.0), 0.0) if align_rungs_to_incline else (1.0, 0.0, 0.0, 0.0)
     )
     rung_rotation = _quat_mul(z_rot, rung_rotation)
     rail_rotation = _quat_mul(z_rot, (math.cos(angle / 2.0), 0.0, math.sin(angle / 2.0), 0.0))
@@ -92,8 +92,7 @@ def create_ladder_cfg_railsegs(
                 size=size,
                 activate_contact_sensors=False,
                 mass_props=sim_utils.MassPropertiesCfg(mass=mass),
-                rigid_props=sim_utils.RigidBodyPropertiesCfg(
-                    kinematic_enabled=True, rigid_body_enabled=True),
+                rigid_props=sim_utils.RigidBodyPropertiesCfg(kinematic_enabled=True, rigid_body_enabled=True),
                 collision_props=sim_utils.CollisionPropertiesCfg(collision_enabled=True),
                 visual_material=sim_utils.PreviewSurfaceCfg(diffuse_color=colour),
             ),
@@ -103,11 +102,21 @@ def create_ladder_cfg_railsegs(
     objs = []
     for i in range(num_rungs):
         s = i * rung_spacing
-        pos = (base_position[0] + direction[0] * s + i * rung_offset,
-               base_position[1] + direction[1] * s,
-               base_position[2] + direction[2] * s)
-        objs.append(cuboid((rung_length, rung_width, rung_height), rung_mass, pos,
-                           rung_rotation, f"{prim_path}_rung_{i}", (0.4, 0.2, 0.0)))
+        pos = (
+            base_position[0] + direction[0] * s + i * rung_offset,
+            base_position[1] + direction[1] * s,
+            base_position[2] + direction[2] * s,
+        )
+        objs.append(
+            cuboid(
+                (rung_length, rung_width, rung_height),
+                rung_mass,
+                pos,
+                rung_rotation,
+                f"{prim_path}_rung_{i}",
+                (0.4, 0.2, 0.0),
+            )
+        )
 
     # Rail segments, one object per height so a hand target climbs. Placed by WORLD z and then
     # projected back onto the ladder axis, because the measurements above are heights off the
@@ -121,13 +130,17 @@ def create_ladder_cfg_railsegs(
             s = s_lo + (k + 0.5) * seg_len
             cx = base_position[0] + direction[0] * s
             cz = base_position[2] + direction[2] * s
-            for sign in (-1.0, +1.0):            # left first, then right -> N+2k, N+2k+1
-                objs.append(cuboid(
-                    (seg_len, rail_lateral, rail_depth), rung_mass,
-                    (cx, base_position[1] + sign * rail_offset, cz),
-                    rail_rotation,
-                    f"{prim_path}_rail_{'L' if sign < 0 else 'R'}_{k}",
-                    (0.0, 0.35, 0.45)))
+            for sign in (-1.0, +1.0):  # left first, then right -> N+2k, N+2k+1
+                objs.append(
+                    cuboid(
+                        (seg_len, rail_lateral, rail_depth),
+                        rung_mass,
+                        (cx, base_position[1] + sign * rail_offset, cz),
+                        rail_rotation,
+                        f"{prim_path}_rail_{'L' if sign < 0 else 'R'}_{k}",
+                        (0.0, 0.35, 0.45),
+                    )
+                )
 
     # The TOP CAP, where the front rails and back legs meet at the apex. MEASURED: a pair of
     # members at x = +/-0.22, 60-66 mm x ~107 mm, spanning y +0.158..+0.265 around z 1.84-1.86.
@@ -139,15 +152,18 @@ def create_ladder_cfg_railsegs(
         cx = base_position[0] + direction[0] * s_cap
         cz = base_position[2] + direction[2] * s_cap
         for sign in (-1.0, +1.0):
-            objs.append(cuboid(
-                (top_cap_len, top_cap_lateral, top_cap_depth), rung_mass,
-                (cx, base_position[1] + sign * top_cap_offset, cz),
-                rail_rotation,
-                f"{prim_path}_cap_{'L' if sign < 0 else 'R'}",
-                (0.45, 0.2, 0.0)))
+            objs.append(
+                cuboid(
+                    (top_cap_len, top_cap_lateral, top_cap_depth),
+                    rung_mass,
+                    (cx, base_position[1] + sign * top_cap_offset, cz),
+                    rail_rotation,
+                    f"{prim_path}_cap_{'L' if sign < 0 else 'R'}",
+                    (0.45, 0.2, 0.0),
+                )
+            )
 
-    return RigidObjectCollectionCfg(
-        rigid_objects={f"rung_{i}": cfg for i, cfg in enumerate(objs)})
+    return RigidObjectCollectionCfg(rigid_objects={f"rung_{i}": cfg for i, cfg in enumerate(objs)})
 
 
 def create_ladder_cfg_maybe_railsegs(**kw):
@@ -155,33 +171,46 @@ def create_ladder_cfg_maybe_railsegs(**kw):
     if int(kw.get("rail_segments", 0) or 0) > 0:
         return create_ladder_cfg_railsegs(**kw)
     kw.pop("rail_segments", None)
-    for k in ("rail_lateral", "rail_depth", "rail_offset", "rail_z_lo", "rail_z_hi",
-              "top_cap", "top_cap_z", "top_cap_lateral", "top_cap_depth", "top_cap_len",
-              "top_cap_offset"):
+    for k in (
+        "rail_lateral",
+        "rail_depth",
+        "rail_offset",
+        "rail_z_lo",
+        "rail_z_hi",
+        "top_cap",
+        "top_cap_z",
+        "top_cap_lateral",
+        "top_cap_depth",
+        "top_cap_len",
+        "top_cap_offset",
+    ):
         kw.pop(k, None)
     from .ladder_env import create_ladder_cfg
+
     return create_ladder_cfg(**kw)
 
 
 def describe(num_rungs: int, rail_segments: int, **kw) -> str:
     """The index map, so a clip author can see which label addresses what."""
     import math as _m
+
     angle = _m.radians(kw.get("inclination_deg", 70.3))
     base = kw.get("base_position", (-0.58, 0.0, 0.196))
     sp = kw.get("rung_spacing", 0.2492)
     rh = kw.get("rung_height", 0.080)
     lines = [f"{'idx':>4}  {'object':<16} {'top z':>8}"]
     for i in range(num_rungs):
-        lines.append(f"{i:>4}  {'rung ' + str(i):<16} {base[2] + i*sp*_m.sin(angle) + rh/2:>8.3f}")
+        lines.append(f"{i:>4}  {'rung ' + str(i):<16} {base[2] + i * sp * _m.sin(angle) + rh / 2:>8.3f}")
     lo, hi = kw.get("rail_z_lo", 0.25), kw.get("rail_z_hi", 1.35)
-    s_lo = (lo - base[2]) / _m.sin(angle); s_hi = (hi - base[2]) / _m.sin(angle)
+    s_lo = (lo - base[2]) / _m.sin(angle)
+    s_hi = (hi - base[2]) / _m.sin(angle)
     seg = (s_hi - s_lo) / max(rail_segments, 1)
     for k in range(rail_segments):
         z = base[2] + (s_lo + (k + 0.5) * seg) * _m.sin(angle)
-        lines.append(f"{num_rungs+2*k:>4}  {'rail L seg ' + str(k):<16} {z:>8.3f}")
-        lines.append(f"{num_rungs+2*k+1:>4}  {'rail R seg ' + str(k):<16} {z:>8.3f}")
+        lines.append(f"{num_rungs + 2 * k:>4}  {'rail L seg ' + str(k):<16} {z:>8.3f}")
+        lines.append(f"{num_rungs + 2 * k + 1:>4}  {'rail R seg ' + str(k):<16} {z:>8.3f}")
     if kw.get("top_cap", True):
         b = num_rungs + 2 * rail_segments
         lines.append(f"{b:>4}  {'top cap L':<16} {kw.get('top_cap_z', 1.845):>8.3f}")
-        lines.append(f"{b+1:>4}  {'top cap R':<16} {kw.get('top_cap_z', 1.845):>8.3f}")
+        lines.append(f"{b + 1:>4}  {'top cap R':<16} {kw.get('top_cap_z', 1.845):>8.3f}")
     return "\n".join(lines)

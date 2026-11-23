@@ -26,10 +26,10 @@ the benchmark is corrected, regenerate with --no-phantom.
 
     python make_dex3_urdf.py --urdf <ladderman g1 urdf> --out <dir>
 """
+
 from __future__ import annotations
 
 import argparse
-import copy
 import json
 import pathlib
 import struct
@@ -51,8 +51,16 @@ SIM = json.loads((HERE / "fx_dex3_sim_mass.json").read_text())
 PTS = np.load(HERE / "dex3_hand_collision_points.npz")
 out = pathlib.Path(a.out)
 (out / "meshes").mkdir(parents=True, exist_ok=True)
-HAND_LINKS = ["hand_palm_link", "hand_index_0_link", "hand_index_1_link", "hand_middle_0_link",
-              "hand_middle_1_link", "hand_thumb_0_link", "hand_thumb_1_link", "hand_thumb_2_link"]
+HAND_LINKS = [
+    "hand_palm_link",
+    "hand_index_0_link",
+    "hand_index_1_link",
+    "hand_middle_0_link",
+    "hand_middle_1_link",
+    "hand_thumb_0_link",
+    "hand_thumb_1_link",
+    "hand_thumb_2_link",
+]
 
 
 def offsets(side):
@@ -71,9 +79,10 @@ def offsets(side):
 def reduce_hull(P, n=60):
     """<= n hull vertices (PhysX cooks at most 64): support points in n spread directions."""
     k = np.arange(n) + 0.5
-    ph, th = np.arccos(1 - 2 * k / n), np.pi * (1 + 5 ** 0.5) * k
-    D = np.concatenate([np.stack([np.cos(th) * np.sin(ph), np.sin(th) * np.sin(ph), np.cos(ph)], 1),
-                        np.eye(3), -np.eye(3)])
+    ph, th = np.arccos(1 - 2 * k / n), np.pi * (1 + 5**0.5) * k
+    D = np.concatenate(
+        [np.stack([np.cos(th) * np.sin(ph), np.sin(th) * np.sin(ph), np.cos(ph)], 1), np.eye(3), -np.eye(3)]
+    )
     V = P[np.unique((P @ D.T).argmax(0))]
     return V[ConvexHull(V).vertices]
 
@@ -96,9 +105,13 @@ def write_stl(path, V):
 
 def quat_R(q):
     w, x, y, z = q
-    return np.array([[1 - 2 * (y * y + z * z), 2 * (x * y - z * w), 2 * (x * z + y * w)],
-                     [2 * (x * y + z * w), 1 - 2 * (x * x + z * z), 2 * (y * z - x * w)],
-                     [2 * (x * z - y * w), 2 * (y * z + x * w), 1 - 2 * (x * x + y * y)]])
+    return np.array(
+        [
+            [1 - 2 * (y * y + z * z), 2 * (x * y - z * w), 2 * (x * z + y * w)],
+            [2 * (x * y + z * w), 1 - 2 * (x * x + z * z), 2 * (y * z - x * w)],
+            [2 * (x * z - y * w), 2 * (y * z + x * w), 1 - 2 * (x * x + y * y)],
+        ]
+    )
 
 
 def hand_inertial(side):
@@ -110,7 +123,9 @@ def hand_inertial(side):
         c = off[ln] + np.array(u["com"], float)
         R = quat_R(u["axes"])
         I = R @ np.diag(u["inertia"]) @ R.T
-        M += m; mc += m * c; parts.append((m, c, I))
+        M += m
+        mc += m * c
+        parts.append((m, c, I))
     com = mc / M
     I = np.zeros((3, 3))
     for m, c, Ic in parts:
@@ -126,14 +141,24 @@ def set_inertial(link, mass, com, I):
     el = ET.SubElement(link, "inertial")
     ET.SubElement(el, "origin", xyz=" ".join(f"{v:.6g}" for v in com), rpy="0 0 0")
     ET.SubElement(el, "mass", value=f"{mass:.6g}")
-    ET.SubElement(el, "inertia", ixx=f"{I[0,0]:.6g}", ixy=f"{I[0,1]:.6g}", ixz=f"{I[0,2]:.6g}",
-                  iyy=f"{I[1,1]:.6g}", iyz=f"{I[1,2]:.6g}", izz=f"{I[2,2]:.6g}")
+    ET.SubElement(
+        el,
+        "inertia",
+        ixx=f"{I[0, 0]:.6g}",
+        ixy=f"{I[0, 1]:.6g}",
+        ixz=f"{I[0, 2]:.6g}",
+        iyy=f"{I[1, 1]:.6g}",
+        iyz=f"{I[1, 2]:.6g}",
+        izz=f"{I[2, 2]:.6g}",
+    )
 
 
 tree = ET.parse(a.urdf)
 root = tree.getroot()
 links = {l.get("name"): l for l in root.findall("link")}
-total0 = sum(float(l.find("inertial").find("mass").get("value")) for l in links.values() if l.find("inertial") is not None)
+total0 = sum(
+    float(l.find("inertial").find("mass").get("value")) for l in links.values() if l.find("inertial") is not None
+)
 
 for side in ("left", "right"):
     hl = links[f"{side}_rubber_hand"]
@@ -159,9 +184,9 @@ if a.phantom:
     for name in ("imu_in_pelvis", "imu_in_torso", "mid360_link", "d435_link"):
         s = SIM[name]
         I = np.diag(s["inertia"][0::4]) if len(s["inertia"]) == 9 else np.diag(s["inertia"][:3])
-        if name not in links:                              # d435_link: not in LadderMan's URDF
+        if name not in links:  # d435_link: not in LadderMan's URDF
             par = USD[name]["parent"]
-            T = np.linalg.inv(np.array(USD[par]["M"]).T) @ np.array(USD[name]["M"]).T     # child in parent
+            T = np.linalg.inv(np.array(USD[par]["M"]).T) @ np.array(USD[name]["M"]).T  # child in parent
             l = ET.SubElement(root, "link", name=name)
             j = ET.SubElement(root, "joint", name=name.replace("_link", "") + "_phantom_joint", type="fixed")
             ET.SubElement(j, "origin", xyz=" ".join(f"{v:.6g}" for v in T[:3, 3]), rpy="0 0 0")
@@ -172,10 +197,14 @@ if a.phantom:
         set_inertial(links[name], float(s["mass"]), np.zeros(3), I)
         print(f"[phantom] {name}: {s['mass']:.3f} kg, inertia diag {np.diag(I).round(6)}")
 
-total1 = sum(float(l.find("inertial").find("mass").get("value")) for l in links.values() if l.find("inertial") is not None)
+total1 = sum(
+    float(l.find("inertial").find("mass").get("value")) for l in links.values() if l.find("inertial") is not None
+)
 ET.indent(tree, space="  ")
 dst = out / f"{a.name}.urdf"
 tree.write(dst, xml_declaration=True, encoding="utf-8")
 sim_total = sum(v["mass"] for v in SIM.values())
-print(f"[mass] URDF {total0:.3f} -> {total1:.3f} kg; benchmark robot in the sim {sim_total:.3f} kg; difference {total1 - sim_total:+.3f}")
+print(
+    f"[mass] URDF {total0:.3f} -> {total1:.3f} kg; benchmark robot in the sim {sim_total:.3f} kg; difference {total1 - sim_total:+.3f}"
+)
 print(f"[out ] {dst}")

@@ -22,8 +22,13 @@ This runs the same replay but STEPS PHYSICS each frame, with:
 Non-zero force on a body = that body's real collision mesh overlaps the ladder's real collision
 mesh at that frame. That is ground truth, and it replaces the radius guesses.
 """
+
 from __future__ import annotations
-import argparse, json, math, os, sys
+
+import argparse
+import json
+import os
+import sys
 
 from isaaclab.app import AppLauncher
 
@@ -35,25 +40,38 @@ ap.add_argument("--robot", default="dex3", choices=["inspire", "dex3"])
 ap.add_argument("--seed", type=int, default=0)
 ap.add_argument("--stride", type=int, default=2, help="check every Nth frame")
 ap.add_argument("--force-eps", type=float, default=1e-3, help="N, above which a contact counts")
-ap.add_argument("--expect", default="ankle_roll",
-                help="comma-separated substrings naming bodies that are SUPPOSED to touch the "
-                     "ladder. Feet always; add hand/wrist once the hands are on the rails, or "
-                     "their contact swamps the score and hides the legs.")
-ap.add_argument("--ladder", default="kinematic", choices=["kinematic", "dynamic"],
-                help="kinematic: same collider, immovable (correct for a clearance measurement). "
-                     "dynamic: S02's shipped ladder, which drifts under contact with gravity off.")
+ap.add_argument(
+    "--expect",
+    default="ankle_roll",
+    help="comma-separated substrings naming bodies that are SUPPOSED to touch the "
+    "ladder. Feet always; add hand/wrist once the hands are on the rails, or "
+    "their contact swamps the score and hides the legs.",
+)
+ap.add_argument(
+    "--ladder",
+    default="kinematic",
+    choices=["kinematic", "dynamic"],
+    help="kinematic: same collider, immovable (correct for a clearance measurement). "
+    "dynamic: S02's shipped ladder, which drifts under contact with gravity off.",
+)
 AppLauncher.add_app_launcher_args(ap)
 a = ap.parse_args()
-a.enable_cameras = True   # S02 spawns the ego camera; the flag is required to build the scene even though we never render
+a.enable_cameras = (
+    True  # S02 spawns the ego camera; the flag is required to build the scene even though we never render
+)
 a.headless = True
 app = AppLauncher(a).app
 
-import gymnasium as gym, numpy as np, torch
 import fiatlux_task.tasks  # noqa: F401
-import isaaclab_tasks  # noqa: F401
-from isaaclab.sensors import ContactSensorCfg
-from isaaclab_tasks.utils import parse_env_cfg
+import gymnasium as gym
+import numpy as np
+import torch
 from fiatlux_task.tasks.manager_based.fiatlux_task.scene_cfg import set_layout_seed
+
+from isaaclab.sensors import ContactSensorCfg
+
+import isaaclab_tasks  # noqa: F401
+from isaaclab_tasks.utils import parse_env_cfg
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
@@ -65,6 +83,7 @@ def main() -> int:
     cfg.seed = a.seed
     if a.robot != "inspire":
         from fiatlux_task.robots.g1 import swap_robot_variant
+
         swap_robot_variant(cfg, a.robot)
 
     # Gravity off: the robot is posed by hand every frame, so the only thing we want PhysX to
@@ -81,21 +100,24 @@ def main() -> int:
         track_air_time=False,
     )
 
-    env = gym.make(a.task, cfg=cfg); base = env.unwrapped; dev = base.device
+    env = gym.make(a.task, cfg=cfg)
+    base = env.unwrapped
+    dev = base.device
     env.reset(seed=a.seed)
-    robot = base.scene["robot"]; sensor = base.scene["ladder_contact"]
+    robot = base.scene["robot"]
+    sensor = base.scene["ladder_contact"]
     ladder = base.scene["ladder"]
     lad0 = ladder.data.root_pos_w[0].clone()
     names = list(sensor.body_names)
     print(f"[SENSOR] {len(names)} robot bodies filtered against the ladder", flush=True)
-    print(f"[SIM   ] gravity {tuple(cfg.sim.gravity)}  dt {base.sim.get_physics_dt()}  "
-          f"ladder={a.ladder}", flush=True)
+    print(f"[SIM   ] gravity {tuple(cfg.sim.gravity)}  dt {base.sim.get_physics_dt()}  ladder={a.ladder}", flush=True)
 
     clip = np.load(a.clip)
     dof = clip["dof"].astype(np.float32)
     rrot = clip["root_rot"].astype(np.float32)
     rtra = clip["root_trans_offset"].astype(np.float32)
     from retarget_clearance import JOINT_ORDER as JO
+
     idx = [list(robot.joint_names).index(n) for n in JO]
     n = len(dof)
     print(f"[CLIP  ] {a.clip}: {n} frames, checking every {a.stride}", flush=True)
@@ -116,11 +138,12 @@ def main() -> int:
         robot.write_root_velocity_to_sim(zeros6)
         robot.write_joint_state_to_sim(t_(jp), torch.zeros((1, nq), device=dev))
         base.scene.write_data_to_sim()
-        base.sim.step(render=False)                      # <-- PhysX actually runs here
+        base.sim.step(render=False)  # <-- PhysX actually runs here
         base.scene.update(base.sim.get_physics_dt())
-        fm = sensor.data.force_matrix_w                  # (1, bodies, filters, 3)
+        fm = sensor.data.force_matrix_w  # (1, bodies, filters, 3)
         if fm is None:
-            print("[FATAL] sensor returned no force matrix", flush=True); return 2
+            print("[FATAL] sensor returned no force matrix", flush=True)
+            return 2
         f = torch.linalg.norm(fm[0, :, 0, :], dim=-1).detach().cpu().numpy()
         for b in np.flatnonzero(f > a.force_eps):
             frames_hit[int(b)].append(i)
@@ -133,34 +156,50 @@ def main() -> int:
     hits = [(names[b], len(v), peak[b], v[0], v[-1]) for b, v in frames_hit.items() if v]
     hits.sort(key=lambda r: -r[2])
     print(f"\n[RESULT] {checked} frames stepped through PhysX with the real collision meshes")
-    print(f"[LADDER] max drift during the check: {drift*1000:.2f} mm "
-          f"({'held' if drift < 1e-3 else 'MOVED -- contact counts below are a LOWER BOUND'})")
+    print(
+        f"[LADDER] max drift during the check: {drift * 1000:.2f} mm "
+        f"({'held' if drift < 1e-3 else 'MOVED -- contact counts below are a LOWER BOUND'})"
+    )
     if not hits:
         print("[RESULT] NO CONTACT: no robot body overlaps the ladder at any checked frame.")
     else:
         print(f"[RESULT] {len(hits)} bodies contact the ladder:")
         print(f"   {'body':34s} {'frames':>7} {'peak N':>10} {'t range':>16}")
         for nm, cnt, pk, f0, f1 in hits:
-            print(f"   {nm:34s} {cnt:7d} {pk:10.1f}  {f0/50:6.2f}-{f1/50:6.2f}s")
+            print(f"   {nm:34s} {cnt:7d} {pk:10.1f}  {f0 / 50:6.2f}-{f1 / 50:6.2f}s")
     FOOT = tuple(t.strip() for t in a.expect.split(",") if t.strip())
     nonfoot = [(nm, cnt, pk) for nm, cnt, pk, _, _ in hits if not any(f in nm for f in FOOT)]
     nf_frames = sum(c for _, c, _ in nonfoot)
     nf_peak = max([p for _, _, p in nonfoot], default=0.0)
     foot_frames = sum(c for nm, c, pk, _, _ in hits if any(f in nm for f in FOOT))
     print(f"[EXPECT] bodies allowed to touch: {', '.join(FOOT)}")
-    print(f"[SCORE ] nonfoot_contact_frames={nf_frames} nonfoot_peak_N={nf_peak:.1f} "
-          f"nonfoot_bodies={len(nonfoot)} foot_contact_frames={foot_frames} checked={checked} "
-          f"ladder_drift_mm={drift*1000:.2f}",
-          flush=True)
-    json.dump({"clip": a.clip, "stride": a.stride, "checked": checked,
-               "nonfoot_contact_frames": nf_frames, "nonfoot_peak_N": nf_peak,
-               "nonfoot_bodies": len(nonfoot), "foot_contact_frames": foot_frames,
-               "ladder_mode": a.ladder, "ladder_drift_mm": drift * 1000.0,
-               "bodies": names, "peak_force_N": peak.tolist(),
-               "frames": {names[b]: v for b, v in frames_hit.items() if v}},
-              open(os.path.join(a.out, "contacts.json"), "w"), indent=2)
+    print(
+        f"[SCORE ] nonfoot_contact_frames={nf_frames} nonfoot_peak_N={nf_peak:.1f} "
+        f"nonfoot_bodies={len(nonfoot)} foot_contact_frames={foot_frames} checked={checked} "
+        f"ladder_drift_mm={drift * 1000:.2f}",
+        flush=True,
+    )
+    json.dump(
+        {
+            "clip": a.clip,
+            "stride": a.stride,
+            "checked": checked,
+            "nonfoot_contact_frames": nf_frames,
+            "nonfoot_peak_N": nf_peak,
+            "nonfoot_bodies": len(nonfoot),
+            "foot_contact_frames": foot_frames,
+            "ladder_mode": a.ladder,
+            "ladder_drift_mm": drift * 1000.0,
+            "bodies": names,
+            "peak_force_N": peak.tolist(),
+            "frames": {names[b]: v for b, v in frames_hit.items() if v},
+        },
+        open(os.path.join(a.out, "contacts.json"), "w"),
+        indent=2,
+    )
     print(f"[OK    ] wrote {a.out}/contacts.json", flush=True)
-    env.close(); return 0
+    env.close()
+    return 0
 
 
 code = main()

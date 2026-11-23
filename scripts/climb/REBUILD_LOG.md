@@ -2152,3 +2152,14 @@ Videos (kinematic): `descbulb02_ref/` side and rear-right, under the videos fold
   The two spawns furthest forward are the wedged ones; the line is between x -0.083 and -0.090. The
   ladder's top frame narrows toward the front (the same place that put the thigh in the rail when the
   descent clip was built). `desc01` starts at x -0.098, 8-15 mm on the clean side.
+- `edge87s2` 10,800 (noise 0.142), S02, 4 seeds: seed 0 stands (left heel 31-34 mm over the edge, right
+  109-111 mm); seeds 1, 2 and 3 fall at the mount (steps 437-441). Seeds 0 and 2 differ here, so the
+  earlier "two distinct cases" reading of the four seeds was wrong: 1 and 3 match, 0 and 2 need not.
+- `desc01fx` 10,500, S12 on the layouts whose first reset is clear (seeds 1, 2, 4, 5): every run gets
+  onto the first tread down; seed 1 descends to a pelvis height of 1.07 m by step 1,000 and falls at
+  1,087; the others fall at steps 430-537 with 20-30 deg of sideways tilt. Bulb seated throughout.
+- The S12 wedge is the reset jitter, not the layout: `scripts/verify_on_ladder_spawn.py` (fix branch),
+  40 zero-action resets: 8 of 40 (layout seed 0) and 12 of 40 (seed 1) wedged, all drawn more than 6 mm
+  forward of nominal. Fix: on-platform jitter drawn in the stance frame, forward -20..0 mm
+  (`fix/on-ladder-spawn-hip-clearance`, PR #272 into this branch): 0 of 240 after, on S12 (3 layouts),
+  S04, S11, S03.

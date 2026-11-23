@@ -40,6 +40,8 @@ import pathlib
 
 import numpy as np
 import torch
+from ladderman_contract import ACTION_SCALING, UNACTUATED  # noqa: E402
+
 from isaaclab.utils.math import (
     matrix_from_quat,
     quat_apply_inverse,
@@ -48,8 +50,6 @@ from isaaclab.utils.math import (
     wrap_to_pi,
     yaw_quat,
 )
-
-from ladderman_contract import ACTION_SCALING, UNACTUATED  # noqa: E402
 
 # Written by LadderMan's own trainer next to every run (`asset_meta.json`). It carries the
 # articulation's joint order and default pose as the trainer actually saw them, which is the
@@ -77,15 +77,28 @@ ASSET_META = pathlib.Path(__file__).with_name("ladderman_asset_meta.json")
 FUTURE_STEPS = (1, 2, 8, 16, 32)
 TARGET_FPS = 50
 TRACKING_BODY_PATTERNS = (
-    "{s}_hip_pitch_link", "{s}_hip_yaw_link", "{s}_knee_link", "{s}_ankle_roll_link",
-    "{s}_shoulder_pitch_link", "{s}_elbow_link", "{s}_wrist_yaw_link",
+    "{s}_hip_pitch_link",
+    "{s}_hip_yaw_link",
+    "{s}_knee_link",
+    "{s}_ankle_roll_link",
+    "{s}_shoulder_pitch_link",
+    "{s}_elbow_link",
+    "{s}_wrist_yaw_link",
 )
 TRACKING_BODY_SINGLETONS = ("pelvis", "torso_link")
 TRACKING_JOINT_SUFFIXES = (
-    "waist_yaw_joint", "waist_roll_joint", "waist_pitch_joint",
-    "{s}_hip_pitch_joint", "{s}_hip_roll_joint", "{s}_hip_yaw_joint",
-    "{s}_knee_joint", "{s}_ankle_pitch_joint", "{s}_ankle_roll_joint",
-    "{s}_shoulder_pitch_joint", "{s}_shoulder_roll_joint", "{s}_shoulder_yaw_joint",
+    "waist_yaw_joint",
+    "waist_roll_joint",
+    "waist_pitch_joint",
+    "{s}_hip_pitch_joint",
+    "{s}_hip_roll_joint",
+    "{s}_hip_yaw_joint",
+    "{s}_knee_joint",
+    "{s}_ankle_pitch_joint",
+    "{s}_ankle_roll_joint",
+    "{s}_shoulder_pitch_joint",
+    "{s}_shoulder_roll_joint",
+    "{s}_shoulder_yaw_joint",
     "{s}_elbow_joint",
 )
 POLICY_JOINT_HISTORY = (0, 1, 2, 3, 4, 8)
@@ -145,8 +158,7 @@ def _resample(motion: dict, src_fps: float, dst_fps: int) -> dict:
         out = np.stack([np.interp(ts_dst, ts_src, flat[:, i]) for i in range(flat.shape[1])], -1)
         return out.reshape(len(ts_dst), *x.shape[1:])
 
-    out = {k: lerp(motion[k]) for k in
-           ("body_pos_w", "body_lin_vel_w", "body_ang_vel_w", "joint_pos", "joint_vel")}
+    out = {k: lerp(motion[k]) for k in ("body_pos_w", "body_lin_vel_w", "body_ang_vel_w", "joint_pos", "joint_vel")}
     q = motion["body_quat_w"]
     nb = q.shape[1]
     oq = np.empty((len(ts_dst), nb, 4))
@@ -161,10 +173,17 @@ def _resample(motion: dict, src_fps: float, dst_fps: int) -> dict:
 class LadderManObs:
     """Drives a LadderMan teacher inside a fiatlux subtask env."""
 
-    def __init__(self, env, motion_dir: str, ladder_asset: str = "ladder",
-                 rung0_local=(0.0, -0.3804, 0.196), climb_dir_local=(0.0, 1.0, 0.0),
-                 asset_meta: str | None = None, rung0_obs_local=None,
-                 jpos_offset: str = "default"):
+    def __init__(
+        self,
+        env,
+        motion_dir: str,
+        ladder_asset: str = "ladder",
+        rung0_local=(0.0, -0.3804, 0.196),
+        climb_dir_local=(0.0, 1.0, 0.0),
+        asset_meta: str | None = None,
+        rung0_obs_local=None,
+        jpos_offset: str = "default",
+    ):
         self.env = env
         self.device = env.device
         self.N = env.num_envs
@@ -172,13 +191,13 @@ class LadderManObs:
         self.ladder = env.scene[ladder_asset]
 
         am = json.loads(pathlib.Path(asset_meta or ASSET_META).read_text())
-        self.lm_joint_names: list[str] = list(am["joint_names_isaac"])     # 29, Isaac order
+        self.lm_joint_names: list[str] = list(am["joint_names_isaac"])  # 29, Isaac order
         self.lm_body_names_isaac: list[str] = list(am["body_names_isaac"])
 
         d = pathlib.Path(motion_dir)
         meta = json.loads((d / "meta.json").read_text())
         raw = dict(np.load(d / "motion.npz"))
-        file_joints: list[str] = list(meta["joint_names"])                 # URDF order
+        file_joints: list[str] = list(meta["joint_names"])  # URDF order
         self.lm_body_names: list[str] = list(meta["body_names"])
         m = _resample(raw, float(meta["fps"]), TARGET_FPS)
         self.motion_len = int(m["joint_pos"].shape[0])
@@ -205,15 +224,16 @@ class LadderManObs:
         self.track_bodies = tb
 
         tj = _ordered_tracking_joints()
-        tj.sort(key=self.lm_joint_names.index)       # Isaac order, as find_joints returns
+        tj.sort(key=self.lm_joint_names.index)  # Isaac order, as find_joints returns
         self.track_j_mo = torch.tensor([self.lm_joint_names.index(n) for n in tj], device=self.device)
         self.track_joints = tj
 
         self.root_mo = self.lm_body_names.index("pelvis")
 
         # ---- LadderMan's default pose, which joint_pos_history is measured against ------------
-        self.lm_default = torch.tensor(am["default_joint_pos"], dtype=torch.float32,
-                                       device=self.device)            # [29], Isaac order
+        self.lm_default = torch.tensor(
+            am["default_joint_pos"], dtype=torch.float32, device=self.device
+        )  # [29], Isaac order
         # The actuator model the policy's residual was learned under. Ours is a different robot
         # with much stiffer, much less damped joints (waist 8.8x, shoulders 7.0x; LadderMan runs
         # a uniform kd ~ 0.064*kp where ours is 0.013-0.02), so the same position target produces
@@ -226,8 +246,7 @@ class LadderManObs:
         if len(act_names) != 23:
             raise KeyError(f"resolved {len(act_names)} actuated joints, expected 23")
         self.act_names = act_names
-        self.act_mo = torch.tensor([self.lm_joint_names.index(n) for n in act_names],
-                                   device=self.device)
+        self.act_mo = torch.tensor([self.lm_joint_names.index(n) for n in act_names], device=self.device)
         scal = []
         for n in act_names:
             hit = [v for k, v in ACTION_SCALING.items() if k in n]
@@ -256,8 +275,9 @@ class LadderManObs:
             raise ValueError(jpos_offset)
         self.jpos_offset = jpos_offset
         # the six wrist joints, for teachers whose wrists follow the clip (action_refwrist.py)
-        self.wrist_mo = torch.tensor([i for i, n in enumerate(self.lm_joint_names) if any(u in n for u in UNACTUATED)],
-                                     device=self.device)
+        self.wrist_mo = torch.tensor(
+            [i for i, n in enumerate(self.lm_joint_names) if any(u in n for u in UNACTUATED)], device=self.device
+        )
         t = torch.as_tensor
         self.ref_body_pos = self._to_world_p(t(m["body_pos_w"], dtype=torch.float32, device=self.device))
         self.ref_body_quat = self._to_world_q(t(m["body_quat_w"], dtype=torch.float32, device=self.device))
@@ -283,18 +303,17 @@ class LadderManObs:
         tread centre in the ladder's local frame and the climb runs along the ladder's local +y,
         so the map is a yaw by the difference plus the offset between the two rung-0 points.
         """
-        lp = torch.as_tensor(self.ladder.data.root_pos_w, device=self.device)[:1]       # [1,3]
+        lp = torch.as_tensor(self.ladder.data.root_pos_w, device=self.device)[:1]  # [1,3]
         lq = torch.as_tensor(self.ladder.data.root_quat_w, device=self.device)[:1]
         r0 = torch.tensor(rung0_local, device=self.device, dtype=torch.float32)[None]
         cd = torch.tensor(climb_dir_local, device=self.device, dtype=torch.float32)[None]
-        R = matrix_from_quat(lq)                                                        # [1,3,3]
+        R = matrix_from_quat(lq)  # [1,3,3]
         self.rung0_w = lp + (R @ r0[..., None]).squeeze(-1)
         climb_w = (R @ cd[..., None]).squeeze(-1)
-        self.climb_yaw = torch.atan2(climb_w[:, 1], climb_w[:, 0])                      # [1]
-        dyaw = self.climb_yaw - 0.0                                                     # motion climbs +x
+        self.climb_yaw = torch.atan2(climb_w[:, 1], climb_w[:, 0])  # [1]
+        dyaw = self.climb_yaw - 0.0  # motion climbs +x
         h = dyaw / 2
-        self.dq = torch.stack([torch.cos(h), torch.zeros_like(h), torch.zeros_like(h),
-                               torch.sin(h)], -1)                                       # [1,4]
+        self.dq = torch.stack([torch.cos(h), torch.zeros_like(h), torch.zeros_like(h), torch.sin(h)], -1)  # [1,4]
         base = torch.tensor(LM_BASE, device=self.device, dtype=torch.float32)[None]
         self.dz = float((self.rung0_w[0, 2] - base[0, 2]).item())
         self.base = base
@@ -351,20 +370,20 @@ class LadderManObs:
     # -- reference slices --------------------------------------------------------------------
     def _future_idx(self) -> torch.Tensor:
         f = torch.tensor(FUTURE_STEPS, device=self.device)
-        return torch.clamp(self.t[:, None] + f[None], max=self.motion_len - 1)   # [N,F]
+        return torch.clamp(self.t[:, None] + f[None], max=self.motion_len - 1)  # [N,F]
 
     # -- groups ------------------------------------------------------------------------------
     def command(self) -> torch.Tensor:
         fi = self._future_idx()
-        rb = self.ref_body_pos[fi][:, :, self.track_b_mo]                # [N,F,B,3]
-        rr_p = self.ref_body_pos[self.t][:, self.root_mo].clone()        # [N,3]
-        rr_q = yaw_quat(self.ref_body_quat[self.t][:, self.root_mo])     # [N,4]
+        rb = self.ref_body_pos[fi][:, :, self.track_b_mo]  # [N,F,B,3]
+        rr_p = self.ref_body_pos[self.t][:, self.root_mo].clone()  # [N,3]
+        rr_q = yaw_quat(self.ref_body_quat[self.t][:, self.root_mo])  # [N,4]
         rr_p[:, 2] = 0.0
         local = quat_apply_inverse(
             rr_q[:, None, None].expand(-1, rb.shape[1], rb.shape[2], -1),
             rb - rr_p[:, None, None],
         )
-        rj = self.ref_joint_pos[fi][:, :, self.track_j_mo]               # [N,F,J]
+        rj = self.ref_joint_pos[fi][:, :, self.track_j_mo]  # [N,F,J]
         phase = (self.t.float() / self.motion_len)[:, None]
         return torch.cat([local.reshape(self.N, -1), rj.reshape(self.N, -1), phase], -1)
 
@@ -372,21 +391,25 @@ class LadderManObs:
         if self.jpos_offset == "default":
             return self.buf_jpos - self.lm_default[None, None]
         off = torch.zeros(self.N, self.buf_jpos.shape[-1], device=self.device)
-        off[:, self.wrist_mo] = (self.ref_joint_pos[self.t][:, self.wrist_mo]
-                                 - self.lm_default[self.wrist_mo][None])
+        off[:, self.wrist_mo] = self.ref_joint_pos[self.t][:, self.wrist_mo] - self.lm_default[self.wrist_mo][None]
         return self.buf_jpos - off[:, None]
 
     def policy(self) -> torch.Tensor:
         jp = self._jpos_rel()[:, list(POLICY_JOINT_HISTORY)]
-        return torch.cat([
-            self.buf_angvel[:, [0]].reshape(self.N, -1),
-            self.buf_gravity[:, [0]].reshape(self.N, -1),
-            jp.reshape(self.N, -1),
-            # LadderMan's action_buf is [N, joint, history] and prev_actions flattens it as is, so the
-            # layout is joint-major: (a0[t], a0[t-1], a0[t-2], a1[t], ...). "refwrist" mode uses that;
-            # "default" keeps this file's earlier history-major layout for the older teachers.
-            (self.buf_action.permute(0, 2, 1) if self.jpos_offset == "refwrist" else self.buf_action).reshape(self.N, -1),
-        ], -1)
+        return torch.cat(
+            [
+                self.buf_angvel[:, [0]].reshape(self.N, -1),
+                self.buf_gravity[:, [0]].reshape(self.N, -1),
+                jp.reshape(self.N, -1),
+                # LadderMan's action_buf is [N, joint, history] and prev_actions flattens it as is, so the
+                # layout is joint-major: (a0[t], a0[t-1], a0[t-2], a1[t], ...). "refwrist" mode uses that;
+                # "default" keeps this file's earlier history-major layout for the older teachers.
+                (self.buf_action.permute(0, 2, 1) if self.jpos_offset == "refwrist" else self.buf_action).reshape(
+                    self.N, -1
+                ),
+            ],
+            -1,
+        )
 
     def object(self) -> torch.Tensor:
         rq = yaw_quat(self.robot.data.root_quat_w)
@@ -404,7 +427,7 @@ class LadderManObs:
         rq_root = self.robot.data.root_quat_w
         rp_root = self.robot.data.root_pos_w
 
-        ref_root_p = self.ref_body_pos[fi][:, :, self.root_mo]                       # [N,F,3]
+        ref_root_p = self.ref_body_pos[fi][:, :, self.root_mo]  # [N,F,3]
         ref_root_q = self.ref_body_quat[fi][:, :, self.root_mo]
         rrp = quat_apply_inverse(rq_root[:, None].expand(-1, F, -1), ref_root_p - rp_root[:, None])
         rrq = quat_mul(quat_conjugate(rq_root[:, None]).expand(-1, F, -1), ref_root_q)
@@ -415,22 +438,22 @@ class LadderManObs:
         mr_p = self.ref_body_pos[self.t][:, self.root_mo].clone()
         mr_p[:, 2] = 0.0
         e = (self.N, F, B, -1)
-        ref_p = quat_apply_inverse(mr_q.expand(*e[:3], 4),
-                                   self.ref_body_pos[fi][:, :, self.track_b_mo] - mr_p[:, None, None])
+        ref_p = quat_apply_inverse(
+            mr_q.expand(*e[:3], 4), self.ref_body_pos[fi][:, :, self.track_b_mo] - mr_p[:, None, None]
+        )
         ref_v = quat_apply_inverse(mr_q.expand(*e[:3], 4), self.ref_body_linvel[fi][:, :, self.track_b_mo])
         ref_w = quat_apply_inverse(mr_q.expand(*e[:3], 4), self.ref_body_angvel[fi][:, :, self.track_b_mo])
-        ref_q = quat_mul(quat_conjugate(mr_q).expand(*e[:3], 4),
-                         self.ref_body_quat[fi][:, :, self.track_b_mo])
+        ref_q = quat_mul(quat_conjugate(mr_q).expand(*e[:3], 4), self.ref_body_quat[fi][:, :, self.track_b_mo])
 
         # robot, in its own yaw frame
         br_q = yaw_quat(rq_root)[:, None]
         bp = self.robot.data.body_pos_w[:, self.track_b_fx]
-        brp = rp_root.clone(); brp[:, 2] = 0.0
+        brp = rp_root.clone()
+        brp[:, 2] = 0.0
         rob_p = quat_apply_inverse(br_q.expand(self.N, B, 4), bp - brp[:, None])
         rob_v = quat_apply_inverse(br_q.expand(self.N, B, 4), self.robot.data.body_lin_vel_w[:, self.track_b_fx])
         rob_w = quat_apply_inverse(br_q.expand(self.N, B, 4), self.robot.data.body_ang_vel_w[:, self.track_b_fx])
-        rob_q = quat_mul(quat_conjugate(br_q).expand(self.N, B, 4),
-                         self.robot.data.body_quat_w[:, self.track_b_fx])
+        rob_q = quat_mul(quat_conjugate(br_q).expand(self.N, B, 4), self.robot.data.body_quat_w[:, self.track_b_fx])
 
         dq = quat_mul(quat_conjugate(rob_q[:, None]).expand(self.N, F, B, 4), ref_q)
         d_ori = matrix_from_quat(dq.reshape(-1, 4)).reshape(self.N, F, B, 3, 3)[..., :2, :]
@@ -440,23 +463,26 @@ class LadderManObs:
         hb = torch.tensor([list(self.robot.body_names).index(n) for n in hb_names], device=self.device)
 
         jp = self._jpos_rel()[:, list(PRIV_HISTORY)]
-        return torch.cat([
-            self.buf_angvel[:, list(PRIV_HISTORY)].reshape(self.N, -1),
-            self.buf_gravity[:, list(PRIV_HISTORY)].reshape(self.N, -1),
-            jp.reshape(self.N, -1),
-            rrp.reshape(self.N, -1),
-            rro.reshape(self.N, -1),
-            (ref_p - rob_p[:, None]).reshape(self.N, -1),
-            d_ori.reshape(self.N, -1),
-            (ref_v - rob_v[:, None]).reshape(self.N, -1),
-            (ref_w - rob_w[:, None]).reshape(self.N, -1),
-            quat_apply_inverse(rq_root, self.robot.data.root_lin_vel_w).reshape(self.N, -1),
-            rob_p[:, ank].reshape(self.N, -1),
-            rob_v[:, ank].reshape(self.N, -1),
-            self.robot.data.body_pos_w[:, hb, 2].reshape(self.N, -1),
-            self.last_action.reshape(self.N, -1),
-            self.robot.data.applied_torque[:, self.j_fx].reshape(self.N, -1),
-        ], -1)
+        return torch.cat(
+            [
+                self.buf_angvel[:, list(PRIV_HISTORY)].reshape(self.N, -1),
+                self.buf_gravity[:, list(PRIV_HISTORY)].reshape(self.N, -1),
+                jp.reshape(self.N, -1),
+                rrp.reshape(self.N, -1),
+                rro.reshape(self.N, -1),
+                (ref_p - rob_p[:, None]).reshape(self.N, -1),
+                d_ori.reshape(self.N, -1),
+                (ref_v - rob_v[:, None]).reshape(self.N, -1),
+                (ref_w - rob_w[:, None]).reshape(self.N, -1),
+                quat_apply_inverse(rq_root, self.robot.data.root_lin_vel_w).reshape(self.N, -1),
+                rob_p[:, ank].reshape(self.N, -1),
+                rob_v[:, ank].reshape(self.N, -1),
+                self.robot.data.body_pos_w[:, hb, 2].reshape(self.N, -1),
+                self.last_action.reshape(self.N, -1),
+                self.robot.data.applied_torque[:, self.j_fx].reshape(self.N, -1),
+            ],
+            -1,
+        )
 
     def ref_joint_action(self) -> torch.Tensor:
         """``(ref_joint_pos - default) / action_scaling`` over the 23 actuated joints.
@@ -469,6 +495,10 @@ class LadderManObs:
         return (ref - self.lm_default[self.act_mo][None]) / self.act_scaling[None]
 
     def groups(self) -> dict[str, torch.Tensor]:
-        return {"command": self.command(), "policy": self.policy(),
-                "object": self.object(), "priv": self.priv(),
-                "ref_joint_pos_": self.ref_joint_action()}
+        return {
+            "command": self.command(),
+            "policy": self.policy(),
+            "object": self.object(),
+            "priv": self.priv(),
+            "ref_joint_pos_": self.ref_joint_action(),
+        }

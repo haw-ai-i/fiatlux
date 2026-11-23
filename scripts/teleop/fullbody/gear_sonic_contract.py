@@ -27,30 +27,30 @@ import os
 
 # --- decoder ("policy") input, in order -------------------------------------------------
 DECODER_LAYOUT: tuple[tuple[str, int], ...] = (
-    ("token_state", 64),                            # encoder output
-    ("his_base_angular_velocity_10frame_step1", 30),   # 3 x 10 frames
-    ("his_body_joint_positions_10frame_step1", 290),   # 29 x 10
+    ("token_state", 64),  # encoder output
+    ("his_base_angular_velocity_10frame_step1", 30),  # 3 x 10 frames
+    ("his_body_joint_positions_10frame_step1", 290),  # 29 x 10
     ("his_body_joint_velocities_10frame_step1", 290),  # 29 x 10
-    ("his_last_actions_10frame_step1", 290),           # 29 x 10
-    ("his_gravity_dir_10frame_step1", 30),             # 3 x 10
+    ("his_last_actions_10frame_step1", 290),  # 29 x 10
+    ("his_gravity_dir_10frame_step1", 30),  # 3 x 10
 )
 
 # --- encoder input, in order ------------------------------------------------------------
 ENCODER_LAYOUT: tuple[tuple[str, int], ...] = (
-    ("encoder_mode_4", 4),                              # one-hot mode select
-    ("motion_joint_positions_10frame_step5", 290),      # mode 0
-    ("motion_joint_velocities_10frame_step5", 290),     # mode 0
+    ("encoder_mode_4", 4),  # one-hot mode select
+    ("motion_joint_positions_10frame_step5", 290),  # mode 0
+    ("motion_joint_velocities_10frame_step5", 290),  # mode 0
     ("motion_root_z_position_10frame_step5", 10),
     ("motion_root_z_position", 1),
-    ("motion_anchor_orientation", 6),                   # 6D rotation representation
-    ("motion_anchor_orientation_10frame_step5", 60),    # 6 x 10
-    ("motion_joint_positions_lowerbody_10frame_step5", 120),   # mode 1: 12 legs x 10
+    ("motion_anchor_orientation", 6),  # 6D rotation representation
+    ("motion_anchor_orientation_10frame_step5", 60),  # 6 x 10
+    ("motion_joint_positions_lowerbody_10frame_step5", 120),  # mode 1: 12 legs x 10
     ("motion_joint_velocities_lowerbody_10frame_step5", 120),  # mode 1
-    ("vr_3point_local_target", 9),                      # mode 1: head+2 hands, xyz each
-    ("vr_3point_local_orn_target", 12),                 # mode 1: 3 x 4 (quat) or 2 x 6
-    ("smpl_joints_10frame_step1", 720),                 # mode 2: 24 joints x 3 x 10
-    ("smpl_anchor_orientation_10frame_step1", 60),      # mode 2
-    ("motion_joint_positions_wrists_10frame_step1", 60),# mode 2: wrists
+    ("vr_3point_local_target", 9),  # mode 1: head+2 hands, xyz each
+    ("vr_3point_local_orn_target", 12),  # mode 1: 3 x 4 (quat) or 2 x 6
+    ("smpl_joints_10frame_step1", 720),  # mode 2: 24 joints x 3 x 10
+    ("smpl_anchor_orientation_10frame_step1", 60),  # mode 2
+    ("motion_joint_positions_wrists_10frame_step1", 60),  # mode 2: wrists
 )
 
 # NB: encoder_mode_4 carries the mode ID as a SCALAR in its first slot, then zeros --
@@ -91,30 +91,162 @@ ENCODER_OFFSETS = offsets(ENCODER_LAYOUT)
 # carries 43 joints (29 body + 14 hand), so positional index maps from the vendor
 # (isaaclab_to_mujoco / mujoco_to_isaaclab in policy_parameters.hpp) do NOT apply directly.
 JOINT_ORDER: tuple[str, ...] = (
-    "left_hip_pitch_joint", "left_hip_roll_joint", "left_hip_yaw_joint",
-    "left_knee_joint", "left_ankle_pitch_joint", "left_ankle_roll_joint",
-    "right_hip_pitch_joint", "right_hip_roll_joint", "right_hip_yaw_joint",
-    "right_knee_joint", "right_ankle_pitch_joint", "right_ankle_roll_joint",
-    "waist_yaw_joint", "waist_roll_joint", "waist_pitch_joint",
-    "left_shoulder_pitch_joint", "left_shoulder_roll_joint", "left_shoulder_yaw_joint",
-    "left_elbow_joint", "left_wrist_roll_joint", "left_wrist_pitch_joint",
+    "left_hip_pitch_joint",
+    "left_hip_roll_joint",
+    "left_hip_yaw_joint",
+    "left_knee_joint",
+    "left_ankle_pitch_joint",
+    "left_ankle_roll_joint",
+    "right_hip_pitch_joint",
+    "right_hip_roll_joint",
+    "right_hip_yaw_joint",
+    "right_knee_joint",
+    "right_ankle_pitch_joint",
+    "right_ankle_roll_joint",
+    "waist_yaw_joint",
+    "waist_roll_joint",
+    "waist_pitch_joint",
+    "left_shoulder_pitch_joint",
+    "left_shoulder_roll_joint",
+    "left_shoulder_yaw_joint",
+    "left_elbow_joint",
+    "left_wrist_roll_joint",
+    "left_wrist_pitch_joint",
     "left_wrist_yaw_joint",
-    "right_shoulder_pitch_joint", "right_shoulder_roll_joint", "right_shoulder_yaw_joint",
-    "right_elbow_joint", "right_wrist_roll_joint", "right_wrist_pitch_joint",
+    "right_shoulder_pitch_joint",
+    "right_shoulder_roll_joint",
+    "right_shoulder_yaw_joint",
+    "right_elbow_joint",
+    "right_wrist_roll_joint",
+    "right_wrist_pitch_joint",
     "right_wrist_yaw_joint",
 )
 
 DEFAULT_ANGLES = [
-    -0.312, 0.0, 0.0, 0.669, -0.363, 0.0,        # left leg
-    -0.312, 0.0, 0.0, 0.669, -0.363, 0.0,        # right leg
-    0.0, 0.0, 0.0,                                # waist
-    0.2, 0.2, 0.0, 0.6, 0.0, 0.0, 0.0,            # left arm
-    0.2, -0.2, 0.0, 0.6, 0.0, 0.0, 0.0,           # right arm
+    -0.312,
+    0.0,
+    0.0,
+    0.669,
+    -0.363,
+    0.0,  # left leg
+    -0.312,
+    0.0,
+    0.0,
+    0.669,
+    -0.363,
+    0.0,  # right leg
+    0.0,
+    0.0,
+    0.0,  # waist
+    0.2,
+    0.2,
+    0.0,
+    0.6,
+    0.0,
+    0.0,
+    0.0,  # left arm
+    0.2,
+    -0.2,
+    0.0,
+    0.6,
+    0.0,
+    0.0,
+    0.0,  # right arm
 ]
 
-KP = [99.0984, 99.0984, 40.1792, 99.0984, 14.2506, 14.2506, 99.0984, 99.0984, 40.1792, 99.0984, 14.2506, 14.2506, 40.1792, 14.2506, 14.2506, 14.2506, 14.2506, 14.2506, 14.2506, 14.2506, 16.7783, 16.7783, 14.2506, 14.2506, 14.2506, 14.2506, 14.2506, 16.7783, 16.7783]
-KD = [6.3088, 6.3088, 2.5579, 6.3088, 0.9072, 0.9072, 6.3088, 6.3088, 2.5579, 6.3088, 0.9072, 0.9072, 2.5579, 0.9072, 0.9072, 0.9072, 0.9072, 0.9072, 0.9072, 0.9072, 1.0681, 1.0681, 0.9072, 0.9072, 0.9072, 0.9072, 0.9072, 1.0681, 1.0681]
-ACTION_SCALE = [0.35066, 0.35066, 0.54755, 0.35066, 0.43858, 0.43858, 0.35066, 0.35066, 0.54755, 0.35066, 0.43858, 0.43858, 0.54755, 0.43858, 0.43858, 0.43858, 0.43858, 0.43858, 0.43858, 0.43858, 0.07450, 0.07450, 0.43858, 0.43858, 0.43858, 0.43858, 0.43858, 0.07450, 0.07450]
+KP = [
+    99.0984,
+    99.0984,
+    40.1792,
+    99.0984,
+    14.2506,
+    14.2506,
+    99.0984,
+    99.0984,
+    40.1792,
+    99.0984,
+    14.2506,
+    14.2506,
+    40.1792,
+    14.2506,
+    14.2506,
+    14.2506,
+    14.2506,
+    14.2506,
+    14.2506,
+    14.2506,
+    16.7783,
+    16.7783,
+    14.2506,
+    14.2506,
+    14.2506,
+    14.2506,
+    14.2506,
+    16.7783,
+    16.7783,
+]
+KD = [
+    6.3088,
+    6.3088,
+    2.5579,
+    6.3088,
+    0.9072,
+    0.9072,
+    6.3088,
+    6.3088,
+    2.5579,
+    6.3088,
+    0.9072,
+    0.9072,
+    2.5579,
+    0.9072,
+    0.9072,
+    0.9072,
+    0.9072,
+    0.9072,
+    0.9072,
+    0.9072,
+    1.0681,
+    1.0681,
+    0.9072,
+    0.9072,
+    0.9072,
+    0.9072,
+    0.9072,
+    1.0681,
+    1.0681,
+]
+ACTION_SCALE = [
+    0.35066,
+    0.35066,
+    0.54755,
+    0.35066,
+    0.43858,
+    0.43858,
+    0.35066,
+    0.35066,
+    0.54755,
+    0.35066,
+    0.43858,
+    0.43858,
+    0.54755,
+    0.43858,
+    0.43858,
+    0.43858,
+    0.43858,
+    0.43858,
+    0.43858,
+    0.43858,
+    0.07450,
+    0.07450,
+    0.43858,
+    0.43858,
+    0.43858,
+    0.43858,
+    0.43858,
+    0.07450,
+    0.07450,
+]
 
 assert len(JOINT_ORDER) == len(DEFAULT_ANGLES) == len(KP) == len(KD) == len(ACTION_SCALE) == ACTION_DIM
 
@@ -130,10 +262,8 @@ def verify_against_onnx(release_dir: str) -> None:
 
     import onnxruntime as ort
 
-    enc = ort.InferenceSession(os.path.join(release_dir, "model_encoder.onnx"),
-                               providers=["CPUExecutionProvider"])
-    dec = ort.InferenceSession(os.path.join(release_dir, "model_decoder.onnx"),
-                               providers=["CPUExecutionProvider"])
+    enc = ort.InferenceSession(os.path.join(release_dir, "model_encoder.onnx"), providers=["CPUExecutionProvider"])
+    dec = ort.InferenceSession(os.path.join(release_dir, "model_decoder.onnx"), providers=["CPUExecutionProvider"])
     assert enc.get_inputs()[0].shape[-1] == ENCODER_DIM, enc.get_inputs()[0].shape
     assert enc.get_outputs()[0].shape[-1] == TOKEN_DIM, enc.get_outputs()[0].shape
     assert dec.get_inputs()[0].shape[-1] == DECODER_DIM, dec.get_inputs()[0].shape
@@ -143,6 +273,9 @@ def verify_against_onnx(release_dir: str) -> None:
 
 if __name__ == "__main__":
     import sys
-    verify_against_onnx(sys.argv[1] if len(sys.argv) > 1 else
-                        os.path.expanduser("~/robotica_project/GR00T-WholeBodyControl/"
-                                           "gear_sonic_deploy/policy/release"))
+
+    verify_against_onnx(
+        sys.argv[1]
+        if len(sys.argv) > 1
+        else os.path.expanduser("~/robotica_project/GR00T-WholeBodyControl/gear_sonic_deploy/policy/release")
+    )

@@ -17,6 +17,7 @@ to step 3 with no hand on anything. This variant takes the footwork as the clock
 
     python scripts/climb/build_phased_motion.py --base <clip> --out <dir> --mesh <npz>
 """
+
 import argparse
 import json
 import pathlib
@@ -41,46 +42,80 @@ ap.add_argument("--min_hold", type=float, default=0.50)
 ap.add_argument("--lean", type=float, default=0.30, help="extra waist pitch through the handover, rad")
 ap.add_argument("--lean_on", type=float, nargs=2, default=[270, 298], help="BASE-clip 50 Hz steps: ramp in")
 ap.add_argument("--lean_off", type=float, nargs=2, default=[330, 370], help="BASE-clip 50 Hz steps: ramp out")
-ap.add_argument("--crouch", type=float, default=0.0,
-                help="metres the pelvis drops on step 2 before the step-up onto step 3, feet "
-                     "held where they are by re-solving hip pitch, knee and ankle pitch. Keeps "
-                     "the platform under the hands until the push-off.")
+ap.add_argument(
+    "--crouch",
+    type=float,
+    default=0.0,
+    help="metres the pelvis drops on step 2 before the step-up onto step 3, feet "
+    "held where they are by re-solving hip pitch, knee and ankle pitch. Keeps "
+    "the platform under the hands until the push-off.",
+)
 ap.add_argument("--crouch_on", type=float, nargs=2, default=[290, 335])
 ap.add_argument("--crouch_off", type=float, nargs=2, default=[425, 452])
 ap.add_argument("--plan_only", action="store_true", help="print the reach schedule and stop")
 ap.add_argument("--vcap", type=float, default=4.0, help="arm joint speed cap in a transit, rad/s")
 ap.add_argument("--lift", type=float, default=0.08, help="waypoint height above a hold, m")
-ap.add_argument("--approach", type=float, default=0.05,
-                help="a hold only counts as reachable when the wrist can also get THIS far above "
-                     "it. A palm presses on top of a face, so it must arrive from above; from "
-                     "below, maximum reach touches the bar's FRONT, not its top.")
-ap.add_argument("--front_min", type=float, default=0.15,
-                help="a hold is only kept while the wrist stays this far in FRONT of the chest. "
-                     "Late in the platform hold the body moves over the hand; held on, the hand "
-                     "ends up under and behind the shoulder and the next move swings the arm "
-                     "backward over the top. A climber lets go before that.")
+ap.add_argument(
+    "--approach",
+    type=float,
+    default=0.05,
+    help="a hold only counts as reachable when the wrist can also get THIS far above "
+    "it. A palm presses on top of a face, so it must arrive from above; from "
+    "below, maximum reach touches the bar's FRONT, not its top.",
+)
+ap.add_argument(
+    "--front_min",
+    type=float,
+    default=0.15,
+    help="a hold is only kept while the wrist stays this far in FRONT of the chest. "
+    "Late in the platform hold the body moves over the hand; held on, the hand "
+    "ends up under and behind the shoulder and the next move swings the arm "
+    "backward over the top. A climber lets go before that.",
+)
 ap.add_argument("--edge_in", type=float, default=0.03, help="palm lands this far in from a face's near edge")
 ap.add_argument("--retreat", type=float, default=0.09, help="a moving hand first backs this far toward the robot")
 ap.add_argument("--min_transit", type=float, default=0.90)
 ap.add_argument("--hold_tol", type=float, default=0.015)
 ap.add_argument("--gate_speed", type=float, default=6.0)
 ap.add_argument("--gate_clear", type=float, default=0.020)
-ap.add_argument("--start_blend", type=float, default=0.40,
-                help="seconds over which the opening is re-timed. The base clip holds a standing "
-                     "stub for 12 frames and then JUMPS to the climb pose in one frame (pelvis "
-                     "+55 mm, 0.2 rad); this eases between the two instead.")
-ap.add_argument("--rail_keepout", type=float, default=0.13,
-                help="|y| the hands stay inside. Above the platform the ladder is a corridor: "
-                     "side rails at |y| 0.20-0.25 m run up to the handrail, and the robot's "
-                     "shoulders are wider than the gap, so the arms go up BETWEEN the rails.")
-ap.add_argument("--pause", action="append", default=None,
-                help="STEP:SECONDS -- hold the body still at this BASE-clip step for this long. "
-                     "Three are expected, in order: before the first foot lifts, on step 1, on step 2.")
-ap.add_argument("--climb", type=float, nargs="+", default=[47, 138, 219, 300, 386, 468, 575, 645, 752, 820],
-                help="BASE-clip step pairs: first foot leaves .. second foot has landed, per tread")
+ap.add_argument(
+    "--start_blend",
+    type=float,
+    default=0.40,
+    help="seconds over which the opening is re-timed. The base clip holds a standing "
+    "stub for 12 frames and then JUMPS to the climb pose in one frame (pelvis "
+    "+55 mm, 0.2 rad); this eases between the two instead.",
+)
+ap.add_argument(
+    "--rail_keepout",
+    type=float,
+    default=0.13,
+    help="|y| the hands stay inside. Above the platform the ladder is a corridor: "
+    "side rails at |y| 0.20-0.25 m run up to the handrail, and the robot's "
+    "shoulders are wider than the gap, so the arms go up BETWEEN the rails.",
+)
+ap.add_argument(
+    "--pause",
+    action="append",
+    default=None,
+    help="STEP:SECONDS -- hold the body still at this BASE-clip step for this long. "
+    "Three are expected, in order: before the first foot lifts, on step 1, on step 2.",
+)
+ap.add_argument(
+    "--climb",
+    type=float,
+    nargs="+",
+    default=[47, 138, 219, 300, 386, 468, 575, 645, 752, 820],
+    help="BASE-clip step pairs: first foot leaves .. second foot has landed, per tread",
+)
 ap.add_argument("--hook_pitch", type=float, default=40.0, help="hand pitch on the handrail edge from step 2, deg")
-ap.add_argument("--roll_z", type=float, nargs=2, default=[1.575, 1.665],
-                help="shoulder heights between which the hand rolls from finger pads to flat palm")
+ap.add_argument(
+    "--roll_z",
+    type=float,
+    nargs=2,
+    default=[1.575, 1.665],
+    help="shoulder heights between which the hand rolls from finger pads to flat palm",
+)
 ap.add_argument("--release_at", type=float, default=821.0, help="BASE-clip step: let go of the handrail on top")
 a = ap.parse_args()
 if a.pause is None:
@@ -105,14 +140,14 @@ _j = int(np.argmax(_dq0))
 if _dq0[_j] > 0.1:
     nb = int(a.start_blend * fps)
     u = np.linspace(0.0, 1.0, nb + 1)
-    w = (10 * u**3 - 15 * u**4 + 6 * u**5)[:, None]                   # minimum jerk
-    d["joint_pos"][:nb + 1] = (1 - w) * d["joint_pos"][0] + w * d["joint_pos"][nb]
-    PP[:nb + 1] = (1 - w) * PP[0] + w * PP[nb]
+    w = (10 * u**3 - 15 * u**4 + 6 * u**5)[:, None]  # minimum jerk
+    d["joint_pos"][: nb + 1] = (1 - w) * d["joint_pos"][0] + w * d["joint_pos"][nb]
+    PP[: nb + 1] = (1 - w) * PP[0] + w * PP[nb]
     qa, qb = PQ[0].copy(), PQ[nb].copy()
     if (qa * qb).sum() < 0:
         qb = -qb
     qq = (1 - w) * qa + w * qb
-    PQ[:nb + 1] = qq / np.linalg.norm(qq, axis=1, keepdims=True)
+    PQ[: nb + 1] = qq / np.linalg.norm(qq, axis=1, keepdims=True)
     print(f"[base] one-frame jump of {_dq0[_j]:.2f} rad at frame {_j + 1} eased over {nb} frames")
 
 # ---- retime: insert the pauses ----------------------------------------------------------------
@@ -130,8 +165,10 @@ for _ps, _pd in PAUSES:
     _rate += [0.0] * int(_pd * fps) + list(_dn[::-1])
     _cur += _n1 + RAMP
 _rate += [1.0] * int(T - 1 - _cur)
-OLD = np.clip(np.concatenate([[0.0], np.cumsum(_rate)]), 0, T - 1)       # base frame of each new frame
-_i0 = np.floor(OLD).astype(int); _i1 = np.minimum(_i0 + 1, T - 1); _w = OLD - _i0
+OLD = np.clip(np.concatenate([[0.0], np.cumsum(_rate)]), 0, T - 1)  # base frame of each new frame
+_i0 = np.floor(OLD).astype(int)
+_i1 = np.minimum(_i0 + 1, T - 1)
+_w = OLD - _i0
 
 
 def _warp(x, quat=False):
@@ -149,7 +186,7 @@ d["body_quat_w"] = _warp(d["body_quat_w"], quat=True)
 T_BASE, T = T, len(OLD)
 PP, PQ = d["body_pos_w"][:, pel].copy(), d["body_quat_w"][:, pel].copy()
 step50 = np.arange(T) / fps * 50
-ostep = OLD / fps * 50                                    # the BASE-clip step each frame shows
+ostep = OLD / fps * 50  # the BASE-clip step each frame shows
 
 
 def new_of(base_step):
@@ -157,15 +194,18 @@ def new_of(base_step):
     return int(np.searchsorted(ostep, base_step, side="left"))
 
 
-print(f"[time] {len(PAUSES)} pauses inserted: {T_BASE} -> {T} frames ({T/fps:.1f} s); body still during new steps "
-      + ", ".join(f"{step50[p0]:.0f}-{step50[p1]:.0f}" for p0, p1 in PLATEAU))
+print(
+    f"[time] {len(PAUSES)} pauses inserted: {T_BASE} -> {T} frames ({T / fps:.1f} s); body still during new steps "
+    + ", ".join(f"{step50[p0]:.0f}-{step50[p1]:.0f}" for p0, p1 in PLATEAU)
+)
 CLIMBS = [(new_of(a.climb[k]), new_of(a.climb[k + 1])) for k in range(0, len(a.climb), 2)]
 print("[time] foot steps (new steps): " + ", ".join(f"{step50[c0]:.0f}-{step50[c1]:.0f}" for c0, c1 in CLIMBS))
 
 # ---- crouch: lower the pelvis, keep the feet -----------------------------------------------
 if a.crouch > 0:
-    cr = (np.clip((ostep - a.crouch_on[0]) / (a.crouch_on[1] - a.crouch_on[0]), 0, 1)
-          * np.clip((a.crouch_off[1] - ostep) / (a.crouch_off[1] - a.crouch_off[0]), 0, 1))
+    cr = np.clip((ostep - a.crouch_on[0]) / (a.crouch_on[1] - a.crouch_on[0]), 0, 1) * np.clip(
+        (a.crouch_off[1] - ostep) / (a.crouch_off[1] - a.crouch_off[0]), 0, 1
+    )
     cr = 0.5 - 0.5 * np.cos(np.pi * cr)
     ref = K.fk_all(PP, PQ, d["joint_pos"], jn)
     PP[:, 2] -= a.crouch * cr
@@ -178,8 +218,7 @@ if a.crouch > 0:
 
         def resid(jp):
             o = K.fk_all(PP, PQ, jp, jn)[foot]
-            return np.stack([o[0][:, 0] - tp[:, 0], o[0][:, 2] - tp[:, 2],
-                             K.qrot(o[1], fwd)[:, 2] - tf[:, 2]], 1)
+            return np.stack([o[0][:, 0] - tp[:, 0], o[0][:, 2] - tp[:, 2], K.qrot(o[1], fwd)[:, 2] - tf[:, 2]], 1)
 
         jp = d["joint_pos"]
         for _ in range(25):
@@ -188,31 +227,37 @@ if a.crouch > 0:
                 break
             J = np.zeros((T, 3, 3))
             for c_, col in enumerate(cols):
-                jq = jp.copy(); jq[:, col] += 1e-4
+                jq = jp.copy()
+                jq[:, col] += 1e-4
                 J[:, :, c_] = (resid(jq) - r0) / 1e-4
             dq = np.linalg.solve(J + 1e-6 * np.eye(3), -r0[:, :, None])[:, :, 0]
             jp[:, cols] += np.clip(dq, -0.2, 0.2)
         kn = jp[:, cols[1]]
         lo_k, hi_k = K.limits(f"{sd}_knee_joint")
-        print(f"[crouch] {sd}: foot held to {np.abs(resid(jp)[:, :2]).max()*1000:.2f} mm; knee peak "
-              f"{kn.max():.2f} rad (limit {hi_k:.2f}), knee speed peak "
-              f"{np.abs(np.gradient(kn, 1/fps)).max():.1f} rad/s")
+        print(
+            f"[crouch] {sd}: foot held to {np.abs(resid(jp)[:, :2]).max() * 1000:.2f} mm; knee peak "
+            f"{kn.max():.2f} rad (limit {hi_k:.2f}), knee speed peak "
+            f"{np.abs(np.gradient(kn, 1 / fps)).max():.1f} rad/s"
+        )
 
 # ---- torso lean ---------------------------------------------------------------------------
 wi = [jn.index(n) for n in K.WAIST]
 waist = d["joint_pos"][:, wi].copy()
 lo_w, hi_w = K.limits("waist_pitch_joint")
-ramp = (np.clip((ostep - a.lean_on[0]) / (a.lean_on[1] - a.lean_on[0]), 0, 1)
-        * np.clip((a.lean_off[1] - ostep) / (a.lean_off[1] - a.lean_off[0]), 0, 1))
+ramp = np.clip((ostep - a.lean_on[0]) / (a.lean_on[1] - a.lean_on[0]), 0, 1) * np.clip(
+    (a.lean_off[1] - ostep) / (a.lean_off[1] - a.lean_off[0]), 0, 1
+)
 ramp = 0.5 - 0.5 * np.cos(np.pi * ramp)
 waist[:, 2] = np.clip(waist[:, 2] + a.lean * ramp, lo_w + 0.02, hi_w - 0.02)
-print(f"[lean] waist pitch peak {waist[:, 2].max():.2f} rad (limit {hi_w:.2f}); base peak "
-      f"{d['joint_pos'][:, wi[2]].max():.2f}")
+print(
+    f"[lean] waist pitch peak {waist[:, 2].max():.2f} rad (limit {hi_w:.2f}); base peak "
+    f"{d['joint_pos'][:, wi[2]].max():.2f}"
+)
 
 # ---- ladder: mesh, true face tops, exact distance ------------------------------------------
 _TRI = np.load(a.mesh)["T"]
 _TV = _TRI.reshape(-1, 3)
-_TC = np.stack([_TV[:, 1] - 0.1996, -_TV[:, 0], _TV[:, 2]], 1)          # clip frame
+_TC = np.stack([_TV[:, 1] - 0.1996, -_TV[:, 0], _TV[:, 2]], 1)  # clip frame
 _TCL = _TC.reshape(-1, 3, 3)
 _TLO, _THI = _TCL.min(1), _TCL.max(1)
 
@@ -250,25 +295,29 @@ def lad_to_clip(x, y, z):
 HOLDS = {}
 for _k, (_z, _yc) in enumerate([(0.237, -0.387), (0.472, -0.301), (0.707, -0.216), (0.942, -0.130)]):
     _a, _b = lad_to_clip(-0.247, _yc - 0.038, _z), lad_to_clip(0.247, _yc + 0.038, _z)
-    HOLDS[f"step{_k+1}"] = dict(x=(min(_a[0], _b[0]), max(_a[0], _b[0])), y=(-0.247, 0.247), z=_z)
+    HOLDS[f"step{_k + 1}"] = dict(x=(min(_a[0], _b[0]), max(_a[0], _b[0])), y=(-0.247, 0.247), z=_z)
 HOLDS["platform"] = dict(x=(-0.302, 0.075), y=(-0.208, 0.206), z=1.1494)
 HOLDS["handrail"] = dict(x=(-0.030, 0.066), y=(-0.241, 0.241), z=1.8424)
 ORDER = ["step1", "step2", "step3", "step4", "platform", "handrail"]
 LABEL = {n: i + 1 for i, n in enumerate(ORDER)}
-for _n in ORDER:                       # the TRUE top of each footprint, never a triangle mean
+for _n in ORDER:  # the TRUE top of each footprint, never a triangle mean
     _h = HOLDS[_n]
-    _m = ((_TC[:, 0] >= _h["x"][0] - 0.005) & (_TC[:, 0] <= _h["x"][1] + 0.005)
-          & (_TC[:, 1] >= _h["y"][0] - 0.005) & (_TC[:, 1] <= _h["y"][1] + 0.005)
-          & (np.abs(_TC[:, 2] - _h["z"]) < 0.06))
+    _m = (
+        (_TC[:, 0] >= _h["x"][0] - 0.005)
+        & (_TC[:, 0] <= _h["x"][1] + 0.005)
+        & (_TC[:, 1] >= _h["y"][0] - 0.005)
+        & (_TC[:, 1] <= _h["y"][1] + 0.005)
+        & (np.abs(_TC[:, 2] - _h["z"]) < 0.06)
+    )
     _h["z"] = float(_TC[_m, 2].max())
 # From step 2 the handrail is beyond PALM reach, so the hand goes up to its near top edge on the
 # finger pads. Same object, same label; a different point of the hand and a pitched hand.
 HOLDS["hook"] = dict(HOLDS["handrail"])
 LABEL["hook"] = LABEL["handrail"]
 _HP = np.radians(a.hook_pitch)
-HOOK_F = np.array([np.cos(_HP), 0.0, np.sin(_HP)])        # where the fingers point
-HOOK_N = np.array([np.sin(_HP), 0.0, -np.cos(_HP)])       # where the palm faces
-HOOK_U = 0.17                                             # finger-pad point, metres ahead of the wrist
+HOOK_F = np.array([np.cos(_HP), 0.0, np.sin(_HP)])  # where the fingers point
+HOOK_N = np.array([np.sin(_HP), 0.0, -np.cos(_HP)])  # where the palm faces
+HOOK_U = 0.17  # finger-pad point, metres ahead of the wrist
 
 # ---- shoulders (after the lean) and hold targets -------------------------------------------
 SH = {s: K.fk(PP, PQ, waist, np.zeros((T, 7)), s)[f"{s}_shoulder_pitch_link"] for s in SIDES}
@@ -292,7 +341,8 @@ def front_of_body(i, p, side):
     leans forward, so a hand reaching straight up to the handrail reads as behind it while it is
     plainly ahead of the shoulder. A point is behind the body only if it is behind the chest
     plane AND behind the shoulder along the robot's horizontal heading."""
-    h = K.qrot(TORSO_Q[i], np.array([1.0, 0.0, 0.0])); h[2] = 0.0
+    h = K.qrot(TORSO_Q[i], np.array([1.0, 0.0, 0.0]))
+    h[2] = 0.0
     h = h / np.linalg.norm(h)
     return max(chest_x(i, p), float((p - SH[side][i]) @ h))
 
@@ -300,15 +350,15 @@ def front_of_body(i, p, side):
 # The Dex3 hand, in the wrist_yaw_link frame, read off the USD: the palm pad is 87 mm long (x) by
 # 88 mm wide (z); its FACE is the -y side on the left hand (the fingers curl toward -y and the
 # thumb sits there) and the +y side on the right. PC is the centre of that face.
-HAND = {"left": dict(pc=np.array([0.0865, -0.017, 0.0]), n=np.array([0.0, -1.0, 0.0]),
-                     tip=np.array([0.21, -0.005, 0.0])),
-        "right": dict(pc=np.array([0.0865, 0.017, 0.0]), n=np.array([0.0, 1.0, 0.0]),
-                      tip=np.array([0.21, 0.005, 0.0]))}
+HAND = {
+    "left": dict(pc=np.array([0.0865, -0.017, 0.0]), n=np.array([0.0, -1.0, 0.0]), tip=np.array([0.21, -0.005, 0.0])),
+    "right": dict(pc=np.array([0.0865, 0.017, 0.0]), n=np.array([0.0, 1.0, 0.0]), tip=np.array([0.21, 0.005, 0.0])),
+}
 PALM_HALF = 0.045
 CUR = {}
 
 
-HOOK_U1 = HAND["left"]["pc"][0] - PALM_HALF               # the palm point that ends up on the edge
+HOOK_U1 = HAND["left"]["pc"][0] - PALM_HALF  # the palm point that ends up on the edge
 
 
 def roll_of(side, i):
@@ -328,9 +378,13 @@ def set_spec(name, side, i=None):
     if name == "hook":
         lam = roll_of(side, i)
         th = (1.0 - lam) * _HP
-        CUR.update(pt=np.array([(1 - lam) * HOOK_U + lam * HOOK_U1, HAND[side]["pc"][1] * (0.8 + 0.2 * lam), 0.0]),
-                   n=np.array([np.sin(th), 0.0, -np.cos(th)]), f=np.array([np.cos(th), 0.0, np.sin(th)]),
-                   name=name, lam=lam)
+        CUR.update(
+            pt=np.array([(1 - lam) * HOOK_U + lam * HOOK_U1, HAND[side]["pc"][1] * (0.8 + 0.2 * lam), 0.0]),
+            n=np.array([np.sin(th), 0.0, -np.cos(th)]),
+            f=np.array([np.cos(th), 0.0, np.sin(th)]),
+            name=name,
+            lam=lam,
+        )
     else:
         CUR.update(pt=HAND[side]["pc"], n=np.array([0.0, 0.0, -1.0]), f=None, name=name)
 
@@ -338,7 +392,7 @@ def set_spec(name, side, i=None):
 def proxy_at(name, c, sp, side):
     """Where the WRIST sits with the hand on fixed contact `c`, seen from shoulder `sp`."""
     if name == "hook":
-        return c - HOOK_U * HOOK_F - 0.014 * HOOK_N      # as first placed, from step 2
+        return c - HOOK_U * HOOK_F - 0.014 * HOOK_N  # as first placed, from step 2
     hv = (sp - c) * np.array([1.0, 1.0, 0.0])
     hn = float(np.linalg.norm(hv))
     back = hv / hn * min(HAND[side]["pc"][0], hn) if hn > 1e-6 else np.zeros(3)
@@ -350,8 +404,7 @@ def fixed_contact(name, side, s, e):
     best = None
     for i in np.unique(np.linspace(s, e - 1, 14).astype(int)):
         c = contact_on(name, SH[side][i], side)
-        worst = max(float(np.linalg.norm(proxy_at(name, c, SH[side][j], side) - SH[side][j]))
-                    for j in range(s, e, 6))
+        worst = max(float(np.linalg.norm(proxy_at(name, c, SH[side][j], side) - SH[side][j])) for j in range(s, e, 6))
         if best is None or worst < best[0]:
             best = (worst, c)
     return best[1], best[0]
@@ -361,13 +414,18 @@ def contact_on(name, sp, side):
     """Where the CENTRE of the palm face rests on this hold, nearest to this shoulder."""
     h = HOLDS[name]
     ylo, yhi = h["y"]
-    if name == "hook":                                     # the rounded near top edge of the bar
-        return np.array([h["x"][0] - 0.006, np.clip(sp[1], *((0.03, a.rail_keepout) if side == "left"
-                                                             else (-a.rail_keepout, -0.03))), h["z"] - 0.006])
-    if name in ("handrail", "platform"):                   # between the rails, each hand its half
+    if name == "hook":  # the rounded near top edge of the bar
+        return np.array(
+            [
+                h["x"][0] - 0.006,
+                np.clip(sp[1], *((0.03, a.rail_keepout) if side == "left" else (-a.rail_keepout, -0.03))),
+                h["z"] - 0.006,
+            ]
+        )
+    if name in ("handrail", "platform"):  # between the rails, each hand its half
         ylo, yhi = (0.03, a.rail_keepout) if side == "left" else (-a.rail_keepout, -0.03)
     xlo, xhi = h["x"][0] + PALM_HALF, h["x"][1] - PALM_HALF
-    if xlo > xhi:                                          # a face shallower than the palm: centre it
+    if xlo > xhi:  # a face shallower than the palm: centre it
         xlo = xhi = 0.5 * (h["x"][0] + h["x"][1])
     return np.array([np.clip(sp[0], xlo, xhi), np.clip(sp[1], ylo, yhi), h["z"]])
 
@@ -396,22 +454,23 @@ def schedule(side):
                 ok.append((n, r))
         raw.append(min(ok, key=lambda nr: nr[1])[0] if ok else None)
     hi_seen = 0
-    for i in range(T):                                     # a climb only goes UP the holds
+    for i in range(T):  # a climb only goes UP the holds
         if raw[i] is not None:
             if LABEL[raw[i]] < hi_seen:
                 raw[i] = None
             hi_seen = max(hi_seen, LABEL[raw[i]] if raw[i] else hi_seen)
-    for i in range(T):                                     # ... and not back after moving on
-        if raw[i] is not None and any(r is not None and LABEL[r] > LABEL[raw[i]] for r in raw[max(0, i - 1):i]):
+    for i in range(T):  # ... and not back after moving on
+        if raw[i] is not None and any(r is not None and LABEL[r] > LABEL[raw[i]] for r in raw[max(0, i - 1) : i]):
             raw[i] = None
     segs, cur, st = [], raw[0], 0
     for i in range(1, T):
         if raw[i] != cur:
-            segs.append([st, i, cur]); cur, st = raw[i], i
+            segs.append([st, i, cur])
+            cur, st = raw[i], i
     segs.append([st, T, cur])
     minf = int(a.min_hold * fps)
     out = []
-    for s in segs:                                         # short runs become part of a transit
+    for s in segs:  # short runs become part of a transit
         if s[2] is not None and s[1] - s[0] < minf:
             s[2] = None
         if out and out[-1][2] == s[2]:
@@ -422,10 +481,14 @@ def schedule(side):
     # body lunges, and letting go to re-place a hand on the bar it is already on is nonsense
     j = 1
     while j < len(out) - 1:
-        if (out[j][2] is None and out[j - 1][2] is not None and out[j - 1][2] == out[j + 1][2]
-                and out[j][1] - out[j][0] < int(0.8 * fps)):
+        if (
+            out[j][2] is None
+            and out[j - 1][2] is not None
+            and out[j - 1][2] == out[j + 1][2]
+            and out[j][1] - out[j][0] < int(0.8 * fps)
+        ):
             out[j - 1][1] = out[j + 1][1]
-            del out[j:j + 2]
+            del out[j : j + 2]
         else:
             j += 1
     # a brief return to the hold just left is a flicker of the reach test, not a real re-grip
@@ -450,7 +513,7 @@ def phased():
     out = {}
     rel = new_of(a.release_at)
     for k, sd in enumerate(SIDES):
-        h1 = (p1b - p1a - 3 * gap) // 2                    # each hand's share of pause 1
+        h1 = (p1b - p1a - 3 * gap) // 2  # each hand's share of pause 1
         h2 = (p2b - p2a - 3 * gap) // 2
         m1 = (p1a + gap + k * (h1 + gap), p1a + gap + k * (h1 + gap) + h1)
         m2 = (p2a + gap + k * (h2 + gap), p2a + gap + k * (h2 + gap) + h2)
@@ -460,11 +523,16 @@ def phased():
 
 SCHED = phased()
 for s_ in SIDES:
-    print(f"[sched] {s_[0].upper()}: " + "  ".join(f"{step50[x0]:.0f}-{step50[x1-1]:.0f}:{nm}" for x0, x1, nm in SCHED[s_]))
+    print(
+        f"[sched] {s_[0].upper()}: "
+        + "  ".join(f"{step50[x0]:.0f}-{step50[x1 - 1]:.0f}:{nm}" for x0, x1, nm in SCHED[s_])
+    )
     for x0, x1, nm in SCHED[s_]:
         c_, w_ = fixed_contact(nm, s_, x0, x1 if nm != "hook" else min(x1, x0 + int(2 * fps)))
-        print(f"[reach] {s_[0].upper()} {nm:9s} fixed at ({c_[0]:+.3f},{c_[1]:+.3f},{c_[2]:.3f}); wrist needs at most "
-              f"{w_:.3f} m of {a.reach - a.palm_off:.3f}")
+        print(
+            f"[reach] {s_[0].upper()} {nm:9s} fixed at ({c_[0]:+.3f},{c_[1]:+.3f},{c_[2]:.3f}); wrist needs at most "
+            f"{w_:.3f} m of {a.reach - a.palm_off:.3f}"
+        )
 if a.plan_only:
     sys.exit(0)
 
@@ -483,8 +551,10 @@ for _s in SIDES:
     LIM[_s][:4, 0] = np.maximum(LIM[_s][:4, 0], f[:, 0])
     LIM[_s][:4, 1] = np.minimum(LIM[_s][:4, 1], f[:, 1])
 MARG = 0.03
-REST = {"left": np.array([-0.6, 0.2, 0.0, 0.3, 0.0, 0.0, 0.0]),
-        "right": np.array([-0.6, -0.2, 0.0, 0.3, 0.0, 0.0, 0.0])}
+REST = {
+    "left": np.array([-0.6, 0.2, 0.0, 0.3, 0.0, 0.0, 0.0]),
+    "right": np.array([-0.6, -0.2, 0.0, 0.3, 0.0, 0.0, 0.0]),
+}
 DOWN = np.array([0.0, 0.0, -1.0])
 
 
@@ -514,7 +584,8 @@ def solve(i, side, tgt, q0, iters=25, dq_cap=None):
             break
         J = np.zeros((3, 4))
         for c in range(4):
-            qp = q.copy(); qp[c] += 1e-4
+            qp = q.copy()
+            qp[c] += 1e-4
             J[:, c] = (wrist_of(i, side, qp) - w) / 1e-4
         Jp = J.T @ np.linalg.inv(J @ J.T + 1e-5 * np.eye(3))
         dq = Jp @ e + 0.05 * (np.eye(4) - Jp @ J) @ (REST[side][:4] - q[:4])
@@ -534,7 +605,7 @@ def _palm_err(i, side, q, contact):
     pc = wp + K.qrot(wq, CUR["pt"])
     n = K.qrot(wq, HAND[side]["n"])
     rot = np.cross(n, CUR["n"])
-    if CUR["f"] is not None:                               # a pitched hand: heading matters too
+    if CUR["f"] is not None:  # a pitched hand: heading matters too
         rot = 0.5 * (rot + np.cross(K.qrot(wq, _XH), CUR["f"]))
     return np.concatenate([contact - 0.003 * CUR["n"] - pc, 0.25 * rot]), pc, n
 
@@ -549,7 +620,8 @@ def solve_palm(i, side, contact, q0, iters=25, dq_cap=None):
             break
         J = np.zeros((6, 7))
         for c in range(7):
-            qp = q.copy(); qp[c] += 1e-4
+            qp = q.copy()
+            qp[c] += 1e-4
             J[:, c] = (_palm_err(i, side, qp, contact)[0] - e) / -1e-4
         Jp = J.T @ np.linalg.inv(J @ J.T + 1e-5 * np.eye(6))
         dq = Jp @ e + 0.05 * (np.eye(7) - Jp @ J) @ (REST[side] - q)
@@ -574,9 +646,10 @@ def steer_clear(i, side, contact, q, want=0.05):
     e0 = _palm_err(i, side, q, contact)[0]
     J = np.zeros((6, 7))
     for c in range(7):
-        qp = q.copy(); qp[c] += 1e-4
+        qp = q.copy()
+        qp[c] += 1e-4
         J[:, c] = (_palm_err(i, side, qp, contact)[0] - e0) / -1e-4
-    nvec = np.linalg.svd(J)[2][-1]                         # leaves the palm where it is
+    nvec = np.linalg.svd(J)[2][-1]  # leaves the palm where it is
     best = (c0, q)
     for sgn in (1.0, -1.0):
         q2, e2, t2 = solve_palm(i, side, contact, _clip(side, q + sgn * 0.05 * nvec), iters=3)
@@ -589,9 +662,14 @@ def steer_clear(i, side, contact, q, want=0.05):
 
 def _seeds(side):
     sg = 1.0 if side == "left" else -1.0
-    return [REST[side][:4], np.array([-1.2, 0.3 * sg, 0.0, 0.2]), np.array([-1.8, 0.4 * sg, 0.0, 0.6]),
-            np.array([-0.3, 0.3 * sg, 0.3 * sg, 0.9]), np.array([-2.2, 0.2 * sg, 0.0, 0.0]),
-            np.array([-1.0, 0.8 * sg, -0.5 * sg, 0.5])]
+    return [
+        REST[side][:4],
+        np.array([-1.2, 0.3 * sg, 0.0, 0.2]),
+        np.array([-1.8, 0.4 * sg, 0.0, 0.6]),
+        np.array([-0.3, 0.3 * sg, 0.3 * sg, 0.9]),
+        np.array([-2.2, 0.2 * sg, 0.0, 0.0]),
+        np.array([-1.0, 0.8 * sg, -0.5 * sg, 0.5]),
+    ]
 
 
 def solve_seeded(i, side, tgt, wr, extra=()):
@@ -599,8 +677,7 @@ def solve_seeded(i, side, tgt, wr, extra=()):
     best = None
     for s0 in [np.concatenate([x, wr]) for x in _seeds(side)] + [np.concatenate([x[:4], wr]) for x in extra]:
         q, e = solve(i, side, tgt, s0, iters=60)
-        cost = (e * 50.0 + 0.2 * np.linalg.norm(q[:4] - REST[side][:4])
-                + 6.0 * max(0.0, 0.06 - arm_clear(i, side, q)))
+        cost = e * 50.0 + 0.2 * np.linalg.norm(q[:4] - REST[side][:4]) + 6.0 * max(0.0, 0.06 - arm_clear(i, side, q))
         if best is None or cost < best[0]:
             best = (cost, q, e)
     return best[1], best[2]
@@ -609,16 +686,28 @@ def solve_seeded(i, side, tgt, wr, extra=()):
 def solve_palm_seeded(i, side, contact):
     """First frame of a hold: arm starts x wrist starts; keep the flattest, most natural, clearest."""
     sg = 1.0 if side == "left" else -1.0
-    wrists = [np.zeros(3), np.array([1.4 * sg, 0.0, 0.0]), np.array([-1.4 * sg, 0.0, 0.0]),
-              np.array([1.4 * sg, 0.8, 0.0]), np.array([1.4 * sg, -0.8, 0.0]),
-              np.array([-1.4 * sg, 0.8, 0.0]), np.array([-1.4 * sg, -0.8, 0.0]),
-              np.array([0.0, 1.2, 0.0]), np.array([0.0, -1.2, 0.0])]
+    wrists = [
+        np.zeros(3),
+        np.array([1.4 * sg, 0.0, 0.0]),
+        np.array([-1.4 * sg, 0.0, 0.0]),
+        np.array([1.4 * sg, 0.8, 0.0]),
+        np.array([1.4 * sg, -0.8, 0.0]),
+        np.array([-1.4 * sg, 0.8, 0.0]),
+        np.array([-1.4 * sg, -0.8, 0.0]),
+        np.array([0.0, 1.2, 0.0]),
+        np.array([0.0, -1.2, 0.0]),
+    ]
     best = None
     for a4 in _seeds(side):
         for wr in wrists:
             q, e, tilt = solve_palm(i, side, contact, np.concatenate([a4, wr]), iters=60)
-            cost = (e * 50.0 + tilt / 30.0 + 0.2 * np.linalg.norm(q[:4] - REST[side][:4])
-                    + 0.05 * np.linalg.norm(q[4:]) + 6.0 * max(0.0, 0.06 - arm_clear(i, side, q)))
+            cost = (
+                e * 50.0
+                + tilt / 30.0
+                + 0.2 * np.linalg.norm(q[:4] - REST[side][:4])
+                + 0.05 * np.linalg.norm(q[4:])
+                + 6.0 * max(0.0, 0.06 - arm_clear(i, side, q))
+            )
             if best is None or cost < best[0]:
                 best = (cost, q, e, tilt)
     return best[1], best[2], best[3]
@@ -631,9 +720,11 @@ def plan_arm(side):
     err = np.zeros(T)
     tilt = np.zeros(T)
     lab = np.zeros(T, dtype=int)
-    cap = 5.5 / fps        # a fixed hand under a body rising at 1 m/s needs ~4 rad/s; no more
-    holds = [s + [fixed_contact(s[2], side, s[0], s[1] if s[2] != "hook" else min(s[1], s[0] + int(2 * fps)))[0]]
-             for s in segs]
+    cap = 5.5 / fps  # a fixed hand under a body rising at 1 m/s needs ~4 rad/s; no more
+    holds = [
+        s + [fixed_contact(s[2], side, s[0], s[1] if s[2] != "hook" else min(s[1], s[0] + int(2 * fps)))[0]]
+        for s in segs
+    ]
     for s, e, name, ct0 in holds:
         set_spec(name, side, s)
         ct = ct0
@@ -643,7 +734,7 @@ def plan_arm(side):
             if name == "hook":
                 ct = hook_contact(ct0, CUR["lam"])
                 if CUR["lam"] >= 1.0:
-                    CUR["f"] = None                        # flat on top: heading is free again
+                    CUR["f"] = None  # flat on top: heading is free again
             Q[i], err[i], tilt[i] = solve_palm(i, side, ct, Q[i - 1], iters=4, dq_cap=cap)
             if i % 2 == 0:
                 qs = steer_clear(i, side, ct, Q[i])
@@ -652,9 +743,11 @@ def plan_arm(side):
                 err[i] = float(np.linalg.norm(ee[:3]))
                 tilt[i] = float(np.degrees(np.arccos(np.clip(nn @ CUR["n"], -1, 1))))
         lab[s:e] = LABEL[name]
-        print(f"[hold ] {side[0].upper()} {name:9s} {step50[s]:.0f}-{step50[e-1]:.0f}: start err {err[s]*1000:.0f} mm, "
-              f"max {err[s:e].max()*1000:.0f} mm; palm tilt start {tilt[s]:.0f} deg, max {tilt[s:e].max():.0f} deg; "
-              f"wrist q0 {np.round(Q[s][4:], 2)}")
+        print(
+            f"[hold ] {side[0].upper()} {name:9s} {step50[s]:.0f}-{step50[e - 1]:.0f}: start err {err[s] * 1000:.0f} mm, "
+            f"max {err[s:e].max() * 1000:.0f} mm; palm tilt start {tilt[s]:.0f} deg, max {tilt[s:e].max():.0f} deg; "
+            f"wrist q0 {np.round(Q[s][4:], 2)}"
+        )
 
     def waypoint(i, name, prev, c_):
         t = proxy_at(name, c_, SH[side][i], side) + np.array([0.0, 0.0, a.lift])
@@ -678,7 +771,7 @@ def plan_arm(side):
             return TORSO_P[i_] + K.qrot(TORSO_Q[i_], np.array([0.17, 0.09 * sg, 0.10]))
 
         tb = proxy_at(B_, CB, SH[side][hi_], side)
-        if B_ == "hook":                                   # arrive along the fingers, from below-behind
+        if B_ == "hook":  # arrive along the fingers, from below-behind
             arr = [-0.10 * HOOK_F - 0.04 * HOOK_N, -0.05 * HOOK_F - 0.02 * HOOK_N]
             rise = np.array([-0.04, 0.0, -0.14])
         else:
@@ -691,30 +784,36 @@ def plan_arm(side):
         # ... and LEVEL: with the wrist joints frozen the hand pitches nose-down as the arm
         # retracts, and the fingertip was measured dropping 9 mm INTO the platform and dragging
         # along it. So the first two waypoints are flat-palm poses: straight up, then back.
-        knots = [(lo_ + min(int(0.22 * fps), n // 6),
-                  ("palm", lambda i_: CA + np.array([0.0, 0.0, 0.07]))),
-                 (lo_ + min(int(0.50 * fps), n // 3),
-                  ("palm", lambda i_: CA + np.array([-back, 0.0, 0.10])))]
+        knots = [
+            (lo_ + min(int(0.22 * fps), n // 6), ("palm", lambda i_: CA + np.array([0.0, 0.0, 0.07]))),
+            (lo_ + min(int(0.50 * fps), n // 3), ("palm", lambda i_: CA + np.array([-back, 0.0, 0.10]))),
+        ]
         if wait and n > int((t_front + 1.2) * fps):
             knots += [(lo_ + int(1.00 * fps), ready), (hi_ - int((t_front + 0.35) * fps), ready)]
-        knots += [(hi_ - int(t_front * fps),
-                   lambda i_: (tb + rise) if rise is not None else
-                   np.array([min(ta[0] - back, tb[0] - back), tb[1], tb[2] + a.lift])),
-                  # ... and ARRIVE level too: over the new face from behind and above, then down.
-                  # Turning flat while still moving forward swept the fingertip through the bar.
-                  (hi_ - int((t_above + 0.24) * fps),
-                   ("dst", lambda i_: CB + arr[0])),
-                  (hi_ - int(t_above * fps),
-                   ("dst", lambda i_: CB + arr[1]))]
+        knots += [
+            (
+                hi_ - int(t_front * fps),
+                lambda i_: (
+                    (tb + rise)
+                    if rise is not None
+                    else np.array([min(ta[0] - back, tb[0] - back), tb[1], tb[2] + a.lift])
+                ),
+            ),
+            # ... and ARRIVE level too: over the new face from behind and above, then down.
+            # Turning flat while still moving forward swept the fingertip through the bar.
+            (hi_ - int((t_above + 0.24) * fps), ("dst", lambda i_: CB + arr[0])),
+            (hi_ - int(t_above * fps), ("dst", lambda i_: CB + arr[1])),
+        ]
         kt, kq, prev = [lo_], [Q[lo_]], Q[lo_]
         for kk, (i_, fn) in enumerate(knots):
             if not (kt[-1] < i_ < hi_):
                 continue
-            if isinstance(fn, tuple):                      # a level, palm-down waypoint
+            if isinstance(fn, tuple):  # a level, palm-down waypoint
                 seed = Q[hi_] if fn[0] == "dst" else prev  # same wrist branch as the hold it serves
                 set_spec(B_ if fn[0] == "dst" else A_, side)
                 prev = solve_palm(i_, side, fn[1](i_), seed, iters=40)[0]
-                kt.append(i_); kq.append(prev)
+                kt.append(i_)
+                kq.append(prev)
                 continue
             tg = reachable(i_, fn(i_))
             # Lift off as held; travel with the hand IN LINE with the forearm, the way an arm
@@ -724,14 +823,16 @@ def plan_arm(side):
             # Straight after release the forearm points down at a low hold, and an in-line hand
             # would dip its fingertips into the face it just left -- so it stays as held there.)
             wr = prev[4:]
-            if kk == len(knots) - 3:                       # the rise in front of the new face
+            if kk == len(knots) - 3:  # the rise in front of the new face
                 wr = Q[hi_][4:] if B_ == "hook" else np.zeros(3)
             if chain:
                 prev = solve(i_, side, tg, np.concatenate([prev[:4], wr]), iters=40)[0]
             else:
                 prev = solve_seeded(i_, side, tg, wr, extra=[prev])[0]
-            kt.append(i_); kq.append(prev)
-        kt.append(hi_); kq.append(Q[hi_])
+            kt.append(i_)
+            kq.append(prev)
+        kt.append(hi_)
+        kq.append(Q[hi_])
         return kt, np.array(kq)
 
     def all_clear(i_, q_):
@@ -748,14 +849,15 @@ def plan_arm(side):
         for _ in range(14):
             moved = 0
             for k_, j in enumerate(idx):
-                if not (0.14 * n_ < j < 0.90 * n_):        # the ends rest on a face by design
+                if not (0.14 * n_ < j < 0.90 * n_):  # the ends rest on a face by design
                     continue
                 c = all_clear(lo_ + j, kq[k_])
                 if c >= want:
                     continue
                 g = np.zeros(7)
                 for c_ in range(7):
-                    qp = kq[k_].copy(); qp[c_] += 0.01
+                    qp = kq[k_].copy()
+                    qp[c_] += 0.01
                     g[c_] = (all_clear(lo_ + j, qp) - c) / 0.01
                 gn = float(np.linalg.norm(g))
                 if gn > 1e-6:
@@ -770,15 +872,16 @@ def plan_arm(side):
         v = float(np.abs(np.diff(seg, axis=0)).max() * fps)
         bad = max(0.0, v - a.vcap) / a.vcap
         if bad > 1.0:
-            return bad + 10.0                              # hopeless: skip the mesh queries
+            return bad + 10.0  # hopeless: skip the mesh queries
         cmin, xmin = 1e9, 1e9
         for k in range(0, len(seg), 8):
             i_ = lo_ + k
             w_, pc_, _, tip_, e_ = hand_of(i_, side, seg[k])
             xmin = min(xmin, front_of_body(i_, w_, side))
-            if int(0.21 * fps) < k < len(seg) - int(0.21 * fps):   # the ends rest ON a face by design
-                cmin = min(cmin, mesh_dist(w_), mesh_dist(0.5 * (e_ + w_)), mesh_dist(e_),
-                           mesh_dist(pc_), mesh_dist(tip_))
+            if int(0.21 * fps) < k < len(seg) - int(0.21 * fps):  # the ends rest ON a face by design
+                cmin = min(
+                    cmin, mesh_dist(w_), mesh_dist(0.5 * (e_ + w_)), mesh_dist(e_), mesh_dist(pc_), mesh_dist(tip_)
+                )
         return bad + 2.0 * max(0.0, 0.028 - cmin) / 0.028 + 20.0 * max(0.0, 0.03 - xmin)
 
     # transits: joint-space monotone spline, widened until under the speed cap
@@ -798,26 +901,30 @@ def plan_arm(side):
                 knots_t = [0, k1, k2, b]
                 # The base clip opens with the Dex3 fingertips 18 mm from tread 4's nose; open
                 # instead with the hands level, a hand's length short of the tread.
-                knots_q = [solve_palm(0, side, B[3] + np.array([-0.20, 0.0, 0.05]), Q[b], iters=60)[0],
-                           solve_palm(k1, side, B[3] + np.array([-0.14, 0.0, 0.05]), Q[b], iters=40)[0],
-                           solve_palm(k2, side, B[3] + np.array([-0.04, 0.0, 0.03]), Q[b], iters=40)[0], Q[b]]
+                knots_q = [
+                    solve_palm(0, side, B[3] + np.array([-0.20, 0.0, 0.05]), Q[b], iters=60)[0],
+                    solve_palm(k1, side, B[3] + np.array([-0.14, 0.0, 0.05]), Q[b], iters=40)[0],
+                    solve_palm(k2, side, B[3] + np.array([-0.04, 0.0, 0.03]), Q[b], iters=40)[0],
+                    Q[b],
+                ]
                 f = PchipInterpolator(knots_t, np.array(knots_q), axis=0)
                 seg = f(np.arange(0, b + 1))
                 if np.abs(np.diff(seg, axis=0)).max() * fps <= a.vcap or b >= B[1] - 2:
                     break
                 grow += int(0.1 * fps)
-            Q[0:b + 1] = seg; lab[0:b] = 0
+            Q[0 : b + 1] = seg
+            lab[0:b] = 0
             B[0] = b
             continue
         if B is None:
-            if A[1] < T:                                   # nothing left to reach: ease to rest
+            if A[1] < T:  # nothing left to reach: ease to rest
                 n = T - A[1]
                 f = PchipInterpolator([0, max(1, int(1.2 * fps))], np.array([Q[A[1] - 1], REST[side]]), axis=0)
-                Q[A[1]:] = f(np.minimum(np.arange(1, n + 1), int(1.2 * fps)))
+                Q[A[1] :] = f(np.minimum(np.arange(1, n + 1), int(1.2 * fps)))
             continue
         keep = int(a.min_hold * fps)
         best = None
-        for grow in (0,):                                  # the window is the schedule's, not ours
+        for grow in (0,):  # the window is the schedule's, not ours
             lo_, hi_ = A[1] - 1, B[0]
             for t_front in (0.55, 0.70, 0.85):
                 for t_above in (0.20,):
@@ -831,10 +938,14 @@ def plan_arm(side):
                                     best = (sc, lo_, hi_, seg)
                                 if sc == 0.0:
                                     break
-                            if best[0] == 0.0: break
-                        if best[0] == 0.0: break
-                    if best[0] == 0.0: break
-                if best[0] == 0.0: break
+                            if best[0] == 0.0:
+                                break
+                        if best[0] == 0.0:
+                            break
+                    if best[0] == 0.0:
+                        break
+                if best[0] == 0.0:
+                    break
             if best is not None and best[0] == 0.0:
                 break
         sc, lo_, hi_, seg = best
@@ -844,28 +955,40 @@ def plan_arm(side):
             if sc2 < sc:
                 print(f"[move ] {side[0].upper()} {A[2]}->{B[2]}: repaired {sc:.2f} -> {sc2:.2f}", flush=True)
                 sc, seg = sc2, seg2
-        print(f"[move ] {side[0].upper()} {A[2]}->{B[2]}: steps {step50[lo_]:.0f}-{step50[hi_]:.0f}, "
-              f"{'clean' if sc == 0.0 else f'best score {sc:.2f} (NOT clean)'}", flush=True)
-        Q[lo_:hi_ + 1] = seg
-        lab[lo_ + 1:hi_] = 0; err[lo_ + 1:hi_] = 0.0
+        print(
+            f"[move ] {side[0].upper()} {A[2]}->{B[2]}: steps {step50[lo_]:.0f}-{step50[hi_]:.0f}, "
+            f"{'clean' if sc == 0.0 else f'best score {sc:.2f} (NOT clean)'}",
+            flush=True,
+        )
+        Q[lo_ : hi_ + 1] = seg
+        lab[lo_ + 1 : hi_] = 0
+        err[lo_ + 1 : hi_] = 0.0
     assert not np.isnan(Q).any(), "unplanned frames"
-    lab[(lab > 0) & ((err > a.hold_tol) | (tilt > 25.0))] = 0   # never claim a hold not made flat
+    lab[(lab > 0) & ((err > a.hold_tol) | (tilt > 25.0))] = 0  # never claim a hold not made flat
     return Q, lab, err, holds, tilt
 
 
 plan = {s: plan_arm(s) for s in SIDES}
 for s in SIDES:
-    e_ = plan[s][2]; big = np.where(e_ > a.hold_tol)[0]
+    e_ = plan[s][2]
+    big = np.where(e_ > a.hold_tol)[0]
     if len(big):
-        print(f"[sched] {s[0].upper()} hold frames over {a.hold_tol*1000:.0f} mm: {len(big)}, steps "
-              f"{step50[big[0]]:.0f}..{step50[big[-1]]:.0f}, worst {e_.max()*1000:.0f} mm")
+        print(
+            f"[sched] {s[0].upper()} hold frames over {a.hold_tol * 1000:.0f} mm: {len(big)}, steps "
+            f"{step50[big[0]]:.0f}..{step50[big[-1]]:.0f}, worst {e_.max() * 1000:.0f} mm"
+        )
 for s in SIDES:
     lab = plan[s][1]
     chg = [0] + [i for i in range(1, T) if lab[i] != lab[i - 1]] + [T]
     inv = {v: k for k, v in LABEL.items()}
-    print(f"[plan] {s[0].upper()}: " + "  ".join(
-        f"{step50[chg[k]]:.0f}-{step50[chg[k+1]-1]:.0f}:{inv.get(int(lab[chg[k]]), 'move')}"
-        for k in range(len(chg) - 1) if chg[k + 1] - chg[k] > 6))
+    print(
+        f"[plan] {s[0].upper()}: "
+        + "  ".join(
+            f"{step50[chg[k]]:.0f}-{step50[chg[k + 1] - 1]:.0f}:{inv.get(int(lab[chg[k]]), 'move')}"
+            for k in range(len(chg) - 1)
+            if chg[k + 1] - chg[k] > 6
+        )
+    )
 
 # ---- assemble the clip ---------------------------------------------------------------------
 q_out = d["joint_pos"].copy()
@@ -884,14 +1007,18 @@ for s in SIDES:
 # The base clip does not agree with itself: its stored body positions sit up to 138 mm from the
 # pose its own joint angles describe. Rebuild EVERY body from the joints so one pose is tracked.
 _all = K.fk_all(PP, PQ, q_out, jn)
-_dis = max(float(np.linalg.norm(_all[b][0] - d["body_pos_w"][:, i], axis=1).max()) for i, b in enumerate(bn)
-           if any(k in b for k in ("hip", "knee", "ankle")))
-print(f"[base] leg bodies stored up to {_dis*1000:.0f} mm from the pose the joints describe; rebuilt from joints")
+_dis = max(
+    float(np.linalg.norm(_all[b][0] - d["body_pos_w"][:, i], axis=1).max())
+    for i, b in enumerate(bn)
+    if any(k in b for k in ("hip", "knee", "ankle"))
+)
+print(f"[base] leg bodies stored up to {_dis * 1000:.0f} mm from the pose the joints describe; rebuilt from joints")
 for i, b in enumerate(bn):
     bp[:, i], bq[:, i] = _all[b]
 bv = np.gradient(bp, 1.0 / fps, axis=0)
 jv = np.gradient(q_out, 1.0 / fps, axis=0)
-dq_ = K.qmul(np.roll(bq, -1, axis=0), K.qconj(bq)); dq_[-1] = dq_[-2]
+dq_ = K.qmul(np.roll(bq, -1, axis=0), K.qconj(bq))
+dq_[-1] = dq_[-2]
 dq_ = dq_ * np.sign(dq_[..., :1] + 1e-12)
 bw = 2.0 * dq_[..., 1:] * fps
 
@@ -923,15 +1050,22 @@ _lv = np.abs(np.gradient(q_out[:, _leg], 1 / fps, axis=0)).max(1)
 # Judged against the actuators, not a round number: the G1's leg motors are rated 20 rad/s
 # (hip roll, knee) to 37 rad/s (ankles). 60% of the slowest is the bar.
 _b = np.where(_lv > 12.0)[0]
-check("leg joint speed (base clip's legs, unchanged)", len(_b) == 0,
-      f"peak {_lv.max():.1f} rad/s against a 20 rad/s knee rating; {len(_b)} frames over 12")
+check(
+    "leg joint speed (base clip's legs, unchanged)",
+    len(_b) == 0,
+    f"peak {_lv.max():.1f} rad/s against a 20 rad/s knee rating; {len(_b)} frames over 12",
+)
 _ps = np.linalg.norm(np.gradient(PP, 1 / fps, axis=0), axis=1)
 print(f"[gate] info  pelvis speed peak {_ps.max():.2f} m/s")
 behind, wsp = 0, 0.0
 for s in SIDES:
     behind += int(sum(front_of_body(i, FKO[s][f"{s}_wrist_yaw_link"][i], s) < 0.0 for i in range(T)))
     wsp = max(wsp, float(np.linalg.norm(np.gradient(FKO[s][f"{s}_wrist_yaw_link"], 1 / fps, axis=0), axis=1).max()))
-check("wrist in front of the body", behind == 0, f"{behind} frames with the wrist behind both the chest plane and the shoulder")
+check(
+    "wrist in front of the body",
+    behind == 0,
+    f"{behind} frames with the wrist behind both the chest plane and the shoulder",
+)
 check("wrist speed", wsp <= 2.0, f"peak {wsp:.2f} m/s")
 cl_min, cl_where, hd_min, hd_where, below, tilt_max = 1e9, None, 1e9, None, 0, 0.0
 wr_min, wr_where = 1e9, None
@@ -956,7 +1090,7 @@ for s in SIDES:
             dd = mesh_dist(p_)
             if dd < cl_min:
                 cl_min, cl_where = dd, f"{s} {nm} at step {step50[i]:.0f}"
-        if not held_near[i]:                               # a hand in the air, away from any hold
+        if not held_near[i]:  # a hand in the air, away from any hold
             for nm, p_ in (("wrist", W[i]), ("palm", PC[i]), ("fingertip", TIP[i])):
                 dd = mesh_dist(p_)
                 if dd < hd_min:
@@ -967,50 +1101,91 @@ for s in SIDES:
             dd = mesh_dist(W[i])
             if dd < wr_min:
                 wr_min, wr_where = dd, f"{s} wrist at step {step50[i]:.0f}"
-check("arm clear of the ladder", cl_min >= a.gate_clear,
-      f"elbow/forearm closest {cl_min*1000:.1f} mm ({cl_where}); gate {a.gate_clear*1000:.0f} mm")
-check("moving hand clear of the ladder", hd_min >= a.gate_clear,
-      f"wrist/palm/fingertip closest {hd_min*1000:.1f} mm ({hd_where}) while not on a hold")
+check(
+    "arm clear of the ladder",
+    cl_min >= a.gate_clear,
+    f"elbow/forearm closest {cl_min * 1000:.1f} mm ({cl_where}); gate {a.gate_clear * 1000:.0f} mm",
+)
+check(
+    "moving hand clear of the ladder",
+    hd_min >= a.gate_clear,
+    f"wrist/palm/fingertip closest {hd_min * 1000:.1f} mm ({hd_where}) while not on a hold",
+)
 check("palm flat on its hold", tilt_max <= 25.0, f"worst palm tilt while holding {tilt_max:.0f} deg")
 check("hand above its hold", below == 0, f"{below} sampled frames below the face they hold")
-check("holding wrist clear of the ladder", wr_min >= 0.012, f"closest {wr_min*1000:.1f} mm ({wr_where})")
+check("holding wrist clear of the ladder", wr_min >= 0.012, f"closest {wr_min * 1000:.1f} mm ({wr_where})")
 # THE RULE: a hand may leave its hold only while both feet are planted. So through every foot
 # step -- first foot leaving to second foot landed -- both hands must be on a hold.
 _both = np.stack([plan[s][1] > 0 for s in SIDES], 1).all(1)
 _one = np.stack([plan[s][1] > 0 for s in SIDES], 1).any(1)
 _bad, _txt = 0, []
 for c0, c1 in CLIMBS:
-    nb_ = int((~_both[c0:c1]).sum()); _bad += nb_
-    _txt.append(f"{step50[c0]:.0f}-{step50[c1]:.0f}: {'both hands on' if nb_ == 0 else f'{nb_/fps:.2f} s without both hands'}")
+    nb_ = int((~_both[c0:c1]).sum())
+    _bad += nb_
+    _txt.append(
+        f"{step50[c0]:.0f}-{step50[c1]:.0f}: {'both hands on' if nb_ == 0 else f'{nb_ / fps:.2f} s without both hands'}"
+    )
 check("both hands hold through every foot step", _bad == 0, "; ".join(_txt))
-_first = min(plan[s][3][0][0] for s in SIDES); _last = min(plan[s][3][-1][1] for s in SIDES)
+_first = min(plan[s][3][0][0] for s in SIDES)
+_last = min(plan[s][3][-1][1] for s in SIDES)
 _none = int((~_one[_first:_last]).sum())
-check("never both hands off between first grip and top-out", _none == 0, f"{_none/fps:.2f} s with no hand on a hold")
+check("never both hands off between first grip and top-out", _none == 0, f"{_none / fps:.2f} s with no hand on a hold")
 _an = [bn.index(f"{s}_ankle_roll_link") for s in SIDES]
 _fs = np.linalg.norm(np.gradient(bp[:, _an], 1 / fps, axis=0), axis=2).max(1)
 _mv = ~_both[_first:_last]
-print(f"[gate] info  foot speed while a hand is off its hold: peak {(_fs[_first:_last][_mv].max() if _mv.any() else 0.0):.3f} m/s")
+print(
+    f"[gate] info  foot speed while a hand is off its hold: peak {(_fs[_first:_last][_mv].max() if _mv.any() else 0.0):.3f} m/s"
+)
 held = np.stack([plan[s][1] > 0 for s in SIDES], 1)
 # Reported, not gated: how much of the clip has a hold is set by the BODY trajectory (see the
 # reach schedule above), and a threshold here would only reward claiming holds that are not made.
-print(f"[gate] info  hands on holds: at least one hand holding {held.any(1).mean()*100:.1f}% of the clip, both {held.all(1).mean()*100:.1f}%; "
-      f"both off {(~held.any(1)).mean()*100:.1f}%")
+print(
+    f"[gate] info  hands on holds: at least one hand holding {held.any(1).mean() * 100:.1f}% of the clip, both {held.all(1).mean() * 100:.1f}%; "
+    f"both off {(~held.any(1)).mean() * 100:.1f}%"
+)
 herr = max(float(plan[s][2][plan[s][1] > 0].max()) for s in SIDES)
-print(f"[gate] info  worst held-hand position error {herr*1000:.1f} mm; "
-      f"hold counts " + ", ".join(f"{n} {int(sum((plan[s][1] == LABEL[n]).sum() for s in SIDES))}" for n in ORDER[3:]))
+print(
+    f"[gate] info  worst held-hand position error {herr * 1000:.1f} mm; "
+    f"hold counts " + ", ".join(f"{n} {int(sum((plan[s][1] == LABEL[n]).sum() for s in SIDES))}" for n in ORDER[3:])
+)
 
-out = pathlib.Path(a.out); out.mkdir(parents=True, exist_ok=True)
+out = pathlib.Path(a.out)
+out.mkdir(parents=True, exist_ok=True)
 n50 = int(T / fps * 50)
 oc = np.zeros((n50,) + d["object_contact"].shape[1:], dtype=d["object_contact"].dtype)
 for i in range(n50):
     f = min(int(i / 50 * fps), T - 1)
     oc[i] = [plan["left"][1][f], plan["right"][1][f]]
-np.savez(out / "motion.npz", joint_pos=q_out, joint_vel=jv, body_pos_w=bp, body_quat_w=bq,
-         body_lin_vel_w=bv, body_ang_vel_w=bw, object_contact=oc)
+np.savez(
+    out / "motion.npz",
+    joint_pos=q_out,
+    joint_vel=jv,
+    body_pos_w=bp,
+    body_quat_w=bq,
+    body_lin_vel_w=bv,
+    body_ang_vel_w=bw,
+    object_contact=oc,
+)
 shutil.copy(base / "meta.json", out / "meta.json")
-(out / "holds.json").write_text(json.dumps(dict(holds=HOLDS, label=LABEL, contact_idx=0, pauses=PAUSES,
-                                                schedule={s: [[float(step50[x0]), float(step50[x1 - 1]), nm, [float(v) for v in c_]]
-                                                              for x0, x1, nm, c_ in plan[s][3]] for s in SIDES},
-                                                objects=["dummy"] + ORDER, gate_failed=fails), indent=1))
-print(f"\n[out ] {out/'motion.npz'}  --  {'ACCEPTED' if not fails else 'REJECTED: ' + ', '.join(fails)}")
+(out / "holds.json").write_text(
+    json.dumps(
+        dict(
+            holds=HOLDS,
+            label=LABEL,
+            contact_idx=0,
+            pauses=PAUSES,
+            schedule={
+                s: [
+                    [float(step50[x0]), float(step50[x1 - 1]), nm, [float(v) for v in c_]]
+                    for x0, x1, nm, c_ in plan[s][3]
+                ]
+                for s in SIDES
+            },
+            objects=["dummy"] + ORDER,
+            gate_failed=fails,
+        ),
+        indent=1,
+    )
+)
+print(f"\n[out ] {out / 'motion.npz'}  --  {'ACCEPTED' if not fails else 'REJECTED: ' + ', '.join(fails)}")
 sys.exit(0 if not fails else 2)

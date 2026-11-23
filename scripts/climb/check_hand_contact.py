@@ -15,6 +15,7 @@ alone (the mistake that first reported a 6.7 mm rail) reads a long rail as absen
 
     python scripts/climb/check_hand_contact.py --clip <dir> [--clip <dir> ...]
 """
+
 from __future__ import annotations
 
 import argparse
@@ -24,13 +25,19 @@ import sys
 
 import numpy as np
 
-sys.path.insert(0, "/home/yujin-chen/robotica_project/fiatlux/fiatlux/.venv/lib/python3.11/"
-                   "site-packages/isaacsim/extscache/omni.usd.libs-1.0.1+69cbf6ad.lx64.r.cp311")
-from pxr import Usd, UsdGeom, Gf  # noqa: E402
+sys.path.insert(
+    0,
+    "/home/yujin-chen/robotica_project/fiatlux/fiatlux/.venv/lib/python3.11/"
+    "site-packages/isaacsim/extscache/omni.usd.libs-1.0.1+69cbf6ad.lx64.r.cp311",
+)
 from scipy.spatial import cKDTree  # noqa: E402
 
-USD = ("/home/yujin-chen/robotica_project/fiatlux/fiatlux/assets/omniverse_ladder/AlumStep_D/"
-       "AluminumStepLadder_D01_PR_NVD_01_collision.usd")
+from pxr import Gf, Usd, UsdGeom  # noqa: E402
+
+USD = (
+    "/home/yujin-chen/robotica_project/fiatlux/fiatlux/assets/omniverse_ladder/AlumStep_D/"
+    "AluminumStepLadder_D01_PR_NVD_01_collision.usd"
+)
 # the clip is authored with rung 0 at this point in the LADDER's frame; the asset's own origin is
 # the ladder root, and rung 0 is our tread 1, whose top is 0.236
 CLIP_BASE = np.array([-0.58, 0.0, 0.196])
@@ -47,15 +54,16 @@ for prim in Usd.PrimRange(stage.GetPseudoRoot()):
     m = UsdGeom.Mesh(prim)
     if not m:
         continue
-    P, FI, FC = (m.GetPointsAttr().Get(), m.GetFaceVertexIndicesAttr().Get(),
-                 m.GetFaceVertexCountsAttr().Get())
+    P, FI, FC = (m.GetPointsAttr().Get(), m.GetFaceVertexIndicesAttr().Get(), m.GetFaceVertexCountsAttr().Get())
     if not P or not FI or not FC:
         continue
     x = UsdGeom.Xformable(prim).ComputeLocalToWorldTransform(Usd.TimeCode.Default())
     V = np.array([[*x.Transform(Gf.Vec3d(q[0], q[1], q[2]))] for q in P], float) * 0.01
-    FI = np.asarray(FI); k = 0
+    FI = np.asarray(FI)
+    k = 0
     for c in FC:
-        f = FI[k:k + c]; k += c
+        f = FI[k : k + c]
+        k += c
         for j in range(1, c - 1):
             tris.append(V[[f[0], f[j], f[j + 1]]])
 T = np.asarray(tris)
@@ -90,8 +98,7 @@ def to_asset(p):
 # made its first set of numbers worthless. Refuse to report rather than report confidently wrong.
 _rung = np.array([[-0.580 + 0.0839 * k, 0.0, 0.196 + 0.2347 * k] for k in range(5)])
 _d, _ = tree.query(to_asset(_rung))
-print("frame self-test, rung centre -> mesh: "
-      + "  ".join(f"{x * 1000:.1f}" for x in _d) + " mm")
+print("frame self-test, rung centre -> mesh: " + "  ".join(f"{x * 1000:.1f}" for x in _d) + " mm")
 if _d.max() > 0.010:
     sys.exit("FRAME SELF-TEST FAILED: clip->asset transform is wrong, numbers would be meaningless")
 
@@ -100,8 +107,10 @@ for cdir in a.clip:
     p = pathlib.Path(cdir)
     d = dict(np.load(p / "motion.npz"))
     meta = json.loads((p / "meta.json").read_text())
-    bn = list(meta["body_names"]); fps = float(meta["fps"])
-    oc = d["object_contact"]; n50 = oc.shape[0]
+    bn = list(meta["body_names"])
+    fps = float(meta["fps"])
+    oc = d["object_contact"]
+    n50 = oc.shape[0]
     lw, rw = bn.index("left_wrist_yaw_link"), bn.index("right_wrist_yaw_link")
     ds = []
     for i in range(0, n50, a.stride):
@@ -113,6 +122,9 @@ for cdir in a.clip:
             ds.append(tree.query(q)[0])
     ds = np.asarray(ds)
     if not len(ds):
-        print(f"{p.name:<34}{'none':>11}"); continue
-    print(f"{p.name:<34}{len(ds):>11}{np.median(ds)*1000:>8.0f}m{np.percentile(ds,90)*1000:>8.0f}m"
-          f"{ds.max()*1000:>8.0f}m{100*np.mean(ds>0.05):>7.0f}%")
+        print(f"{p.name:<34}{'none':>11}")
+        continue
+    print(
+        f"{p.name:<34}{len(ds):>11}{np.median(ds) * 1000:>8.0f}m{np.percentile(ds, 90) * 1000:>8.0f}m"
+        f"{ds.max() * 1000:>8.0f}m{100 * np.mean(ds > 0.05):>7.0f}%"
+    )

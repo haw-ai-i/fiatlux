@@ -27,6 +27,7 @@ app = AppLauncher(a).app
 import fiatlux_task.tasks  # noqa: E402,F401
 import gymnasium as gym  # noqa: E402
 from fiatlux_task.tasks.manager_based.fiatlux_task.scene_cfg import set_layout_seed  # noqa: E402
+
 from isaaclab_tasks.utils import parse_env_cfg  # noqa: E402
 
 set_layout_seed(a.layout_seed)
@@ -46,11 +47,18 @@ for i, name in enumerate(rob.joint_names):
 
 pathlib.Path(a.out).write_text(json.dumps(out, indent=1, sort_keys=True))
 print(f"[DUMP] {len(out)} joints -> {a.out}")
-for n in ("left_hip_pitch_joint", "left_knee_joint", "waist_pitch_joint",
-          "left_ankle_pitch_joint", "left_shoulder_pitch_joint"):
+for n in (
+    "left_hip_pitch_joint",
+    "left_knee_joint",
+    "waist_pitch_joint",
+    "left_ankle_pitch_joint",
+    "left_shoulder_pitch_joint",
+):
     if n in out:
         v = out[n]
-        print(f"  {n:28s} kp {v['stiffness']:7.2f}  kd {v['damping']:6.3f}  "
-              f"armature {v['armature']:.9f}  effort {v['effort_limit']:6.1f}")
+        print(
+            f"  {n:28s} kp {v['stiffness']:7.2f}  kd {v['damping']:6.3f}  "
+            f"armature {v['armature']:.9f}  effort {v['effort_limit']:6.1f}"
+        )
 
 app.close()

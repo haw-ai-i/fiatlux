@@ -6,7 +6,11 @@ of the torso link, at every `--stride`-th frame. Negative = the two hulls overla
 
     python scripts/climb/check_arm_torso.py --clip <dir> [--stride 5]
 """
-import argparse, json, pathlib
+
+import argparse
+import json
+import pathlib
+
 import numpy as np
 from scipy.spatial import ConvexHull
 
@@ -61,13 +65,14 @@ ok = True
 for (side, ln), (g, step, _, _) in sorted(worst.items()):
     b = bad.get((side, ln), [])
     ok &= not b
-    msg = f"closest {g*1000:+.1f} mm at step {step}"
+    msg = f"closest {g * 1000:+.1f} mm at step {step}"
     if b:
         st = sorted({s for s, _ in b})
         runs, r0, p = [], st[0], st[0]
         for s in st[1:]:
             if s - p > 12:
-                runs.append((r0, p)); r0 = s
+                runs.append((r0, p))
+                r0 = s
             p = s
         runs.append((r0, p))
         msg += "; inside the torso during steps " + ", ".join(f"{x}-{y}" for x, y in runs)

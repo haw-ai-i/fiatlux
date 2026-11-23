@@ -12,6 +12,7 @@ robot is written, so it says nothing about the bulb.
 
     python scripts/climb/verify_descent_gate.py --task FIATLUX-S12-ClimbDown-v0 --clip <descent> --headless
 """
+
 import argparse
 import pathlib
 import sys
@@ -21,7 +22,9 @@ from isaaclab.app import AppLauncher
 ap = argparse.ArgumentParser()
 ap.add_argument("--task", default="FIATLUX-S12-ClimbDown-v0")
 ap.add_argument("--clip", required=True)
-ap.add_argument("--steps", type=int, nargs="*", default=None, help="clip steps to tabulate (default: start, quarter points, end)")
+ap.add_argument(
+    "--steps", type=int, nargs="*", default=None, help="clip steps to tabulate (default: start, quarter points, end)"
+)
 ap.add_argument("--layout_seed", type=int, default=0)
 AppLauncher.add_app_launcher_args(ap)
 a = ap.parse_args()
@@ -35,9 +38,9 @@ import torch  # noqa: E402
 from fiatlux_task.robots.g1 import swap_robot_variant  # noqa: E402
 from fiatlux_task.tasks.manager_based.fiatlux_task import mdp  # noqa: E402
 from fiatlux_task.tasks.manager_based.fiatlux_task.scene_cfg import set_layout_seed  # noqa: E402
-from isaaclab_tasks.utils import parse_env_cfg  # noqa: E402
-
 from ladderman_runtime import LadderManObs  # noqa: E402
+
+from isaaclab_tasks.utils import parse_env_cfg  # noqa: E402
 
 set_layout_seed(a.layout_seed)
 cfg = parse_env_cfg(a.task, num_envs=1)
@@ -50,8 +53,10 @@ robot = env.scene["robot"]
 term = env.cfg.terminations.success
 conj = mdp.conjuncts_of(term.func, term.params)
 names = [getattr(f, "__name__", "?") for f, _ in conj]
-print(f"[gate] {a.task}, layout seed {a.layout_seed}: term {getattr(term.func, '__name__', term.func)}, "
-      f"hold {term.params.get('seconds')} s, linger {term.params.get('linger_seconds')} s")
+print(
+    f"[gate] {a.task}, layout seed {a.layout_seed}: term {getattr(term.func, '__name__', term.func)}, "
+    f"hold {term.params.get('seconds')} s, linger {term.params.get('linger_seconds')} s"
+)
 print("[gate] conjuncts: " + ", ".join(names))
 for (f, p), n in zip(conj, names):
     if n == "descended_from_ladder":
@@ -62,7 +67,9 @@ lad = env.scene["ladder"]
 
 def stage(step):
     t = torch.tensor([min(step, o.motion_len - 1)], device=dev, dtype=torch.long)
-    robot.write_root_link_pose_to_sim(torch.cat([o.ref_body_pos[t][:, o.root_mo], o.ref_body_quat[t][:, o.root_mo]], -1))
+    robot.write_root_link_pose_to_sim(
+        torch.cat([o.ref_body_pos[t][:, o.root_mo], o.ref_body_quat[t][:, o.root_mo]], -1)
+    )
     robot.write_root_com_velocity_to_sim(torch.zeros(1, 6, device=dev))
     q = robot.data.joint_pos.clone() * 0.0
     q[:, o.j_fx] = o.ref_joint_pos[t]
@@ -85,8 +92,12 @@ n = o.motion_len
 steps = a.steps or [0, n // 4, n // 2, 3 * n // 4, n - 1]
 for s in steps:
     stage(s)
-    g = table(); d, z = where()
-    print(f"[gate] clip step {s:5d}: pelvis {d:.3f} m from the ladder's root, height {z:.3f} m | " + " ".join(f"{k}={v}" for k, v in g.items()))
+    g = table()
+    d, z = where()
+    print(
+        f"[gate] clip step {s:5d}: pelvis {d:.3f} m from the ladder's root, height {z:.3f} m | "
+        + " ".join(f"{k}={v}" for k, v in g.items())
+    )
 first = None
 for s in range(0, n, 5):
     stage(s)
@@ -94,10 +105,13 @@ for s in range(0, n, 5):
         first = s
         break
 stage(n - 1)
-g = table(); d, z = where()
+g = table()
+d, z = where()
 others = {k: v for k, v in g.items() if k != "descended_from_ladder"}
 print(f"[gate] descended_from_ladder first true at clip step {first} of {n} (searched every 5 steps)")
-print(f"[{'PASS' if g.get('descended_from_ladder') else 'FAIL'}] last frame: descended_from_ladder={g.get('descended_from_ladder')}, "
-      f"pelvis {d:.3f} m from the root (limit 0.6), height {z:.3f} m; the other conjuncts read {others}")
+print(
+    f"[{'PASS' if g.get('descended_from_ladder') else 'FAIL'}] last frame: descended_from_ladder={g.get('descended_from_ladder')}, "
+    f"pelvis {d:.3f} m from the root (limit 0.6), height {z:.3f} m; the other conjuncts read {others}"
+)
 env.close()
 app.close()

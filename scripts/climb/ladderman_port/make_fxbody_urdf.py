@@ -28,6 +28,7 @@ are untouched, so checkpoints, clips and the action space carry over.
 
     python make_fxbody_urdf.py --urdf <.../g1_29dof_dex3open-complexfeet-complex.urdf> --out <dir>
 """
+
 from __future__ import annotations
 
 import argparse
@@ -45,25 +46,32 @@ ap.add_argument("--name", default="g1_29dof_dex3open-complexfeet-fxbody")
 a = ap.parse_args()
 HERE = pathlib.Path(__file__).parent
 PTS = np.load(HERE / "fx_body_collision_points.npz")
-out = pathlib.Path(a.out); (out / "meshes").mkdir(parents=True, exist_ok=True)
-DROP = {"pelvis"}                                       # trainer-only shapes the benchmark does not have
+out = pathlib.Path(a.out)
+(out / "meshes").mkdir(parents=True, exist_ok=True)
+DROP = {"pelvis"}  # trainer-only shapes the benchmark does not have
 
 
 def write_stl(path, V):
-    h = ConvexHull(V); c = V[h.vertices].mean(0); tris = []
+    h = ConvexHull(V)
+    c = V[h.vertices].mean(0)
+    tris = []
     for s, eq in zip(h.simplices, h.equations):
-        p = V[s]; n = np.cross(p[1] - p[0], p[2] - p[0])
+        p = V[s]
+        n = np.cross(p[1] - p[0], p[2] - p[0])
         if np.dot(n, eq[:3]) < 0:
-            p = p[[0, 2, 1]]; n = -n
+            p = p[[0, 2, 1]]
+            n = -n
         tris.append((n / (np.linalg.norm(n) + 1e-12), p))
     with open(path, "wb") as f:
-        f.write(b"fiatlux benchmark collider hull".ljust(80, b" ")); f.write(struct.pack("<I", len(tris)))
+        f.write(b"fiatlux benchmark collider hull".ljust(80, b" "))
+        f.write(struct.pack("<I", len(tris)))
         for n, p in tris:
             f.write(struct.pack("<12fH", *n, *p.reshape(-1), 0))
     return len(tris)
 
 
-tree = ET.parse(a.urdf); root = tree.getroot()
+tree = ET.parse(a.urdf)
+root = tree.getroot()
 links = {l.get("name"): l for l in root.findall("link")}
 by_link: dict[str, list[np.ndarray]] = {}
 for k in PTS.files:
@@ -79,11 +87,15 @@ for name, geoms in sorted(by_link.items()):
     for c in old:
         links[name].remove(c)
     for i, V in enumerate(geoms):
-        fn = f"fxbody_{name}_{i}.STL"; nt = write_stl(out / "meshes" / fn, V)
-        c = ET.SubElement(links[name], "collision"); ET.SubElement(c, "origin", xyz="0 0 0", rpy="0 0 0")
+        fn = f"fxbody_{name}_{i}.STL"
+        nt = write_stl(out / "meshes" / fn, V)
+        c = ET.SubElement(links[name], "collision")
+        ET.SubElement(c, "origin", xyz="0 0 0", rpy="0 0 0")
         ET.SubElement(ET.SubElement(c, "geometry"), "mesh", filename=f"meshes/{fn}")
         ext = np.round((V.max(0) - V.min(0)) * 1000).astype(int).tolist()
-        print(f"[link ] {name}: {'replaced ' + str(len(old)) + ' shape(s)' if old else 'added'} -> hull {ext} mm, {nt} triangles")
+        print(
+            f"[link ] {name}: {'replaced ' + str(len(old)) + ' shape(s)' if old else 'added'} -> hull {ext} mm, {nt} triangles"
+        )
 root.set("name", a.name)
 tree.write(out / f"{a.name}.urdf", xml_declaration=True, encoding="utf-8")
 print(f"[out  ] {out / (a.name + '.urdf')}")

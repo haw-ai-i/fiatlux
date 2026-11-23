@@ -14,6 +14,8 @@ rather than wherever a placement subtask left this ladder.
 
 from isaaclab.utils import configclass
 
+from fiatlux_task.robots.g1 import add_foot_sole, fix_sensor_frame_mass
+
 from .. import mdp
 from ..mdp import balance_terms, grasp_terms, place_terms
 from ..subtask_env_cfg import FALL_MIN_HEIGHT, FALL_TILT_LIMIT
@@ -26,7 +28,6 @@ from ..subtask_tiers.balance import (
     LADDER_TOP_SUSTAIN_SECONDS,
     ClimbSubtaskCfg,
 )
-from fiatlux_task.robots.g1 import add_foot_sole, fix_sensor_frame_mass
 
 # The success gate, as reviewable data (mdp.all_of) rather than a hand-written conjunction --
 # an omitted conjunct here is a gate that passes vacuously.

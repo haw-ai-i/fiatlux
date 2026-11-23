@@ -23,11 +23,10 @@ architecture fails loudly here instead of quietly producing a 23-vector of nonse
 
 from __future__ import annotations
 
-import torch
-from torch import nn
-
 import ladderman_obs
+import torch
 from ladderman_contract import FIATLUX_ACTION_SCALE
+from torch import nn
 
 # make_mlp(num_units, activation=nn.Mish, norm="before") -> [Linear, LayerNorm, Mish] per unit
 _ACT = nn.Mish
@@ -94,15 +93,18 @@ class LadderManPolicy(nn.Module):
     @torch.no_grad()
     def act(self, groups: dict[str, torch.Tensor]) -> torch.Tensor:
         """23 LadderMan action units, reference residual already added."""
-        feat = self.encoder(torch.cat([self._n("priv", groups["priv"]),
-                                       self._n("object", groups["object"])], -1))
-        out = self.head(self.trunk(torch.cat([self._n("command", groups["command"]),
-                                              self._n("policy", groups["policy"]), feat], -1)))
-        return groups["ref_joint_pos_"] + out          # RefJointPos: ref_jpos + action
+        feat = self.encoder(torch.cat([self._n("priv", groups["priv"]), self._n("object", groups["object"])], -1))
+        out = self.head(
+            self.trunk(
+                torch.cat([self._n("command", groups["command"]), self._n("policy", groups["policy"]), feat], -1)
+            )
+        )
+        return groups["ref_joint_pos_"] + out  # RefJointPos: ref_jpos + action
 
     @torch.no_grad()
-    def to_fiatlux(self, action_lm: torch.Tensor, obs, match_torque: bool = False,
-                   wrist_from_ref: bool = False) -> torch.Tensor:
+    def to_fiatlux(
+        self, action_lm: torch.Tensor, obs, match_torque: bool = False, wrist_from_ref: bool = False
+    ) -> torch.Tensor:
         """Re-express LadderMan's absolute joint target in our action units.
 
         theirs: pos_target = lm_default + applied_action * action_scaling   (23; wrists held)
@@ -110,10 +112,9 @@ class LadderManPolicy(nn.Module):
         """
         robot = obs.robot
         n_fx = robot.data.joint_pos.shape[1]
-        target = robot.data.default_joint_pos.clone()                       # [N, n_fx]
+        target = robot.data.default_joint_pos.clone()  # [N, n_fx]
         lm_target = obs.lm_default[None].expand(action_lm.shape[0], -1).clone()
-        lm_target[:, obs.act_mo] = (obs.lm_default[obs.act_mo][None]
-                                    + action_lm * obs.act_scaling[None])
+        lm_target[:, obs.act_mo] = obs.lm_default[obs.act_mo][None] + action_lm * obs.act_scaling[None]
         if wrist_from_ref:
             # Teachers trained with JointPositionRefWrist: the wrists' PD target is the clip's
             # wrist angle at the current phase, not the default pose.
