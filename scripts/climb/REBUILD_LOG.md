@@ -2090,3 +2090,9 @@ Videos (kinematic): `descbulb02_ref/` side and rear-right, under the videos fold
   9,300 keeps 60 of 64. The same two checkpoints go 4 of 4 and 0 of 4 in the benchmark, so the swing is
   in the transfer, not in the policy as the trainer measures it. The four benchmark seeds behave nearly
   alike (`--rsi_noise 0.03`), so one checkpoint is closer to one sample than to four.
+- `edge87s2` 9,600 (noise 0.147), S02, 4 seeds: 0 stand; falls at steps 1,297, 1,596, 1,603, 1,603. Run so
+  far in the benchmark: 8,700 2 of 4, 9,000 4 of 4, 9,300 0 of 4, 9,600 0 of 4. 9,000 is the only
+  checkpoint of this run that stands and is pinned (`teacher/keep/edge87s2_checkpoint_9000.pt`).
+- `desc01fx` (job 15581301, L40, `COLLISION_STACK=536870912`): 471 iterations past the resume with no
+  PhysX error, the first descent to pass iteration 450 at 4,096 environments. `descbulb02fx` (job
+  15581313, H200, same settings) training.
