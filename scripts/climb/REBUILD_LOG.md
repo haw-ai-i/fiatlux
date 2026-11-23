@@ -2001,3 +2001,24 @@ Videos (kinematic): `descbulb02_ref/` side and rear-right, under the videos fold
 - `lm_train_fxbody_multi.sbatch`: descent settings (lift, speed limit, spacing) now go only to a descent
   run in a pair (`DESC_LIFT`, `DESC_SPEED`, `DESC_SPACING`); `CPUS_PER_RUN`.
 - Pending descents changed in place to a 12 h limit and released from the single-node pin.
+
+### Mount term at 1,200 iterations: position fixed, fall unchanged (Nov 23 UTC)
+
+- `bulb21fx` 18,000, S10, 3 seeds: the robot is now 1-16 mm behind the clip at step 400 (60-85 mm before
+  the term), and still falls backward on tread 1 on every seed (steps 507, 512, and 569 where the falling
+  robot's bulb is crushed). The lag at the mount was a symptom the term has removed; it was not the cause
+  of the fall. In every fall the robot stands on the left foot on tread 1 with the tread pushing that foot
+  away from the ladder (60-150 N horizontal) and the left hand carrying 19-35 N straight down.
+- The bulb is not the cause: the same checkpoint and clip in S02 (no bulb, right hand open), 2 seeds, falls
+  at steps 527 and 540 the same way.
+- Friction is not the cause (trainer, 17,400, 64 robots to step 700; friction set through the
+  randomisation ranges, applied values not read back): as trained 55 still up; static/dynamic 1.2/1.0, 57;
+  0.6/0.5, 49. Every robot that ended did so at step 389 (lost hand contact); none fell on tread 1.
+- The adapter's `asset_meta_edge72.json` is identical to the bulb run's own `asset_meta.json`, and the
+  adapter's observations carry no hand-offset setting, so the two runs' different `contact_eef_pos_offset`
+  cannot reach the benchmark side.
+- Open: the trainer's robot gets through this mount on 55-57 of 64 and the benchmark's on 0 of 5, with the
+  same body colliders, motors, friction and clip. Not yet compared: the two simulators stepping the same
+  joint targets (an open-loop replay of a trainer rollout in the benchmark).
+- `descbulb02fx` started on an H200 node (`gn-09-23-00`, 143 GB card): start-up completed in 10 minutes
+  and it trained 2 iterations before the scheduler pre-empted it. H200 works.
