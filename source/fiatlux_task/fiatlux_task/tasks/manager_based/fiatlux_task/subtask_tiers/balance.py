@@ -120,6 +120,29 @@ ON_LADDER_RESET_JITTER_RAD = 0.05
 ON_LADDER_JOINT_JITTER_RAD = 0.02
 
 
+# On the platform the root may be drawn back from the nominal stance but not forward of it. The
+# ladder's top frame stands at hip height and narrows toward the front. Over 80 S12 resets on two
+# layouts (scripts/verify_on_ladder_spawn.py) 20 started with the hip links inside the frame --
+# 15-20 kN on the first step, no weight on the feet -- and every one of those was drawn more than
+# 6 mm forward of nominal. The range keeps its 20 mm of depth; all of it is behind nominal.
+ON_LADDER_TOP_RESET_FORWARD_M = (-ON_LADDER_RESET_JITTER_M, 0.0)
+
+
+def jitter_on_ladder_top_in_stance_frame(events: SubtaskEventCfg) -> None:
+    """Draw the on-platform reset jitter in the stance's own frame, never forward of nominal.
+
+    For the subtasks ``stand_robot_on_ladder_top`` stages. The tier's world-axis square
+    (``BalanceSubtaskCfg``) cannot express "not forward", because which world axis is forward
+    follows the layout.
+    """
+    events.reset_robot_root.func = mdp.reset_root_state_uniform_in_root_frame
+    events.reset_robot_root.params["pose_range"] = {
+        "x": ON_LADDER_TOP_RESET_FORWARD_M,
+        "y": (-ON_LADDER_RESET_JITTER_M, ON_LADDER_RESET_JITTER_M),
+        "yaw": (-ON_LADDER_RESET_JITTER_RAD, ON_LADDER_RESET_JITTER_RAD),
+    }
+
+
 def stand_robot_on_ladder_top(scene: G1ReplaceSceneCfg) -> None:
     """Pelvis over the tread's centre, turned a quarter turn from the ladder's own frame.
 
@@ -238,4 +261,5 @@ class DescendSubtaskCfg(BalanceSubtaskCfg):
     def __post_init__(self) -> None:
         super().__post_init__()
         stand_robot_on_ladder_top(self.scene)
+        jitter_on_ladder_top_in_stance_frame(self.events)
         add_ladder_contact_sensor(self.scene, self.ladder_contact_bodies)

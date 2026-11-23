@@ -31,7 +31,13 @@ from fiatlux_task.grasp_poses import GLASS_CONTACT_LIMIT_N
 from .. import mdp
 from ..mdp import mate_terms
 from ..subtask_env_cfg import SubtaskRewardsCfg
-from .balance import BalanceSubtaskCfg, BalanceTerminationsCfg, OnLadderRewardsCfg, stand_robot_on_ladder_top
+from .balance import (
+    BalanceSubtaskCfg,
+    BalanceTerminationsCfg,
+    OnLadderRewardsCfg,
+    jitter_on_ladder_top_in_stance_frame,
+    stand_robot_on_ladder_top,
+)
 
 # Dense alignment kernel width, in radians of mating-axis error: the family's existing value for
 # the orientation kernel this one replaces (install/g1_bulb), which is well outside the 0.2 rad
@@ -98,3 +104,4 @@ class MateSubtaskCfg(BalanceSubtaskCfg):
     def __post_init__(self) -> None:
         super().__post_init__()
         stand_robot_on_ladder_top(self.scene)
+        jitter_on_ladder_top_in_stance_frame(self.events)

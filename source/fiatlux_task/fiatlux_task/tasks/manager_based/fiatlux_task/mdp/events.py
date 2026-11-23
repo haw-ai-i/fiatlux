@@ -31,6 +31,42 @@ if TYPE_CHECKING:
     from isaaclab.envs import ManagerBasedEnv
 
 
+def reset_root_state_uniform_in_root_frame(
+    env: ManagerBasedEnv,
+    env_ids: torch.Tensor,
+    pose_range: dict[str, tuple[float, float]],
+    velocity_range: dict[str, tuple[float, float]],
+    asset_cfg: SceneEntityCfg = SceneEntityCfg("robot"),
+) -> None:
+    """Isaac Lab's ``reset_root_state_uniform`` with ``x`` and ``y`` in the default root's own yaw frame.
+
+    The stock term adds its ``x`` / ``y`` samples along the WORLD axes, so a range cannot say
+    "forward" or "sideways" for a stance whose heading follows the layout. Here ``x`` is the way
+    the asset's default root pose faces and ``y`` is its left, whatever the heading; ``z``, the
+    rotations and the velocities are unchanged. With a symmetric square range this draws the same
+    set of positions as the stock term, turned to line up with the stance.
+    """
+    asset = env.scene[asset_cfg.name]
+    root_states = asset.data.default_root_state[env_ids].clone()
+
+    range_list = [pose_range.get(key, (0.0, 0.0)) for key in ["x", "y", "z", "roll", "pitch", "yaw"]]
+    ranges = torch.tensor(range_list, device=asset.device)
+    rand_samples = math_utils.sample_uniform(ranges[:, 0], ranges[:, 1], (len(env_ids), 6), device=asset.device)
+
+    offset = math_utils.quat_apply(math_utils.yaw_quat(root_states[:, 3:7]), rand_samples[:, 0:3])
+    positions = root_states[:, 0:3] + env.scene.env_origins[env_ids] + offset
+    orientations_delta = math_utils.quat_from_euler_xyz(rand_samples[:, 3], rand_samples[:, 4], rand_samples[:, 5])
+    orientations = math_utils.quat_mul(root_states[:, 3:7], orientations_delta)
+
+    range_list = [velocity_range.get(key, (0.0, 0.0)) for key in ["x", "y", "z", "roll", "pitch", "yaw"]]
+    ranges = torch.tensor(range_list, device=asset.device)
+    rand_samples = math_utils.sample_uniform(ranges[:, 0], ranges[:, 1], (len(env_ids), 6), device=asset.device)
+    velocities = root_states[:, 7:13] + rand_samples
+
+    asset.write_root_pose_to_sim(torch.cat([positions, orientations], dim=-1), env_ids=env_ids)
+    asset.write_root_velocity_to_sim(velocities, env_ids=env_ids)
+
+
 def randomize_light_properties(
     env: ManagerBasedEnv,
     env_ids: torch.Tensor | None,
