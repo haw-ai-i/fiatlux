@@ -1810,3 +1810,37 @@ Videos: benchmark runs of the early checkpoints and of `bulb19` under the videos
   - V100 nodes: `CUDA error: no kernel image is available` with this trainer's PyTorch. Excluded, with the
     ece605 node (two runs fill its memory), the sliced-GPU nodes and the 2080 Ti / 2070 nodes; the RTX 5000
     nodes showed 59-77 GB actually free against the ~80 GB a run needs.
+
+## Descent rebuild 2: `descbulb02` (S04, bulb) on `bulb21`'s arm; `desc01` (S12) kept (2026-11-22) -- NOT trained
+
+- Chain as descent rebuild 1 with the forward clip replaced by the no-tread-4-rest bulb climb at its walk-in
+  stage (variant B, `bulb15`'s left labels). Check: from rebuild 1's forward clip the chain reproduces
+  `descbulb01` to 0.0. Then `clear_bulb_path.py --target 0.045 --max_shift 0.05` (wrist up to 14 mm at steps
+  422-489 and 650-676, 24 mm at 906-1,220), `dilate_window.py --steps 610 680 --factor 2.5` (the approach to
+  the platform rest) and `--steps 2 62 --factor 3` (the opening). 2,086 steps; the trainer's episode limit
+  is 2,100.
+- Against `descbulb01`: every joint that is not the right arm identical before the two slowed stretches.
+  One right-hand rest, the platform, steps 882-1,116 (the reversed tread-4 rest is gone). Bulb hand in the
+  first 3 s 0.18 m/s (0.55); in the second before the rest 0.64 m/s (0.87) -- that window holds a foot step,
+  so slowing the whole body buys less there.
+- Offline: limits pass; torso CLEAN; glass never under 25.4 mm from the ladder at the curl-0.9 seat (28.6 at
+  the loose-cup seat).
+- Puppet (`--follow_root`, curl 0.9): 0 of 27 segments lose the bulb over two maps; one continuous run of
+  all 2,086 steps holds it (71 mm off its seat at most, squeeze 11 N, no touch). In the segmented maps the
+  bulb touches the ladder in 19 steps, all at 883-1,018, up to 22 N: the landing on the platform rest and
+  the first seconds of it. `bulb21` (climb), which settles onto the same rest slowly, has 3.
+- Frozen holds, cup at curl 0.9, nine poses: 9 of 9 stay up. The bulb leaves the hand in three (the pose
+  with both feet just off the platform, pelvis 207 mm off the reference and 23 deg of tilt; the tread 3->4
+  pose; the mount pose). A frozen robot sags and tilts there; the puppet, which holds the clip's own poses,
+  keeps the bulb at all of them.
+- Body scan (overlap indicators, not loads): bulb against the ladder nothing, squeeze 3 N. Ankles and
+  hip_roll flagged at steps 0-100 and 160-175: the benchmark's own S04 start stance, as in rebuild 1 (now
+  over more steps because the opening is slowed). Left knee at 540 and 1,620-1,625, left hip_yaw at 540.
+- Gate (`FIATLUX-S04-DescendWithBulb-v0`, layout seed 0): last frame passes `descended_from_ladder` (pelvis
+  0.560 m from the root, limit 0.6); first true at clip step 1,620 of 2,086, mid-dismount, as before.
+- `desc01`: unchanged. Clears the benchmark body's shoulder, hip and thigh colliders; hands land at
+  0.80-0.82 m/s, nothing fragile in them.
+- For training either descent: benchmark body, tight arm terms, and the start randomisation of the climb
+  scripts switched off for the platform start (`floor_steps`).
+
+Videos (kinematic): `descbulb02_ref/` side and rear-right, under the videos folder.
