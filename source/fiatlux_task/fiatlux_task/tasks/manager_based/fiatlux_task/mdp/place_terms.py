@@ -26,12 +26,13 @@ sensor carries a single filter pattern, which the scene's shared ``hand_contact`
 from __future__ import annotations
 
 import math
+from collections.abc import Sequence
 from typing import TYPE_CHECKING
 
 import torch
 
 from isaaclab.assets import Articulation, RigidObject
-from isaaclab.managers import SceneEntityCfg
+from isaaclab.managers import ManagerTermBase, SceneEntityCfg, TerminationTermCfg
 from isaaclab.sensors import ContactSensor
 from isaaclab.utils.math import quat_apply, quat_apply_inverse, quat_error_magnitude
 
@@ -189,6 +190,68 @@ def _peak_filtered_force(env: ManagerBasedRLEnv, sensor_cfg: SceneEntityCfg) -> 
     sensor: ContactSensor = env.scene.sensors[sensor_cfg.name]
     force = sensor.data.force_matrix_w.sum(dim=2)  # (N, B, M, 3) -> (N, B, 3)
     return force.norm(dim=-1).max(dim=1).values
+
+
+class payload_lost(ManagerTermBase):
+    """True where the payload has come to a stop outside its target and cannot be recovered.
+
+    S06 has no way to end a failed episode: #202 removed its drop floor (letting go IS the task,
+    so a low bulb is not a fault) and it carries no drop termination. Until this, the only thing
+    that ended a lost-bulb run was the impact gate firing on the landing -- an accident of that
+    gate, not a design, and one that missed every bulb lost GENTLY. Without it a rollout that
+    puts the bulb on the floor beside the crate runs the full episode with nothing recoverable:
+    the leg starts bulb-in-hand and has no re-grasp.
+
+    POSITION-based, not velocity-based. A settled bulb never actually stops: measured across the
+    2026-09-13 takes it jitters at a median 0.013 m/s and a maximum of 0.0495 m/s, against the
+    0.05 m/s limit ``object_at_rest`` uses -- a 1 % margin. Asking whether the bulb has MOVED
+    over a window degrades gracefully where a velocity threshold has a cliff.
+
+    Fires only when all three hold for ``settle_steps`` consecutive steps:
+      * the bulb has moved less than ``move_tol`` since the window opened,
+      * it is not inside the crate, and
+      * neither hand is on it.
+    The conjunction is the negation of the success gate, so this cannot disagree with scoring:
+    it ends the episode exactly when success has become unreachable.
+    """
+
+    def __init__(self, cfg: TerminationTermCfg, env: ManagerBasedRLEnv):
+        super().__init__(cfg, env)
+        self._anchor = torch.zeros(env.num_envs, 3, device=env.device)
+        self._held = torch.zeros(env.num_envs, dtype=torch.long, device=env.device)
+
+    def reset(self, env_ids: Sequence[int] | None = None) -> None:
+        ids = slice(None) if env_ids is None else env_ids
+        self._anchor[ids] = 0.0
+        self._held[ids] = 0
+
+    def __call__(
+        self,
+        env: ManagerBasedRLEnv,
+        sensor_cfg: SceneEntityCfg,
+        force_threshold: float,
+        asset_cfg: SceneEntityCfg = SceneEntityCfg("old_bulb"),
+        bin_cfg: SceneEntityCfg = SceneEntityCfg("bin"),
+        other_sensor_cfg: SceneEntityCfg | None = None,
+        move_tol: float = 0.01,
+        settle_steps: int = 25,
+    ) -> torch.Tensor:
+        pos = env.scene[asset_cfg.name].data.root_pos_w
+        lost_now = (
+            ~old_bulb_in_bin(env, asset_cfg=asset_cfg, bin_cfg=bin_cfg)
+            & object_released(
+                env,
+                sensor_cfg=sensor_cfg,
+                force_threshold=force_threshold,
+                other_sensor_cfg=other_sensor_cfg,
+            )
+            & ((pos - self._anchor).norm(dim=-1) <= move_tol)
+        )
+        # Any step that breaks the conjunction re-anchors: the window measures displacement from
+        # where the bulb was when it last looked lost, not from an arbitrary earlier frame.
+        self._held = torch.where(lost_now, self._held + 1, torch.zeros_like(self._held))
+        self._anchor = torch.where(lost_now.unsqueeze(-1), self._anchor, pos.clone())
+        return self._held >= settle_steps
 
 
 def object_released(
